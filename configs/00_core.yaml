@@ -1,0 +1,20 @@
+# configs/00_core.yaml
+# Балансовые параметры модуля 00_core.
+# Валидируется backend/src/modules/00_core/config_schema.py при старте приложения и в CI.
+
+tick:
+  tick_interval_hours: 24
+
+auth:
+  vk_ts_freshness_window_minutes: 30
+  jwt_ttl_minutes: 60
+
+nation:
+  nation_name_min_length: 3
+  nation_name_max_length: 40
+  min_provinces_per_nation: 1
+  max_provinces_per_nation: 5
+
+calendar:
+  epoch_start_date: "0001-01-01"
+  days_per_turn: 7
