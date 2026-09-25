@@ -56,6 +56,8 @@ project-goliath/
 
 ## 🛠️ Технологический стек
 
+| Слой | Технологии |
+| :--- | :--- |
 | **Backend** | Python 3.13+, FastAPI, SQLAlchemy 2.0 (AsyncIO), Pydantic v2, Alembic |
 | **Database** | PostgreSQL, asyncpg, SQLite (тестовый in-memory контур) |
 | **Frontend** | React 18, TypeScript, Vite, `@vkontakte/vkui`, `@vkontakte/vk-bridge` |
