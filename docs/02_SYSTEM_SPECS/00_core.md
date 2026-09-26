@@ -69,7 +69,7 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 
 | Поле            | Тип                                    | Ограничения                 |
 | --------------- | -------------------------------------- | --------------------------- |
-| `id`            | BIGSERIAL                              | PK                          |
+| `id`            | INTEGER                                | PK                          |
 | `turn_number`   | BIGINT                                 | NOT NULL                    |
 | `started_at`    | TIMESTAMPTZ                            | NOT NULL                    |
 | `finished_at`   | TIMESTAMPTZ                            | NULLABLE                    |
