@@ -31,9 +31,29 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    """Get the database URL from environment or config."""
+    """Get the database URL from environment or config.
+    
+    Always returns a sync-compatible URL for use with synchronous create_engine().
+    Strips async driver suffixes (e.g., +aiosqlite, +asyncpg) if present.
+    """
     import os
-    return os.getenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+    url = os.getenv("DATABASE_URL", "sqlite:///:memory:")
+    
+    # Strip async driver suffixes to ensure sync compatibility
+    async_suffixes = [
+        "+aiosqlite",
+        "+asyncpg",
+        "+asyncmy",
+        "+aiomysql",
+        "+aiopg",
+    ]
+    
+    for suffix in async_suffixes:
+        if suffix in url:
+            url = url.replace(suffix, "")
+            break
+    
+    return url
 
 
 def run_migrations_offline() -> None:
