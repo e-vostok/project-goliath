@@ -85,6 +85,23 @@ class CoreConfig(BaseModel):
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         return cls.model_validate(raw)
+    
+    @classmethod
+    def get_default_config_path(cls) -> str:
+        """
+        Get the default path to the 00_core.yaml config file.
+        
+        This method resolves the path relative to the module location,
+        working correctly whether called from backend/src or backend/tests.
+        """
+        import os
+        # This file is at: backend/src/modules/_00_core/config_schema.py
+        # Config is at: configs/00_core.yaml
+        # We need to go: _00_core -> modules -> src -> backend -> project_root
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+        project_root = os.path.dirname(backend_dir)
+        return os.path.join(project_root, "configs", "00_core.yaml")
 
 
 if __name__ == "__main__":
