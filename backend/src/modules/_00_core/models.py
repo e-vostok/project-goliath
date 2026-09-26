@@ -125,7 +125,7 @@ class TickLog(Base):
     
     __tablename__ = "tick_log"
     
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     turn_number: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True, index=True)
     started_at: Mapped[datetime] = mapped_column(nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
