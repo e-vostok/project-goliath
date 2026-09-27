@@ -74,6 +74,17 @@ class TestValidateLaunchParams:
 
         assert result == 424242
 
+    def test_leading_question_mark_prefix_accepted(self):
+        """window.location.search carries a leading '?'; it must not
+        corrupt the first param's name during signature validation."""
+        launch_params = "?" + make_launch_params(vk_user_id=424242)
+
+        result = validate_launch_params(
+            launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
+        )
+
+        assert result == 424242
+
     def test_invalid_signature_raises(self):
         """A wrong/missing signature is rejected."""
         launch_params = make_launch_params(secret="wrong-secret")
