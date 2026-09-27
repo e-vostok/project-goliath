@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -16,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from core.db import get_engine, init_engine
 from core.security import SecurityError
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
@@ -40,8 +42,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except FileNotFoundError as e:
         print(f"Configuration file not found: {e}")
         raise
-    
+
+    init_engine(os.environ["DATABASE_URL"])
+
     yield
+
+    await get_engine().dispose()
 
 
 app = FastAPI(
