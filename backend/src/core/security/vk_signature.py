@@ -60,7 +60,11 @@ def validate_launch_params(
             or required vk_* params are absent/malformed.
         TimestampExpiredError: If vk_ts is outside the freshness window.
     """
-    params = dict(urllib.parse.parse_qsl(raw_query_string, keep_blank_values=True))
+    params = dict(
+        urllib.parse.parse_qsl(
+            raw_query_string.removeprefix("?"), keep_blank_values=True
+        )
+    )
 
     vk_params = sorted(
         (key, value) for key, value in params.items() if key.startswith("vk_")
