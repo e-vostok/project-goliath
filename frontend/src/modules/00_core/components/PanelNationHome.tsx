@@ -78,7 +78,7 @@ export function PanelNationHome({
           setFormError(error.message);
         }
       } else {
-        setFormError('Network error — please try again.');
+        setFormError('Ошибка сети — попробуйте ещё раз.');
       }
     } finally {
       setSubmitting(false);
@@ -86,22 +86,22 @@ export function PanelNationHome({
   };
 
   const headerText = clock
-    ? `Turn ${clock.current_turn} · ${clock.game_date}`
-    : 'Your nation';
+    ? `Ход ${clock.current_turn} · ${clock.game_date}`
+    : 'Ваше государство';
 
   return (
     <>
       <PanelHeader>{nation.name}</PanelHeader>
       <Group header={<Header size="l">{headerText}</Header>}>
-        <SimpleCell disabled subtitle="Name">
+        <SimpleCell disabled subtitle="Название">
           {nation.name}
         </SimpleCell>
         <SimpleCell
           disabled
-          subtitle="Color"
+          subtitle="Цвет"
           before={
             <div
-              aria-label={`Color ${nation.color_hex}`}
+              aria-label={`Цвет ${nation.color_hex}`}
               style={{
                 width: 24,
                 height: 24,
@@ -114,14 +114,14 @@ export function PanelNationHome({
         >
           {nation.color_hex}
         </SimpleCell>
-        <SimpleCell disabled subtitle="Provinces">
+        <SimpleCell disabled subtitle="Провинции">
           {nation.province_ids.length > 0
             ? nation.province_ids.join(', ')
-            : 'None'}
+            : 'Нет'}
         </SimpleCell>
 
         {formError && (
-          <FormStatus mode="error" title="Could not update nation">
+          <FormStatus mode="error" title="Не удалось обновить государство">
             {formError}
           </FormStatus>
         )}
@@ -134,7 +134,7 @@ export function PanelNationHome({
             }}
           >
             <FormItem
-              top="Nation name"
+              top="Название государства"
               htmlFor="edit-nation-name"
               status={fieldErrors.name ? 'error' : 'default'}
               bottom={fieldErrors.name}
@@ -146,7 +146,7 @@ export function PanelNationHome({
               />
             </FormItem>
             <FormItem
-              top="Nation color"
+              top="Цвет государства"
               htmlFor="edit-nation-color"
               status={fieldErrors.color ? 'error' : 'default'}
               bottom={fieldErrors.color}
@@ -175,7 +175,7 @@ export function PanelNationHome({
                   loading={submitting}
                   disabled={editName.trim().length < 3}
                 >
-                  Save
+                  Сохранить
                 </Button>
                 <Button
                   type="button"
@@ -191,7 +191,7 @@ export function PanelNationHome({
                     setFormError(null);
                   }}
                 >
-                  Cancel
+                  Отмена
                 </Button>
               </ButtonGroup>
             </Div>
@@ -206,7 +206,7 @@ export function PanelNationHome({
                 before={<Icon24Write />}
                 onClick={() => setEditing(true)}
               >
-                Edit
+                Изменить
               </Button>
               <Button
                 size="l"
@@ -216,7 +216,7 @@ export function PanelNationHome({
                 before={<Icon24Delete />}
                 onClick={onDeleteRequest}
               >
-                Delete
+                Удалить
               </Button>
             </ButtonGroup>
           </Div>

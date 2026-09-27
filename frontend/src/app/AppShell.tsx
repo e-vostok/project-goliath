@@ -47,7 +47,7 @@ export function AppShell() {
       <SplitLayout>
         <SplitCol>
           <Div>
-            <FormStatus mode="error" title="Failed to sign in">
+            <FormStatus mode="error" title="Не удалось войти">
               {auth.error.message}
             </FormStatus>
           </Div>
@@ -57,7 +57,7 @@ export function AppShell() {
               stretched
               onClick={() => window.location.reload()}
             >
-              Retry
+              Повторить
             </Button>
           </Div>
         </SplitCol>
@@ -140,11 +140,11 @@ function AuthedArea() {
             {status === 'loading' && <LoadingCell />}
             {status === 'error' && (
               <Div>
-                <FormStatus mode="error" title="Could not load your nation">
+                <FormStatus mode="error" title="Не удалось загрузить государство">
                   {nationState.error.message}
                 </FormStatus>
                 <Button size="l" stretched onClick={refresh}>
-                  Retry
+                  Повторить
                 </Button>
               </Div>
             )}

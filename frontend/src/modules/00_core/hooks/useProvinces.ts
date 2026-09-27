@@ -51,7 +51,7 @@ export function useProvinces(filter: ProvincesFilter = {}): ProvincesState {
           status: 'error',
           provinces: [],
           error:
-            error instanceof Error ? error : new Error('Unknown error'),
+            error instanceof Error ? error : new Error('Неизвестная ошибка'),
         });
       });
 

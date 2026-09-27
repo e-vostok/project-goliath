@@ -9,7 +9,7 @@
  */
 
 import type { ReactElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import {
@@ -65,15 +65,17 @@ describe('PanelCreateNation — network failure', () => {
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText('Nation name'), 'Testia');
+    await user.type(screen.getByLabelText('Название государства'), 'Testia');
     const chipsInput = screen.getByPlaceholderText(
-      'Type a province ID and press Enter',
+      'Введите ID провинции и нажмите Enter',
     );
     await user.type(chipsInput, '1{Enter}');
-    await user.click(screen.getByRole('button', { name: /found nation/i }));
+    await user.click(
+      screen.getByRole('button', { name: /основать государство/i }),
+    );
 
-    await screen.findByText('Could not create nation');
-    expect(screen.getByText(/network error/i)).toBeInTheDocument();
+    await screen.findByText('Не удалось создать государство');
+    expect(screen.getByText(/ошибка сети/i)).toBeInTheDocument();
     expect(onCreated).not.toHaveBeenCalled();
   });
 });
