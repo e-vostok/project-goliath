@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CHAR, CheckConstraint, Enum as SQLEnum, ForeignKey, Index, Integer, JSON, SmallInteger, String, Text, func
+from sqlalchemy import BigInteger, CHAR, CheckConstraint, DateTime, Enum as SQLEnum, ForeignKey, Index, Integer, JSON, SmallInteger, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
@@ -41,7 +41,7 @@ class Player(Base):
     
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     vk_user_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), nullable=False)
     
     # Relationships
     nations: Mapped[list[Nation]] = relationship(back_populates="owner")
@@ -56,7 +56,7 @@ class Nation(Base):
     owner_player_id: Mapped[str] = mapped_column(String(36), ForeignKey("players.id"), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     color_hex: Mapped[str] = mapped_column(CHAR(7), nullable=False, unique=True)
-    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     
     # Relationships
     owner: Mapped[Player] = relationship(back_populates="nations")
@@ -93,8 +93,8 @@ class ScheduledAction(Base):
         default=ScheduledActionStatus.PENDING,
         index=True,
     )
-    created_at: Mapped[datetime] = mapped_column(nullable=False)
-    applied_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Relationships
     nation: Mapped[Nation] = relationship(back_populates="scheduled_actions")
@@ -112,8 +112,8 @@ class GameClock(Base):
     
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     current_turn: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    last_tick_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    next_tick_at: Mapped[datetime] = mapped_column(nullable=False)
+    last_tick_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_tick_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     
     __table_args__ = (
         CheckConstraint("id = 1", name="check_game_clock_singleton"),
@@ -127,8 +127,8 @@ class TickLog(Base):
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     turn_number: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True, index=True)
-    started_at: Mapped[datetime] = mapped_column(nullable=False)
-    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[TickLogStatus] = mapped_column(
         SQLEnum(TickLogStatus, native_enum=False),
         nullable=False,
