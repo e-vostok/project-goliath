@@ -321,3 +321,21 @@ async def test_province_assignment(test_db_session):
     retrieved_province = result.scalar_one()
     
     assert retrieved_province.nation_id == nation.id
+
+
+def test_all_datetime_columns_are_timezone_aware():
+    """ORM DateTime columns must carry timezone=True to match the
+    TIMESTAMP(timezone=True) migration schema — a naive ORM type makes
+    asyncpg reject the timezone-aware datetimes writers produce."""
+    from sqlalchemy import DateTime
+
+    from core.db import Base
+
+    offenders = [
+        f"{mapper.local_table.name}.{column.name}"
+        for mapper in Base.registry.mappers
+        for column in mapper.columns
+        if isinstance(column.type, DateTime) and not column.type.timezone
+    ]
+
+    assert offenders == []
