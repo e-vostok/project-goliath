@@ -4,6 +4,10 @@ FastAPI application entry point.
 Provides minimal app skeleton with config-safe startup validation.
 """
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
