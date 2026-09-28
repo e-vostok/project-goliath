@@ -47,7 +47,7 @@ export function ModalConfirmDeleteNation({
       setError(
         e instanceof ApiError
           ? e.message
-          : 'Network error — please try again.',
+          : 'Ошибка сети — попробуйте ещё раз.',
       );
       setSubmitting(false);
     }
@@ -57,12 +57,11 @@ export function ModalConfirmDeleteNation({
     <ModalCard
       {...navIdProps}
       onClose={onClose}
-      title="Delete nation?"
+      title="Удалить государство?"
       description={
         <>
-          This cannot be undone. {nationName} will be permanently deleted; its
-          name and color become available again, and all its provinces return
-          to the free pool.
+          Действие необратимо. {nationName} будет удалено навсегда: название и
+          цвет освободятся, а все провинции вернутся в общий пул свободных.
         </>
       }
       actions={
@@ -75,7 +74,7 @@ export function ModalConfirmDeleteNation({
             loading={submitting}
             onClick={() => void handleConfirm()}
           >
-            Delete permanently
+            Удалить навсегда
           </Button>
           <Button
             size="l"
@@ -84,13 +83,13 @@ export function ModalConfirmDeleteNation({
             disabled={submitting}
             onClick={onClose}
           >
-            Cancel
+            Отмена
           </Button>
         </ButtonGroup>
       }
     >
       {error && (
-        <FormStatus mode="error" title="Could not delete nation">
+        <FormStatus mode="error" title="Не удалось удалить государство">
           {error}
         </FormStatus>
       )}

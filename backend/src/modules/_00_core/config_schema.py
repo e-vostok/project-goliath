@@ -21,6 +21,11 @@ class TickSettings(BaseModel):
         le=168,
         description="Интервал реального времени между тиками, часы.",
     )
+    retry_delay_seconds: int = Field(
+        ge=1,
+        le=3600,
+        description="Пауза перед повторной попыткой тика после сбоя, секунды.",
+    )
 
 
 class AuthSettings(BaseModel):

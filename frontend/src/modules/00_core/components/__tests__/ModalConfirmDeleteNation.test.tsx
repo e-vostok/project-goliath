@@ -66,14 +66,12 @@ describe('ModalConfirmDeleteNation', () => {
     );
 
     // Modal is open — the destructive call must not have happened yet.
-    expect(
-      await screen.findByText(/cannot be undone/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/необратимо/i)).toBeInTheDocument();
     expect(deleteCalls).toBe(0);
 
     const user = userEvent.setup();
     await user.click(
-      screen.getByRole('button', { name: /delete permanently/i }),
+      screen.getByRole('button', { name: /удалить навсегда/i }),
     );
 
     await waitFor(() => expect(deleteCalls).toBe(1));

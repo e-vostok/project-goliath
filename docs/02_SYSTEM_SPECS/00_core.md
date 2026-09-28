@@ -76,7 +76,7 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 | `status`        | ENUM(`RUNNING`, `COMPLETED`, `FAILED`) | NOT NULL, default `RUNNING` |
 | `error_message` | TEXT                                   | NULLABLE                    |
 
-**Правило FK:** прямые внешние ключи из `scheduled_actions`/будущих таблиц-сателлитов допустимы только на `players.id`, `nations.id`, `provinces.id`. Ссылки на `scheduled_actions.id`, `game_clock.id`, `tick_log.id` из других модулей запрещены — это внутренняя бухгалтерия ядра, а не предметные сущности.
+**Правило FK:** прямые внешние ключи из `scheduled_actions`/будущих таблиц-сателлитов допустимы только на `players.id`, `nations.id`, `provinces.id`. Ссылки на `scheduled_actions.id`, `game_clock.id`, `tick_log.id` из других модулей запрещены — это внутренняя бухгалтерия ядра, а не предметные сущности. Несколько записей с одинаковым `turn_number` допустимы (повторные попытки после сбоя); актуальной считается запись с наибольшим `id`.
 
 ---
 

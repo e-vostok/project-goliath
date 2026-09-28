@@ -58,7 +58,7 @@ export function useAuth(): AuthState {
           error:
             error instanceof Error
               ? error
-              : new Error('Unknown authentication error'),
+              : new Error('Неизвестная ошибка авторизации'),
         });
       });
 

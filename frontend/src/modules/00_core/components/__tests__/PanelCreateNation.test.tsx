@@ -45,12 +45,14 @@ function renderWithProviders(ui: ReactElement) {
 
 async function fillAndSubmitForm(name = 'Testia') {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText('Nation name'), name);
+  await user.type(screen.getByLabelText('Название государства'), name);
   const chipsInput = screen.getByPlaceholderText(
-    'Type a province ID and press Enter',
+    'Введите ID провинции и нажмите Enter',
   );
   await user.type(chipsInput, '1{Enter}');
-  await user.click(screen.getByRole('button', { name: /found nation/i }));
+  await user.click(
+    screen.getByRole('button', { name: /основать государство/i }),
+  );
   return user;
 }
 

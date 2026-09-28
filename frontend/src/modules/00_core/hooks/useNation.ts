@@ -44,7 +44,7 @@ export function useNation(): NationState & { refresh: () => void } {
           status: 'error',
           nation: null,
           error:
-            error instanceof Error ? error : new Error('Unknown error'),
+            error instanceof Error ? error : new Error('Неизвестная ошибка'),
         });
       }
     },

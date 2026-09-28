@@ -4,6 +4,7 @@
 
 tick:
   tick_interval_hours: 24
+  retry_delay_seconds: 60
 
 auth:
   vk_ts_freshness_window_minutes: 30

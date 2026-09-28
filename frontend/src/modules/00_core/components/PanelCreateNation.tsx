@@ -111,7 +111,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           setFormError(error.message);
         }
       } else {
-        setFormError('Network error — please try again.');
+        setFormError('Ошибка сети — попробуйте ещё раз.');
       }
     } finally {
       setSubmitting(false);
@@ -124,25 +124,25 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       : [];
   const freeHint =
     freeIds.length > 0
-      ? `Free province IDs: ${freeIds.slice(0, MAX_FREE_HINT_IDS).join(', ')}` +
+      ? `Свободные провинции: ${freeIds.slice(0, MAX_FREE_HINT_IDS).join(', ')}` +
         (freeIds.length > MAX_FREE_HINT_IDS
-          ? ` … (${freeIds.length} total)`
+          ? ` … (всего ${freeIds.length})`
           : '')
       : undefined;
 
   return (
     <>
-      <PanelHeader>Create your nation</PanelHeader>
+      <PanelHeader>Создание государства</PanelHeader>
       <Group>
         <form onSubmit={handleSubmit} data-testid="create-nation-form">
           {formError && (
-            <FormStatus mode="error" title="Could not create nation">
+            <FormStatus mode="error" title="Не удалось создать государство">
               {formError}
             </FormStatus>
           )}
 
           <FormItem
-            top="Nation name"
+            top="Название государства"
             htmlFor="nation-name"
             status={fieldErrors.name ? 'error' : 'default'}
             bottom={fieldErrors.name}
@@ -153,12 +153,12 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
               value={name}
               maxLength={NAME_MAX_LENGTH}
               onChange={(e) => setName(e.currentTarget.value)}
-              placeholder="e.g. Northern Syndicate"
+              placeholder="напр. Северный Синдикат"
             />
           </FormItem>
 
           <FormItem
-            top="Nation color"
+            top="Цвет государства"
             htmlFor="nation-color"
             status={fieldErrors.color ? 'error' : 'default'}
             bottom={fieldErrors.color}
@@ -181,7 +181,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           </FormItem>
 
           <FormItem
-            top="Provinces"
+            top="Провинции"
             status={fieldErrors.provinces ? 'error' : 'default'}
             bottom={fieldErrors.provinces ?? freeHint}
             data-testid="form-item-provinces"
@@ -189,7 +189,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             <ChipsInput
               value={chips}
               inputValue={chipsInput}
-              placeholder="Type a province ID and press Enter"
+              placeholder="Введите ID провинции и нажмите Enter"
               onInputChange={(e) =>
                 setChipsInput(e.currentTarget.value.replace(/\D/g, ''))
               }
@@ -210,13 +210,13 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
               disabled={!canSubmit}
               loading={submitting}
             >
-              Found nation
+              Основать государство
             </Button>
           </Div>
         </form>
         {freeProvinces.status === 'loading' && (
           <Footnote style={{ padding: '0 16px 12px' }}>
-            Loading free provinces…
+            Загрузка списка свободных провинций…
           </Footnote>
         )}
       </Group>

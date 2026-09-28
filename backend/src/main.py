@@ -8,8 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -19,9 +20,11 @@ from pydantic import ValidationError
 
 from core.db import get_engine, init_engine
 from core.security import SecurityError
+from core.tick.scheduler import scheduler_loop
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.router import router as core_router
+from modules._00_core.tick_handler import register_tick_handlers
 
 
 @asynccontextmanager
@@ -45,15 +48,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     init_engine(os.environ["DATABASE_URL"])
 
+    # Handlers must be registered before the scheduler fires its first tick.
+    register_tick_handlers()
+
+    scheduler_task = asyncio.create_task(scheduler_loop(), name="tick-scheduler")
+
     yield
 
+    scheduler_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await scheduler_task
     await get_engine().dispose()
 
 
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
