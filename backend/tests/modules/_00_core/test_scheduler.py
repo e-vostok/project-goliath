@@ -11,6 +11,7 @@ exercise real code paths.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -83,6 +84,17 @@ class TestSecondsUntil:
         assert seconds_until(now - timedelta(hours=1), now) == 0.0
 
 
+async def _fetch_tick_logs(session_maker, turn_number: int) -> list[TickLog]:
+    """All tick_log rows for a turn, oldest attempt first."""
+    async with session_maker() as session:
+        result = await session.execute(
+            select(TickLog)
+            .where(TickLog.turn_number == turn_number)
+            .order_by(TickLog.id)
+        )
+        return list(result.scalars().all())
+
+
 class TestRunScheduledTick:
     """One scheduled tick against the real DB."""
 
@@ -91,28 +103,24 @@ class TestRunScheduledTick:
         await _seed_game_clock(session_maker)
 
         async with session_maker() as session:
-            await run_scheduled_tick(session)
+            assert await run_scheduled_tick(session) is True
 
         clock = await _fetch_clock(session_maker)
         assert clock.current_turn == 1
         assert clock.last_tick_at is not None
 
-        async with session_maker() as session:
-            result = await session.execute(
-                select(TickLog).where(TickLog.turn_number == 1)
-            )
-            tick_log = result.scalar_one()
-        assert tick_log.status == TickLogStatus.COMPLETED
-        assert tick_log.finished_at is not None
+        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        assert len(logs) == 1
+        assert logs[0].status == TickLogStatus.COMPLETED
+        assert logs[0].finished_at is not None
 
     @pytest.mark.asyncio
-    async def test_failed_tick_returns_normally_and_next_tick_succeeds(
-        self, session_maker
-    ):
+    async def test_two_failed_attempts_keep_two_failed_rows(self, session_maker):
         """
-        A handler that raises must not wedge the mechanism: the call
-        returns normally, the turn is rolled back, tick_log shows FAILED,
-        and the very next scheduled tick completes (INV-TICK-ATOMICITY).
+        A handler that raises must not wedge the mechanism: each call
+        returns normally (False), the turn is rolled back, and every
+        attempt is recorded — multiple rows may share a turn_number
+        (INV-TICK-ATOMICITY).
         """
         await _seed_game_clock(session_maker)
 
@@ -121,35 +129,54 @@ class TestRunScheduledTick:
 
         TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, failing_handler)
 
-        async with session_maker() as session:
-            await run_scheduled_tick(session)  # must not raise
+        for _ in range(2):
+            async with session_maker() as session:
+                assert await run_scheduled_tick(session) is False
 
         clock = await _fetch_clock(session_maker)
         assert clock.current_turn == 0
 
-        async with session_maker() as session:
-            result = await session.execute(
-                select(TickLog).where(TickLog.turn_number == 1)
-            )
-            tick_log = result.scalar_one()
-        assert tick_log.status == TickLogStatus.FAILED
-        assert "Simulated handler failure" in tick_log.error_message
+        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        assert len(logs) == 2
+        assert all(log.status == TickLogStatus.FAILED for log in logs)
+        assert all(
+            "Simulated handler failure" in log.error_message for log in logs
+        )
+
+    @pytest.mark.asyncio
+    async def test_later_successful_attempt_keeps_failure_history(
+        self, session_maker
+    ):
+        """
+        After failures are resolved, the next scheduled tick completes
+        and the earlier FAILED rows remain — full attempt history.
+        """
+        await _seed_game_clock(session_maker)
+
+        async def failing_handler(session, turn_number):
+            raise ValueError("Simulated handler failure")
+
+        TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, failing_handler)
+
+        for _ in range(2):
+            async with session_maker() as session:
+                await run_scheduled_tick(session)
 
         # Transient failure resolved — the next scheduled tick succeeds.
         TickOrchestrator.clear_handlers()
 
         async with session_maker() as session:
-            await run_scheduled_tick(session)
+            assert await run_scheduled_tick(session) is True
 
         clock = await _fetch_clock(session_maker)
         assert clock.current_turn == 1
 
-        async with session_maker() as session:
-            result = await session.execute(
-                select(TickLog).where(TickLog.turn_number == 1)
-            )
-            retry_log = result.scalar_one()
-        assert retry_log.status == TickLogStatus.COMPLETED
+        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        assert [log.status for log in logs] == [
+            TickLogStatus.FAILED,
+            TickLogStatus.FAILED,
+            TickLogStatus.COMPLETED,
+        ]
 
 
 class TestSchedulerLoop:
@@ -190,6 +217,44 @@ class TestSchedulerLoop:
         assert len(logs) == 2
         assert [log.turn_number for log in logs] == [1, 2]
         assert all(log.status == TickLogStatus.COMPLETED for log in logs)
+
+    @pytest.mark.asyncio
+    async def test_failed_tick_waits_retry_delay(
+        self, session_maker
+    ):
+        """
+        A persistent failure must not spin in a hot loop: the next_tick
+        wait resolves to 0 (next_tick_at rolled back unchanged), so the
+        loop paces itself on retry_delay_seconds — exercised at the
+        minimum allowed value (1s) with real sleeps.
+        """
+        await _seed_game_clock(
+            session_maker,
+            next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+
+        async def failing_handler(session, turn_number):
+            raise ValueError("Simulated handler failure")
+
+        TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, failing_handler)
+
+        started = time.monotonic()
+        await scheduler_loop(
+            session_maker, max_iterations=2, retry_delay_seconds=1
+        )
+        elapsed = time.monotonic() - started
+
+        # Two failed attempts -> two paced retries (~1s each), while the
+        # overdue next_tick_at itself contributed ~0 of waiting.
+        assert elapsed >= 1.9
+        assert elapsed < 30
+
+        clock = await _fetch_clock(session_maker)
+        assert clock.current_turn == 0
+
+        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        assert len(logs) == 2
+        assert all(log.status == TickLogStatus.FAILED for log in logs)
 
 
 class TestLifespanWiring:

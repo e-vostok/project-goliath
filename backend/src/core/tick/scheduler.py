@@ -16,7 +16,7 @@ from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_session_context
@@ -37,46 +37,30 @@ def seconds_until(next_tick_at: datetime, now: datetime) -> float:
     return max(0.0, (next_tick_at - now).total_seconds())
 
 
-async def run_scheduled_tick(session: AsyncSession) -> None:
+async def run_scheduled_tick(session: AsyncSession) -> bool:
     """
     Run one game tick on the given session.
 
     Owns the transaction boundary: commits on success, rolls back on
     failure. Any exception is logged and swallowed — a failed tick must
-    never crash the scheduler loop.
+    never crash the scheduler loop, and every attempt is kept in
+    tick_log (multiple rows may share a turn_number).
 
-    Retry semantics: a failed attempt leaves a committed FAILED row in
-    tick_log (INV-TICK-ATOMICITY), and tick_log.turn_number is UNIQUE.
-    Since current_turn does not advance on failure, the next scheduled
-    tick retries the same turn_number — so the superseded FAILED row is
-    removed in its own committed transaction *before* run_tick inserts
-    the new RUNNING row, otherwise the retry could never start.
+    Returns True on success, False on failure.
     """
-    from modules._00_core.models import GameClock, TickLog, TickLogStatus
-
     try:
-        async with session.begin():
-            current_turn = (
-                await session.execute(
-                    select(GameClock.current_turn).where(GameClock.id == 1)
-                )
-            ).scalar_one()
-            await session.execute(
-                delete(TickLog).where(
-                    TickLog.turn_number == current_turn + 1,
-                    TickLog.status == TickLogStatus.FAILED,
-                )
-            )
-
         async with session.begin():
             await TickOrchestrator.run_tick(session)
     except Exception:
         logger.exception("Scheduled tick failed")
+        return False
+    return True
 
 
 async def scheduler_loop(
     session_maker: SessionFactory | None = None,
     max_iterations: int | None = None,
+    retry_delay_seconds: float | None = None,
 ) -> None:
     """
     Infinite tick loop: wait for game_clock.next_tick_at, fire, repeat.
@@ -87,13 +71,23 @@ async def scheduler_loop(
     computed sleep is 0 and the tick fires immediately — exactly once —
     then normal cadence resumes from the newly written next_tick_at.
 
+    After a failed tick the loop sleeps retry_delay_seconds before the
+    next attempt: the failed tick's transaction is rolled back, so
+    next_tick_at stays overdue and an unpaced loop would spin hot.
+    A successful tick is unaffected. Defaults to
+    tick.retry_delay_seconds from configs/00_core.yaml.
+
     max_iterations bounds the loop for tests; production leaves it None.
     """
-    # Deferred import mirrors orchestrator.run_tick: keeps core.tick free
+    # Deferred imports mirror orchestrator.run_tick: keeps core.tick free
     # of import-time dependencies on modules.* (which import core.*).
+    from modules._00_core.config_schema import CoreConfig
     from modules._00_core.models import GameClock
 
     session_factory = session_maker if session_maker is not None else get_session_context
+    if retry_delay_seconds is None:
+        config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+        retry_delay_seconds = config.tick.retry_delay_seconds
     iterations = 0
 
     while max_iterations is None or iterations < max_iterations:
@@ -110,6 +104,9 @@ async def scheduler_loop(
         await asyncio.sleep(seconds_until(next_tick_at, datetime.now(timezone.utc)))
 
         async with session_factory() as session:
-            await run_scheduled_tick(session)
+            succeeded = await run_scheduled_tick(session)
+
+        if not succeeded:
+            await asyncio.sleep(retry_delay_seconds)
 
         iterations += 1
