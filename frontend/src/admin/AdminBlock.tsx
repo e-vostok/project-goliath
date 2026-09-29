@@ -7,7 +7,7 @@
  * and asks for inline confirmation before any request is sent.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   ButtonGroup,
@@ -26,8 +26,8 @@ import { useAdminProbe } from './useAdminProbe';
 const NETWORK_ERROR_MESSAGE = 'Ошибка сети — попробуйте ещё раз.';
 
 const RESET_WARNING =
-  'Будут удалены все государства и запланированные действия, провинции ' +
-  'освободятся, ход вернётся к 0. Игроки и журнал ходов сохранятся. ' +
+  'Будут удалены все государства, запланированные действия и журнал ' +
+  'ходов, провинции освободятся, ход вернётся к 0. Игроки сохранятся. ' +
   'Отменить нельзя.';
 
 export interface AdminBlockProps {
@@ -44,6 +44,20 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [output, setOutput] = useState<unknown>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded) {
+      return;
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [expanded]);
 
   const run = async (
     action: string,
@@ -195,17 +209,70 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
               >
                 {JSON.stringify(output, null, 2)}
               </pre>
-              <Button
-                size="s"
-                mode="tertiary"
-                style={{ marginTop: 8 }}
-                onClick={copyOutput}
-              >
-                Скопировать
-              </Button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <Button size="s" mode="tertiary" onClick={copyOutput}>
+                  Скопировать
+                </Button>
+                <Button
+                  size="s"
+                  mode="tertiary"
+                  onClick={() => setExpanded(true)}
+                >
+                  Развернуть
+                </Button>
+              </div>
             </>
           )}
         </Div>
+      )}
+
+      {expanded && output !== null && (
+        <div
+          data-testid="admin-output-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--vkui--color_background)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              padding: 12,
+              borderBottom:
+                '1px solid var(--vkui--color_separator_primary)',
+            }}
+          >
+            <Button size="m" mode="secondary" onClick={copyOutput}>
+              Скопировать
+            </Button>
+            <Button
+              size="m"
+              mode="secondary"
+              onClick={() => setExpanded(false)}
+            >
+              Закрыть
+            </Button>
+          </div>
+          <pre
+            data-testid="admin-output-overlay-pre"
+            style={{
+              flex: 1,
+              margin: 0,
+              padding: 12,
+              overflow: 'auto',
+              fontFamily: 'monospace',
+              fontSize: 12,
+              whiteSpace: 'pre',
+            }}
+          >
+            {JSON.stringify(output, null, 2)}
+          </pre>
+        </div>
       )}
     </Group>
   );

@@ -27,6 +27,7 @@ from modules._00_core.models import (
     Player,
     Province,
     ScheduledAction,
+    TickLog,
 )
 from modules._00_core.tick_schedule import next_tick_after
 
@@ -164,16 +165,17 @@ async def admin_reset(session: AsyncSession) -> None:
     """
     Wipe the 00_core world back to a fresh game.
 
-    Clears scheduled_actions, frees every province, deletes all nations,
-    and rewinds game_clock to turn 0 (inserting the singleton row if it is
-    somehow absent). players and tick_log are kept on purpose — accounts
-    and the audit trail survive a world reset.
+    Clears scheduled_actions, frees every province, deletes all nations
+    and the whole tick_log journal, and rewinds game_clock to turn 0
+    (inserting the singleton row if it is somehow absent). players are
+    kept on purpose — accounts survive a world reset.
 
     The caller owns the transaction: this hook never commits.
     """
     await session.execute(delete(ScheduledAction))
     await session.execute(update(Province).values(nation_id=None))
     await session.execute(delete(Nation))
+    await session.execute(delete(TickLog))
 
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     now = datetime.now(timezone.utc)

@@ -675,7 +675,7 @@ class TestAdminStateReset:
         assert len(provinces.json()) == 100
 
     @pytest.mark.asyncio
-    async def test_reset_keeps_players_and_tick_log(
+    async def test_reset_clears_tick_log_and_keeps_players(
         self, live_client, monkeypatch
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
@@ -689,10 +689,10 @@ class TestAdminStateReset:
         )
         assert response.status_code == 200
 
-        # The tick row survived; the admin player still authenticates.
+        # The journal is wiped; the admin player still authenticates.
         tick_log = await live_client.get(
             "/api/v1/admin/tick-log", headers=headers
         )
-        assert len(tick_log.json()) == 1
+        assert tick_log.json() == []
         state = await live_client.get("/api/v1/admin/state", headers=headers)
         assert state.json()["modules"]["00_core"]["counts"]["players"] == 1
