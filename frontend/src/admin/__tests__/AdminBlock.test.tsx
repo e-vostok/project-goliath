@@ -7,7 +7,12 @@
  */
 
 import type { ReactElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import {
@@ -202,8 +207,11 @@ describe('AdminBlock — actions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Сбросить мир' }));
     expect(
-      screen.getByText(/Будут удалены все государства/),
+      screen.getByText(
+        /Будут удалены все государства, запланированные действия и журнал ходов/,
+      ),
     ).toBeInTheDocument();
+    expect(screen.getByText(/Игроки сохранятся/)).toBeInTheDocument();
     expect(resetCalls).toBe(0);
 
     // «Отмена» closes the confirmation without any request.
@@ -256,5 +264,82 @@ describe('AdminBlock — actions', () => {
 
     await screen.findByText('Ошибка сети — попробуйте ещё раз.');
     expect(onWorldChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdminBlock — full-screen JSON overlay', () => {
+  const STATE = {
+    modules: { '00_core': { counts: { players: 1, nations: 0 } } },
+  };
+
+  function allowState() {
+    server.use(
+      http.get('*/api/v1/admin/state', () => HttpResponse.json(STATE)),
+    );
+  }
+
+  async function renderWithOutput() {
+    allowState();
+    const user = await renderAsAdmin();
+    await user.click(screen.getByRole('button', { name: 'Состояние' }));
+    await screen.findByTestId('admin-output');
+    return user;
+  }
+
+  it('«Развернуть» opens the overlay with the same JSON; inline stays', async () => {
+    const user = await renderWithOutput();
+
+    await user.click(screen.getByRole('button', { name: 'Развернуть' }));
+
+    await screen.findByTestId('admin-output-overlay');
+    expect(screen.getByTestId('admin-output-overlay-pre'))
+      .toHaveTextContent('"00_core"');
+    // The inline output block is untouched under the overlay.
+    expect(screen.getByTestId('admin-output'))
+      .toHaveTextContent('"00_core"');
+  });
+
+  it('«Закрыть» and Esc both close the overlay', async () => {
+    const user = await renderWithOutput();
+
+    await user.click(screen.getByRole('button', { name: 'Развернуть' }));
+    const overlay = await screen.findByTestId('admin-output-overlay');
+    await user.click(
+      within(overlay).getByRole('button', { name: 'Закрыть' }),
+    );
+    expect(
+      screen.queryByTestId('admin-output-overlay'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Развернуть' }));
+    await screen.findByTestId('admin-output-overlay');
+    await user.keyboard('{Escape}');
+    expect(
+      screen.queryByTestId('admin-output-overlay'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('«Скопировать» inside the overlay writes the JSON; failure ignored', async () => {
+    const user = await renderWithOutput();
+    await user.click(screen.getByRole('button', { name: 'Развернуть' }));
+    const overlay = await screen.findByTestId('admin-output-overlay');
+    const copyButton = within(overlay).getByRole('button', {
+      name: 'Скопировать',
+    });
+
+    // The write lands in the clipboard (stubbed by userEvent.setup()).
+    await user.click(copyButton);
+    await waitFor(() =>
+      expect(navigator.clipboard.readText()).resolves.toBe(
+        JSON.stringify(STATE, null, 2),
+      ),
+    );
+
+    // A rejected write is swallowed — the overlay stays put.
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(
+      new Error('denied'),
+    );
+    await user.click(copyButton);
+    expect(screen.getByTestId('admin-output-overlay')).toBeInTheDocument();
   });
 });

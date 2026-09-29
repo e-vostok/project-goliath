@@ -311,7 +311,7 @@ class TestAdminReset:
     """The world-reset hook: all-or-nothing state wipe, no commit."""
 
     @pytest.mark.asyncio
-    async def test_reset_wipes_world_but_keeps_players_and_tick_log(
+    async def test_reset_wipes_world_and_tick_log_but_keeps_players(
         self, test_db_session
     ):
         owner = await _seed_player(test_db_session, vk_user_id=3001)
@@ -369,13 +369,13 @@ class TestAdminReset:
         }
         assert _utc(clock.next_tick_at) in candidates
 
-        # Survivors: players and the tick audit trail.
+        # Survivors: players only — the tick audit trail is wiped too.
         result = await test_db_session.execute(select(Player))
         assert [p.vk_user_id for p in result.scalars().all()] == [3001]
-        result = await test_db_session.execute(select(TickLog))
-        logs = result.scalars().all()
-        assert len(logs) == 1
-        assert logs[0].status == TickLogStatus.COMPLETED
+        result = await test_db_session.execute(
+            select(func.count()).select_from(TickLog)
+        )
+        assert result.scalar_one() == 0
 
     @pytest.mark.asyncio
     async def test_reset_on_empty_world(self, test_db_session):
