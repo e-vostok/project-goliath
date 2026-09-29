@@ -185,19 +185,46 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
 
       {(busy || output !== null) && (
         <Div>
-          <Footnote style={{ display: 'block', marginBottom: 8 }}>
-            {busy ? 'Выполняется…' : `Результат: ${lastAction}`}
-          </Footnote>
           {busy ? (
-            <Spinner size="s" />
+            <>
+              <Footnote style={{ display: 'block', marginBottom: 8 }}>
+                Выполняется…
+              </Footnote>
+              <Spinner size="s" />
+            </>
           ) : (
             <>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <Footnote>Результат: {lastAction}</Footnote>
+                <div
+                  style={{ display: 'flex', gap: 8, flexShrink: 0 }}
+                >
+                  <Button size="s" mode="tertiary" onClick={copyOutput}>
+                    Скопировать
+                  </Button>
+                  <Button
+                    size="s"
+                    mode="tertiary"
+                    onClick={() => setExpanded(true)}
+                  >
+                    Развернуть
+                  </Button>
+                </div>
+              </div>
               <pre
                 data-testid="admin-output"
                 style={{
                   margin: 0,
                   padding: 8,
-                  maxHeight: '60vh',
+                  maxHeight: '40vh',
                   overflow: 'auto',
                   fontFamily: 'monospace',
                   fontSize: 12,
@@ -209,18 +236,6 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
               >
                 {JSON.stringify(output, null, 2)}
               </pre>
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <Button size="s" mode="tertiary" onClick={copyOutput}>
-                  Скопировать
-                </Button>
-                <Button
-                  size="s"
-                  mode="tertiary"
-                  onClick={() => setExpanded(true)}
-                >
-                  Развернуть
-                </Button>
-              </div>
             </>
           )}
         </Div>

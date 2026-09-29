@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
@@ -178,15 +179,19 @@ async def _insert_tick_log(
     turn_number: int,
     status: TickLogStatus = TickLogStatus.COMPLETED,
     error_message: str | None = None,
+    finished: bool = True,
 ) -> None:
-    """Seed a tick_log row straight into the app's live database."""
+    """Seed a tick_log row straight into the app's live database.
+
+    finished=False leaves finished_at NULL, like an in-flight RUNNING row.
+    """
     now = datetime.now(timezone.utc)
     async with get_session_context() as session:
         session.add(
             TickLog(
                 turn_number=turn_number,
                 started_at=now,
-                finished_at=now,
+                finished_at=now if finished else None,
                 status=status,
                 error_message=error_message,
             )
@@ -354,11 +359,44 @@ class TestAdminTickLog:
                 "turn_number",
                 "started_at",
                 "finished_at",
+                "started_at_local",
+                "finished_at_local",
                 "status",
                 "error_message",
             }
             assert row["status"] == "COMPLETED"
             assert row["finished_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_rows_expose_game_local_times(
+        self, live_client, monkeypatch
+    ):
+        """*_local siblings render the UTC instants in
+        tick.tick_timezone; NULL stays NULL on an in-flight row."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+        await _insert_tick_log(1)
+        await _insert_tick_log(
+            2, status=TickLogStatus.RUNNING, finished=False
+        )
+
+        response = await live_client.get(
+            "/api/v1/admin/tick-log", headers=headers
+        )
+
+        assert response.status_code == 200
+        tz = ZoneInfo(CORE_CONFIG.tick.tick_timezone)
+        running, done = response.json()  # newest first
+        assert running["status"] == "RUNNING"
+        assert running["finished_at"] is None
+        assert running["finished_at_local"] is None
+        for row in (running, done):
+            assert datetime.fromisoformat(row["started_at_local"]) == (
+                datetime.fromisoformat(row["started_at"]).astimezone(tz)
+            )
+        assert datetime.fromisoformat(done["finished_at_local"]) == (
+            datetime.fromisoformat(done["finished_at"]).astimezone(tz)
+        )
 
     @pytest.mark.asyncio
     async def test_limit_param(self, live_client, monkeypatch):
@@ -425,6 +463,18 @@ class TestAdminTickRun:
         assert datetime.fromisoformat(body["next_tick_at"]) in candidates
         assert body["tick_log"]["turn_number"] == 1
         assert body["tick_log"]["status"] == "COMPLETED"
+        # *_local siblings render the same instants in tick_timezone.
+        tz = ZoneInfo(CORE_CONFIG.tick.tick_timezone)
+        assert datetime.fromisoformat(body["next_tick_at_local"]) == (
+            datetime.fromisoformat(body["next_tick_at"]).astimezone(tz)
+        )
+        for utc_key in ("started_at", "finished_at"):
+            assert datetime.fromisoformat(
+                body["tick_log"][f"{utc_key}_local"]
+            ) == (
+                datetime.fromisoformat(body["tick_log"][utc_key])
+                .astimezone(tz)
+            )
 
     @pytest.mark.asyncio
     async def test_failed_phase_handler_returns_ok_false(

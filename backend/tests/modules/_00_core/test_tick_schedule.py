@@ -24,7 +24,7 @@ from modules._00_core.admin_hooks import admin_reset, admin_state_view
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock
 from modules._00_core.tick_handler import finalize_tick
-from modules._00_core.tick_schedule import next_tick_after
+from modules._00_core.tick_schedule import iso_in_zone, next_tick_after
 from tests.fixtures.factories import GameClockFactory
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
@@ -111,6 +111,41 @@ class TestNextTickAfter:
             next_tick_after(
                 datetime.now(timezone.utc), "24:00", "Europe/Moscow"
             )
+
+
+class TestIsoInZone:
+    """iso_in_zone() renders an instant in the named zone as ISO-8601."""
+
+    def test_none_stays_none(self):
+        assert iso_in_zone(None, "Europe/Moscow") is None
+
+    def test_aware_instant_converts_to_zone(self):
+        # 21:00 UTC == 00:00 the next day in Europe/Moscow (UTC+3).
+        value = datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
+
+        result = iso_in_zone(value, "Europe/Moscow")
+
+        assert datetime.fromisoformat(result) == value.astimezone(
+            ZoneInfo("Europe/Moscow")
+        )
+        assert result == "2026-10-01T00:00:00+03:00"
+
+    def test_naive_instant_is_read_as_utc(self):
+        naive = datetime(2026, 9, 30, 21, 0)
+
+        result = iso_in_zone(naive, "Europe/Moscow")
+
+        assert datetime.fromisoformat(result) == naive.replace(
+            tzinfo=timezone.utc
+        ).astimezone(ZoneInfo("Europe/Moscow"))
+
+    def test_non_moscow_zone_applies_its_own_offset(self):
+        # Europe/Warsaw is UTC+2 (CEST) on this date, not +3.
+        value = datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
+
+        result = iso_in_zone(value, "Europe/Warsaw")
+
+        assert result == "2026-09-30T23:00:00+02:00"
 
 
 class TestFixedTimeScheduleOnDatabase:
