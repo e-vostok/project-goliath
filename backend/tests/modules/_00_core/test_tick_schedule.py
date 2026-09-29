@@ -6,7 +6,7 @@ semantics at exactly tick_time, and the October DST fallback where the
 UTC instant must move while the local wall-clock time stays fixed — plus
 the DB-level wiring: finalize_tick and the admin reset hook must write
 next_tick_at from the same function, and the admin state view must expose
-tick_timezone and next_tick_at_local.
+tick_timezone plus game-local 'YYYY-MM-DD HH:MM:SS' time strings.
 
 Anti-Mock Guard: DB tests run on the shared test_db_session fixture
 (real in-memory SQLite), no mocked state.
@@ -24,7 +24,7 @@ from modules._00_core.admin_hooks import admin_reset, admin_state_view
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock
 from modules._00_core.tick_handler import finalize_tick
-from modules._00_core.tick_schedule import iso_in_zone, next_tick_after
+from modules._00_core.tick_schedule import format_game_time, next_tick_after
 from tests.fixtures.factories import GameClockFactory
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
@@ -113,39 +113,41 @@ class TestNextTickAfter:
             )
 
 
-class TestIsoInZone:
-    """iso_in_zone() renders an instant in the named zone as ISO-8601."""
+class TestFormatGameTime:
+    """format_game_time() renders 'YYYY-MM-DD HH:MM:SS' in the zone."""
 
     def test_none_stays_none(self):
-        assert iso_in_zone(None, "Europe/Moscow") is None
+        assert format_game_time(None, "Europe/Moscow") is None
 
     def test_aware_instant_converts_to_zone(self):
         # 21:00 UTC == 00:00 the next day in Europe/Moscow (UTC+3).
         value = datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
 
-        result = iso_in_zone(value, "Europe/Moscow")
+        result = format_game_time(value, "Europe/Moscow")
 
-        assert datetime.fromisoformat(result) == value.astimezone(
-            ZoneInfo("Europe/Moscow")
-        )
-        assert result == "2026-10-01T00:00:00+03:00"
+        assert result == "2026-10-01 00:00:00"
 
     def test_naive_instant_is_read_as_utc(self):
         naive = datetime(2026, 9, 30, 21, 0)
 
-        result = iso_in_zone(naive, "Europe/Moscow")
+        result = format_game_time(naive, "Europe/Moscow")
 
-        assert datetime.fromisoformat(result) == naive.replace(
-            tzinfo=timezone.utc
-        ).astimezone(ZoneInfo("Europe/Moscow"))
+        assert result == "2026-10-01 00:00:00"
+
+    def test_microseconds_are_dropped(self):
+        value = datetime(2026, 9, 30, 21, 0, 0, 123456, tzinfo=timezone.utc)
+
+        result = format_game_time(value, "Europe/Moscow")
+
+        assert result == "2026-10-01 00:00:00"
 
     def test_non_moscow_zone_applies_its_own_offset(self):
         # Europe/Warsaw is UTC+2 (CEST) on this date, not +3.
         value = datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
 
-        result = iso_in_zone(value, "Europe/Warsaw")
+        result = format_game_time(value, "Europe/Warsaw")
 
-        assert result == "2026-09-30T23:00:00+02:00"
+        assert result == "2026-09-30 23:00:00"
 
 
 class TestFixedTimeScheduleOnDatabase:
@@ -199,8 +201,11 @@ class TestFixedTimeScheduleOnDatabase:
         _assert_local_midnight(next_tick_at)
 
     @pytest.mark.asyncio
-    async def test_state_view_reports_localized_clock(self, test_db_session):
-        # 2026-10-01 21:00 UTC == 2026-10-02 00:00 Europe/Moscow.
+    async def test_state_view_reports_game_timezone_clock(
+        self, test_db_session
+    ):
+        # 2026-10-01 21:00 UTC == 2026-10-02 00:00 Europe/Moscow — the
+        # admin view renders it as a plain local string, no offset.
         next_tick = datetime(2026, 10, 1, 21, 0, tzinfo=timezone.utc)
         test_db_session.add(GameClockFactory.build(next_tick_at=next_tick))
         await test_db_session.flush()
@@ -209,7 +214,5 @@ class TestFixedTimeScheduleOnDatabase:
 
         clock = view["clock"]
         assert clock["tick_timezone"] == CORE_CONFIG.tick.tick_timezone
-        local_dt = datetime.fromisoformat(clock["next_tick_at_local"])
-        assert local_dt == next_tick.astimezone(TICK_TZ)
-        assert (local_dt.hour, local_dt.minute) == (0, 0)
-        assert datetime.fromisoformat(clock["next_tick_at"]) == next_tick
+        assert clock["next_tick_at"] == "2026-10-02 00:00:00"
+        assert not any(key.endswith("_local") for key in clock)

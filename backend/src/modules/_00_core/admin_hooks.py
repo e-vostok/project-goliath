@@ -14,7 +14,6 @@ must not raise.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,28 +28,10 @@ from modules._00_core.models import (
     ScheduledAction,
     TickLog,
 )
-from modules._00_core.tick_schedule import next_tick_after
+from modules._00_core.tick_schedule import format_game_time, next_tick_after
 
 MODULE_SLUG = "00_core"
 LIST_CAP = 200
-
-
-def _iso_utc(value: datetime | None) -> str | None:
-    """ISO-8601 with explicit UTC offset; naive datetimes read as UTC."""
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.isoformat()
-
-
-def _iso_local(value: datetime | None, tz_name: str) -> str | None:
-    """ISO-8601 in the named zone; naive datetimes read as UTC first."""
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(ZoneInfo(tz_name)).isoformat()
 
 
 async def _count(session: AsyncSession, model) -> int:
@@ -64,7 +45,8 @@ async def admin_state_view(session: AsyncSession) -> dict:
 
     Lists are ordered by created_at then id and capped at LIST_CAP rows;
     *_total plus `truncated` flag report what the cap hides. All datetimes
-    are ISO-8601 UTC (SQLite returns naive values; they are UTC already).
+    are 'YYYY-MM-DD HH:MM:SS' display strings in tick_timezone (storage
+    stays UTC; this is presentation only).
     """
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     clock_result = await session.execute(
@@ -118,12 +100,13 @@ async def admin_state_view(session: AsyncSession) -> dict:
             if clock is None
             else {
                 "current_turn": clock.current_turn,
-                "last_tick_at": _iso_utc(clock.last_tick_at),
-                "next_tick_at": _iso_utc(clock.next_tick_at),
-                "tick_timezone": config.tick.tick_timezone,
-                "next_tick_at_local": _iso_local(
+                "last_tick_at": format_game_time(
+                    clock.last_tick_at, config.tick.tick_timezone
+                ),
+                "next_tick_at": format_game_time(
                     clock.next_tick_at, config.tick.tick_timezone
                 ),
+                "tick_timezone": config.tick.tick_timezone,
             }
         ),
         "counts": {
@@ -141,7 +124,9 @@ async def admin_state_view(session: AsyncSession) -> dict:
             {
                 "id": player.id,
                 "vk_user_id": player.vk_user_id,
-                "created_at": _iso_utc(player.created_at),
+                "created_at": format_game_time(
+                    player.created_at, config.tick.tick_timezone
+                ),
                 "nation_id": nation_id_by_owner.get(player.id),
             }
             for player in players
@@ -154,7 +139,9 @@ async def admin_state_view(session: AsyncSession) -> dict:
                 "color_hex": nation.color_hex,
                 "owner_player_id": nation.owner_player_id,
                 "province_ids": provinces_by_nation[nation.id],
-                "created_at": _iso_utc(nation.created_at),
+                "created_at": format_game_time(
+                    nation.created_at, config.tick.tick_timezone
+                ),
             }
             for nation in nations
         ],
