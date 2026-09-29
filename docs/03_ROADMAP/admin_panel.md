@@ -13,6 +13,9 @@
 хуков (AdminRegistry) по аналогии с TickOrchestrator: новый модуль регистрирует свой
 reset/state-hook одной строкой, без переделки панели.
 
+Формат вывода: все времена в admin-ответах — строки `YYYY-MM-DD HH:MM:SS` в игровой
+зоне `tick.tick_timezone` под обычными именами полей; в БД хранится UTC.
+
 ## Границы затрагиваемых директорий
 
 - backend/src/core/admin/ — новое: security.py, registry.py, router.py
@@ -34,9 +37,12 @@ reset/state-hook одной строкой, без переделки панел
   «Скопировать» / «Закрыть» / Esc.
 - [x] **Issue 5: Тулбар над JSON + время в игровой зоне** — «Скопировать» и
   «Развернуть» перенесены в тулбар над `<pre>` (видны без прокрутки, max-height 40vh);
-  ответы `POST /admin/tick/run` и `GET /admin/tick-log` несут аддитивные `*_local`-поля
-  в `tick.tick_timezone` рядом с UTC-полями; общий helper `iso_in_zone` в
-  `modules/_00_core/tick_schedule.py`.
+  бэкенд-часть (`*_local`-поля рядом с UTC) заменена в Issue 6.
+- [x] **Issue 6: Admin output — московское время, простой формат** — все datetime-поля
+  в admin-ответах (state view, `GET /admin/tick-log`, `POST /admin/tick/run`) отдаются
+  как `YYYY-MM-DD HH:MM:SS` в `tick.tick_timezone` под исходными именами; `*_local`-ключи
+  удалены; общий helper `format_game_time` в `modules/_00_core/tick_schedule.py`;
+  хранение и планировщик остаются в tz-aware UTC.
 
 ## Backlog & Tech Debt
 

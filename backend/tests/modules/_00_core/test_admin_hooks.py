@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
@@ -223,12 +225,15 @@ class TestAdminStateView:
         json.dumps(view)
 
         assert view["clock"]["current_turn"] == 7
-        assert datetime.fromisoformat(view["clock"]["last_tick_at"]) == _utc(
+        # Times render as 'YYYY-MM-DD HH:MM:SS' in tick_timezone.
+        tz = ZoneInfo(CORE_CONFIG.tick.tick_timezone)
+        fmt = "%Y-%m-%d %H:%M:%S"
+        assert view["clock"]["last_tick_at"] == _utc(
             clock.last_tick_at
-        )
-        assert datetime.fromisoformat(view["clock"]["next_tick_at"]) == _utc(
+        ).astimezone(tz).strftime(fmt)
+        assert view["clock"]["next_tick_at"] == _utc(
             clock.next_tick_at
-        )
+        ).astimezone(tz).strftime(fmt)
 
         assert view["counts"] == {
             "players": 2,
@@ -243,7 +248,9 @@ class TestAdminStateView:
         owner_row = view["players"][0]
         assert owner_row["id"] == owner.id
         assert owner_row["nation_id"] == nation.id
-        assert datetime.fromisoformat(owner_row["created_at"]).tzinfo is not None
+        assert owner_row["created_at"] == _utc(owner.created_at).astimezone(
+            tz
+        ).strftime(fmt)
         assert view["players"][1]["id"] == free_player.id
         assert view["players"][1]["nation_id"] is None
 
@@ -255,7 +262,9 @@ class TestAdminStateView:
         assert nation_row["color_hex"] == "#112233"
         assert nation_row["owner_player_id"] == owner.id
         assert nation_row["province_ids"] == [1, 2]
-        assert datetime.fromisoformat(nation_row["created_at"]).tzinfo is not None
+        assert nation_row["created_at"] == _utc(nation.created_at).astimezone(
+            tz
+        ).strftime(fmt)
 
     @pytest.mark.asyncio
     async def test_state_view_missing_clock_returns_none(self, test_db_session):
@@ -508,7 +517,9 @@ class TestAdminEndpointFunctions:
 
         assert [r["turn_number"] for r in rows] == [3, 2]
         assert rows[0]["status"] == "COMPLETED"
-        assert rows[0]["started_at"].endswith("+00:00")
+        assert re.fullmatch(
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", rows[0]["started_at"]
+        )
 
     @pytest.mark.asyncio
     async def test_admin_tick_run_direct(self, test_db_session):
@@ -524,7 +535,8 @@ class TestAdminEndpointFunctions:
         assert result["current_turn"] == 1
         assert result["tick_log"]["status"] == "COMPLETED"
         assert result["tick_log"]["turn_number"] == 1
-        assert result["next_tick_at"].endswith("+00:00")
+        # Daily tick at 00:00 tick_timezone -> local string ends 00:00:00.
+        assert result["next_tick_at"].endswith(" 00:00:00")
 
     @pytest.mark.asyncio
     async def test_admin_state_reset_direct(self, test_db_session):

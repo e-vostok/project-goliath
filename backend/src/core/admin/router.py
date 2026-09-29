@@ -14,7 +14,6 @@ path the automatic scheduler takes — so no tick logic is duplicated here.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -30,7 +29,7 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.models import GameClock, Player, TickLog
 from modules._00_core.router import GameClockNotFoundError
-from modules._00_core.tick_schedule import iso_in_zone
+from modules._00_core.tick_schedule import format_game_time
 
 logger = logging.getLogger(__name__)
 
@@ -77,23 +76,12 @@ class StateResetRequest(BaseModel):
     module_slug: str | None = None
 
 
-def _iso_utc(value: datetime | None) -> str | None:
-    """ISO-8601 with an explicit UTC offset; naive datetimes read as UTC."""
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.isoformat()
-
-
 def _tick_log_dict(row: TickLog, tz_name: str) -> dict:
     return {
         "id": row.id,
         "turn_number": row.turn_number,
-        "started_at": _iso_utc(row.started_at),
-        "finished_at": _iso_utc(row.finished_at),
-        "started_at_local": iso_in_zone(row.started_at, tz_name),
-        "finished_at_local": iso_in_zone(row.finished_at, tz_name),
+        "started_at": format_game_time(row.started_at, tz_name),
+        "finished_at": format_game_time(row.finished_at, tz_name),
         "status": row.status.value,
         "error_message": row.error_message,
     }
@@ -145,8 +133,8 @@ async def admin_tick_log(
 ) -> list[dict]:
     """Newest tick_log rows first (by id). limit outside 1..100 -> 422.
 
-    Each row carries the UTC instants plus their *_local siblings in
-    tick.tick_timezone.
+    Times are 'YYYY-MM-DD HH:MM:SS' display strings in
+    tick.tick_timezone; storage stays UTC.
     """
     tz_name = CoreConfig.from_yaml(
         CoreConfig.get_default_config_path()
@@ -195,8 +183,7 @@ async def admin_tick_run(
     return {
         "ok": ok,
         "current_turn": clock.current_turn,
-        "next_tick_at": _iso_utc(clock.next_tick_at),
-        "next_tick_at_local": iso_in_zone(clock.next_tick_at, tz_name),
+        "next_tick_at": format_game_time(clock.next_tick_at, tz_name),
         "tick_log": (
             _tick_log_dict(latest_log, tz_name)
             if latest_log is not None

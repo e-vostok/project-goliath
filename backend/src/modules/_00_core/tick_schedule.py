@@ -54,12 +54,13 @@ def next_tick_after(now: datetime, tick_time: str, tz_name: str) -> datetime:
     return candidate.astimezone(timezone.utc)
 
 
-def iso_in_zone(value: datetime | None, tz_name: str) -> str | None:
+def format_game_time(value: datetime | None, tz_name: str) -> str | None:
     """
-    ISO-8601 representation of `value` converted into the named zone.
+    Render an instant as 'YYYY-MM-DD HH:MM:SS' in the named zone.
 
-    Shared "game-local time" formatting for API responses that show UTC
-    instants next to their tick_timezone siblings (*_local fields).
+    Shared display formatting for admin JSON output: a plain game-local
+    wall-clock string — whole seconds, no offset suffix, no 'T'. Storage
+    stays tz-aware UTC; this is presentation only.
 
     Args:
         value: the instant to render; naive datetimes are read as UTC
@@ -69,10 +70,10 @@ def iso_in_zone(value: datetime | None, tz_name: str) -> str | None:
             callers pass tick.tick_timezone.
 
     Returns:
-        value.astimezone(zone).isoformat(), or None.
+        value.astimezone(zone).strftime('%Y-%m-%d %H:%M:%S'), or None.
     """
     if value is None:
         return None
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(ZoneInfo(tz_name)).isoformat()
+    return value.astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M:%S")
