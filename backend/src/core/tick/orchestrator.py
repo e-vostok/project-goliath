@@ -81,6 +81,11 @@ class TickOrchestrator:
         
         The entire operation is atomic - if any handler raises an exception,
         the transaction is rolled back and current_turn remains unchanged.
+        On failure the session's transaction is rolled back inside this
+        method (releasing the write lock) so the FAILED row can be recorded
+        on a separate connection; callers passing an already-begun session
+        should treat a raised exception as "the tick transaction was
+        rolled back" and may still commit unrelated work afterwards.
         
         Args:
             session: The async session to use for the tick transaction.
@@ -124,22 +129,30 @@ class TickOrchestrator:
             if cls._finalize_callback is not None:
                 await cls._finalize_callback(session, next_turn)
             
-            # Update tick log as COMPLETED using separate session
-            async with AsyncSession(async_engine) as log_session:
-                await log_session.execute(
-                    update(TickLog)
-                    .where(TickLog.id == tick_log_id)
-                    .values(
-                        status=TickLogStatus.COMPLETED,
-                        finished_at=datetime.now(timezone.utc)
-                    )
+            # Update tick log as COMPLETED on the tick's own session, so it
+            # commits atomically with the tick transaction. A second
+            # connection would deadlock here on file-based SQLite, which
+            # allows only one writer while this transaction is open.
+            await session.execute(
+                update(TickLog)
+                .where(TickLog.id == tick_log_id)
+                .values(
+                    status=TickLogStatus.COMPLETED,
+                    finished_at=datetime.now(timezone.utc)
                 )
-                await log_session.commit()
+            )
             
             logger.info(f"Tick {next_turn} completed successfully")
             
         except Exception as e:
-            # Update tick log as FAILED using separate session
+            # The caller owns the commit boundary, but the rollback must
+            # happen here: only once the tick transaction releases its write
+            # lock can a separate connection record the failure. On
+            # file-based SQLite, writing FAILED before the rollback would
+            # deadlock on the still-open transaction.
+            await session.rollback()
+            # Update tick log as FAILED using a separate session — it must
+            # survive the rollback (INV-TICK-ATOMICITY).
             async with AsyncSession(async_engine) as log_session:
                 await log_session.execute(
                     update(TickLog)
