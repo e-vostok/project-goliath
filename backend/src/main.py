@@ -4,14 +4,15 @@ FastAPI application entry point.
 Provides minimal app skeleton with config-safe startup validation.
 """
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
 
 import asyncio
 import os
 from contextlib import asynccontextmanager, suppress
-from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
@@ -78,6 +79,7 @@ _ERROR_CODE_STATUS = {
     "INVALID_SIGNATURE": 401,
     "TIMESTAMP_EXPIRED": 401,
     "UNAUTHORIZED": 401,
+    "ADMIN_REQUIRED": 403,
     "NAME_TAKEN": 409,
     "COLOR_TAKEN": 409,
     "PROVINCE_TAKEN": 409,

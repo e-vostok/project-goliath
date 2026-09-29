@@ -2,19 +2,20 @@
 
 Prereqs (once): `pip install -e ".[dev]"` in `backend/`, `npm install` in `frontend/`.
 
-## 1. Create `backend/.env` (gitignored — never commit)
+## 1. Create `.env` in the repo root (gitignored — never commit)
 
-```powershell
-Copy-Item .env.example backend\.env
-```
+The backend loads exactly this file — the path is pinned in `src/main.py`
+(`load_dotenv(dotenv_path=<repo root>/.env)`), so a `.env` placed anywhere
+else, including `backend/.env`, is ignored.
 
-Then set the values in `backend/.env`:
+Put the values in `.env`:
 
 ```dotenv
 DATABASE_URL=sqlite+aiosqlite:///./dev.db
 DATABASE_URL_TEST=
 VK_APP_SECRET=<real secret from dev.vk.com>
 JWT_SECRET_KEY=<any random 32+ byte string>
+ADMIN_VK_USER_IDS=<comma-separated VK user ids of admins; empty = no admins>
 ```
 
 ## 2. Apply migrations (run from `backend/`)
@@ -44,7 +45,7 @@ cd backend
 uvicorn main:app --app-dir src --host 127.0.0.1 --port 8000
 ```
 
-`.env` is loaded automatically (`load_dotenv()` in `src/main.py`). Health check: `http://127.0.0.1:8000/health` → `{"status":"ok"}`. Port 8000 matches the Vite proxy target for `/api`.
+`.env` is loaded automatically from the repo root (`load_dotenv()` in `src/main.py`). Health check: `http://127.0.0.1:8000/health` → `{"status":"ok"}`. Port 8000 matches the Vite proxy target for `/api`.
 
 ## 4. Start the frontend (run from `frontend/`)
 
