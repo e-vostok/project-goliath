@@ -10,22 +10,45 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TickSettings(BaseModel):
+    tick_time: str = Field(
+        default="00:00",
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="Локальное время суточного тика, строгий формат HH:MM (24ч).",
+    )
+    tick_timezone: str = Field(
+        default="Europe/Moscow",
+        description="IANA-зона, в которой задано tick_time (резолвится через zoneinfo).",
+    )
     tick_interval_hours: int = Field(
         ge=1,
         le=168,
-        description="Интервал реального времени между тиками, часы.",
+        description="Наследие: интервал для посева первого next_tick_at "
+        "миграцией 0001 на свежей БД. Планировщик и тик его не используют — "
+        "расписание задают tick_time + tick_timezone.",
     )
     retry_delay_seconds: int = Field(
         ge=1,
         le=3600,
         description="Пауза перед повторной попыткой тика после сбоя, секунды.",
     )
+
+    @field_validator("tick_timezone")
+    @classmethod
+    def check_timezone_resolves(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(
+                f"tick_timezone '{v}' is not a resolvable IANA zone"
+            ) from exc
+        return v
 
 
 class AuthSettings(BaseModel):

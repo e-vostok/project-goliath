@@ -15,7 +15,7 @@ of the suite.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -33,6 +33,7 @@ from core.tick.orchestrator import TickOrchestrator, TickPhase
 from main import app
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Province, TickLog, TickLogStatus
+from modules._00_core.tick_schedule import next_tick_after
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -413,15 +414,15 @@ class TestAdminTickRun:
         body = response.json()
         assert body["ok"] is True
         assert body["current_turn"] == 1
-        expected_min = before + timedelta(
-            hours=CORE_CONFIG.tick.tick_interval_hours
-        )
-        expected_max = datetime.now(timezone.utc) + timedelta(
-            hours=CORE_CONFIG.tick.tick_interval_hours
-        )
-        assert expected_min <= datetime.fromisoformat(
-            body["next_tick_at"]
-        ) <= expected_max
+        candidates = {
+            next_tick_after(
+                t,
+                CORE_CONFIG.tick.tick_time,
+                CORE_CONFIG.tick.tick_timezone,
+            )
+            for t in (before, datetime.now(timezone.utc))
+        }
+        assert datetime.fromisoformat(body["next_tick_at"]) in candidates
         assert body["tick_log"]["turn_number"] == 1
         assert body["tick_log"]["status"] == "COMPLETED"
 

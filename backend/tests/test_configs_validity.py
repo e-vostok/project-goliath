@@ -20,6 +20,8 @@ def test_valid_config_loads():
     """Test that the valid configs/00_core.yaml loads successfully."""
     config = CoreConfig.from_yaml("../configs/00_core.yaml")
     
+    assert config.tick.tick_time == "00:00"
+    assert config.tick.tick_timezone == "Europe/Moscow"
     assert config.tick.tick_interval_hours == 24
     assert config.tick.retry_delay_seconds == 60
     assert config.auth.vk_ts_freshness_window_minutes == 30
@@ -90,6 +92,71 @@ calendar:
         
         assert "tick_interval_hours" in str(exc_info.value)
         assert "greater than or equal to 1" in str(exc_info.value)
+    finally:
+        Path(temp_path).unlink()
+
+
+@pytest.mark.parametrize("bad_time", ["24:00", "0:00", "abc"])
+def test_invalid_tick_time(bad_time):
+    """tick_time outside the strict 24h HH:MM pattern raises ValidationError."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        f.write(f"""
+tick:
+  tick_time: "{bad_time}"
+  tick_timezone: "Europe/Moscow"
+  tick_interval_hours: 24
+  retry_delay_seconds: 60
+auth:
+  vk_ts_freshness_window_minutes: 30
+  jwt_ttl_minutes: 60
+nation:
+  nation_name_min_length: 3
+  nation_name_max_length: 40
+  min_provinces_per_nation: 1
+  max_provinces_per_nation: 5
+calendar:
+  epoch_start_date: "0001-01-01"
+  days_per_turn: 7
+""")
+        temp_path = f.name
+    
+    try:
+        with pytest.raises(ValidationError) as exc_info:
+            CoreConfig.from_yaml(temp_path)
+        
+        assert "tick_time" in str(exc_info.value)
+    finally:
+        Path(temp_path).unlink()
+
+
+def test_invalid_tick_timezone():
+    """A tick_timezone that zoneinfo cannot resolve raises ValidationError."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        f.write("""
+tick:
+  tick_time: "00:00"
+  tick_timezone: "Mars/Base"
+  tick_interval_hours: 24
+  retry_delay_seconds: 60
+auth:
+  vk_ts_freshness_window_minutes: 30
+  jwt_ttl_minutes: 60
+nation:
+  nation_name_min_length: 3
+  nation_name_max_length: 40
+  min_provinces_per_nation: 1
+  max_provinces_per_nation: 5
+calendar:
+  epoch_start_date: "0001-01-01"
+  days_per_turn: 7
+""")
+        temp_path = f.name
+    
+    try:
+        with pytest.raises(ValidationError) as exc_info:
+            CoreConfig.from_yaml(temp_path)
+        
+        assert "tick_timezone" in str(exc_info.value)
     finally:
         Path(temp_path).unlink()
 
