@@ -1,8 +1,8 @@
 """
 HTTP API router for the admin panel.
 
-Four endpoints, all gated by require_admin (prefix /api/v1/admin):
-GET /state, GET /tick-log, POST /tick/run, POST /state/reset.
+Five endpoints, all gated by require_admin (prefix /api/v1/admin):
+GET /me, GET /state, GET /tick-log, POST /tick/run, POST /state/reset.
 
 The router owns no module tables: state views and resets are delegated to
 module-provided hooks in AdminRegistry; the only table it touches directly
@@ -28,6 +28,7 @@ from core.db import get_session, get_session_context
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.models import GameClock, Player, TickLog
+from modules._00_core.router import GameClockNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class ConfirmRequiredError(CoreDomainError):
         )
 
 
-class ModuleNotFoundError(CoreDomainError):
+class AdminModuleNotFoundError(CoreDomainError):
     """Raised when a reset targets a module_slug with no registered hook."""
 
     def __init__(self, module_slug: str):
@@ -55,6 +56,11 @@ class ModuleNotFoundError(CoreDomainError):
             f"Module '{module_slug}' has no registered admin hooks",
             "MODULE_NOT_FOUND",
         )
+
+
+# Backwards-compatible alias: the class was renamed because it shadowed the
+# Python builtin. Drop once remaining callers import AdminModuleNotFoundError.
+ModuleNotFoundError = AdminModuleNotFoundError
 
 
 class ResetFailedError(CoreDomainError):
@@ -92,6 +98,18 @@ def _tick_log_dict(row: TickLog) -> dict:
         "status": row.status.value,
         "error_message": row.error_message,
     }
+
+
+@router.get("/me")
+async def admin_me(admin: Player = Depends(require_admin)) -> dict:
+    """
+    Admin probe for the UI: 200 {"is_admin": true} for allowlisted users.
+
+    Non-admins get 403 ADMIN_REQUIRED and anonymous callers 401 from
+    require_admin/get_current_player — the frontend treats any non-200 as
+    "not admin" and hides the admin block silently.
+    """
+    return {"is_admin": True}
 
 
 @router.get("/state")
@@ -156,16 +174,18 @@ async def admin_tick_run(
         clock_result = await tick_session.execute(
             select(GameClock).where(GameClock.id == 1)
         )
-        clock = clock_result.scalar_one()
+        clock = clock_result.scalar_one_or_none()
+        if clock is None:
+            raise GameClockNotFoundError()
         log_result = await tick_session.execute(
             select(TickLog).order_by(TickLog.id.desc()).limit(1)
         )
-        latest_log = log_result.scalar_one()
+        latest_log = log_result.scalar_one_or_none()
     return {
         "ok": ok,
         "current_turn": clock.current_turn,
         "next_tick_at": _iso_utc(clock.next_tick_at),
-        "tick_log": _tick_log_dict(latest_log),
+        "tick_log": _tick_log_dict(latest_log) if latest_log is not None else None,
     }
 
 
@@ -192,7 +212,7 @@ async def admin_state_reset(
     hooks = AdminRegistry.get_reset_hooks()
     if body.module_slug is not None:
         if body.module_slug not in hooks:
-            raise ModuleNotFoundError(body.module_slug)
+            raise AdminModuleNotFoundError(body.module_slug)
         plan = [body.module_slug]
     else:
         plan = list(reversed(hooks))

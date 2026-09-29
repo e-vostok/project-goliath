@@ -8,6 +8,11 @@
  */
 
 import type {
+  AdminMeDTO,
+  AdminResetResultDTO,
+  AdminStateDTO,
+  AdminTickLogEntryDTO,
+  AdminTickRunResultDTO,
   AuthResponseDTO,
   GameClockDTO,
   NationCreateRequest,
@@ -204,5 +209,46 @@ export const api = {
   /** GET /game-clock — current turn, derived game date, next tick time. */
   getGameClock(token: string, signal?: AbortSignal) {
     return apiFetch<GameClockDTO>('/game-clock', { token, signal });
+  },
+
+  /* Admin endpoints (core/admin router) — require an allowlisted admin's
+     Bearer JWT; non-admins get 403 ADMIN_REQUIRED. */
+
+  /** GET /admin/me — 200 {is_admin: true} for admins, 403 otherwise. */
+  adminMe(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminMeDTO>('/admin/me', { token, signal });
+  },
+
+  /** GET /admin/state — aggregated per-module state views. */
+  adminState(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminStateDTO>('/admin/state', { token, signal });
+  },
+
+  /** GET /admin/tick-log — newest tick_log rows first (default limit 20). */
+  adminTickLog(token: string, limit?: number, signal?: AbortSignal) {
+    const query = limit !== undefined ? `?limit=${limit}` : '';
+    return apiFetch<AdminTickLogEntryDTO[]>(`/admin/tick-log${query}`, {
+      token,
+      signal,
+    });
+  },
+
+  /** POST /admin/tick/run — fire one game tick immediately. */
+  adminRunTick(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminTickRunResultDTO>('/admin/tick/run', {
+      method: 'POST',
+      token,
+      signal,
+    });
+  },
+
+  /** POST /admin/state/reset — destructive; sends { confirm: true }. */
+  adminResetState(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminResetResultDTO>('/admin/state/reset', {
+      method: 'POST',
+      body: { confirm: true },
+      token,
+      signal,
+    });
   },
 };

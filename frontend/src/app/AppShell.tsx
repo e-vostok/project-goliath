@@ -30,6 +30,7 @@ import { useNation } from '../modules/00_core/hooks/useNation';
 import { PanelCreateNation } from '../modules/00_core/components/PanelCreateNation';
 import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
 import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
+import { AdminBlock } from '../admin/AdminBlock';
 
 export const PANEL_HOME = 'nation-home';
 export const PANEL_CREATE = 'nation-create';
@@ -94,6 +95,13 @@ function AuthedArea() {
 
   const { status, nation, refresh } = nationState;
   const activePanel = panel ?? PANEL_HOME;
+  // Bumped by the admin block after tick/reset: remounts PanelNationHome so
+  // it refetches the game clock, while refresh() reloads the nation itself.
+  const [worldVersion, setWorldVersion] = useState(0);
+  const handleWorldChanged = () => {
+    refresh();
+    setWorldVersion((v) => v + 1);
+  };
 
   // The panel is a function of nation existence — keep the route in sync.
   useEffect(() => {
@@ -135,6 +143,7 @@ function AuthedArea() {
             ) : (
               nation === null && <PanelCreateNation onCreated={refresh} />
             )}
+            <AdminBlock onWorldChanged={handleWorldChanged} />
           </Panel>
           <Panel id={PANEL_HOME}>
             {status === 'loading' && <LoadingCell />}
@@ -150,11 +159,13 @@ function AuthedArea() {
             )}
             {status === 'ready' && nation && (
               <PanelNationHome
+                key={worldVersion}
                 nation={nation}
                 onChanged={refresh}
                 onDeleteRequest={() => setActiveModal(MODAL_DELETE_NATION)}
               />
             )}
+            <AdminBlock onWorldChanged={handleWorldChanged} />
           </Panel>
         </View>
       </SplitCol>

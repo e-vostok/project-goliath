@@ -32,7 +32,7 @@ from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator, TickPhase
 from main import app
 from modules._00_core.config_schema import CoreConfig
-from modules._00_core.models import Province, TickLog, TickLogStatus
+from modules._00_core.models import GameClock, Province, TickLog, TickLogStatus
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -47,6 +47,7 @@ ADMIN_VK_ID = 424242
 USER_VK_ID = 777001
 
 ADMIN_ROUTES = [
+    ("GET", "/api/v1/admin/me", None),
     ("GET", "/api/v1/admin/state", None),
     ("GET", "/api/v1/admin/tick-log", None),
     ("POST", "/api/v1/admin/tick/run", None),
@@ -84,22 +85,6 @@ def _probe_pg_test_url() -> str | None:
 
 
 PG_TEST_URL = _probe_pg_test_url()
-
-# A successful tick requires two concurrent writers on the database:
-# TickOrchestrator.run_tick updates tick_log through a SEPARATE session
-# while the main tick transaction still holds its uncommitted game_clock
-# write. File-based SQLite cannot host two writers (the second hits
-# 'database is locked' — a pre-existing core limitation, also affecting
-# the automatic scheduler); PostgreSQL handles it correctly.
-REQUIRES_PG = pytest.mark.skipif(
-    PG_TEST_URL is None,
-    reason=(
-        "Successful tick requires PostgreSQL: TickOrchestrator writes "
-        "tick_log on a second connection while the main tick transaction "
-        "holds a write lock — impossible on file-based SQLite. "
-        "Set DATABASE_URL_TEST to a reachable PostgreSQL to run this."
-    ),
-)
 
 
 def _reset_pg_schema(url: str) -> None:
@@ -255,6 +240,20 @@ class TestAdminAuthorization:
         assert response.status_code == 200
 
 
+class TestAdminMe:
+    """GET /api/v1/admin/me is the UI's admin probe."""
+
+    @pytest.mark.asyncio
+    async def test_admin_gets_is_admin_true(self, live_client, monkeypatch):
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+
+        response = await live_client.get("/api/v1/admin/me", headers=headers)
+
+        assert response.status_code == 200
+        assert response.json() == {"is_admin": True}
+
+
 class TestAdminState:
     """GET /api/v1/admin/state aggregates module state views."""
 
@@ -393,10 +392,14 @@ class TestAdminTickLog:
 
 class TestAdminTickRun:
     """POST /api/v1/admin/tick/run drives a real tick through the same
-    run_scheduled_tick path the scheduler uses."""
+    run_scheduled_tick path the scheduler uses.
+
+    The orchestrator records the COMPLETED status inside the tick's own
+    transaction, so a successful tick no longer needs a second writer —
+    these tests run on file-based SQLite as well as PostgreSQL.
+    """
 
     @pytest.mark.asyncio
-    @REQUIRES_PG
     async def test_manual_tick_advances_turn(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
@@ -446,6 +449,52 @@ class TestAdminTickRun:
         assert body["current_turn"] == 0  # rolled back, turn unchanged
         assert body["tick_log"]["status"] == "FAILED"
         assert "phase exploded" in body["tick_log"]["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_tick_run_without_tick_log_row_returns_null(
+        self, live_client, monkeypatch
+    ):
+        """If the tick leaves no tick_log row, the endpoint reports
+        tick_log: null instead of crashing on scalar_one()."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+
+        async def wipe_log(session, turn_number):
+            # The RUNNING row was committed on a separate connection; a
+            # phase handler that wipes it leaves the response with no
+            # latest tick_log to report.
+            await session.execute(delete(TickLog))
+
+        TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, wipe_log)
+
+        response = await live_client.post(
+            "/api/v1/admin/tick/run", headers=headers
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ok"] is True
+        assert body["current_turn"] == 1
+        assert body["tick_log"] is None
+
+    @pytest.mark.asyncio
+    async def test_tick_run_without_game_clock_returns_404(
+        self, live_client, monkeypatch
+    ):
+        """A missing game_clock row maps to the existing 404
+        GAME_CLOCK_NOT_FOUND mechanism instead of a 500."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+        async with get_session_context() as session:
+            await session.execute(delete(GameClock))
+            await session.commit()
+
+        response = await live_client.post(
+            "/api/v1/admin/tick/run", headers=headers
+        )
+
+        assert response.status_code == 404
+        assert response.json()["code"] == "GAME_CLOCK_NOT_FOUND"
 
 
 class TestAdminStateReset:
