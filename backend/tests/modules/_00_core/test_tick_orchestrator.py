@@ -144,9 +144,14 @@ class TestTickOrchestrator:
         with pytest.raises(ValueError, match="Simulated handler failure"):
             await TickOrchestrator.run_tick(test_db_session)
         
-        # Verify ROLLBACK: current_turn unchanged
-        await test_db_session.refresh(game_clock)
-        assert game_clock.current_turn == initial_turn
+        # Verify ROLLBACK: current_turn unchanged. run_tick rolled the tick
+        # transaction back internally (detaching ORM instances), so re-query
+        # instead of refreshing the detached game_clock object.
+        result = await test_db_session.execute(
+            select(GameClock).where(GameClock.id == 1)
+        )
+        clock = result.scalar_one()
+        assert clock.current_turn == initial_turn
         
         # Verify ROLLBACK: action still PENDING (not applied)
         result = await test_db_session.execute(
@@ -251,9 +256,12 @@ class TestTickOrchestrator:
         with pytest.raises(ValueError):
             await TickOrchestrator.run_tick(test_db_session)
         
-        # Verify the main transaction was rolled back
-        await test_db_session.refresh(game_clock)
-        assert game_clock.current_turn == initial_turn
+        # Verify the main transaction was rolled back (run_tick does this
+        # internally now — detached instances must be re-queried).
+        result = await test_db_session.execute(
+            select(GameClock).where(GameClock.id == 1)
+        )
+        assert result.scalar_one().current_turn == initial_turn
         
         # But tick_log should still exist (separate session)
         result = await test_db_session.execute(

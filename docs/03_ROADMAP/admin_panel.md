@@ -25,7 +25,7 @@ reset/state-hook одной строкой, без переделки панел
 - [x] **Issue 1: Admin auth + Registry infrastructure** — `require_admin` поверх
   `get_current_player`, проверка по списку `ADMIN_VK_USER_IDS`; класс `AdminRegistry`
   (register_reset/register_state_view/clear); без изменений схемы БД.
-- [ ] **Issue 2: Admin endpoints + hooks для 00_core** — `POST /admin/tick/run`,
+- [x] **Issue 2: Admin endpoints + hooks для 00_core** — `POST /admin/tick/run`,
   `GET /admin/tick-log`, `GET /admin/state`, `POST /admin/state/reset`; reset()/state_view()
   для 00_core (nations/provinces/scheduled_actions/game_clock — players не трогаем).
 - [ ] **Issue 3: Блок «Админ» в существующем UI (JSON)** — GET /admin/me (200 {"is_admin": true} / 403 ADMIN_REQUIRED); в панели государства блок «Админ», виден только админу: «Запустить ход», «Сбросить мир» (модалка подтверждения), «Состояние», «Журнал ходов»; вывод — форматированный JSON-текст; без нового экрана/роута.

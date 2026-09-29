@@ -62,6 +62,42 @@ export interface ErrorResponse {
   code: string;
 }
 
+/* Admin panel DTOs (core/admin router). State-view payloads are defined by
+   each module's hook, so `modules` stays loosely typed. */
+
+/** GET /admin/me — the UI's admin probe. */
+export interface AdminMeDTO {
+  is_admin: boolean;
+}
+
+/** One tick_log row (GET /admin/tick-log and nested in tick/run result). */
+export interface AdminTickLogEntryDTO {
+  id: number;
+  turn_number: number;
+  started_at: string | null;
+  finished_at: string | null;
+  status: string;
+  error_message: string | null;
+}
+
+/** GET /admin/state — state views keyed by module slug. */
+export interface AdminStateDTO {
+  modules: Record<string, unknown>;
+}
+
+/** POST /admin/tick/run result. tick_log is null when no row exists. */
+export interface AdminTickRunResultDTO {
+  ok: boolean;
+  current_turn: number;
+  next_tick_at: string | null;
+  tick_log: AdminTickLogEntryDTO | null;
+}
+
+/** POST /admin/state/reset result — module slugs that were reset. */
+export interface AdminResetResultDTO {
+  reset: string[];
+}
+
 /** Error codes emitted by 00_core (Spec Part 5 + router-internal codes). */
 export const ErrorCodes = {
   NAME_TAKEN: 'NAME_TAKEN',
