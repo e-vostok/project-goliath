@@ -576,13 +576,13 @@ class TestAdminEndpointFunctions:
     @pytest.mark.asyncio
     async def test_admin_state_reset_module_not_found(self, test_db_session):
         from core.admin.router import (
-            ModuleNotFoundError,
+            AdminModuleNotFoundError,
             StateResetRequest,
             admin_state_reset,
         )
 
         register_admin_hooks()
-        with pytest.raises(ModuleNotFoundError):
+        with pytest.raises(AdminModuleNotFoundError):
             await admin_state_reset(
                 body=StateResetRequest(confirm=True, module_slug="ghost"),
                 admin=None,

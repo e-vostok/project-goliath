@@ -58,11 +58,6 @@ class AdminModuleNotFoundError(CoreDomainError):
         )
 
 
-# Backwards-compatible alias: the class was renamed because it shadowed the
-# Python builtin. Drop once remaining callers import AdminModuleNotFoundError.
-ModuleNotFoundError = AdminModuleNotFoundError
-
-
 class ResetFailedError(CoreDomainError):
     """Raised when a reset hook throws; maps to a 500 via the default."""
 
