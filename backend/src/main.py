@@ -19,9 +19,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from core.admin.router import router as admin_router
 from core.db import get_engine, init_engine
 from core.security import SecurityError
 from core.tick.scheduler import scheduler_loop
+from modules._00_core.admin_hooks import register_admin_hooks
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.router import router as core_router
@@ -51,6 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Handlers must be registered before the scheduler fires its first tick.
     register_tick_handlers()
+    register_admin_hooks()
 
     scheduler_task = asyncio.create_task(scheduler_loop(), name="tick-scheduler")
 
@@ -70,6 +73,7 @@ app = FastAPI(
 )
 
 app.include_router(core_router)
+app.include_router(admin_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
 # UNAUTHORIZED and GAME_CLOCK_NOT_FOUND are additions to the spec's
@@ -80,6 +84,8 @@ _ERROR_CODE_STATUS = {
     "TIMESTAMP_EXPIRED": 401,
     "UNAUTHORIZED": 401,
     "ADMIN_REQUIRED": 403,
+    "CONFIRM_REQUIRED": 400,
+    "MODULE_NOT_FOUND": 404,
     "NAME_TAKEN": 409,
     "COLOR_TAKEN": 409,
     "PROVINCE_TAKEN": 409,

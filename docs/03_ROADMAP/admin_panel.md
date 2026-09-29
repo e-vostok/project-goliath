@@ -18,7 +18,7 @@ reset/state-hook одной строкой, без переделки панел
 - backend/src/core/admin/ — новое: security.py, registry.py, router.py
 - backend/src/modules/_00_core/ — правка: hook-функции reset/state_view + регистрация в lifespan
 - backend/tests/core/admin/ — новое
-- backend/.env.example — новое: ADMIN_VK_USER_IDS
+- .env в корне репозитория (gitignored): ADMIN_VK_USER_IDS
 
 ## Issues
 
@@ -28,8 +28,10 @@ reset/state-hook одной строкой, без переделки панел
 - [ ] **Issue 2: Admin endpoints + hooks для 00_core** — `POST /admin/tick/run`,
   `GET /admin/tick-log`, `GET /admin/state`, `POST /admin/state/reset`; reset()/state_view()
   для 00_core (nations/provinces/scheduled_actions/game_clock — players не трогаем).
+- [ ] **Issue 3: Блок «Админ» в существующем UI (JSON)** — GET /admin/me (200 {"is_admin": true} / 403 ADMIN_REQUIRED); в панели государства блок «Админ», виден только админу: «Запустить ход», «Сбросить мир» (модалка подтверждения), «Состояние», «Журнал ходов»; вывод — форматированный JSON-текст; без нового экрана/роута.
 
 ## Backlog & Tech Debt
 
 - Reset не трогает players — обсудить, нужен ли отдельный флаг «полный сброс».
-- VKUI-экран для панели сознательно не делаем в этой итерации.
+- Красивые таблицы вместо JSON — позже.
+- Ручной тик и планировщик не защищены общим локом; reset не чистит tick_log и игроков.
