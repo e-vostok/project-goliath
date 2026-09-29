@@ -82,7 +82,7 @@ class ScheduledAction(Base):
     __tablename__ = "scheduled_actions"
     
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    nation_id: Mapped[str] = mapped_column(String(36), ForeignKey("nations.id"), nullable=False, index=True)
+    nation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("nations.id", ondelete="SET NULL"), nullable=True, index=True)
     module_slug: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     action_type: Mapped[str] = mapped_column(String(50), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -97,7 +97,7 @@ class ScheduledAction(Base):
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Relationships
-    nation: Mapped[Nation] = relationship(back_populates="scheduled_actions")
+    nation: Mapped[Nation | None] = relationship(back_populates="scheduled_actions")
     
     # Composite index for querying pending actions by turn
     __table_args__ = (

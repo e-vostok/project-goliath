@@ -402,6 +402,80 @@ class TestNationService:
         assert all(p.nation_id is None for p in provinces)
     
     @pytest.mark.asyncio
+    async def test_delete_nation_orphans_pending_scheduled_actions(self, test_db_session, config):
+        """Deleting a nation orphans its PENDING scheduled actions.
+
+        INV-6-style: like freed provinces, the action row survives as an
+        orphaned historical record (nation_id -> NULL), not deleted.
+        """
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+
+        nation = await NationService.create(
+            test_db_session,
+            owner_player_id=player.id,
+            name="Test Nation",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+        )
+
+        action = await ScheduledActionService.submit(
+            test_db_session,
+            nation_id=nation.id,
+            module_slug="test_module",
+            action_type="test_action",
+            payload={"data": "value"},
+            turn_number=1,
+            frequency_rule=FrequencyRule.ONCE_PER_TURN,
+        )
+
+        await NationService.delete(test_db_session, nation_id=nation.id)
+
+        result = await test_db_session.execute(
+            select(ScheduledAction).where(ScheduledAction.id == action.id)
+        )
+        orphaned = result.scalar_one()
+        assert orphaned.nation_id is None
+        assert orphaned.status == ScheduledActionStatus.PENDING
+
+    @pytest.mark.asyncio
+    async def test_delete_nation_orphans_applied_scheduled_actions(self, test_db_session, config):
+        """Deleting a nation orphans its APPLIED scheduled actions too."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+
+        nation = await NationService.create(
+            test_db_session,
+            owner_player_id=player.id,
+            name="Test Nation",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+        )
+
+        action = await ScheduledActionService.submit(
+            test_db_session,
+            nation_id=nation.id,
+            module_slug="test_module",
+            action_type="test_action",
+            payload={"data": "value"},
+            turn_number=1,
+            frequency_rule=FrequencyRule.ONCE_PER_TURN,
+        )
+        action.status = ScheduledActionStatus.APPLIED
+        await test_db_session.flush()
+
+        await NationService.delete(test_db_session, nation_id=nation.id)
+
+        result = await test_db_session.execute(
+            select(ScheduledAction).where(ScheduledAction.id == action.id)
+        )
+        orphaned = result.scalar_one()
+        assert orphaned.nation_id is None
+        assert orphaned.status == ScheduledActionStatus.APPLIED
+
+    @pytest.mark.asyncio
     async def test_delete_nation_not_found(self, test_db_session):
         """Test deleting non-existent nation."""
         with pytest.raises(NationNotFoundError):

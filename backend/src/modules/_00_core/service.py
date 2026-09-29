@@ -266,6 +266,15 @@ class NationService:
         for province in provinces:
             province.nation_id = None
         
+        # Orphan scheduled actions the same way: explicit nulling, not
+        # FK cascade, so SQLite (foreign_keys pragma off) behaves
+        # identically to PostgreSQL ON DELETE SET NULL.
+        result = await session.execute(
+            select(ScheduledAction).where(ScheduledAction.nation_id == nation_id)
+        )
+        for action in result.scalars().all():
+            action.nation_id = None
+        
         # Delete the nation
         await session.delete(nation)
 
