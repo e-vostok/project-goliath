@@ -28,7 +28,15 @@ reset/state-hook одной строкой, без переделки панел
 - [x] **Issue 2: Admin endpoints + hooks для 00_core** — `POST /admin/tick/run`,
   `GET /admin/tick-log`, `GET /admin/state`, `POST /admin/state/reset`; reset()/state_view()
   для 00_core (nations/provinces/scheduled_actions/game_clock — players не трогаем).
-- [ ] **Issue 3: Блок «Админ» в существующем UI (JSON)** — GET /admin/me (200 {"is_admin": true} / 403 ADMIN_REQUIRED); в панели государства блок «Админ», виден только админу: «Запустить ход», «Сбросить мир» (модалка подтверждения), «Состояние», «Журнал ходов»; вывод — форматированный JSON-текст; без нового экрана/роута.
+- [x] **Issue 3: Блок «Админ» в существующем UI (JSON)** — GET /admin/me (200 {"is_admin": true} / 403 ADMIN_REQUIRED); в панели государства блок «Админ», виден только админу: «Запустить ход», «Сбросить мир» (модалка подтверждения), «Состояние», «Журнал ходов»; вывод — форматированный JSON-текст; без нового экрана/роута.
+- [x] **Issue 4: Reset чистит tick_log + полноэкранный просмотр JSON** — reset-hook
+  00_core удаляет журнал ходов; «Развернуть» открывает оверлей на весь экран с
+  «Скопировать» / «Закрыть» / Esc.
+- [x] **Issue 5: Тулбар над JSON + время в игровой зоне** — «Скопировать» и
+  «Развернуть» перенесены в тулбар над `<pre>` (видны без прокрутки, max-height 40vh);
+  ответы `POST /admin/tick/run` и `GET /admin/tick-log` несут аддитивные `*_local`-поля
+  в `tick.tick_timezone` рядом с UTC-полями; общий helper `iso_in_zone` в
+  `modules/_00_core/tick_schedule.py`.
 
 ## Backlog & Tech Debt
 

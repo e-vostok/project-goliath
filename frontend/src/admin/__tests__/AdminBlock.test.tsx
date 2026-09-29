@@ -40,11 +40,14 @@ const TICK_RUN_RESULT = {
   ok: true,
   current_turn: 1,
   next_tick_at: '2026-09-30T00:00:00+00:00',
+  next_tick_at_local: '2026-09-30T03:00:00+03:00',
   tick_log: {
     id: 7,
     turn_number: 1,
     started_at: '2026-09-29T12:00:00+00:00',
     finished_at: '2026-09-29T12:00:01+00:00',
+    started_at_local: '2026-09-29T15:00:00+03:00',
+    finished_at_local: '2026-09-29T15:00:01+03:00',
     status: 'COMPLETED',
     error_message: null,
   },
@@ -285,6 +288,19 @@ describe('AdminBlock — full-screen JSON overlay', () => {
     await screen.findByTestId('admin-output');
     return user;
   }
+
+  it('«Скопировать» and «Развернуть» precede the JSON <pre> in DOM order', async () => {
+    await renderWithOutput();
+
+    const pre = screen.getByTestId('admin-output');
+    for (const name of ['Скопировать', 'Развернуть']) {
+      const button = screen.getByRole('button', { name });
+      expect(
+        button.compareDocumentPosition(pre) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
 
   it('«Развернуть» opens the overlay with the same JSON; inline stays', async () => {
     const user = await renderWithOutput();

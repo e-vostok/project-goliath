@@ -52,3 +52,27 @@ def next_tick_after(now: datetime, tick_time: str, tz_name: str) -> datetime:
             tzinfo=tz,
         )
     return candidate.astimezone(timezone.utc)
+
+
+def iso_in_zone(value: datetime | None, tz_name: str) -> str | None:
+    """
+    ISO-8601 representation of `value` converted into the named zone.
+
+    Shared "game-local time" formatting for API responses that show UTC
+    instants next to their tick_timezone siblings (*_local fields).
+
+    Args:
+        value: the instant to render; naive datetimes are read as UTC
+            (SQLite returns naive values even for tz-aware writes).
+            None stays None.
+        tz_name: IANA zone name resolvable via zoneinfo.ZoneInfo —
+            callers pass tick.tick_timezone.
+
+    Returns:
+        value.astimezone(zone).isoformat(), or None.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(ZoneInfo(tz_name)).isoformat()
