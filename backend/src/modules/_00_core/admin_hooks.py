@@ -13,7 +13,8 @@ must not raise.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,7 @@ from modules._00_core.models import (
     Province,
     ScheduledAction,
 )
+from modules._00_core.tick_schedule import next_tick_after
 
 MODULE_SLUG = "00_core"
 LIST_CAP = 200
@@ -39,6 +41,15 @@ def _iso_utc(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.isoformat()
+
+
+def _iso_local(value: datetime | None, tz_name: str) -> str | None:
+    """ISO-8601 in the named zone; naive datetimes read as UTC first."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(ZoneInfo(tz_name)).isoformat()
 
 
 async def _count(session: AsyncSession, model) -> int:
@@ -54,6 +65,7 @@ async def admin_state_view(session: AsyncSession) -> dict:
     *_total plus `truncated` flag report what the cap hides. All datetimes
     are ISO-8601 UTC (SQLite returns naive values; they are UTC already).
     """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     clock_result = await session.execute(
         select(GameClock).where(GameClock.id == 1)
     )
@@ -107,6 +119,10 @@ async def admin_state_view(session: AsyncSession) -> dict:
                 "current_turn": clock.current_turn,
                 "last_tick_at": _iso_utc(clock.last_tick_at),
                 "next_tick_at": _iso_utc(clock.next_tick_at),
+                "tick_timezone": config.tick.tick_timezone,
+                "next_tick_at_local": _iso_local(
+                    clock.next_tick_at, config.tick.tick_timezone
+                ),
             }
         ),
         "counts": {
@@ -161,7 +177,9 @@ async def admin_reset(session: AsyncSession) -> None:
 
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     now = datetime.now(timezone.utc)
-    next_tick_at = now + timedelta(hours=config.tick.tick_interval_hours)
+    next_tick_at = next_tick_after(
+        now, config.tick.tick_time, config.tick.tick_timezone
+    )
 
     clock_result = await session.execute(
         select(GameClock).where(GameClock.id == 1)

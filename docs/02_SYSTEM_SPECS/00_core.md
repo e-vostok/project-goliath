@@ -150,9 +150,9 @@ class TickPhase(IntEnum):
 
 **Момент следующего тика:**
 $$
-t_{next} = t_{last} + \Delta_{tick}
+t_{next} = \min\{\, t \in T_{tick} \mid t > t_{now} \,\}
 $$
-где $\Delta_{tick}$ = `tick_interval_hours` (конфиг), $t_{last}$ = время последнего завершённого тика (или момент старта игры для хода 0).
+где $T_{tick}$ — множество локальных календарных моментов `tick.tick_time` (строгий формат `HH:MM`) в зоне `tick.tick_timezone`. `next_tick_at` — ближайшее наступление этого времени суток строго после `t_{now}`, вычисленное по локальной календарной дате (никогда не «+24h»): переходы на летнее/зимнее время сдвигают UTC-момент тика, а локальное время остаётся фиксированным. Следствие: ручной запуск тика не сдвигает суточное расписание.
 
 **Игровая дата:**
 $$
@@ -178,7 +178,9 @@ $$
 
 | Ключ                                  | Тип             | Единица       | min | max  | default          |
 | ------------------------------------- | --------------- | ------------- | --- | ---- | ---------------- |
-| `tick.tick_interval_hours`            | int             | часы          | 1   | 168  | **24**           |
+| `tick.tick_time`                      | str `HH:MM` 24ч | локальное время | — | —    | **"00:00"**        |
+| `tick.tick_timezone`                  | str (IANA zone) | —             | —   | —    | **"Europe/Moscow"** |
+| `tick.tick_interval_hours`            | int             | часы (legacy) | 1   | 168  | **24**           |
 | `auth.vk_ts_freshness_window_minutes` | int             | минуты        | 1   | 120  | **30**           |
 | `auth.jwt_ttl_minutes`                | int             | минуты        | 5   | 1440 | **60**           |
 | `nation.nation_name_min_length`       | int             | символы       | 1   | 10   | **3**            |
@@ -188,7 +190,7 @@ $$
 | `calendar.epoch_start_date`           | date (ISO 8601) | —             | —   | —    | **"0001-01-01"** |
 | `calendar.days_per_turn`              | int             | игровые сутки | 1   | 365  | **7**            |
 
-`tick_interval_hours=24` и `vk_ts_freshness_window_minutes=30` — не мои предположения, а уже зафиксированные в `README.md` («суточный ход») и `development_workflow.md» («свежестью ≤ 30 минут») значения; я их перенёс без изменений.
+`tick_interval_hours=24` и `vk_ts_freshness_window_minutes=30` — не мои предположения, а уже зафиксированные в `README.md` («суточный ход») и `development_workflow.md» («свежестью ≤ 30 минут») значения; я их перенёс без изменений. С переходом на суточный тик в фиксированное локальное время `tick_interval_hours` остаётся в конфиге только для миграции 0001 (посев первого `next_tick_at` на свежей БД) — планировщик и `finalize_tick()` используют `tick_time`/`tick_timezone`.
 
 ---
 

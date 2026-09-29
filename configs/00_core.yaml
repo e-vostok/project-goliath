@@ -3,6 +3,12 @@
 # Валидируется backend/src/modules/00_core/config_schema.py при старте приложения и в CI.
 
 tick:
+  # Суточный тик в фиксированное локальное время (строгий формат HH:MM, 24ч).
+  tick_time: "00:00"
+  # IANA-зона для tick_time; должна резолвиться через zoneinfo.ZoneInfo.
+  tick_timezone: "Europe/Moscow"
+  # Наследие: используется только миграцией 0001 для посева первого
+  # next_tick_at на свежей БД. Расписание тика задают tick_time/tick_timezone.
   tick_interval_hours: 24
   retry_delay_seconds: 60
 

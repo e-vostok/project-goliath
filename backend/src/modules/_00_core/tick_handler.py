@@ -7,7 +7,7 @@ after all phase handlers have completed successfully.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.tick.orchestrator import TickOrchestrator
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock
+from modules._00_core.tick_schedule import next_tick_after
 
 
 async def finalize_tick(session: AsyncSession, turn_number: int) -> None:
@@ -24,7 +25,9 @@ async def finalize_tick(session: AsyncSession, turn_number: int) -> None:
     This function:
     - Increments current_turn to the given turn_number
     - Sets last_tick_at to now
-    - Sets next_tick_at to now + tick_interval_hours
+    - Sets next_tick_at to the next daily tick_time in tick_timezone.
+      Because the schedule is anchored to a fixed local time rather than
+      "now + interval", a manual tick does not shift the daily cadence.
     
     Args:
         session: The async database session.
@@ -43,7 +46,9 @@ async def finalize_tick(session: AsyncSession, turn_number: int) -> None:
     now = datetime.now(timezone.utc)
     clock.current_turn = turn_number
     clock.last_tick_at = now
-    clock.next_tick_at = now + timedelta(hours=config.tick.tick_interval_hours)
+    clock.next_tick_at = next_tick_after(
+        now, config.tick.tick_time, config.tick.tick_timezone
+    )
     
     # Flush to ensure the changes are applied
     await session.flush()

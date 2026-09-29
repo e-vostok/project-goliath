@@ -40,6 +40,7 @@ from modules._00_core.models import (
     TickLog,
     TickLogStatus,
 )
+from modules._00_core.tick_schedule import next_tick_after
 from tests.fixtures.factories import (
     GameClockFactory,
     NationFactory,
@@ -358,13 +359,15 @@ class TestAdminReset:
         clock = result.scalar_one()
         assert clock.current_turn == 0
         assert clock.last_tick_at is None
-        expected_min = before + timedelta(
-            hours=CORE_CONFIG.tick.tick_interval_hours
-        )
-        expected_max = after + timedelta(
-            hours=CORE_CONFIG.tick.tick_interval_hours
-        )
-        assert expected_min <= _utc(clock.next_tick_at) <= expected_max
+        candidates = {
+            next_tick_after(
+                t,
+                CORE_CONFIG.tick.tick_time,
+                CORE_CONFIG.tick.tick_timezone,
+            )
+            for t in (before, after)
+        }
+        assert _utc(clock.next_tick_at) in candidates
 
         # Survivors: players and the tick audit trail.
         result = await test_db_session.execute(select(Player))
