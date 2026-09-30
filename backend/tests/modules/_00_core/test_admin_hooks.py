@@ -539,6 +539,107 @@ class TestAdminEndpointFunctions:
         assert result["next_tick_at"].endswith(" 00:00:00")
 
     @pytest.mark.asyncio
+    async def test_reset_restarts_tick_log_ids_from_1(
+        self, test_db_session
+    ):
+        """Real ticks push ids past 1; after reset the next row is id 1."""
+        from core.admin.router import admin_tick_run
+
+        test_db_session.add(GameClockFactory.build(current_turn=0))
+        await test_db_session.commit()
+
+        for _ in range(3):
+            result = await admin_tick_run(
+                admin=None, session=test_db_session
+            )
+            assert result["ok"] is True
+        assert result["tick_log"]["id"] == 3
+
+        await admin_reset(test_db_session)
+        await test_db_session.commit()
+
+        result = await admin_tick_run(admin=None, session=test_db_session)
+        assert result["ok"] is True
+        assert result["current_turn"] == 1
+        assert result["tick_log"]["id"] == 1
+        assert result["tick_log"]["turn_number"] == 1
+
+    @pytest.mark.asyncio
+    async def test_reset_on_empty_tick_log_next_id_is_1(
+        self, test_db_session
+    ):
+        """Resetting an empty journal is fine and the first tick still
+        gets id 1."""
+        from core.admin.router import admin_tick_run
+
+        test_db_session.add(GameClockFactory.build(current_turn=0))
+        await test_db_session.commit()
+
+        await admin_reset(test_db_session)
+        await test_db_session.commit()
+
+        result = await admin_tick_run(admin=None, session=test_db_session)
+        assert result["ok"] is True
+        assert result["tick_log"]["id"] == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_later_hook_rolls_back_id_counter(
+        self, test_db_session
+    ):
+        """A failing hook after 00_core rolls the whole reset back: the
+        old tick_log rows return AND the id counter is not restarted —
+        the next insert resumes above the restored rows instead of
+        colliding with them."""
+        from core.admin.router import (
+            ResetFailedError,
+            StateResetRequest,
+            admin_state_reset,
+        )
+
+        # Reversed registration order: 00_core runs first, fails_later
+        # blows up after the row delete + counter reset were applied.
+        async def fails_later(session):
+            raise RuntimeError("later hook failed")
+
+        AdminRegistry.register_reset("fails_later", fails_later)
+        register_admin_hooks()
+
+        # Rows inserted WITHOUT explicit ids so they consume the real
+        # counter (identity sequence on Postgres, rowid on SQLite): 1,2,3.
+        for turn in (1, 2, 3):
+            now = datetime.now(timezone.utc)
+            test_db_session.add(
+                TickLog(
+                    turn_number=turn,
+                    started_at=now,
+                    finished_at=now,
+                    status=TickLogStatus.COMPLETED,
+                )
+            )
+        await test_db_session.commit()
+
+        with pytest.raises(ResetFailedError):
+            await admin_state_reset(
+                body=StateResetRequest(confirm=True),
+                admin=None,
+                session=test_db_session,
+            )
+
+        result = await test_db_session.execute(select(TickLog))
+        assert len(result.scalars().all()) == 3
+
+        now = datetime.now(timezone.utc)
+        new_row = TickLog(
+            turn_number=99,
+            started_at=now,
+            finished_at=now,
+            status=TickLogStatus.COMPLETED,
+        )
+        test_db_session.add(new_row)
+        await test_db_session.flush()
+        assert new_row.id == 4
+
+    @pytest.mark.asyncio
     async def test_admin_state_reset_direct(self, test_db_session):
         from core.admin.router import (
             ConfirmRequiredError,
