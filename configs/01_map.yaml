@@ -1,0 +1,47 @@
+# Баланс и настройки модуля 01_map (Spec 1.0, Часть 4).
+# Валидируется backend/src/modules/_01_map/config_schema.py при старте сервера и в CI.
+# Все ключи обязательны; неизвестные ключи запрещены (опечатка ломает запуск).
+
+view:
+  zoom_min: 1.0                  # минимальный масштаб; 1.0 = карта целиком вписана в окно
+  zoom_max: 16.0                 # максимальный масштаб относительно вписанного вида
+  pan_margin_fraction: 0.1       # допустимый отступ за край поля при перетаскивании, доля размера окна
+  label_min_width_px: 48         # подпись узла показывается, если его ширина на экране не меньше, px
+  search_min_chars: 2            # минимум символов для запуска поиска по названию
+  search_max_results: 20         # максимум результатов в выпадающем списке поиска
+
+refresh:
+  tick_refresh_delay_seconds: 5      # пауза после времени смены хода перед запросом состояния, сек
+  tick_refresh_jitter_seconds: 30    # случайный разброс запроса, чтобы клиенты не пришли одновременно, сек
+  retry_delay_seconds: 10            # пауза перед повтором неудавшегося запроса, сек
+  max_retries: 3                     # число повторов подряд до пометки «данные устарели»
+  stale_after_seconds: 900           # возраст данных, после которого они помечаются устаревшими при ошибках, сек
+
+colors:
+  neutral_province: "#8C8C8C"    # свободная провинция
+  sea: "#1E3547"                 # морская зона
+  outside: "#2A2A2A"             # земли за краем игрового поля
+  province_border: "#3A3A3A"     # границы провинций
+  hover: "#FFFFFF"               # подсветка при наведении
+  selected: "#FFD24A"            # выбранный узел
+
+strait:
+  default_crossing_multiplier: 0.5   # доля обычной проходимости при переправе через узкий пролив, (0.05..1.0]
+
+starting_group:
+  require_connected: true        # стартовая группа провинций обязана быть связной (Bible §6)
+
+big_window:
+  method: disabled               # disabled | fullscreen_api | resize_window | separate_window; выбирается по итогам проверки в ВК
+  resize_target_width_px: 1000   # целевая ширина окна для метода resize_window, px
+  resize_target_height_px: 1200  # целевая высота окна для метода resize_window, px
+  pass_ttl_seconds: 60           # срок действия одноразового пропуска для метода separate_window, сек
+
+limits:
+  max_nodes: 3000                # защита от подмены файла карты: максимум узлов в manifest
+  max_edges_per_node: 40         # защита: максимум связей у одного узла
+  max_geometry_bytes: 5000000    # защита: максимальный размер файла геометрии, байт
+  max_manifest_bytes: 3000000    # защита: максимальный размер manifest, байт
+
+attribution:
+  text: "Карта: MapChart.net, лицензия CC BY-SA 4.0"   # строка авторства в клиенте
