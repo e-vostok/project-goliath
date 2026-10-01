@@ -2,9 +2,8 @@
 
 Every tunable of the tool lives in ``tools/map_pipeline/pipeline_config.yaml``
 and is validated here against hard ranges. Unknown keys are forbidden: a typo
-in a key name fails the run instead of being silently ignored. Sections
-``geometry``, ``raster`` and ``simplify`` are declared now so the schema is
-complete; their logic arrives in MP-2 / MP-3.
+in a key name fails the run instead of being silently ignored. The
+``simplify`` section is declared ahead of its logic, which arrives in MP-3.
 """
 from __future__ import annotations
 
@@ -51,6 +50,26 @@ class RasterConfig(_Strict):
     pixels_per_unit: int = Field(ge=1, le=16)
 
 
+class SeaConfig(_Strict):
+    """Sea-zone seeds: snapping radius in SVG units (MP-2)."""
+
+    seed_snap_radius: float = Field(ge=0.25, le=3.0)
+
+
+class ReportConfig(_Strict):
+    """graph_report.md thresholds (MP-2)."""
+
+    land_degree_warn: int = Field(ge=6, le=40)
+    small_area_warn: float = Field(ge=0.0, le=2.0)
+    largest_lakes: int = Field(ge=1, le=50)
+
+
+class PreviewConfig(_Strict):
+    """PNG preview density in pixels per SVG unit (MP-2)."""
+
+    pixels_per_unit: int = Field(ge=2, le=12)
+
+
 class SimplifyConfig(_Strict):
     """Contour simplification tolerance (MP-3)."""
 
@@ -64,6 +83,9 @@ class PipelineConfig(_Strict):
     isolated: IsolatedConfig
     geometry: GeometryConfig
     raster: RasterConfig
+    sea: SeaConfig
+    report: ReportConfig
+    preview: PreviewConfig
     simplify: SimplifyConfig
 
 

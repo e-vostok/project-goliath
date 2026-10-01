@@ -13,6 +13,7 @@ from pathlib import Path
 
 from lxml import etree
 from shapely import make_valid
+from shapely.errors import GEOSException
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 from shapely.ops import unary_union
 from svgpathtools import Line, parse_path
@@ -88,6 +89,22 @@ def read_province_paths(svg_path: Path) -> dict[str, str]:
     return paths
 
 
+def safe_union(geoms: list):
+    """``unary_union`` with a pairwise fallback for a GEOS noding quirk.
+
+    ``unary_union`` can raise ``TopologyException: side location conflict``
+    on some disjoint inputs (GEOS 3.13); a pairwise union handles them.
+    """
+    geoms = list(geoms)
+    try:
+        return unary_union(geoms)
+    except GEOSException:
+        out = GeometryCollection()
+        for g in geoms:
+            out = out.union(g)
+        return out
+
+
 def _polygon_parts(geom, min_area: float) -> list[Polygon]:
     """Extract every polygonal part of ``geom`` of at least ``min_area``."""
     out: list[Polygon] = []
@@ -140,7 +157,7 @@ def path_to_polygon_parts(d: str, cfg: CleanConfig) -> list[Polygon]:
             poly = make_valid(poly)
         polygons.extend(_polygon_parts(poly, cfg.min_part_area))
 
-    merged = unary_union(polygons) if polygons else GeometryCollection()
+    merged = safe_union(polygons) if polygons else GeometryCollection()
     parts = _polygon_parts(merged, cfg.min_part_area)
     parts.sort(key=lambda p: tuple(p.bounds))
     return parts

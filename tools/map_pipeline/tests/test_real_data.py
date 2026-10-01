@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from conftest import run_nodes
+from conftest import run_graph, run_nodes
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = REPO_ROOT / "data" / "map"
@@ -58,6 +58,13 @@ def test_real_nodes(real_data_dir, tmp_path):
     assert len(nodes) == 1086
     assert [n["id"] for n in nodes] == list(range(1001, 2087))
     assert all(n["parts"] >= 1 for n in nodes)
+
+    # the lock also holds the 37 sea zone ids (2087..2123)
+    lock = json.loads((real_data_dir / "ids.lock.json").read_text())
+    assert len(lock["ids"]) == 1086 + 37
+    sea_ids = sorted(v for k, v in lock["ids"].items() if k.startswith("sea_"))
+    assert sea_ids == list(range(2087, 2124))
+    assert lock["ids"]["sea_adriatic"] == 2087
 
     # second run changes nothing; --check agrees
     before = (real_data_dir / "ids.lock.json").read_bytes()
@@ -108,3 +115,109 @@ def test_real_isolated_parts(real_data_dir, tmp_path, capsys):
         assert abs(x - ex) < 0.1
         assert abs(y - ey) < 0.1
         assert abs(area - earea) < 0.01
+
+
+def test_real_graph(real_data_dir, tmp_path, capsys):
+    """Steps 1-6 on the real map: nodes, edges, zones, invariants.
+
+    Numbers are sanity bands from the Lead AI's independent prototype, not
+    exact values; the sea sizes are printed for review either way.
+    """
+    out_dir = tmp_path / "out_graph"
+    t0 = time.time()
+    assert run_graph(real_data_dir, out_dir, preview=True) == 0
+    print(f"\nreal-data graph run: {time.time() - t0:.1f}s")
+
+    graph = json.loads(
+        (out_dir / "graph.json").read_text(encoding="utf-8")
+    )
+    land = [n for n in graph["nodes"] if n["kind"] == "LAND"]
+    seas = [n for n in graph["nodes"] if n["kind"] == "SEA"]
+    assert len(land) == 1086
+    assert len(seas) == 37
+    assert [n["id"] for n in land] == list(range(1001, 2087))
+    assert [n["id"] for n in seas] == list(range(2087, 2124))
+    assert seas[0]["key"] == "sea_adriatic"
+
+    for n in seas:
+        print(f"  {n['key']}: {n['area']}")
+    by_key = {n["key"]: n for n in seas}
+    assert 5.0 < by_key["sea_marmara"]["area"] < 40.0
+    for n in seas:
+        if n["key"] != "sea_marmara":
+            assert n["area"] > 40.0, n["key"]
+    assert abs(by_key["sea_azov"]["area"] - 63.0) < 20.0
+    assert abs(by_key["sea_danish_straits"]["area"] - 73.0) < 20.0
+
+    edges = graph["edges"]
+    by_type = {}
+    for e in edges:
+        by_type[e["type"]] = by_type.get(e["type"], 0) + 1
+    print("  edge counts:", by_type)
+    assert 2700 <= by_type["land"] <= 2850
+    assert 380 <= by_type["coast"] <= 420
+    auto_sea = [e for e in edges
+                if e["type"] == "sea" and e["len"] is not None]
+    manual_sea = [e for e in edges
+                  if e["type"] == "sea" and e["len"] is None]
+    assert 38 <= len(auto_sea) <= 50
+    # 4 manual sea edges are listed in overrides, but sea_azov-sea_black_east
+    # (Kerch) turns out geometrically adjacent at r=4: kept as the automatic
+    # edge plus an INFO line instead of a manual one -> 3 manual edges.
+    assert len(manual_sea) == 3
+    assert by_type["strait"] == 16
+    by_id = {n["id"]: n["key"] for n in graph["nodes"]}
+    pairs = {(by_id[e["a"]], by_id[e["b"]]): e for e in edges}
+    for a, b in (
+        ("sea_atl_iberia", "sea_alboran"),
+        ("sea_marmara", "sea_black_west"),
+        ("sea_marmara", "sea_aegean"),
+        ("sea_azov", "sea_black_east"),
+    ):
+        pair = tuple(sorted((a, b)))
+        assert pairs[pair]["type"] == "sea", pair
+
+    deg = {n["id"]: 0 for n in graph["nodes"]}
+    for e in edges:
+        deg[e["a"]] += 1
+        deg[e["b"]] += 1
+    assert all(deg[n["id"]] > 0 for n in land)
+    assert all(deg[n["id"]] <= 20 for n in land)
+
+    report = (out_dir / "graph_report.md").read_text(encoding="utf-8")
+    wo_section = report.split("## water_outside")[1].split("##")[0]
+    wo_lines = [ln for ln in wo_section.splitlines()
+                if "component area" in ln]
+    assert len(wo_lines) == 3  # Aral, Red Sea, Persian Gulf
+    assert "without straits and manual edges: yes" in report
+
+    # raster contract for MP-3
+    import numpy as np
+
+    meta = json.loads(
+        (out_dir / "sea_raster.json").read_text(encoding="utf-8")
+    )
+    labels = np.load(out_dir / "sea_labels.npy")
+    kinds = np.load(out_dir / "sea_kinds.npy")
+    assert labels.dtype == np.int16
+    assert kinds.dtype == np.uint8
+    assert meta["width"] == labels.shape[1]
+    assert meta["height"] == labels.shape[0]
+    assert len(meta["zone_keys"]) == 37
+    assert labels.max() == 37  # every zone got pixels
+    assert (out_dir / "graph_preview.png").exists()
+
+    # second run is byte-identical; --check passes against the committed lock
+    snapshot = {
+        p.name: p.read_bytes()
+        for p in out_dir.iterdir()
+        if p.suffix in {".json", ".md"}
+    }
+    labels_b = np.load(out_dir / "sea_labels.npy").copy()
+    kinds_b = np.load(out_dir / "sea_kinds.npy").copy()
+    assert run_graph(real_data_dir, out_dir) == 0
+    for name, blob in snapshot.items():
+        assert (out_dir / name).read_bytes() == blob, name
+    assert np.array_equal(np.load(out_dir / "sea_labels.npy"), labels_b)
+    assert np.array_equal(np.load(out_dir / "sea_kinds.npy"), kinds_b)
+    assert run_graph(real_data_dir, out_dir, check=True) == 0

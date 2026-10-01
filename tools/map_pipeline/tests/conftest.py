@@ -98,6 +98,20 @@ def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
     return main(argv)
 
 
+def run_graph(
+    data_dir: Path,
+    out_dir: Path,
+    check: bool = False,
+    preview: bool = False,
+) -> int:
+    argv = ["graph", "--data-dir", str(data_dir), "--out-dir", str(out_dir)]
+    if check:
+        argv.append("--check")
+    if not preview:
+        argv.append("--no-preview")
+    return main(argv)
+
+
 @pytest.fixture
 def run_pipeline(tmp_path):
     def _run(data_dir: Path, check: bool = False) -> tuple[int, Path]:
@@ -105,3 +119,57 @@ def run_pipeline(tmp_path):
         return run_nodes(data_dir, out_dir, check), out_dir
 
     return _run
+
+
+@pytest.fixture
+def run_graph_pipeline(tmp_path):
+    def _run(
+        data_dir: Path, check: bool = False, preview: bool = False
+    ) -> tuple[int, Path]:
+        out_dir = tmp_path / "out"
+        return run_graph(data_dir, out_dir, check, preview), out_dir
+
+    return _run
+
+
+def sea_raster_meta(out_dir: Path) -> dict:
+    return json.loads((out_dir / "sea_raster.json").read_text(encoding="utf-8"))
+
+
+def kind_at(out_dir: Path, x: float, y: float) -> int:
+    """Per-pixel water kind at a source point (see sea_raster.json)."""
+    import numpy as np
+
+    kinds = np.load(out_dir / "sea_kinds.npy")
+    meta = sea_raster_meta(out_dir)
+    x0, y0, r = meta["frame"][0], meta["frame"][1], meta["pixels_per_unit"]
+    return int(kinds[round((y - y0) * r), round((x - x0) * r)])
+
+
+def label_at(out_dir: Path, x: float, y: float) -> int:
+    """Zone index (1-based) at a source point; 0 = no zone."""
+    import numpy as np
+
+    labels = np.load(out_dir / "sea_labels.npy")
+    meta = sea_raster_meta(out_dir)
+    x0, y0, r = meta["frame"][0], meta["frame"][1], meta["pixels_per_unit"]
+    return int(labels[round((y - y0) * r), round((x - x0) * r)])
+
+
+def read_graph(out_dir: Path) -> dict:
+    return json.loads((out_dir / "graph.json").read_text(encoding="utf-8"))
+
+
+def edges_by_key(graph: dict) -> dict:
+    """``{(a_key, b_key): edge}`` lookup over a graph.json document."""
+    by_id = {n["id"]: n["key"] for n in graph["nodes"]}
+    return {
+        (by_id[e["a"]], by_id[e["b"]]): e for e in graph["edges"]
+    }
+
+
+def graph_overrides(**kw) -> dict:
+    """base_overrides tuned for small fixtures: modest margin, no smoothing."""
+    data = base_overrides(sea_margin=3.0, sea_margin_smooth=0.0)
+    data.update(kw)
+    return data

@@ -271,8 +271,10 @@ def collect_reference_errors(
     for i, item in enumerate(overrides.keep_parts):
         land_ref(item.key, f"keep_parts[{i}]")
     for i, s in enumerate(overrides.straits):
-        land_ref(s.a, f"straits[{i}].a")
-        land_ref(s.b, f"straits[{i}].b")
+        # Sea keys are well-formed references here; the graph layer then
+        # rejects them as EDGE_TYPE_MISMATCH (straits join LAND only).
+        endpoint(s.a, f"straits[{i}].a")
+        endpoint(s.b, f"straits[{i}].b")
     for i, e in enumerate(overrides.edges_add):
         endpoint(e.a, f"edges_add[{i}].a")
         endpoint(e.b, f"edges_add[{i}].b")

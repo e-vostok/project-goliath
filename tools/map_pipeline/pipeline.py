@@ -1,5 +1,6 @@
-"""Steps 3–4 of the pipeline contract (Spec, Appendix A): select the game
-field, drop/keep listed parts, detect isolated parts and assign stable ids.
+"""Pipeline contract steps (Spec, Appendix A): select the game field,
+drop/keep listed parts, detect isolated parts, assign stable ids, build sea
+zones and the node graph.
 
 Deterministic by construction: sorted iteration everywhere, no timestamps, no
 randomness — identical inputs produce byte-identical outputs.
@@ -11,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 from shapely import STRtree
 from shapely.geometry import Point, Polygon
 
@@ -22,21 +24,21 @@ from .errors import (
     ISOLATED_PART,
     KEY_COLLISION,
     KEY_INVALID,
-    KEY_REMOVED,
     PipelineError,
     PipelineFailure,
 )
+from .graph import build_graph
+from .ids import assign_ids
 from .models import (
-    IdsLock,
-    MIN_NODE_ID,
     Boundary,
     Overrides,
     collect_reference_errors,
     load_boundary,
-    load_ids_lock,
     load_overrides,
 )
 from .pipeline_config_schema import PipelineConfig, load_pipeline_config
+from .preview import render_preview
+from .seas import SeaRaster, build_seas, land_label_raster
 from .svg_source import build_geometries, read_province_paths
 
 _KEY_RE = re.compile(r"^[a-z0-9_]+$")
@@ -56,6 +58,20 @@ class _Node:
     key: str
     source_name: str
     parts: list[Polygon] = field(default_factory=list)
+
+
+@dataclass
+class _Prep:
+    """Result of the shared steps 1–3 used by both commands."""
+
+    cfg: PipelineConfig
+    boundary: Boundary
+    overrides: Overrides
+    paths: dict[str, str]
+    nodes: dict[str, _Node]
+    geoms: dict[str, list[Polygon]]
+    info: list[str]
+    applied_drops: list[tuple[str, float]]
 
 
 def _point_in_part(part: Polygon, point: tuple[float, float]) -> bool:
@@ -246,62 +262,36 @@ def _check_isolated_parts(
         raise PipelineFailure(errors)
 
 
-def _canonical_lock(ids: dict[str, int]) -> str:
-    ordered = {k: v for k, v in sorted(ids.items(), key=lambda kv: kv[1])}
-    doc = {"version": 1, "ids": ordered}
-    return json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
-
-
-def _assign_ids(
-    data_dir: Path, keys: list[str]
-) -> tuple[dict[str, int], list[int], str, bool]:
-    """Load the lock, append new keys.
-
-    Returns ``(ids, new_ids, canonical_text, changed)``: ``ids`` maps every
-    included key, ``new_ids`` lists freshly assigned ids in ascending order,
-    ``changed`` says the canonical text differs from the file on disk.
-    """
-    lock_path = data_dir / _IDS_LOCK_FILE
-    existing: dict[str, int] = {}
-    old_text: str | None = None
-    if lock_path.exists():
-        lock: IdsLock = load_ids_lock(lock_path)
-        existing = dict(lock.ids)
-        old_text = lock_path.read_text(encoding="utf-8")
-
-    key_set = set(keys)
-    removed = sorted(k for k in existing if k not in key_set)
-    if removed:
-        raise PipelineFailure(
-            [
-                PipelineError(
-                    KEY_REMOVED,
-                    f"ids.lock.json key {k!r} is no longer an included "
-                    "province; remove it manually if intentional",
-                )
-                for k in removed
-            ]
-        )
-
-    ids = {k: existing[k] for k in keys if k in existing}
-    new_ids: list[int] = []
-    next_id = max(existing.values(), default=MIN_NODE_ID - 1) + 1
-    for key in keys:
-        if key not in ids:
-            ids[key] = next_id
-            new_ids.append(next_id)
-            next_id += 1
-
-    text = _canonical_lock(ids)
-    return ids, new_ids, text, text != old_text
-
-
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
 
-def _build_report(
+def _prepare(data_dir: Path) -> _Prep:
+    """Shared steps 1–3: load inputs, select nodes, apply drop_parts."""
+    cfg = load_pipeline_config()
+    boundary = load_boundary(data_dir / _BOUNDARY_FILE)
+    overrides = load_overrides(data_dir / _OVERRIDES_FILE)
+    ref_errors = collect_reference_errors(overrides, boundary)
+    if ref_errors:
+        raise PipelineFailure(ref_errors)
+
+    paths = read_province_paths(data_dir / _SOURCE_FILE)
+    nodes, info = _select_nodes(paths, boundary, overrides)
+    geoms = build_geometries(paths, cfg.clean)
+    for node in nodes.values():
+        node.parts = geoms[node.source_name]
+
+    applied = _apply_drop_parts(nodes, overrides)
+    _check_isolated_parts(nodes, geoms, boundary, overrides, cfg)
+    return _Prep(cfg, boundary, overrides, paths, nodes, geoms, info, applied)
+
+
+def _sea_keys(overrides: Overrides) -> list[str]:
+    return [z.key for z in overrides.sea_zones]
+
+
+def _build_nodes_report(
     source_path_count: int,
     boundary: Boundary,
     nodes: dict[str, _Node],
@@ -332,30 +322,16 @@ def _build_report(
     return "\n".join(lines)
 
 
-def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
-    """Run steps 1–4. Returns the process exit code (0 ok / 1 failure)."""
-    cfg = load_pipeline_config()
-    boundary = load_boundary(data_dir / _BOUNDARY_FILE)
-    overrides = load_overrides(data_dir / _OVERRIDES_FILE)
-    ref_errors = collect_reference_errors(overrides, boundary)
-    if ref_errors:
-        raise PipelineFailure(ref_errors)
-
-    paths = read_province_paths(data_dir / _SOURCE_FILE)
-    nodes, info = _select_nodes(paths, boundary, overrides)
-    geoms = build_geometries(paths, cfg.clean)
-    for node in nodes.values():
-        node.parts = geoms[node.source_name]
-
-    applied = _apply_drop_parts(nodes, overrides)
-    _check_isolated_parts(nodes, geoms, boundary, overrides, cfg)
-
-    keys = sorted(nodes)
-    ids, new_ids, lock_text, lock_changed = _assign_ids(data_dir, keys)
-
-    if check:
-        return 1 if lock_changed else 0
-
+def _write_nodes_outputs(
+    data_dir: Path,
+    out_dir: Path,
+    prep: _Prep,
+    ids: dict[str, int],
+    new_ids: list[int],
+    lock_text: str,
+    lock_changed: bool,
+) -> None:
+    """ids.lock.json (if changed), land_nodes.json and report.md."""
     if lock_changed:
         _write_text(data_dir / _IDS_LOCK_FILE, lock_text)
 
@@ -367,7 +343,7 @@ def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
             "parts": len(node.parts),
             "area": round(sum(p.area for p in node.parts), 4),
         }
-        for node in nodes.values()
+        for node in prep.nodes.values()
     ]
     records.sort(key=lambda r: r["id"])
     _write_text(
@@ -378,8 +354,243 @@ def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
     new_id_range = (new_ids[0], new_ids[-1]) if new_ids else None
     _write_text(
         out_dir / "report.md",
-        _build_report(
-            len(paths), boundary, nodes, applied, info, new_id_range
+        _build_nodes_report(
+            len(prep.paths), prep.boundary, prep.nodes,
+            prep.applied_drops, prep.info, new_id_range,
         ),
     )
+
+
+def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
+    """Run steps 1–4. Returns the process exit code (0 ok / 1 failure)."""
+    prep = _prepare(data_dir)
+    ids, new_ids, lock_text, lock_changed = assign_ids(
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+    )
+    if check:
+        return 1 if lock_changed else 0
+    _write_nodes_outputs(
+        data_dir, out_dir, prep, ids, new_ids, lock_text, lock_changed
+    )
+    return 0
+
+
+def _graph_json(graph) -> str:
+    nodes = [
+        {
+            "id": n.id,
+            "key": n.key,
+            "kind": n.kind,
+            "name": n.name,
+            "name_ru": n.name_ru,
+            "area": round(n.area, 2) if n.kind == "SEA" else round(n.area, 4),
+        }
+        for n in graph.nodes
+    ]
+    edges = []
+    for e in graph.edges:
+        rec = {
+            "a": e.a,
+            "b": e.b,
+            "type": e.type,
+            "len": None if e.len is None else round(e.len, 3),
+        }
+        if e.type == "strait":
+            rec["name"] = e.name
+            rec["multiplier"] = e.multiplier
+        edges.append(rec)
+    return (
+        json.dumps({"nodes": nodes, "edges": edges}, ensure_ascii=False,
+                   indent=2)
+        + "\n"
+    )
+
+
+def _sea_raster_json(sea: SeaRaster) -> str:
+    f = sea.frame
+    doc = {
+        "frame": [f.x0, f.y0, f.x1, f.y1],
+        "pixels_per_unit": f.r,
+        "width": f.width,
+        "height": f.height,
+        "zone_keys": sea.zone_keys,
+        "pixel_convention": (
+            "pixel (col,row) has its centre at (x0 + col/r, y0 + row/r); "
+            "a point (x,y) maps to pixel "
+            "(round((x-x0)*r), round((y-y0)*r))"
+        ),
+    }
+    return json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
+
+
+def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
+    cfg = prep.cfg
+    by_id = {n.id: n for n in graph.nodes}
+    neighbours: dict[int, set[int]] = {n.id: set() for n in graph.nodes}
+    for e in graph.edges:
+        neighbours[e.a].add(e.b)
+        neighbours[e.b].add(e.a)
+
+    by_type: dict[str, int] = {}
+    for e in graph.edges:
+        by_type[e.type] = by_type.get(e.type, 0) + 1
+    manual = sum(1 for e in graph.edges if e.manual)
+    straits = by_type.get("strait", 0)
+    land_count = sum(1 for n in graph.nodes if n.kind == "LAND")
+
+    lines = [
+        "# map_pipeline — graph report",
+        "",
+        f"- Land nodes: {land_count}",
+        f"- Sea zones: {len(sea.zone_keys)}",
+        f"- Edges total: {len(graph.edges)}",
+    ]
+    for t in ("land", "coast", "sea", "strait"):
+        lines.append(f"  - {t}: {by_type.get(t, 0)}")
+    lines.append(f"- Manual edges applied (edges_add): {manual}")
+    lines.append(f"- Straits applied: {straits}")
+    lines.append(
+        "- Graph stays connected without straits and manual edges: "
+        + ("yes" if graph.connected_no_manual else "NO")
+    )
+
+    lines += ["", "## Sea zones", ""]
+    lines.append("| # | key | name_ru | area | seeds | neighbours |")
+    lines.append("| - | --- | ------- | ---- | ----- | ---------- |")
+    seeds_per_zone: dict[str, int] = {}
+    for z in prep.overrides.sea_zones:
+        seeds_per_zone[z.key] = len(z.seeds)
+    for z, key in enumerate(sea.zone_keys, start=1):
+        node = next(n for n in graph.nodes if n.zone_index == z and n.kind == "SEA")
+        lines.append(
+            f"| {z} | {key} | {sea.zone_name_ru[z - 1]} | "
+            f"{round(sea.zone_areas[z - 1], 2)} | {seeds_per_zone[key]} | "
+            f"{len(neighbours[node.id])} |"
+        )
+
+    lines += ["", "## Snapped seeds", ""]
+    if not sea.snapped:
+        lines.append("- none")
+    for s in sea.snapped:
+        flag = " (already claimed — skipped)" if s.claimed else ""
+        lines.append(
+            f"- `{s.zone_key}` ({s.point[0]}, {s.point[1]}) -> "
+            f"pixel {s.pixel}, distance {round(s.distance, 3)} units{flag}"
+        )
+
+    lines += ["", "## Lakes (inland water)", ""]
+    lines.append(
+        f"- Lakes: {len(sea.lakes)}, total area "
+        f"{round(sum(l.area for l in sea.lakes), 2)}"
+    )
+    biggest = sorted(sea.lakes, key=lambda l: -l.area)[
+        : cfg.report.largest_lakes
+    ]
+    for lake in biggest:
+        lines.append(
+            f"  - area {round(lake.area, 2)}, centroid "
+            f"({round(lake.centroid[0], 2)}, {round(lake.centroid[1], 2)})"
+        )
+
+    lines += ["", "## water_outside", ""]
+    if not sea.water_outside:
+        lines.append("- none matched")
+    for name, area in sea.water_outside:
+        lines.append(f"- {name}: component area {round(area, 2)}")
+
+    lines += ["", "## Unreached band pieces", ""]
+    lines.append(
+        f"- {sea.unreached_small_count} pieces below lake_max_area, "
+        f"total area {round(sea.unreached_small_area, 2)}"
+    )
+
+    lines += ["", "## Anomalies", ""]
+    flagged = 0
+    for n in graph.nodes:
+        deg = len(neighbours[n.id])
+        if n.kind == "LAND" and deg >= cfg.report.land_degree_warn:
+            lines.append(
+                f"- land node `{n.key}` has {deg} neighbours "
+                f"(>= {cfg.report.land_degree_warn})"
+            )
+            flagged += 1
+        if n.area < cfg.report.small_area_warn:
+            lines.append(
+                f"- node `{n.key}` area {round(n.area, 4)} "
+                f"< {cfg.report.small_area_warn}"
+            )
+            flagged += 1
+        if n.kind == "SEA" and deg < 3:
+            lines.append(
+                f"- sea zone `{n.key}` has only {deg} neighbours"
+            )
+            flagged += 1
+    if not flagged:
+        lines.append("- none")
+
+    lines += ["", "## Islands (land nodes whose neighbours are all SEA)", ""]
+    islands = [
+        n
+        for n in graph.nodes
+        if n.kind == "LAND"
+        and neighbours[n.id]
+        and all(by_id[i].kind == "SEA" for i in neighbours[n.id])
+    ]
+    if not islands:
+        lines.append("- none")
+    for n in islands:
+        zones = ", ".join(
+            sorted(by_id[i].key for i in neighbours[n.id])
+        )
+        lines.append(
+            f"- `{n.key}` (area {round(n.area, 2)}): {zones}"
+        )
+    lines.append("")
+
+    all_info = prep.info + graph.info
+    if all_info:
+        lines += ["## INFO", ""]
+        lines.extend(f"- {item}" for item in all_info)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def run_graph(
+    data_dir: Path, out_dir: Path, check: bool = False,
+    preview: bool = True,
+) -> int:
+    """Run steps 1–6. Returns the process exit code (0 ok / 1 failure)."""
+    prep = _prepare(data_dir)
+    sea = build_seas(prep.nodes, prep.geoms, prep.overrides, prep.cfg)
+    ids, new_ids, lock_text, lock_changed = assign_ids(
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+    )
+    ordered = sorted(prep.nodes, key=lambda k: ids[k])
+    land_labels = land_label_raster(
+        [prep.nodes[k] for k in ordered], sea.land, sea.frame
+    )
+    graph = build_graph(
+        prep.nodes, sea, ids, prep.overrides, prep.cfg, land_labels
+    )
+
+    if check:
+        return 1 if lock_changed else 0
+
+    _write_nodes_outputs(
+        data_dir, out_dir, prep, ids, new_ids, lock_text, lock_changed
+    )
+    _write_text(out_dir / "graph.json", _graph_json(graph))
+    np.save(out_dir / "sea_labels.npy", sea.labels)
+    np.save(out_dir / "sea_kinds.npy", sea.kinds)
+    _write_text(out_dir / "sea_raster.json", _sea_raster_json(sea))
+    _write_text(out_dir / "graph_report.md",
+                _build_graph_report(prep, sea, graph))
+    if preview:
+        img = render_preview(
+            sea, land_labels, graph,
+            {k: prep.nodes[k].parts for k in prep.nodes},
+            prep.cfg,
+        )
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img.save(out_dir / "graph_preview.png")
     return 0
