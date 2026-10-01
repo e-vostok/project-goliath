@@ -1,0 +1,36 @@
+# configs/00_core.yaml
+# Балансовые параметры модуля 00_core.
+# Валидируется backend/src/modules/_00_core/config_schema.py при старте приложения и в CI.
+
+tick:
+  # Суточный тик в фиксированное локальное время (строгий формат HH:MM, 24ч).
+  tick_time: "00:00"
+  # IANA-зона для tick_time; должна резолвиться через zoneinfo.ZoneInfo.
+  tick_timezone: "Europe/Moscow"
+  # Наследие: используется только миграцией 0001 для посева первого
+  # next_tick_at на свежей БД. Расписание тика задают tick_time/tick_timezone.
+  tick_interval_hours: 24
+  retry_delay_seconds: 60
+
+auth:
+  vk_ts_freshness_window_minutes: 30
+  jwt_ttl_minutes: 60
+
+nation:
+  nation_name_min_length: 3
+  nation_name_max_length: 40
+  min_provinces_per_nation: 1
+  max_provinces_per_nation: 5
+  leader_name_min_length: 2
+  leader_name_max_length: 60
+  leader_title_min_length: 2
+  leader_title_max_length: 60
+  history_url_max_length: 200
+  # Допустимые хосты ссылки на историю государства (нижний регистр, без схемы и пути).
+  history_url_allowed_hosts:
+    - "vk.com"
+    - "vk.ru"
+
+calendar:
+  epoch_start_date: "0001-01-01"
+  days_per_turn: 7
