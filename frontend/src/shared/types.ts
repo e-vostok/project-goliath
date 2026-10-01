@@ -28,6 +28,10 @@ export interface NationDTO {
   color_hex: string;
   owner_player_id: string;
   province_ids: number[];
+  /** null only for nations created before the profile migration. */
+  leader_name: string | null;
+  leader_title: string | null;
+  history_url: string | null;
   created_at: string;
 }
 
@@ -35,11 +39,30 @@ export interface NationCreateRequest {
   name: string;
   color_hex: string;
   province_ids: number[];
+  leader_name: string;
+  leader_title: string;
+  history_url: string;
 }
 
 export interface NationUpdateRequest {
   name?: string | null;
   color_hex?: string | null;
+  leader_name?: string | null;
+  leader_title?: string | null;
+  history_url?: string | null;
+}
+
+export interface NationRulesDTO {
+  name_min_length: number;
+  name_max_length: number;
+  leader_name_min_length: number;
+  leader_name_max_length: number;
+  leader_title_min_length: number;
+  leader_title_max_length: number;
+  history_url_max_length: number;
+  history_url_allowed_hosts: string[];
+  min_provinces: number;
+  max_provinces: number;
 }
 
 export interface NationDeleteRequest {
@@ -105,6 +128,9 @@ export const ErrorCodes = {
   PROVINCE_TAKEN: 'PROVINCE_TAKEN',
   PROVINCE_NOT_FOUND: 'PROVINCE_NOT_FOUND',
   PROVINCE_COUNT_OUT_OF_RANGE: 'PROVINCE_COUNT_OUT_OF_RANGE',
+  LEADER_NAME_INVALID: 'LEADER_NAME_INVALID',
+  LEADER_TITLE_INVALID: 'LEADER_TITLE_INVALID',
+  HISTORY_URL_INVALID: 'HISTORY_URL_INVALID',
   NATION_ALREADY_EXISTS: 'NATION_ALREADY_EXISTS',
   NATION_NOT_FOUND: 'NATION_NOT_FOUND',
   INVALID_SIGNATURE: 'INVALID_SIGNATURE',
