@@ -1,0 +1,7 @@
+shapely>=2.0
+numpy
+pyyaml
+pydantic>=2
+svgpathtools
+lxml
+pytest>=7.0
