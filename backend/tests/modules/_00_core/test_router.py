@@ -25,6 +25,7 @@ from core.security.jwt import issue_token
 from main import app
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Nation, Player, Province
+from tests.fixtures.profile import VALID_PROFILE
 
 TEST_VK_SECRET = "test-vk-app-secret"
 TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
@@ -101,11 +102,14 @@ async def seed_provinces(session, ids: list[int]) -> list[Province]:
 async def seed_nation(
     session, player: Player, name: str = "Existing Nation",
     color_hex: str = "#112233", province_ids: list[int] | None = None,
+    legacy: bool = False,
 ) -> Nation:
     nation = Nation(
         owner_player_id=player.id,
         name=name,
         color_hex=color_hex,
+        # legacy=True simulates a pre-migration row (NULL profile, INV-7).
+        **({} if legacy else VALID_PROFILE),
         created_at=datetime.now(timezone.utc),
     )
     session.add(nation)
@@ -214,6 +218,7 @@ class TestNationEndpoints:
                 "name": "Test Nation",
                 "color_hex": "#FF0000",
                 "province_ids": [1, 2],
+                **VALID_PROFILE,
             },
         )
 
@@ -223,6 +228,9 @@ class TestNationEndpoints:
         assert body["color_hex"] == "#FF0000"
         assert body["owner_player_id"] == player.id
         assert body["province_ids"] == [1, 2]
+        assert body["leader_name"] == VALID_PROFILE["leader_name"]
+        assert body["leader_title"] == VALID_PROFILE["leader_title"]
+        assert body["history_url"] == VALID_PROFILE["history_url"]
 
     async def test_get_nations_me(self, client, test_db_session):
         player = await seed_player(test_db_session)
@@ -263,6 +271,7 @@ class TestNationEndpoints:
                 "name": "Taken",
                 "color_hex": "#00FF00",
                 "province_ids": [2],
+                **VALID_PROFILE,
             },
         )
 
@@ -284,6 +293,7 @@ class TestNationEndpoints:
                 "name": "Other Nation",
                 "color_hex": "#AABBCC",
                 "province_ids": [2],
+                **VALID_PROFILE,
             },
         )
 
@@ -303,6 +313,7 @@ class TestNationEndpoints:
                 "name": "Test Nation",
                 "color_hex": "#FF0000",
                 "province_ids": [1, 2],
+                **VALID_PROFILE,
             },
         )
 
@@ -321,6 +332,7 @@ class TestNationEndpoints:
                 "name": "Second Nation",
                 "color_hex": "#00FF00",
                 "province_ids": [2],
+                **VALID_PROFILE,
             },
         )
 
@@ -339,6 +351,7 @@ class TestNationEndpoints:
                 "name": "Test Nation",
                 "color_hex": "#FF0000",
                 "province_ids": [999],
+                **VALID_PROFILE,
             },
         )
 
@@ -363,6 +376,7 @@ class TestNationEndpoints:
                 "province_ids": list(
                     range(1, CORE_CONFIG.nation.max_provinces_per_nation + 2)
                 ),
+                **VALID_PROFILE,
             },
         )
 
@@ -381,6 +395,7 @@ class TestNationEndpoints:
                 "name": "ab",
                 "color_hex": "#FF0000",
                 "province_ids": [1],
+                **VALID_PROFILE,
             },
         )
 
@@ -397,6 +412,7 @@ class TestNationEndpoints:
                 "name": "x" * (CORE_CONFIG.nation.nation_name_max_length + 1),
                 "color_hex": "#FF0000",
                 "province_ids": [1],
+                **VALID_PROFILE,
             },
         )
 
@@ -415,6 +431,7 @@ class TestNationEndpoints:
                 "name": "Test Nation",
                 "color_hex": "red",
                 "province_ids": [1],
+                **VALID_PROFILE,
             },
         )
 
@@ -428,7 +445,11 @@ class TestNationEndpoints:
         resp = await client.patch(
             "/api/v1/nations/me",
             headers=bearer_headers(player.id),
-            json={"name": "Renamed Nation", "color_hex": "#00FF00"},
+            json={
+                "name": "Renamed Nation",
+                "color_hex": "#00FF00",
+                "leader_title": "Tsar of All Rus",
+            },
         )
 
         assert resp.status_code == 200
@@ -436,6 +457,10 @@ class TestNationEndpoints:
         assert body["id"] == nation.id
         assert body["name"] == "Renamed Nation"
         assert body["color_hex"] == "#00FF00"
+        assert body["leader_title"] == "Tsar of All Rus"
+        # Untouched fields keep their seeded values.
+        assert body["leader_name"] == VALID_PROFILE["leader_name"]
+        assert body["history_url"] == VALID_PROFILE["history_url"]
 
     async def test_update_nation_name_taken(self, client, test_db_session):
         player = await seed_player(test_db_session, vk_user_id=111)
@@ -523,6 +548,110 @@ class TestNationEndpoints:
         assert resp.json()["code"] == "NATION_NOT_FOUND"
 
 
+class TestNationProfileEndpoints:
+    """Profile fields over HTTP (Spec 1.1 Part 5)."""
+
+    async def test_create_nation_missing_profile_field(self, client, test_db_session):
+        """The three profile fields are required: FastAPI returns 422."""
+        player = await seed_player(test_db_session)
+        await seed_provinces(test_db_session, [1])
+
+        body = {
+            "name": "Test Nation",
+            "color_hex": "#FF0000",
+            "province_ids": [1],
+            **VALID_PROFILE,
+        }
+        del body["history_url"]
+
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json=body,
+        )
+
+        assert resp.status_code == 422
+
+    @pytest.mark.parametrize(
+        "field,value,code",
+        [
+            ("leader_name", "x", "LEADER_NAME_INVALID"),
+            ("leader_title", "", "LEADER_TITLE_INVALID"),
+            ("history_url", "https://evil.com/@x", "HISTORY_URL_INVALID"),
+        ],
+    )
+    async def test_create_nation_profile_error_maps_to_422(
+        self, client, test_db_session, field, value, code
+    ):
+        """Each domain error lands as HTTP 422 in the {detail, code} shape."""
+        player = await seed_player(test_db_session)
+        await seed_provinces(test_db_session, [1])
+
+        body = {
+            "name": "Test Nation",
+            "color_hex": "#FF0000",
+            "province_ids": [1],
+            **VALID_PROFILE,
+            field: value,
+        }
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json=body,
+        )
+
+        assert resp.status_code == 422
+        payload = resp.json()
+        assert payload["code"] == code
+        assert payload["detail"]
+
+    async def test_get_nations_me_legacy_null_profile(
+        self, client, test_db_session
+    ):
+        """A pre-migration nation returns null profile fields."""
+        player = await seed_player(test_db_session)
+        await seed_provinces(test_db_session, [1])
+        await seed_nation(
+            test_db_session, player, province_ids=[1], legacy=True
+        )
+
+        resp = await client.get(
+            "/api/v1/nations/me", headers=bearer_headers(player.id)
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["leader_name"] is None
+        assert body["leader_title"] is None
+        assert body["history_url"] is None
+
+    async def test_nations_rules_returns_config_values(
+        self, client, test_db_session
+    ):
+        """GET /nations/rules mirrors the loaded CoreConfig."""
+        player = await seed_player(test_db_session)
+
+        resp = await client.get(
+            "/api/v1/nations/rules", headers=bearer_headers(player.id)
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        nation = CORE_CONFIG.nation
+        assert body == {
+            "name_min_length": nation.nation_name_min_length,
+            "name_max_length": nation.nation_name_max_length,
+            "leader_name_min_length": nation.leader_name_min_length,
+            "leader_name_max_length": nation.leader_name_max_length,
+            "leader_title_min_length": nation.leader_title_min_length,
+            "leader_title_max_length": nation.leader_title_max_length,
+            "history_url_max_length": nation.history_url_max_length,
+            "history_url_allowed_hosts": nation.history_url_allowed_hosts,
+            "min_provinces": nation.min_provinces_per_nation,
+            "max_provinces": nation.max_provinces_per_nation,
+        }
+
+
 class TestProvincesEndpoint:
     """Tests for GET /api/v1/provinces."""
 
@@ -604,6 +733,7 @@ class TestAuthRequired:
         [
             ("GET", "/api/v1/players/me", None),
             ("GET", "/api/v1/nations/me", None),
+            ("GET", "/api/v1/nations/rules", None),
             (
                 "POST",
                 "/api/v1/nations",
@@ -611,6 +741,7 @@ class TestAuthRequired:
                     "name": "Valid Name",
                     "color_hex": "#FF0000",
                     "province_ids": [1],
+                    **VALID_PROFILE,
                 },
             ),
             ("PATCH", "/api/v1/nations/me", {"name": "Valid Name"}),
@@ -630,6 +761,7 @@ class TestAuthRequired:
         [
             ("GET", "/api/v1/players/me", None),
             ("GET", "/api/v1/nations/me", None),
+            ("GET", "/api/v1/nations/rules", None),
             (
                 "POST",
                 "/api/v1/nations",
@@ -637,6 +769,7 @@ class TestAuthRequired:
                     "name": "Valid Name",
                     "color_hex": "#FF0000",
                     "province_ids": [1],
+                    **VALID_PROFILE,
                 },
             ),
             ("PATCH", "/api/v1/nations/me", {"name": "Valid Name"}),

@@ -7,6 +7,8 @@ the real test database using factories. No mocking of state.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import select
 
@@ -14,6 +16,9 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
     ColorTakenError,
     FrequencyCapExceededError,
+    HistoryUrlInvalidError,
+    LeaderNameInvalidError,
+    LeaderTitleInvalidError,
     NameTakenError,
     NationAlreadyExistsError,
     NationNotFoundError,
@@ -28,6 +33,7 @@ from modules._00_core.service import (
     PlayerService,
     ScheduledActionService,
 )
+from tests.fixtures.profile import VALID_PROFILE
 
 
 class TestPlayerService:
@@ -98,6 +104,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1, 2],
             config=config,
+            **VALID_PROFILE,
         )
         
         assert nation.name == "Test Nation"
@@ -125,6 +132,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         
         # Try to create second nation - should fail
@@ -136,6 +144,7 @@ class TestNationService:
                 color_hex="#00FF00",
                 province_ids=[2],
                 config=config,
+                **VALID_PROFILE,
             )
     
     @pytest.mark.asyncio
@@ -152,6 +161,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         
         # Create another player
@@ -166,6 +176,7 @@ class TestNationService:
                 color_hex="#00FF00",
                 province_ids=[2],
                 config=config,
+                **VALID_PROFILE,
             )
     
     @pytest.mark.asyncio
@@ -182,6 +193,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         
         # Create another player
@@ -196,6 +208,7 @@ class TestNationService:
                 color_hex="#FF0000",
                 province_ids=[2],
                 config=config,
+                **VALID_PROFILE,
             )
     
     @pytest.mark.asyncio
@@ -211,6 +224,7 @@ class TestNationService:
                 color_hex="#FF0000",
                 province_ids=[999],  # Non-existent
                 config=config,
+                **VALID_PROFILE,
             )
     
     @pytest.mark.asyncio
@@ -228,6 +242,7 @@ class TestNationService:
             color_hex="#00FF00",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         
         # Try to create nation that also wants province 1
@@ -239,6 +254,7 @@ class TestNationService:
                 color_hex="#FF0000",
                 province_ids=[1, 2],
                 config=config,
+                **VALID_PROFILE,
             )
     
     @pytest.mark.asyncio
@@ -255,6 +271,7 @@ class TestNationService:
                 color_hex="#FF0000",
                 province_ids=[],  # Below min (1)
                 config=config,
+                **VALID_PROFILE,
             )
     
     @pytest.mark.asyncio
@@ -277,6 +294,7 @@ class TestNationService:
                 color_hex="#FF0000",
                 province_ids=province_ids,  # Above max (5)
                 config=config,
+                **VALID_PROFILE,
             )
     
     @pytest.mark.asyncio
@@ -292,14 +310,16 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         
         updated = await NationService.update(
             test_db_session,
             nation_id=nation.id,
             name="New Name",
+            config=config,
         )
-        
+
         assert updated.name == "New Name"
         assert updated.color_hex == "#FF0000"
     
@@ -316,12 +336,14 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         
         updated = await NationService.update(
             test_db_session,
             nation_id=nation.id,
             color_hex="#00FF00",
+            config=config,
         )
         
         assert updated.name == "Test Nation"
@@ -342,6 +364,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         
         await NationService.create(
@@ -351,6 +374,7 @@ class TestNationService:
             color_hex="#00FF00",
             province_ids=[2],
             config=config,
+            **VALID_PROFILE,
         )
         
         # Try to update nation1 to nation2's name
@@ -359,16 +383,18 @@ class TestNationService:
                 test_db_session,
                 nation_id=nation1.id,
                 name="Nation 2",
+                config=config,
             )
     
     @pytest.mark.asyncio
-    async def test_update_nation_not_found(self, test_db_session):
+    async def test_update_nation_not_found(self, test_db_session, config):
         """Test updating non-existent nation."""
         with pytest.raises(NationNotFoundError):
             await NationService.update(
                 test_db_session,
                 nation_id="non-existent-id",
                 name="New Name",
+                config=config,
             )
     
     @pytest.mark.asyncio
@@ -384,6 +410,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1, 2],
             config=config,
+            **VALID_PROFILE,
         )
         
         await NationService.delete(test_db_session, nation_id=nation.id)
@@ -418,6 +445,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
 
         action = await ScheduledActionService.submit(
@@ -452,6 +480,7 @@ class TestNationService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
 
         action = await ScheduledActionService.submit(
@@ -485,20 +514,313 @@ class TestNationService:
             )
 
 
+class TestNationProfile:
+    """Tests for the nation profile fields (Spec 1.1, INV-7/8/9)."""
+
+    @pytest.fixture
+    async def config(self):
+        """Load the core config for tests."""
+        return CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+
+    async def _create_player(self, session, vk_user_id: int = 11111) -> Player:
+        player = Player(vk_user_id=vk_user_id)
+        session.add(player)
+        await session.flush()
+        return player
+
+    async def _create_provinces(self, session, ids: list[int]) -> None:
+        for pid in ids:
+            session.add(Province(id=pid, nation_id=None))
+        await session.flush()
+
+    async def _nation_count(self, session) -> int:
+        result = await session.execute(select(Nation))
+        return len(result.scalars().all())
+
+    async def _province_is_free(self, session, province_id: int) -> bool:
+        result = await session.execute(
+            select(Province).where(Province.id == province_id)
+        )
+        return result.scalar_one().nation_id is None
+
+    async def test_create_stores_normalized_profile(self, test_db_session, config):
+        """Padded input is stored in its normalized (stripped) form."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+
+        nation = await NationService.create(
+            test_db_session,
+            owner_player_id=player.id,
+            name="Test Nation",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+            leader_name="  Ivan Grozny  ",
+            leader_title="\tSupreme Ruler\n",
+            history_url="  https://vk.com/@goliath-history  ",
+        )
+
+        assert nation.leader_name == "Ivan Grozny"
+        assert nation.leader_title == "Supreme Ruler"
+        assert nation.history_url == "https://vk.com/@goliath-history"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "field,value,error",
+        [
+            ("leader_name", "x", LeaderNameInvalidError),
+            ("leader_name", "Ivan\nGrozny", LeaderNameInvalidError),
+            ("leader_title", "", LeaderTitleInvalidError),
+            ("leader_title", "Boss​Boss", LeaderTitleInvalidError),
+            ("history_url", "http://vk.com/@x", HistoryUrlInvalidError),
+            ("history_url", "https://evil.com/@x", HistoryUrlInvalidError),
+        ],
+    )
+    async def test_create_invalid_profile_persists_nothing(
+        self, test_db_session, config, field, value, error
+    ):
+        """A rejected profile field leaves no nation row and frees no
+        province (INV-3 atomicity)."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+
+        profile = dict(VALID_PROFILE)
+        profile[field] = value
+        with pytest.raises(error):
+            await NationService.create(
+                test_db_session,
+                owner_player_id=player.id,
+                name="Test Nation",
+                color_hex="#FF0000",
+                province_ids=[1],
+                config=config,
+                **profile,
+            )
+
+        assert await self._nation_count(test_db_session) == 0
+        assert await self._province_is_free(test_db_session, 1)
+
+    @pytest.mark.asyncio
+    async def test_create_inv1_before_profile_errors(
+        self, test_db_session, config
+    ):
+        """Spec Part 2 order: NATION_ALREADY_EXISTS wins over profile errors."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1, 2])
+        await NationService.create(
+            test_db_session,
+            owner_player_id=player.id,
+            name="First Nation",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+            **VALID_PROFILE,
+        )
+
+        with pytest.raises(NationAlreadyExistsError):
+            await NationService.create(
+                test_db_session,
+                owner_player_id=player.id,
+                name="Second Nation",
+                color_hex="#00FF00",
+                province_ids=[2],
+                config=config,
+                leader_name="x",  # would fail on its own
+                leader_title="x",
+                history_url="not-a-url",
+            )
+
+    @pytest.mark.asyncio
+    async def test_create_profile_error_before_name_taken(
+        self, test_db_session, config
+    ):
+        """Spec Part 2 order: profile errors are reported before INV-2."""
+        owner = await self._create_player(test_db_session, vk_user_id=11111)
+        player = await self._create_player(test_db_session, vk_user_id=22222)
+        await self._create_provinces(test_db_session, [1, 2])
+        await NationService.create(
+            test_db_session,
+            owner_player_id=owner.id,
+            name="Taken Name",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+            **VALID_PROFILE,
+        )
+
+        with pytest.raises(LeaderNameInvalidError):
+            await NationService.create(
+                test_db_session,
+                owner_player_id=player.id,
+                name="Taken Name",  # also taken — but profile fails first
+                color_hex="#FF0000",
+                province_ids=[2],
+                config=config,
+                leader_name="x",
+                leader_title=VALID_PROFILE["leader_title"],
+                history_url=VALID_PROFILE["history_url"],
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_partial_profile_fields(self, test_db_session, config):
+        """Only provided fields change; None leaves the rest untouched."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+        nation = await NationService.create(
+            test_db_session,
+            owner_player_id=player.id,
+            name="Test Nation",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+            **VALID_PROFILE,
+        )
+
+        updated = await NationService.update(
+            test_db_session,
+            nation_id=nation.id,
+            leader_title="Grand Duke",
+            config=config,
+        )
+
+        assert updated.leader_title == "Grand Duke"
+        assert updated.leader_name == VALID_PROFILE["leader_name"]
+        assert updated.history_url == VALID_PROFILE["history_url"]
+        assert updated.name == "Test Nation"
+        assert updated.color_hex == "#FF0000"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "field,value,error",
+        [
+            ("leader_name", "   ", LeaderNameInvalidError),
+            ("leader_title", "  ", LeaderTitleInvalidError),
+            ("history_url", " ", HistoryUrlInvalidError),
+        ],
+    )
+    async def test_update_empty_string_is_error_not_clear(
+        self, test_db_session, config, field, value, error
+    ):
+        """INV-8: a whitespace-only value is invalid, never a clear."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+        nation = await NationService.create(
+            test_db_session,
+            owner_player_id=player.id,
+            name="Test Nation",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+            **VALID_PROFILE,
+        )
+
+        with pytest.raises(error):
+            await NationService.update(
+                test_db_session,
+                nation_id=nation.id,
+                config=config,
+                **{field: value},
+            )
+
+        await test_db_session.refresh(nation)
+        assert getattr(nation, field) == VALID_PROFILE[field]
+
+    @pytest.mark.asyncio
+    async def test_update_invalid_profile_changes_nothing(
+        self, test_db_session, config
+    ):
+        """An invalid profile field aborts the whole update — even a
+        valid name in the same call is not applied."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+        nation = await NationService.create(
+            test_db_session,
+            owner_player_id=player.id,
+            name="Old Name",
+            color_hex="#FF0000",
+            province_ids=[1],
+            config=config,
+            **VALID_PROFILE,
+        )
+
+        with pytest.raises(HistoryUrlInvalidError):
+            await NationService.update(
+                test_db_session,
+                nation_id=nation.id,
+                name="New Name",
+                history_url="https://evil.com/@x",
+                config=config,
+            )
+
+        await test_db_session.refresh(nation)
+        assert nation.name == "Old Name"
+        assert nation.history_url == VALID_PROFILE["history_url"]
+
+    @pytest.mark.asyncio
+    async def test_legacy_nation_rename_and_partial_profile_fill(
+        self, test_db_session, config
+    ):
+        """A NULL-profile legacy nation still accepts a rename/recolor,
+        and its profile can be filled field by field."""
+        player = await self._create_player(test_db_session)
+        await self._create_provinces(test_db_session, [1])
+        legacy = Nation(
+            owner_player_id=player.id,
+            name="Legacy Nation",
+            color_hex="#123456",
+            created_at=datetime.now(timezone.utc),
+        )
+        test_db_session.add(legacy)
+        await test_db_session.flush()
+
+        # Plain rename works without touching the profile.
+        renamed = await NationService.update(
+            test_db_session,
+            nation_id=legacy.id,
+            name="Renamed Legacy",
+            config=config,
+        )
+        assert renamed.name == "Renamed Legacy"
+        assert renamed.leader_name is None
+        assert renamed.leader_title is None
+        assert renamed.history_url is None
+
+        # Profile fields can then be filled one call at a time.
+        step1 = await NationService.update(
+            test_db_session,
+            nation_id=legacy.id,
+            leader_name=VALID_PROFILE["leader_name"],
+            config=config,
+        )
+        assert step1.leader_name == VALID_PROFILE["leader_name"]
+        assert step1.leader_title is None
+        assert step1.history_url is None
+
+        step2 = await NationService.update(
+            test_db_session,
+            nation_id=legacy.id,
+            leader_title=VALID_PROFILE["leader_title"],
+            history_url=VALID_PROFILE["history_url"],
+            config=config,
+        )
+        assert step2.leader_title == VALID_PROFILE["leader_title"]
+        assert step2.history_url == VALID_PROFILE["history_url"]
+
+
 class TestScheduledActionService:
     """Tests for ScheduledActionService."""
-    
+
     async def _create_nation(self, session) -> Nation:
         """Helper to create a nation with player and provinces."""
         player = Player(vk_user_id=11111)
         session.add(player)
         await session.flush()
-        
+
         provinces = [Province(id=pid, nation_id=None) for pid in [1, 2]]
         for p in provinces:
             session.add(p)
         await session.flush()
-        
+
         config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
         nation = await NationService.create(
             session,
@@ -507,6 +829,7 @@ class TestScheduledActionService:
             color_hex="#FF0000",
             province_ids=[1],
             config=config,
+            **VALID_PROFILE,
         )
         return nation
     

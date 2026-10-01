@@ -33,6 +33,11 @@ from modules._00_core.models import (
     ScheduledAction,
     ScheduledActionStatus,
 )
+from modules._00_core.profile_rules import (
+    validate_history_url,
+    validate_leader_name,
+    validate_leader_title,
+)
 
 if TYPE_CHECKING:
     from typing import Self
@@ -90,13 +95,20 @@ class NationService:
         color_hex: str,
         province_ids: list[int],
         config: CoreConfig,
+        leader_name: str,
+        leader_title: str,
+        history_url: str,
     ) -> Nation:
         """
-        Create a new nation with the given provinces.
-        
-        Enforces INV-1 (one nation per player), INV-2 (unique name/color),
-        INV-3 (atomic province assignment), and province count constraints.
-        
+        Create a new nation with the given provinces and profile fields.
+
+        Enforces INV-1 (one nation per player), INV-7 (mandatory profile
+        fields), INV-2 (unique name/color), INV-3 (atomic province
+        assignment), and province count constraints — in exactly the
+        Spec Part 2 order: INV-1 -> profile fields (leader_name,
+        leader_title, history_url) -> INV-2 -> province count ->
+        province existence/freedom. Any failure persists nothing.
+
         Args:
             session: The async database session.
             owner_player_id: The player ID who will own the nation.
@@ -104,12 +116,18 @@ class NationService:
             color_hex: The nation color in hex format (#RRGGBB).
             province_ids: List of province IDs to assign to the nation.
             config: The core configuration for validation constraints.
-            
+            leader_name: The leader's name (normalized and validated).
+            leader_title: The leader's title (normalized and validated).
+            history_url: Link to the nation's history article.
+
         Returns:
             The newly created Nation instance.
-            
+
         Raises:
             NationAlreadyExistsError: If the player already has a nation.
+            LeaderNameInvalidError: If the leader name fails Part 3 checks.
+            LeaderTitleInvalidError: If the leader title fails Part 3 checks.
+            HistoryUrlInvalidError: If the history URL fails Part 3 checks.
             NameTakenError: If the name is already taken.
             ColorTakenError: If the color is already taken.
             ProvinceNotFoundError: If any province ID does not exist.
@@ -122,7 +140,13 @@ class NationService:
         )
         if result.scalar_one_or_none() is not None:
             raise NationAlreadyExistsError(owner_player_id)
-        
+
+        # INV-7: profile fields are mandatory and validated before INV-2
+        # (Spec Part 2 check order). The normalized values get stored.
+        leader_name = validate_leader_name(leader_name, config)
+        leader_title = validate_leader_title(leader_title, config)
+        history_url = validate_history_url(history_url, config)
+
         # INV-2: Check if name is already taken
         result = await session.execute(
             select(Nation).where(Nation.name == name)
@@ -170,6 +194,9 @@ class NationService:
             owner_player_id=owner_player_id,
             name=name,
             color_hex=color_hex,
+            leader_name=leader_name,
+            leader_title=leader_title,
+            history_url=history_url,
             created_at=datetime.now(timezone.utc),
         )
         session.add(nation)
@@ -187,23 +214,41 @@ class NationService:
         nation_id: str,
         name: str | None = None,
         color_hex: str | None = None,
+        leader_name: str | None = None,
+        leader_title: str | None = None,
+        history_url: str | None = None,
+        *,
+        config: CoreConfig,
     ) -> Nation:
         """
-        Update a nation's name and/or color.
-        
-        Enforces INV-2 (unique name/color).
-        
+        Update a nation's name, color, and/or profile fields.
+
+        Enforces INV-2 (unique name/color) and INV-8: a None argument
+        leaves the field unchanged, while a provided value is normalized
+        and validated up front — so a rejected field aborts the whole
+        update before anything is mutated. Profile fields are required
+        and can never be cleared; an empty (post-strip) string is a
+        validation error, not a reset. Legacy nations with NULL profile
+        fields still accept a plain rename/recolor.
+
         Args:
             session: The async database session.
             nation_id: The nation ID to update.
             name: Optional new name.
             color_hex: Optional new color.
-            
+            leader_name: Optional new leader name.
+            leader_title: Optional new leader title.
+            history_url: Optional new history URL.
+            config: The core configuration for validation constraints.
+
         Returns:
             The updated Nation instance.
-            
+
         Raises:
             NationNotFoundError: If the nation does not exist.
+            LeaderNameInvalidError: If the leader name fails Part 3 checks.
+            LeaderTitleInvalidError: If the leader title fails Part 3 checks.
+            HistoryUrlInvalidError: If the history URL fails Part 3 checks.
             NameTakenError: If the new name is already taken by another nation.
             ColorTakenError: If the new color is already taken by another nation.
         """
@@ -211,10 +256,25 @@ class NationService:
             select(Nation).where(Nation.id == nation_id)
         )
         nation = result.scalar_one_or_none()
-        
+
         if nation is None:
             raise NationNotFoundError(nation_id)
-        
+
+        # INV-8: validate every provided profile field before any
+        # mutation, so a bad field leaves the whole update untouched.
+        new_leader_name = (
+            None if leader_name is None
+            else validate_leader_name(leader_name, config)
+        )
+        new_leader_title = (
+            None if leader_title is None
+            else validate_leader_title(leader_title, config)
+        )
+        new_history_url = (
+            None if history_url is None
+            else validate_history_url(history_url, config)
+        )
+
         if name is not None and name != nation.name:
             # Check if name is already taken by another nation
             result = await session.execute(
@@ -232,7 +292,14 @@ class NationService:
             if result.scalar_one_or_none() is not None:
                 raise ColorTakenError(color_hex)
             nation.color_hex = color_hex
-        
+
+        if new_leader_name is not None:
+            nation.leader_name = new_leader_name
+        if new_leader_title is not None:
+            nation.leader_title = new_leader_title
+        if new_history_url is not None:
+            nation.history_url = new_history_url
+
         return nation
     
     @staticmethod

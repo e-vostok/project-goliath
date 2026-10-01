@@ -56,8 +56,14 @@ class Nation(Base):
     owner_player_id: Mapped[str] = mapped_column(String(36), ForeignKey("players.id"), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     color_hex: Mapped[str] = mapped_column(CHAR(7), nullable=False, unique=True)
+    # Descriptive profile fields (Bible §8). NULL only for nations created
+    # before the profile migration; NationService.create always writes all
+    # three, and they can never be cleared back to NULL (INV-7, INV-8).
+    leader_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    leader_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    history_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    
+
     # Relationships
     owner: Mapped[Player] = relationship(back_populates="nations")
     provinces: Mapped[list[Province]] = relationship(back_populates="nation")

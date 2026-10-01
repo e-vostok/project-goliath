@@ -192,6 +192,9 @@ async def admin_state_view(session: AsyncSession) -> dict:
                 "color_hex": nation.color_hex,
                 "owner_player_id": nation.owner_player_id,
                 "province_ids": provinces_by_nation[nation.id],
+                "leader_name": nation.leader_name,
+                "leader_title": nation.leader_title,
+                "history_url": nation.history_url,
                 "created_at": format_game_time(
                     nation.created_at, config.tick.tick_timezone
                 ),

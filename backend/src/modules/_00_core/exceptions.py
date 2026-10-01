@@ -85,6 +85,36 @@ class NationNotFoundError(CoreDomainError):
         )
 
 
+class LeaderNameInvalidError(CoreDomainError):
+    """Raised when the leader name fails the Part 3 text-field checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Leader name is invalid: {reason}",
+            "LEADER_NAME_INVALID"
+        )
+
+
+class LeaderTitleInvalidError(CoreDomainError):
+    """Raised when the leader title fails the Part 3 text-field checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Leader title is invalid: {reason}",
+            "LEADER_TITLE_INVALID"
+        )
+
+
+class HistoryUrlInvalidError(CoreDomainError):
+    """Raised when the history URL fails the Part 3 link checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"History URL is invalid: {reason}",
+            "HISTORY_URL_INVALID"
+        )
+
+
 class FrequencyCapExceededError(CoreDomainError):
     """Raised when an action frequency cap is exceeded."""
     

@@ -36,6 +36,7 @@ from main import app
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Province, TickLog, TickLogStatus
 from modules._00_core.tick_schedule import next_tick_after
+from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -311,6 +312,7 @@ class TestAdminState:
                 "name": "Admin Nation",
                 "color_hex": "#0A1B2C",
                 "province_ids": [1, 2],
+                **VALID_PROFILE,
             },
         )
         assert created.status_code == 201
@@ -569,6 +571,7 @@ class TestAdminStateReset:
                 "name": "Keep Me",
                 "color_hex": "#102030",
                 "province_ids": [1],
+                **VALID_PROFILE,
             },
         )
 
@@ -612,6 +615,7 @@ class TestAdminStateReset:
                 "name": "Doomed Nation",
                 "color_hex": "#3A4B5C",
                 "province_ids": [1, 2],
+                **VALID_PROFILE,
             },
         )
         assert created.status_code == 201
@@ -693,6 +697,7 @@ class TestAdminStateReset:
                 "name": "Rollback Nation",
                 "color_hex": "#5C4B3A",
                 "province_ids": [1],
+                **VALID_PROFILE,
             },
         )
         assert created.status_code == 201

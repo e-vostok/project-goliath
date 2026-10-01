@@ -32,6 +32,7 @@ from modules._00_core.tick_handler import register_tick_handlers
 
 from .test_router import seed_provinces
 from .test_security import TEST_APP_SECRET, make_launch_params
+from tests.fixtures.profile import VALID_PROFILE
 
 TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
 
@@ -116,6 +117,7 @@ class TestEndToEnd:
                 "name": NATION_NAME,
                 "color_hex": NATION_COLOR,
                 "province_ids": [1, 2],
+                **VALID_PROFILE,
             },
         )
         assert create.status_code == 201

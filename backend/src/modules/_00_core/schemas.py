@@ -65,6 +65,10 @@ class NationDTO(BaseModel):
     color_hex: str
     owner_player_id: uuid.UUID
     province_ids: list[int]
+    # None only for nations created before the profile migration (INV-7).
+    leader_name: str | None
+    leader_title: str | None
+    history_url: str | None
     created_at: datetime
 
 
@@ -74,6 +78,10 @@ class NationCreateRequest(BaseModel):
     name: str
     color_hex: str = Field(pattern=_COLOR_HEX_PATTERN)
     province_ids: list[int]
+    # Typed only — content rules live in the service layer (INV-9).
+    leader_name: str
+    leader_title: str
+    history_url: str
 
     @field_validator("name")
     @classmethod
@@ -86,11 +94,31 @@ class NationUpdateRequest(BaseModel):
 
     name: str | None = None
     color_hex: str | None = Field(default=None, pattern=_COLOR_HEX_PATTERN)
+    # None/absent means "do not change" (INV-8); content rules live in
+    # the service layer (INV-9).
+    leader_name: str | None = None
+    leader_title: str | None = None
+    history_url: str | None = None
 
     @field_validator("name")
     @classmethod
     def check_name_length(cls, value: str | None) -> str | None:
         return _validate_nation_name(value)
+
+
+class NationRulesDTO(BaseModel):
+    """Nation creation/update limits, served from CoreConfig for UI hints."""
+
+    name_min_length: int
+    name_max_length: int
+    leader_name_min_length: int
+    leader_name_max_length: int
+    leader_title_min_length: int
+    leader_title_max_length: int
+    history_url_max_length: int
+    history_url_allowed_hosts: list[str]
+    min_provinces: int
+    max_provinces: int
 
 
 class NationDeleteRequest(BaseModel):
