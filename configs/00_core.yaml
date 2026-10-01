@@ -1,6 +1,6 @@
 # configs/00_core.yaml
 # Балансовые параметры модуля 00_core.
-# Валидируется backend/src/modules/00_core/config_schema.py при старте приложения и в CI.
+# Валидируется backend/src/modules/_00_core/config_schema.py при старте приложения и в CI.
 
 tick:
   # Суточный тик в фиксированное локальное время (строгий формат HH:MM, 24ч).
@@ -21,6 +21,15 @@ nation:
   nation_name_max_length: 40
   min_provinces_per_nation: 1
   max_provinces_per_nation: 5
+  leader_name_min_length: 2
+  leader_name_max_length: 60
+  leader_title_min_length: 2
+  leader_title_max_length: 60
+  history_url_max_length: 200
+  # Допустимые хосты ссылки на историю государства (нижний регистр, без схемы и пути).
+  history_url_allowed_hosts:
+    - "vk.com"
+    - "vk.ru"
 
 calendar:
   epoch_start_date: "0001-01-01"

@@ -8,12 +8,18 @@ Pydantic-схема валидации баланса модуля 00_core.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Имя хоста в нижнем регистре, без схемы, порта и пути.
+_HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
 
 
 class TickSettings(BaseModel):
@@ -77,6 +83,53 @@ class NationSettings(BaseModel):
         le=200,
         description="Максимум провинций на одно государство.",
     )
+    leader_name_min_length: int = Field(
+        ge=1,
+        le=10,
+        description="Минимальная длина имени лидера, символы.",
+    )
+    leader_name_max_length: int = Field(
+        ge=1,
+        le=100,
+        description="Максимальная длина имени лидера, символы "
+        "(не больше длины колонки nations.leader_name).",
+    )
+    leader_title_min_length: int = Field(
+        ge=1,
+        le=10,
+        description="Минимальная длина должности лидера, символы.",
+    )
+    leader_title_max_length: int = Field(
+        ge=1,
+        le=100,
+        description="Максимальная длина должности лидера, символы "
+        "(не больше длины колонки nations.leader_title).",
+    )
+    history_url_max_length: int = Field(
+        ge=30,
+        le=2000,
+        description="Максимальная длина ссылки на историю государства, символы "
+        "(не больше длины колонки nations.history_url).",
+    )
+    history_url_allowed_hosts: list[str] = Field(
+        min_length=1,
+        max_length=10,
+        description="Допустимые хосты ссылки на историю: нижний регистр, "
+        "без схемы, порта и пути.",
+    )
+
+    @field_validator("history_url_allowed_hosts")
+    @classmethod
+    def check_hosts(cls, hosts: list[str]) -> list[str]:
+        for host in hosts:
+            if _HOSTNAME_RE.match(host) is None:
+                raise ValueError(
+                    f"history_url_allowed_hosts: '{host}' не является именем "
+                    "хоста в нижнем регистре без схемы, порта и пути"
+                )
+        if len(set(hosts)) != len(hosts):
+            raise ValueError("history_url_allowed_hosts: дубли недопустимы")
+        return hosts
 
     @model_validator(mode="after")
     def check_ranges(self) -> Self:
@@ -87,6 +140,14 @@ class NationSettings(BaseModel):
         if self.min_provinces_per_nation > self.max_provinces_per_nation:
             raise ValueError(
                 "min_provinces_per_nation не может превышать max_provinces_per_nation"
+            )
+        if self.leader_name_min_length > self.leader_name_max_length:
+            raise ValueError(
+                "leader_name_min_length не может превышать leader_name_max_length"
+            )
+        if self.leader_title_min_length > self.leader_title_max_length:
+            raise ValueError(
+                "leader_title_min_length не может превышать leader_title_max_length"
             )
         return self
 

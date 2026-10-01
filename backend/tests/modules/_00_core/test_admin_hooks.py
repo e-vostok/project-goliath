@@ -43,6 +43,7 @@ from modules._00_core.models import (
     TickLogStatus,
 )
 from modules._00_core.tick_schedule import next_tick_after
+from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.factories import (
     GameClockFactory,
     NationFactory,
@@ -262,6 +263,9 @@ class TestAdminStateView:
         assert nation_row["color_hex"] == "#112233"
         assert nation_row["owner_player_id"] == owner.id
         assert nation_row["province_ids"] == [1, 2]
+        assert nation_row["leader_name"] == VALID_PROFILE["leader_name"]
+        assert nation_row["leader_title"] == VALID_PROFILE["leader_title"]
+        assert nation_row["history_url"] == VALID_PROFILE["history_url"]
         assert nation_row["created_at"] == _utc(nation.created_at).astimezone(
             tz
         ).strftime(fmt)

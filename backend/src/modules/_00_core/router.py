@@ -29,6 +29,7 @@ from modules._00_core.schemas import (
     NationCreateRequest,
     NationDeleteRequest,
     NationDTO,
+    NationRulesDTO,
     NationUpdateRequest,
     PlayerDTO,
     ProvinceDTO,
@@ -72,6 +73,9 @@ async def _nation_dto(session: AsyncSession, nation: Nation) -> NationDTO:
         color_hex=nation.color_hex,
         owner_player_id=nation.owner_player_id,
         province_ids=list(result.scalars().all()),
+        leader_name=nation.leader_name,
+        leader_title=nation.leader_title,
+        history_url=nation.history_url,
         created_at=nation.created_at,
     )
 
@@ -128,6 +132,25 @@ async def get_nations_me(
     return await _nation_dto(session, nation)
 
 
+@router.get("/nations/rules", response_model=NationRulesDTO)
+async def get_nation_rules(
+    player: Player = Depends(get_current_player),
+) -> NationRulesDTO:
+    """Serve the nation form limits from the config for UI hints."""
+    return NationRulesDTO(
+        name_min_length=CORE_CONFIG.nation.nation_name_min_length,
+        name_max_length=CORE_CONFIG.nation.nation_name_max_length,
+        leader_name_min_length=CORE_CONFIG.nation.leader_name_min_length,
+        leader_name_max_length=CORE_CONFIG.nation.leader_name_max_length,
+        leader_title_min_length=CORE_CONFIG.nation.leader_title_min_length,
+        leader_title_max_length=CORE_CONFIG.nation.leader_title_max_length,
+        history_url_max_length=CORE_CONFIG.nation.history_url_max_length,
+        history_url_allowed_hosts=CORE_CONFIG.nation.history_url_allowed_hosts,
+        min_provinces=CORE_CONFIG.nation.min_provinces_per_nation,
+        max_provinces=CORE_CONFIG.nation.max_provinces_per_nation,
+    )
+
+
 @router.post("/nations", response_model=NationDTO, status_code=201)
 async def create_nation(
     body: NationCreateRequest,
@@ -142,6 +165,9 @@ async def create_nation(
         color_hex=body.color_hex,
         province_ids=body.province_ids,
         config=CORE_CONFIG,
+        leader_name=body.leader_name,
+        leader_title=body.leader_title,
+        history_url=body.history_url,
     )
     await session.commit()
     return await _nation_dto(session, nation)
@@ -153,13 +179,17 @@ async def update_nations_me(
     player: Player = Depends(get_current_player),
     session: AsyncSession = Depends(get_session),
 ) -> NationDTO:
-    """Update the authenticated player's nation name and/or color."""
+    """Update the authenticated player's nation fields."""
     nation = await _get_own_nation(session, player)
     nation = await NationService.update(
         session,
         nation_id=nation.id,
         name=body.name,
         color_hex=body.color_hex,
+        leader_name=body.leader_name,
+        leader_title=body.leader_title,
+        history_url=body.history_url,
+        config=CORE_CONFIG,
     )
     await session.commit()
     return await _nation_dto(session, nation)

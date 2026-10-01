@@ -2,24 +2,74 @@
 Tests for configuration validity.
 
 Verifies that configs/00_core.yaml validates correctly and that
-invalid configurations raise ValidationError.
+invalid configurations raise ValidationError. All synthetic configs go
+through one shared base-config helper, so new keys are added in a
+single place instead of every test.
 """
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from modules._00_core.config_schema import CoreConfig
 
 
+def _base_config() -> dict:
+    """A fully valid config as a plain dict — the single place where new
+    required keys get their valid default."""
+    return {
+        "tick": {
+            "tick_time": "00:00",
+            "tick_timezone": "Europe/Moscow",
+            "tick_interval_hours": 24,
+            "retry_delay_seconds": 60,
+        },
+        "auth": {
+            "vk_ts_freshness_window_minutes": 30,
+            "jwt_ttl_minutes": 60,
+        },
+        "nation": {
+            "nation_name_min_length": 3,
+            "nation_name_max_length": 40,
+            "min_provinces_per_nation": 1,
+            "max_provinces_per_nation": 5,
+            "leader_name_min_length": 2,
+            "leader_name_max_length": 60,
+            "leader_title_min_length": 2,
+            "leader_title_max_length": 60,
+            "history_url_max_length": 200,
+            "history_url_allowed_hosts": ["vk.com", "vk.ru"],
+        },
+        "calendar": {
+            "epoch_start_date": "0001-01-01",
+            "days_per_turn": 7,
+        },
+    }
+
+
+def _write_config(
+    tmp_path,
+    overrides: dict[str, dict] | None = None,
+    drop: list[tuple[str, str]] | None = None,
+) -> str:
+    """Materialize the base config with per-section overrides (or dropped
+    keys) as a temp YAML file and return its path."""
+    data = _base_config()
+    for section, updates in (overrides or {}).items():
+        data[section].update(updates)
+    for section, key in drop or []:
+        del data[section][key]
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return str(path)
+
+
 def test_valid_config_loads():
     """Test that the valid configs/00_core.yaml loads successfully."""
     config = CoreConfig.from_yaml("../configs/00_core.yaml")
-    
+
     assert config.tick.tick_time == "00:00"
     assert config.tick.tick_timezone == "Europe/Moscow"
     assert config.tick.tick_interval_hours == 24
@@ -30,254 +80,238 @@ def test_valid_config_loads():
     assert config.nation.nation_name_max_length == 40
     assert config.nation.min_provinces_per_nation == 1
     assert config.nation.max_provinces_per_nation == 5
+    assert config.nation.leader_name_min_length == 2
+    assert config.nation.leader_name_max_length == 60
+    assert config.nation.leader_title_min_length == 2
+    assert config.nation.leader_title_max_length == 60
+    assert config.nation.history_url_max_length == 200
+    assert config.nation.history_url_allowed_hosts == ["vk.com", "vk.ru"]
     assert str(config.calendar.epoch_start_date) == "0001-01-01"
     assert config.calendar.days_per_turn == 7
 
 
-def test_invalid_tick_interval_too_high():
+def test_invalid_tick_interval_too_high(tmp_path):
     """Test that tick_interval_hours > 168 raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
-tick:
-  tick_interval_hours: 200
-  retry_delay_seconds: 60
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 3
-  nation_name_max_length: 40
-  min_provinces_per_nation: 1
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  days_per_turn: 7
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "tick_interval_hours" in str(exc_info.value)
-        assert "less than or equal to 168" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(tmp_path, {"tick": {"tick_interval_hours": 200}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "tick_interval_hours" in str(exc_info.value)
+    assert "less than or equal to 168" in str(exc_info.value)
 
 
-def test_invalid_tick_interval_too_low():
+def test_invalid_tick_interval_too_low(tmp_path):
     """Test that tick_interval_hours < 1 raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
-tick:
-  tick_interval_hours: 0
-  retry_delay_seconds: 60
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 3
-  nation_name_max_length: 40
-  min_provinces_per_nation: 1
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  days_per_turn: 7
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "tick_interval_hours" in str(exc_info.value)
-        assert "greater than or equal to 1" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(tmp_path, {"tick": {"tick_interval_hours": 0}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "tick_interval_hours" in str(exc_info.value)
+    assert "greater than or equal to 1" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("bad_time", ["24:00", "0:00", "abc"])
-def test_invalid_tick_time(bad_time):
+def test_invalid_tick_time(tmp_path, bad_time):
     """tick_time outside the strict 24h HH:MM pattern raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write(f"""
-tick:
-  tick_time: "{bad_time}"
-  tick_timezone: "Europe/Moscow"
-  tick_interval_hours: 24
-  retry_delay_seconds: 60
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 3
-  nation_name_max_length: 40
-  min_provinces_per_nation: 1
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  days_per_turn: 7
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "tick_time" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(tmp_path, {"tick": {"tick_time": bad_time}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "tick_time" in str(exc_info.value)
 
 
-def test_invalid_tick_timezone():
+def test_invalid_tick_timezone(tmp_path):
     """A tick_timezone that zoneinfo cannot resolve raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
-tick:
-  tick_time: "00:00"
-  tick_timezone: "Mars/Base"
-  tick_interval_hours: 24
-  retry_delay_seconds: 60
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 3
-  nation_name_max_length: 40
-  min_provinces_per_nation: 1
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  days_per_turn: 7
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "tick_timezone" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(tmp_path, {"tick": {"tick_timezone": "Mars/Base"}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "tick_timezone" in str(exc_info.value)
 
 
-def test_invalid_nation_name_range():
+def test_invalid_nation_name_range(tmp_path):
     """Test that min > max for nation_name_length raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
-tick:
-  tick_interval_hours: 24
-  retry_delay_seconds: 60
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 50
-  nation_name_max_length: 10
-  min_provinces_per_nation: 1
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  days_per_turn: 7
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "nation_name_min_length" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(
+        tmp_path,
+        {"nation": {"nation_name_min_length": 5, "nation_name_max_length": 4}},
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "nation_name_min_length" in str(exc_info.value)
 
 
-def test_invalid_province_range():
+def test_invalid_province_range(tmp_path):
     """Test that min > max for provinces raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
-tick:
-  tick_interval_hours: 24
-  retry_delay_seconds: 60
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 3
-  nation_name_max_length: 40
-  min_provinces_per_nation: 10
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  days_per_turn: 7
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "min_provinces_per_nation" in str(exc_info.value)
-        assert "max_provinces_per_nation" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(
+        tmp_path,
+        {
+            "nation": {
+                "min_provinces_per_nation": 10,
+                "max_provinces_per_nation": 5,
+            }
+        },
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "min_provinces_per_nation" in str(exc_info.value)
+    assert "max_provinces_per_nation" in str(exc_info.value)
 
 
-def test_invalid_retry_delay_too_low():
+def test_invalid_retry_delay_too_low(tmp_path):
     """Test that retry_delay_seconds < 1 raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
-tick:
-  tick_interval_hours: 24
-  retry_delay_seconds: 0
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 3
-  nation_name_max_length: 40
-  min_provinces_per_nation: 1
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  days_per_turn: 7
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "retry_delay_seconds" in str(exc_info.value)
-        assert "greater than or equal to 1" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(tmp_path, {"tick": {"retry_delay_seconds": 0}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "retry_delay_seconds" in str(exc_info.value)
+    assert "greater than or equal to 1" in str(exc_info.value)
 
 
-def test_missing_required_field():
+def test_missing_required_field(tmp_path):
     """Test that missing required field raises ValidationError."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
-tick:
-  tick_interval_hours: 24
-  retry_delay_seconds: 60
-auth:
-  vk_ts_freshness_window_minutes: 30
-  jwt_ttl_minutes: 60
-nation:
-  nation_name_min_length: 3
-  nation_name_max_length: 40
-  min_provinces_per_nation: 1
-  max_provinces_per_nation: 5
-calendar:
-  epoch_start_date: "0001-01-01"
-  # days_per_turn is missing
-""")
-        temp_path = f.name
-    
-    try:
-        with pytest.raises(ValidationError) as exc_info:
-            CoreConfig.from_yaml(temp_path)
-        
-        assert "days_per_turn" in str(exc_info.value)
-    finally:
-        Path(temp_path).unlink()
+    path = _write_config(tmp_path, drop=[("calendar", "days_per_turn")])
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "days_per_turn" in str(exc_info.value)
+
+
+# --- Nation profile keys (Spec 1.1) ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        # Schema bounds accepted (cross-field min<=max kept satisfied).
+        ("leader_name_min_length", 1),
+        ("leader_name_min_length", 10),
+        ("leader_name_max_length", 2),
+        ("leader_name_max_length", 100),
+        ("leader_title_min_length", 1),
+        ("leader_title_min_length", 10),
+        ("leader_title_max_length", 2),
+        ("leader_title_max_length", 100),
+        ("history_url_max_length", 30),
+        ("history_url_max_length", 2000),
+        ("history_url_allowed_hosts", ["vk.com"]),
+        ("history_url_allowed_hosts", [f"h{i}.io" for i in range(10)]),
+    ],
+)
+def test_nation_profile_keys_at_bounds_load(tmp_path, key, value):
+    """Each profile key validates at its schema min and max."""
+    path = _write_config(tmp_path, {"nation": {key: value}})
+
+    assert CoreConfig.from_yaml(path).nation is not None
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("leader_name_min_length", 0),
+        ("leader_name_min_length", 11),
+        ("leader_name_max_length", 0),
+        ("leader_name_max_length", 101),
+        ("leader_title_min_length", 0),
+        ("leader_title_min_length", 11),
+        ("leader_title_max_length", 0),
+        ("leader_title_max_length", 101),
+        ("history_url_max_length", 29),
+        ("history_url_max_length", 2001),
+        ("history_url_allowed_hosts", []),
+        ("history_url_allowed_hosts", ["a.io"] * 11),
+    ],
+)
+def test_nation_profile_keys_out_of_bounds_rejected(tmp_path, key, value):
+    """Each profile key just outside its schema bounds is rejected."""
+    path = _write_config(tmp_path, {"nation": {key: value}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert key in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "min_key,max_key",
+    [
+        ("leader_name_min_length", "leader_name_max_length"),
+        ("leader_title_min_length", "leader_title_max_length"),
+    ],
+)
+def test_profile_min_above_max_rejected(tmp_path, min_key, max_key):
+    """The cross-field min<=max rule covers leader name and title."""
+    path = _write_config(tmp_path, {"nation": {min_key: 5, max_key: 4}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert min_key in str(exc_info.value)
+    assert max_key in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "bad_host",
+    [
+        "https://vk.com",  # scheme included
+        "vk.com/history",  # path included
+        "vk.com:443",  # port included
+        "VK.COM",  # uppercase
+        "vk_com",  # not a hostname
+        "-vk.com",  # leading hyphen
+    ],
+)
+def test_history_url_allowed_hosts_rejects_bad_host(tmp_path, bad_host):
+    """Hosts must be lowercase hostnames without scheme, port or path."""
+    path = _write_config(
+        tmp_path,
+        {"nation": {"history_url_allowed_hosts": [bad_host]}},
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "history_url_allowed_hosts" in str(exc_info.value)
+
+
+def test_history_url_allowed_hosts_rejects_duplicates(tmp_path):
+    """Duplicate hostnames in the allow list are rejected."""
+    path = _write_config(
+        tmp_path,
+        {"nation": {"history_url_allowed_hosts": ["vk.com", "vk.com"]}},
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "history_url_allowed_hosts" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "leader_name_min_length",
+        "leader_name_max_length",
+        "leader_title_min_length",
+        "leader_title_max_length",
+        "history_url_max_length",
+        "history_url_allowed_hosts",
+    ],
+)
+def test_missing_profile_key_rejected(tmp_path, key):
+    """Every new profile key is required — no schema defaults (Spec 1.1)."""
+    path = _write_config(tmp_path, drop=[("nation", key)])
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert key in str(exc_info.value)

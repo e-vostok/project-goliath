@@ -21,6 +21,7 @@ from modules._00_core.models import (
     TickLog,
     TickLogStatus,
 )
+from tests.fixtures.profile import VALID_PROFILE
 
 
 def utcnow():
@@ -47,6 +48,9 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     owner_player_id = None  # Set explicitly in tests
     name = "Test Nation"
     color_hex = "#FF0000"
+    leader_name = VALID_PROFILE["leader_name"]
+    leader_title = VALID_PROFILE["leader_title"]
+    history_url = VALID_PROFILE["history_url"]
     created_at = utcnow
     __set_foreign_keys__ = False
 

@@ -339,3 +339,26 @@ def test_all_datetime_columns_are_timezone_aware():
     ]
 
     assert offenders == []
+
+
+@pytest.mark.parametrize(
+    "config_field,column_name",
+    [
+        ("leader_name_max_length", "leader_name"),
+        ("leader_title_max_length", "leader_title"),
+        ("history_url_max_length", "history_url"),
+    ],
+)
+def test_profile_config_bounds_fit_ddl_columns(config_field, column_name):
+    """The config schema's `le` ceiling for each profile length limit
+    must fit the DDL column length, so every accepted config value lands
+    in the column without a new migration (Spec Part 4)."""
+    from annotated_types import Le
+
+    from modules._00_core.config_schema import NationSettings
+
+    field = NationSettings.model_fields[config_field]
+    ceiling = next(m.le for m in field.metadata if isinstance(m, Le))
+    column_length = Nation.__table__.c[column_name].type.length
+
+    assert ceiling <= column_length
