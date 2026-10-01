@@ -1,36 +1,54 @@
 /**
- * PanelCreateNation — the "no nation yet" screen.
+ * PanelCreateNation — the "no nation yet" screen: a two-window container.
  *
- * Group → FormItem(name, Input) → FormItem(color, native <input type="color">
- * — VKUI ships no color picker; per spec this is the pragmatic choice, not a
- * violation) → FormItem(provinces, ChipsInput with numeric-only entry) →
- * submit Button.
+ * Window 1 «Основная информация» (CreateNationStepOne): name, color,
+ * provinces, leader name, leader title.
+ * Window 2 «История государства» (CreateNationStepTwo): history link.
+ *
+ * The current step and every field value live in this container — the
+ * chevron arrows in CreateNationStepBar switch windows without sending or
+ * losing anything; the single submit Button (rendered under both windows)
+ * fires one POST /nations with both windows' data.
+ *
+ * Length/host/province-count limits come from GET /nations/rules via
+ * useNationRules — the server stays the source of truth; the client only
+ * shows hints and gates the button. When rules fail to load the form stays
+ * usable without hints and falls back to "non-empty" gating.
  *
  * Server-side `ErrorResponse.code` values map to inline FormItem errors
- * (see `mapErrorCodeToField`); anything else surfaces as a generic
- * FormStatus banner.
+ * (see `mapErrorCodeToField`); an error for a field on the inactive window
+ * marks that window's title with a Badge instead of auto-switching.
+ * Anything else surfaces as a generic FormStatus banner.
  */
 
 import { useState, type FormEvent } from 'react';
 import bridge from '@vkontakte/vk-bridge';
 import {
   Button,
-  ChipsInput,
   Div,
   Footnote,
-  FormItem,
   FormStatus,
   Group,
-  Input,
   PanelHeader,
 } from '@vkontakte/vkui';
 
 import { api, ApiError } from '../../../shared/api-client';
 import { ErrorCodes, type NationDTO } from '../../../shared/types';
 import { useSession } from '../hooks/useAuth';
+import { useNationRules } from '../hooks/useNationRules';
 import { useProvinces } from '../hooks/useProvinces';
+import {
+  nationRulesHints,
+  type NationField,
+} from './CreateNationFields';
+import { CreateNationStepBar } from './CreateNationStepBar';
+import {
+  CreateNationStepOne,
+  type ChipOption,
+} from './CreateNationStepOne';
+import { CreateNationStepTwo } from './CreateNationStepTwo';
 
-type NationField = 'name' | 'color' | 'provinces';
+export type { NationField };
 
 /** Maps ErrorResponse.code to the FormItem that should display it inline. */
 export function mapErrorCodeToField(code: string): NationField | null {
@@ -43,14 +61,22 @@ export function mapErrorCodeToField(code: string): NationField | null {
     case ErrorCodes.PROVINCE_NOT_FOUND:
     case ErrorCodes.PROVINCE_COUNT_OUT_OF_RANGE:
       return 'provinces';
+    case ErrorCodes.LEADER_NAME_INVALID:
+      return 'leaderName';
+    case ErrorCodes.LEADER_TITLE_INVALID:
+      return 'leaderTitle';
+    case ErrorCodes.HISTORY_URL_INVALID:
+      return 'historyUrl';
     default:
       return null;
   }
 }
 
-// Cosmetic client-side bounds (Spec Part 4 defaults: min 3, max 40).
-// The authoritative check is server-side via CoreConfig.
-const NAME_MAX_LENGTH = 40;
+/** Which window of the wizard owns the field (history link lives on 2). */
+export function fieldToStep(field: NationField): 1 | 2 {
+  return field === 'historyUrl' ? 2 : 1;
+}
+
 const MAX_FREE_HINT_IDS = 20;
 
 const sendTaptic = () => {
@@ -59,11 +85,6 @@ const sendTaptic = () => {
     .catch(() => {});
 };
 
-interface ChipOption {
-  value: number;
-  label: string;
-}
-
 export interface PanelCreateNationProps {
   onCreated: (nation: NationDTO) => void;
 }
@@ -71,19 +92,47 @@ export interface PanelCreateNationProps {
 export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const { token } = useSession();
   const freeProvinces = useProvinces({ freeOnly: true });
+  const rulesState = useNationRules();
+  const rules = rulesState.status === 'ready' ? rulesState.rules : null;
+  const hints = nationRulesHints(rules);
 
+  const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState('');
   const [color, setColor] = useState('#e64545');
   const [chips, setChips] = useState<ChipOption[]>([]);
   const [chipsInput, setChipsInput] = useState('');
+  const [leaderName, setLeaderName] = useState('');
+  const [leaderTitle, setLeaderTitle] = useState('');
+  const [historyUrl, setHistoryUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<NationField, string>>
   >({});
   const [formError, setFormError] = useState<string | null>(null);
 
+  const clearFieldError = (field: NationField) =>
+    setFieldErrors((prev) => {
+      if (!(field in prev)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+
+  const stepErrors: Record<1 | 2, boolean> = { 1: false, 2: false };
+  for (const field of Object.keys(fieldErrors) as NationField[]) {
+    stepErrors[fieldToStep(field)] = true;
+  }
+
   const trimmedName = name.trim();
-  const canSubmit = trimmedName.length >= 3 && chips.length >= 1 && !submitting;
+  const canSubmit =
+    trimmedName.length >= (rules?.name_min_length ?? 1) &&
+    chips.length >= 1 &&
+    leaderName.trim().length > 0 &&
+    leaderTitle.trim().length > 0 &&
+    historyUrl.trim().length > 0 &&
+    !submitting;
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -99,6 +148,9 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
         name: trimmedName,
         color_hex: color,
         province_ids: chips.map((chip) => chip.value),
+        leader_name: leaderName.trim(),
+        leader_title: leaderTitle.trim(),
+        history_url: historyUrl.trim(),
       });
       sendTaptic();
       onCreated(nation);
@@ -129,11 +181,23 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           ? ` … (всего ${freeIds.length})`
           : '')
       : undefined;
+  const provincesHintParts = [freeHint, hints?.provinces].filter(
+    (part): part is string => Boolean(part),
+  );
+  const provincesHint = provincesHintParts.length
+    ? provincesHintParts.join('. ')
+    : undefined;
 
   return (
     <>
       <PanelHeader>Создание государства</PanelHeader>
       <Group>
+        <CreateNationStepBar
+          step={step}
+          onStepChange={setStep}
+          stepErrors={stepErrors}
+        />
+
         <form onSubmit={handleSubmit} data-testid="create-nation-form">
           {formError && (
             <FormStatus mode="error" title="Не удалось создать государство">
@@ -141,66 +205,52 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             </FormStatus>
           )}
 
-          <FormItem
-            top="Название государства"
-            htmlFor="nation-name"
-            status={fieldErrors.name ? 'error' : 'default'}
-            bottom={fieldErrors.name}
-            data-testid="form-item-name"
-          >
-            <Input
-              id="nation-name"
-              value={name}
-              maxLength={NAME_MAX_LENGTH}
-              onChange={(e) => setName(e.currentTarget.value)}
-              placeholder="напр. Северный Синдикат"
-            />
-          </FormItem>
-
-          <FormItem
-            top="Цвет государства"
-            htmlFor="nation-color"
-            status={fieldErrors.color ? 'error' : 'default'}
-            bottom={fieldErrors.color}
-            data-testid="form-item-color"
-          >
-            <input
-              id="nation-color"
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.currentTarget.value)}
-              style={{
-                width: '100%',
-                height: 36,
-                padding: 0,
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
+          {step === 1 ? (
+            <CreateNationStepOne
+              name={name}
+              color={color}
+              chips={chips}
+              chipsInput={chipsInput}
+              leaderName={leaderName}
+              leaderTitle={leaderTitle}
+              rules={rules}
+              hints={hints}
+              errors={fieldErrors}
+              provincesHint={provincesHint}
+              onNameChange={(v) => {
+                setName(v);
+                clearFieldError('name');
+              }}
+              onColorChange={(v) => {
+                setColor(v);
+                clearFieldError('color');
+              }}
+              onChipsChange={(next) => {
+                setChips(next);
+                clearFieldError('provinces');
+              }}
+              onChipsInputChange={setChipsInput}
+              onLeaderNameChange={(v) => {
+                setLeaderName(v);
+                clearFieldError('leaderName');
+              }}
+              onLeaderTitleChange={(v) => {
+                setLeaderTitle(v);
+                clearFieldError('leaderTitle');
               }}
             />
-          </FormItem>
-
-          <FormItem
-            top="Провинции"
-            status={fieldErrors.provinces ? 'error' : 'default'}
-            bottom={fieldErrors.provinces ?? freeHint}
-            data-testid="form-item-provinces"
-          >
-            <ChipsInput
-              value={chips}
-              inputValue={chipsInput}
-              placeholder="Введите ID провинции и нажмите Enter"
-              onInputChange={(e) =>
-                setChipsInput(e.currentTarget.value.replace(/\D/g, ''))
-              }
-              onChange={setChips}
-              getNewOptionData={(_, label) => ({
-                value: Number(label),
-                label: String(label),
-              })}
-              addOnBlur
+          ) : (
+            <CreateNationStepTwo
+              historyUrl={historyUrl}
+              rules={rules}
+              hints={hints}
+              error={fieldErrors.historyUrl}
+              onHistoryUrlChange={(v) => {
+                setHistoryUrl(v);
+                clearFieldError('historyUrl');
+              }}
             />
-          </FormItem>
+          )}
 
           <Div>
             <Button

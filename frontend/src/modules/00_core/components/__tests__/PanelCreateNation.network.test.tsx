@@ -8,53 +8,20 @@
  * a field or die silently.
  */
 
-import type { ReactElement } from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import {
-  AdaptivityProvider,
-  AppRoot,
-  ConfigProvider,
-  Platform,
-  ViewWidth,
-} from '@vkontakte/vkui';
 
 import { server } from '../../../../../vitest.setup';
-import { SessionProvider } from '../../hooks/useAuth';
 import { PanelCreateNation } from '../PanelCreateNation';
+import {
+  fillStep1,
+  fillStep2,
+  registerDefaultHandlers,
+  renderWithProviders,
+} from './helpers';
 
-const SESSION = {
-  token: 'jwt-token-abc',
-  player: {
-    id: '3f6b5d28-8f6d-4b7e-9a1c-2e5f7a9b0c1d',
-    vk_user_id: 123456,
-    created_at: '2026-09-01T12:00:00Z',
-  },
-};
-
-function renderWithProviders(ui: ReactElement) {
-  return render(
-    <ConfigProvider platform={Platform.VKCOM}>
-      <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
-        <AppRoot>
-          <SessionProvider session={SESSION}>{ui}</SessionProvider>
-        </AppRoot>
-      </AdaptivityProvider>
-    </ConfigProvider>,
-  );
-}
-
-beforeEach(() => {
-  server.use(
-    http.get('*/api/v1/provinces', () =>
-      HttpResponse.json([
-        { id: 1, nation_id: null },
-        { id: 2, nation_id: null },
-      ]),
-    ),
-  );
-});
+beforeEach(registerDefaultHandlers);
 
 describe('PanelCreateNation — network failure', () => {
   it('shows the generic FormStatus banner when fetch rejects outright', async () => {
@@ -65,11 +32,8 @@ describe('PanelCreateNation — network failure', () => {
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText('Название государства'), 'Testia');
-    const chipsInput = screen.getByPlaceholderText(
-      'Введите ID провинции и нажмите Enter',
-    );
-    await user.type(chipsInput, '1{Enter}');
+    await fillStep1(user);
+    await fillStep2(user);
     await user.click(
       screen.getByRole('button', { name: /основать государство/i }),
     );

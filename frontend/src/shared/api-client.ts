@@ -17,6 +17,7 @@ import type {
   GameClockDTO,
   NationCreateRequest,
   NationDTO,
+  NationRulesDTO,
   NationUpdateRequest,
   ProvinceDTO,
   VkAuthRequest,
@@ -154,6 +155,11 @@ export const api = {
   /** GET /nations/me — 404/NATION_NOT_FOUND when the player has no nation. */
   getMyNation(token: string, signal?: AbortSignal) {
     return apiFetch<NationDTO>('/nations/me', { token, signal });
+  },
+
+  /** GET /nations/rules — creation/update limits for UI hints and gating. */
+  getNationRules(token: string, signal?: AbortSignal) {
+    return apiFetch<NationRulesDTO>('/nations/rules', { token, signal });
   },
 
   /** POST /nations — 201 + NationDTO, or 409 with a field-level code. */
