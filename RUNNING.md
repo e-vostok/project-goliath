@@ -55,3 +55,31 @@ npm run dev
 ```
 
 Vite prints and serves **`https://localhost:5173/`** (self-signed cert via `@vitejs/plugin-basic-ssl`; accept the browser warning once). Register `https://localhost:5173` as the dev address in the VK Mini App settings.
+
+## 5. PostgreSQL tests (`pytest -m postgres`)
+
+The `postgres`-marked suite verifies the app end-to-end on a real PostgreSQL database: it **drops and rebuilds the public schema** of the target DB, migrates with Alembic, and deletes rows between tests. It is opt-in and destructive — never point it at a dev/prod database.
+
+Create a dedicated throwaway database once (psql as a superuser):
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -U postgres -c "CREATE DATABASE goliath_test;"
+```
+
+Then set `DATABASE_URL_TEST` in the repo-root `.env` (or the shell) — the database name **must** end with `_test` and differ from `DATABASE_URL`'s database:
+
+```dotenv
+DATABASE_URL_TEST=postgresql+asyncpg://postgres:<password>@127.0.0.1:5432/goliath_test
+```
+
+PowerShell (run from `backend/`):
+
+```powershell
+cd backend
+$env:DATABASE_URL_TEST="postgresql+asyncpg://postgres:<password>@127.0.0.1:5432/goliath_test"
+pytest -m postgres            # only the PG suite
+pytest                        # full suite; PG tests included when the URL is set
+$env:REQUIRE_POSTGRES_TESTS="1"; pytest -m postgres   # fail instead of skip when unset
+```
+
+Without `DATABASE_URL_TEST` the PG tests report as skipped. `PG_TEST_REVISION` (default `head`) overrides the Alembic target the schema fixture migrates to — used to red-check the PG drift guard (e.g. `$env:PG_TEST_REVISION="0004"; pytest -m postgres tests/test_model_migration_drift_pg.py` must fail listing the three `nations` profile columns).
