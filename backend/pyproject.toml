@@ -1,6 +1,6 @@
 [project]
 name = "project-goliath-backend"
-version = "0.2.0"
+version = "0.3.0"
 description = "Backend for Project Goliath - Turn-based strategy game"
 requires-python = ">=3.11"
 dependencies = [
