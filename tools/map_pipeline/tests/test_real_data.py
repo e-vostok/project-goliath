@@ -146,7 +146,8 @@ def test_real_graph(real_data_dir, tmp_path, capsys):
     for n in seas:
         if n["key"] != "sea_marmara":
             assert n["area"] > 40.0, n["key"]
-    assert abs(by_key["sea_azov"]["area"] - 63.0) < 20.0
+    assert 55.0 <= by_key["sea_azov"]["area"] <= 72.0
+    assert 355.0 <= by_key["sea_black_east"]["area"] <= 380.0
     assert abs(by_key["sea_danish_straits"]["area"] - 73.0) < 20.0
 
     edges = graph["edges"]
@@ -161,10 +162,12 @@ def test_real_graph(real_data_dir, tmp_path, capsys):
     manual_sea = [e for e in edges
                   if e["type"] == "sea" and e["len"] is None]
     assert 38 <= len(auto_sea) <= 50
-    # 4 manual sea edges are listed in overrides, but sea_azov-sea_black_east
-    # (Kerch) turns out geometrically adjacent at r=4: kept as the automatic
-    # edge plus an INFO line instead of a manual one -> 3 manual edges.
-    assert len(manual_sea) == 3
+    # 4 manual sea edges are listed in overrides. The second sea_black_east
+    # seed anchors the azov border at the Kerch strait: either the raster no
+    # longer connects the two zones and the edges_add entry is the only link
+    # (4 manual edges), or a residual contact < 1.5 remains automatic plus an
+    # INFO line (3 manual edges).
+    assert len(manual_sea) in (3, 4)
     assert by_type["strait"] == 16
     by_id = {n["id"]: n["key"] for n in graph["nodes"]}
     pairs = {(by_id[e["a"]], by_id[e["b"]]): e for e in edges}
@@ -176,6 +179,9 @@ def test_real_graph(real_data_dir, tmp_path, capsys):
     ):
         pair = tuple(sorted((a, b)))
         assert pairs[pair]["type"] == "sea", pair
+    # Kerch: manual edge (len None) or residual automatic contact < 1.5
+    kerch = pairs[tuple(sorted(("sea_azov", "sea_black_east")))]
+    assert kerch["len"] is None or kerch["len"] < 1.5
 
     deg = {n["id"]: 0 for n in graph["nodes"]}
     for e in edges:

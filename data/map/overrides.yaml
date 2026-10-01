@@ -118,7 +118,7 @@ sea_zones:
     seeds: [[662.88, 170.12]]   # 30E 43.5N
   - key: sea_black_east            # №34
     name_ru: "Чёрное море (восточное)"
-    seeds: [[686.12, 172.62]]   # 37E 43N
+    seeds: [[686.12, 172.62], [683.74, 164.97]]   # 37E 43N; 36.3E 44.6N (Kerch exit, keeps the azov border at the strait)
   - key: sea_azov            # №35
     name_ru: "Азовское море"
     seeds: [[686.88, 157.62]]   # 37.2E 46.2N
