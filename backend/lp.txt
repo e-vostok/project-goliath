@@ -1,0 +1,1 @@
+vk_app_id=777&vk_platform=desktop_web&vk_is_app_user=1&vk_are_notifications_enabled=0&vk_language=ru&vk_access_token_settings=&vk_user_id=424242&vk_ts=1790514826&sign=uJWQ2r4oed2CcNKyiYd1EKXEWlH72nbcFfB7YTr9-Hs
