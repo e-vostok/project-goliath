@@ -108,9 +108,9 @@ export function CreateNationStepOne({
             onChipsInputChange(e.currentTarget.value.replace(/\D/g, ''))
           }
           onChange={onChipsChange}
-          getNewOptionData={(_, label) => ({
-            value: Number(label),
-            label: String(label),
+          getNewOptionData={(value, label) => ({
+            value: Number(value),
+            label: String(label || value),
           })}
           addOnBlur
         />
