@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "ids": {
+    "mini_alpha": 1001,
+    "mini_beta": 1002,
+    "mini_gamma": 1003,
+    "mini_delta": 1004,
+    "mini_epsilon": 1005,
+    "mini_zeta": 1006,
+    "mini_eta": 1007,
+    "mini_theta": 1008,
+    "sea_mini_north": 2001,
+    "sea_mini_south": 2002
+  }
+}

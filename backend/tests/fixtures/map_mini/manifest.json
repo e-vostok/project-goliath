@@ -1,0 +1,285 @@
+{
+ "schema_version": 1,
+ "geometry_version": "dd7d785f4355",
+ "view_box": [
+  0,
+  0,
+  100,
+  80
+ ],
+ "playable_bbox": [
+  0,
+  0,
+  85,
+  75
+ ],
+ "georef": {
+  "projection": "gall_stereographic",
+  "x0": 50.0,
+  "k": 3.339,
+  "y0": 40.0,
+  "m": 459.3
+ },
+ "inputs_sha256": {
+  "source": "66bcbaca4d378f1df60b46f2e9c50edb7ce2cb8601a6711bd42f313ba5f0f698",
+  "boundary": "3b5305f6f2458b2e3baa37318a1c1e8d8521f49cdb0a1befcb7dd793c8ec57fa",
+  "overrides": "7742be9468f830040bb6e9b5f57d441d17a634bc655508841d02bd4d8ec1787e",
+  "ids_lock": "8b98ef3a62d1275d10f3b17ce80a1388bc97064ca832e26267b052612ce6b023"
+ },
+ "nodes": [
+  {
+   "id": 1001,
+   "key": "mini_alpha",
+   "kind": "LAND",
+   "name": "Mini Alpha",
+   "name_ru": null,
+   "source_name": "Mini_Alpha",
+   "anchor": [
+    5.0,
+    25.0
+   ],
+   "bbox": [
+    0.0,
+    20.0,
+    10.0,
+    30.0
+   ],
+   "area": 100.0
+  },
+  {
+   "id": 1002,
+   "key": "mini_beta",
+   "kind": "LAND",
+   "name": "Mini Beta",
+   "name_ru": null,
+   "source_name": "Mini_Beta",
+   "anchor": [
+    15.0,
+    25.0
+   ],
+   "bbox": [
+    10.0,
+    20.0,
+    20.0,
+    30.0
+   ],
+   "area": 100.0
+  },
+  {
+   "id": 1003,
+   "key": "mini_gamma",
+   "kind": "LAND",
+   "name": "Mini Gamma",
+   "name_ru": null,
+   "source_name": "Mini_Gamma",
+   "anchor": [
+    25.0,
+    25.0
+   ],
+   "bbox": [
+    20.0,
+    20.0,
+    30.0,
+    30.0
+   ],
+   "area": 100.0
+  },
+  {
+   "id": 1004,
+   "key": "mini_delta",
+   "kind": "LAND",
+   "name": "Mini Delta",
+   "name_ru": null,
+   "source_name": "Mini_Delta",
+   "anchor": [
+    35.0,
+    25.0
+   ],
+   "bbox": [
+    30.0,
+    20.0,
+    40.0,
+    30.0
+   ],
+   "area": 100.0
+  },
+  {
+   "id": 1005,
+   "key": "mini_epsilon",
+   "kind": "LAND",
+   "name": "Mini Epsilon",
+   "name_ru": null,
+   "source_name": "Mini_Epsilon",
+   "anchor": [
+    55.0,
+    45.0
+   ],
+   "bbox": [
+    50.0,
+    40.0,
+    60.0,
+    50.0
+   ],
+   "area": 100.0
+  },
+  {
+   "id": 1006,
+   "key": "mini_zeta",
+   "kind": "LAND",
+   "name": "Mini Zeta",
+   "name_ru": null,
+   "source_name": "Mini_Zeta",
+   "anchor": [
+    66.0,
+    45.0
+   ],
+   "bbox": [
+    62.0,
+    40.0,
+    70.0,
+    50.0
+   ],
+   "area": 80.0
+  },
+  {
+   "id": 1007,
+   "key": "mini_eta",
+   "kind": "LAND",
+   "name": "Mini Eta",
+   "name_ru": null,
+   "source_name": "Mini_Eta",
+   "anchor": [
+    76.0,
+    64.0
+   ],
+   "bbox": [
+    72.0,
+    60.0,
+    80.0,
+    68.0
+   ],
+   "area": 64.0
+  },
+  {
+   "id": 1008,
+   "key": "mini_theta",
+   "kind": "LAND",
+   "name": "Mini Theta",
+   "name_ru": null,
+   "source_name": "Mini_Theta",
+   "anchor": [
+    37.0,
+    9.0
+   ],
+   "bbox": [
+    34.0,
+    6.0,
+    40.0,
+    12.0
+   ],
+   "area": 36.0
+  },
+  {
+   "id": 2001,
+   "key": "sea_mini_north",
+   "kind": "SEA",
+   "name": "Северное мини-море",
+   "name_ru": "Северное мини-море",
+   "source_name": null,
+   "anchor": [
+    37.0,
+    7.0
+   ],
+   "bbox": [
+    28.0,
+    0.0,
+    46.0,
+    14.0
+   ],
+   "area": 252.0
+  },
+  {
+   "id": 2002,
+   "key": "sea_mini_south",
+   "kind": "SEA",
+   "name": "Южное мини-море",
+   "name_ru": "Южное мини-море",
+   "source_name": null,
+   "anchor": [
+    64.0,
+    54.0
+   ],
+   "bbox": [
+    46.0,
+    36.0,
+    82.0,
+    72.0
+   ],
+   "area": 1296.0
+  }
+ ],
+ "edges": [
+  {
+   "a": 1001,
+   "b": 1002,
+   "type": "land",
+   "len": 5.0
+  },
+  {
+   "a": 1002,
+   "b": 1003,
+   "type": "land",
+   "len": 5.0
+  },
+  {
+   "a": 1003,
+   "b": 1004,
+   "type": "land",
+   "len": 5.0
+  },
+  {
+   "a": 1004,
+   "b": 2001,
+   "type": "coast",
+   "len": 8.0
+  },
+  {
+   "a": 1005,
+   "b": 1006,
+   "type": "strait",
+   "name": "Затонный пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1005,
+   "b": 2002,
+   "type": "coast",
+   "len": 6.0
+  },
+  {
+   "a": 1006,
+   "b": 1007,
+   "type": "strait",
+   "name": "Узкий проход",
+   "multiplier": 0.3
+  },
+  {
+   "a": 1007,
+   "b": 2002,
+   "type": "coast",
+   "len": 4.0
+  },
+  {
+   "a": 1008,
+   "b": 2001,
+   "type": "coast",
+   "len": 3.0
+  },
+  {
+   "a": 2001,
+   "b": 2002,
+   "type": "sea",
+   "len": 10.0
+  }
+ ]
+}
