@@ -30,11 +30,25 @@ import { useNation } from '../modules/00_core/hooks/useNation';
 import { PanelCreateNation } from '../modules/00_core/components/PanelCreateNation';
 import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
 import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
+import { PanelMap } from '../modules/01_map/components/PanelMap';
+import { MapEntryButton } from '../modules/01_map/components/MapEntryButton';
 import { AdminBlock } from '../admin/AdminBlock';
 
 export const PANEL_HOME = 'nation-home';
 export const PANEL_CREATE = 'nation-create';
+export const PANEL_MAP = 'map';
 const MODAL_DELETE_NATION = 'confirm-delete-nation';
+
+/**
+ * The community-menu deep link `https://vk.com/app<APP_ID>#map` arrives
+ * as the bare hash `#map`; the hash router expects a path. Call once,
+ * before the router is created (main.tsx).
+ */
+export function normalizeEntryHash(): void {
+  if (window.location.hash === '#map') {
+    window.history.replaceState(null, '', '#/map');
+  }
+}
 
 export function AppShell() {
   const auth = useAuth();
@@ -104,14 +118,23 @@ function AuthedArea() {
   };
 
   // The panel is a function of nation existence — keep the route in sync.
+  // The map screen is open to everyone, so it is exempt from the redirect.
   useEffect(() => {
     if (status !== 'ready') {
       return;
     }
-    if (nation === null && activePanel !== PANEL_CREATE) {
+    if (
+      nation === null &&
+      activePanel !== PANEL_CREATE &&
+      activePanel !== PANEL_MAP
+    ) {
       void navigator.push('/nation/new');
     }
-    if (nation !== null && activePanel !== PANEL_HOME) {
+    if (
+      nation !== null &&
+      activePanel !== PANEL_HOME &&
+      activePanel !== PANEL_MAP
+    ) {
       void navigator.push('/');
     }
   }, [status, nation, activePanel, navigator]);
@@ -167,7 +190,13 @@ function AuthedArea() {
             )}
             <AdminBlock onWorldChanged={handleWorldChanged} />
           </Panel>
+          <Panel id={PANEL_MAP}>
+            <PanelMap />
+          </Panel>
         </View>
+        {/* Temporary service entry «Карта» — Issue 5; remove with the
+            real navigation. One component, one import. */}
+        {activePanel !== PANEL_MAP && <MapEntryButton />}
       </SplitCol>
     </SplitLayout>
   );
