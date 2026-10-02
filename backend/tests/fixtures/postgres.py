@@ -41,9 +41,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+import modules._01_map.service as map_service_module
 from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator
 from main import app  # noqa: F401 — importing main loads the root .env
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
+from tests.fixtures.provinces import MAP_MINI_DIR
 from tests.modules._00_core.test_router import TEST_JWT_SECRET, TEST_VK_SECRET
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -210,15 +216,16 @@ def pg_clean(pg_schema: str) -> None:
     """
     Per-test data reset (autouse in the PG test modules).
 
-    Plain SQL in a fixed order; NEVER TRUNCATE … CASCADE — the 100
-    province rows seeded by migration 0001 are part of the world and
-    must survive. next_tick_at is pushed a day out so the app's
-    background scheduler never fires mid-test.
+    Plain SQL in a fixed order; NEVER TRUNCATE … CASCADE — provinces are
+    wiped too: migration 0006 removed the placeholder seed, so tests
+    seed exactly the province rows they use. next_tick_at is pushed a
+    day out so the app's background scheduler never fires mid-test.
     """
     engine = sa.create_engine(_sync_url(pg_schema))
     try:
         with engine.begin() as conn:
-            conn.execute(sa.text("UPDATE provinces SET nation_id = NULL"))
+            conn.execute(sa.text("DELETE FROM map_ownership_log"))
+            conn.execute(sa.text("DELETE FROM provinces"))
             conn.execute(sa.text("DELETE FROM scheduled_actions"))
             conn.execute(sa.text("DELETE FROM nations"))
             conn.execute(sa.text("DELETE FROM players"))
@@ -250,6 +257,9 @@ async def pg_live_client(
     monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
     monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+    # Lifespan startup syncs the mini map into provinces and registers
+    # the 01_map hooks.
+    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
 
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
@@ -258,6 +268,8 @@ async def pg_live_client(
         for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
+    saved_extensions = snapshot_extension_points()
+    saved_map_service = map_service_module._instance
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
@@ -273,6 +285,8 @@ async def pg_live_client(
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved_handlers)
     TickOrchestrator._finalize_callback = saved_finalize
+    restore_extension_points(saved_extensions)
+    map_service_module._instance = saved_map_service
 
 
 @pytest_asyncio.fixture

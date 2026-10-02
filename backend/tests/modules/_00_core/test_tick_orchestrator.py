@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import select
 
 from core.tick.orchestrator import TickOrchestrator, TickPhase
-from modules._00_core.models import GameClock, Nation, Player, Province, ScheduledAction, ScheduledActionStatus, TickLog, TickLogStatus
+from modules._00_core.models import GameClock, Nation, Player, ScheduledAction, ScheduledActionStatus, TickLog, TickLogStatus
 from modules._00_core.service import ScheduledActionService
 from modules._00_core.tick_handler import finalize_tick, register_tick_handlers
 
@@ -44,15 +44,14 @@ class TestTickOrchestrator:
         from modules._00_core.config_schema import CoreConfig
         from modules._00_core.service import NationService
         from tests.fixtures.profile import VALID_PROFILE
+        from tests.fixtures.provinces import make_land_province
 
         player = Player(vk_user_id=11111)
         session.add(player)
         await session.flush()
 
-        provinces = [Province(id=pid, nation_id=None) for pid in [1, 2]]
-        for p in provinces:
-            session.add(p)
-        await session.flush()
+        for pid in [1001, 1002]:
+            await make_land_province(session, id=pid)
 
         config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
         nation = await NationService.create(
@@ -60,7 +59,7 @@ class TestTickOrchestrator:
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )

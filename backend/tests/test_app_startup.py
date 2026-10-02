@@ -18,7 +18,15 @@ from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
+import modules._01_map.service as map_service_module
+from core.admin.registry import AdminRegistry
+from core.tick.orchestrator import TickOrchestrator
 from main import app
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
+from tests.fixtures.provinces import MAP_MINI_DIR
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -39,9 +47,21 @@ async def live_client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+    # The lifespan startup syncs the map into provinces — the mini-map
+    # fixture keeps that fast and self-contained.
+    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
 
     alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
+
+    saved_resets = AdminRegistry.get_reset_hooks()
+    saved_handlers = {
+        phase: list(handlers)
+        for phase, handlers in TickOrchestrator._handlers.items()
+    }
+    saved_finalize = TickOrchestrator._finalize_callback
+    saved_extensions = snapshot_extension_points()
+    saved_map_service = map_service_module._instance
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
@@ -49,6 +69,14 @@ async def live_client(tmp_path, monkeypatch):
             transport=transport, base_url="http://test"
         ) as client:
             yield client
+
+    AdminRegistry._reset_hooks.clear()
+    AdminRegistry._reset_hooks.update(saved_resets)
+    TickOrchestrator._handlers.clear()
+    TickOrchestrator._handlers.update(saved_handlers)
+    TickOrchestrator._finalize_callback = saved_finalize
+    restore_extension_points(saved_extensions)
+    map_service_module._instance = saved_map_service
 
 
 async def test_auth_vk_served_by_real_startup(live_client):

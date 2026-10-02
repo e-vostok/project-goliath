@@ -59,6 +59,8 @@ export interface ApiFetchOptions {
   /** Short-lived Bearer JWT for the current session (never persisted). */
   token?: string;
   signal?: AbortSignal;
+  /** Extra request headers (e.g. If-None-Match for conditional GETs). */
+  extraHeaders?: Record<string, string>;
 }
 
 /**
@@ -89,11 +91,11 @@ function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
-export async function apiFetch<T>(
+async function request(
   path: string,
-  options: ApiFetchOptions = {},
-): Promise<T> {
-  const headers: Record<string, string> = {};
+  options: ApiFetchOptions,
+): Promise<Response> {
+  const headers: Record<string, string> = { ...options.extraHeaders };
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
@@ -101,7 +103,7 @@ export async function apiFetch<T>(
     headers['Authorization'] = `Bearer ${options.token}`;
   }
 
-  const response = await withAbort(
+  return withAbort(
     fetch(resolveUrl(path), {
       method: options.method ?? 'GET',
       headers,
@@ -110,34 +112,84 @@ export async function apiFetch<T>(
     }),
     options.signal,
   );
+}
+
+async function parseError(response: Response): Promise<ApiError> {
+  let code = 'UNKNOWN_ERROR';
+  let detail = response.statusText || `HTTP ${response.status}`;
+  try {
+    const payload: unknown = await response.json();
+    if (payload && typeof payload === 'object') {
+      const record = payload as Record<string, unknown>;
+      if (typeof record.code === 'string') {
+        code = record.code;
+      }
+      if (typeof record.detail === 'string') {
+        detail = record.detail;
+      } else if (record.detail !== undefined) {
+        // FastAPI 422 bodies carry detail as a list of violations.
+        detail = JSON.stringify(record.detail);
+      }
+    }
+  } catch {
+    // Non-JSON error body — keep statusText fallback.
+  }
+  return new ApiError(response.status, code, detail);
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: ApiFetchOptions = {},
+): Promise<T> {
+  const response = await request(path, options);
 
   if (!response.ok) {
-    let code = 'UNKNOWN_ERROR';
-    let detail = response.statusText || `HTTP ${response.status}`;
-    try {
-      const payload: unknown = await response.json();
-      if (payload && typeof payload === 'object') {
-        const record = payload as Record<string, unknown>;
-        if (typeof record.code === 'string') {
-          code = record.code;
-        }
-        if (typeof record.detail === 'string') {
-          detail = record.detail;
-        } else if (record.detail !== undefined) {
-          // FastAPI 422 bodies carry detail as a list of violations.
-          detail = JSON.stringify(record.detail);
-        }
-      }
-    } catch {
-      // Non-JSON error body — keep statusText fallback.
-    }
-    throw new ApiError(response.status, code, detail);
+    throw await parseError(response);
   }
 
   if (response.status === 204) {
     return undefined as T;
   }
   return (await response.json()) as T;
+}
+
+export interface ConditionalResult<T> {
+  /** 200 with a fresh body, or 304 (body stays null — reuse the cache). */
+  status: number;
+  /** The ETag the server sent, when present. */
+  etag: string | null;
+  body: T | null;
+}
+
+/**
+ * GET with `If-None-Match` support: a 304 answer is NOT an error — it is
+ * reported as `{ status: 304, body: null }` so the caller can reuse its
+ * cached copy (01_map manifest revalidation).
+ */
+export async function apiFetchConditional<T>(
+  path: string,
+  options: ApiFetchOptions & { ifNoneMatch?: string } = {},
+): Promise<ConditionalResult<T>> {
+  const { ifNoneMatch, ...rest } = options;
+  const response = await request(path, {
+    ...rest,
+    extraHeaders: {
+      ...rest.extraHeaders,
+      ...(ifNoneMatch ? { 'If-None-Match': ifNoneMatch } : {}),
+    },
+  });
+
+  if (response.status === 304) {
+    return { status: 304, etag: response.headers.get('ETag'), body: null };
+  }
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+  return {
+    status: response.status,
+    etag: response.headers.get('ETag'),
+    body: (await response.json()) as T,
+  };
 }
 
 /** Endpoint helpers for module 00_core (Spec Part 5). */
