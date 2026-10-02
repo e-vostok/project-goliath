@@ -71,7 +71,7 @@ export function CreateNationStepOne({
         error={errors.name}
         hint={hints?.name}
         onChange={onNameChange}
-        placeholder="напр. Северный Синдикат"
+        placeholder="напр. Христианская Республика Ломбардия"
       />
 
       <FormItem
@@ -146,7 +146,7 @@ export function CreateNationStepOne({
         error={errors.leaderName}
         hint={hints?.leaderName}
         onChange={onLeaderNameChange}
-        placeholder="напр. Иван Грозный"
+        placeholder="напр. Джузеппе Лоричи"
       />
 
       <CreateNationTextField
@@ -158,7 +158,7 @@ export function CreateNationStepOne({
         error={errors.leaderTitle}
         hint={hints?.leaderTitle}
         onChange={onLeaderTitleChange}
-        placeholder="напр. Верховный правитель"
+        placeholder="напр. Премьер-министр"
       />
     </>
   );
