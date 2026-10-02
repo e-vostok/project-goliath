@@ -8,13 +8,21 @@ Enforces all invariants defined in the system specification.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.hooks import (
+    STAGE_AFTER_COUNT,
+    STAGE_AFTER_FREE,
+    OwnershipChange,
+    notify_ownership_changed,
+    run_registration_checks,
+)
 from modules._00_core.exceptions import (
     ColorTakenError,
     FrequencyCapExceededError,
@@ -45,11 +53,139 @@ if TYPE_CHECKING:
 
 class FrequencyRule(str):
     """Frequency rules for scheduled actions."""
-    
+
     ONCE_PER_TURN = "ONCE_PER_TURN"
     ONCE_PER_GAME = "ONCE_PER_GAME"
     MULTIPLE_PER_TURN = "MULTIPLE_PER_TURN"
     UNLIMITED = "UNLIMITED"
+
+
+ProvinceKind = Literal["LAND", "SEA"]
+
+
+@dataclass(frozen=True)
+class NodeSpec:
+    """One map node from manifest.json: an id and its kind."""
+
+    id: int
+    kind: ProvinceKind
+
+
+@dataclass(frozen=True)
+class EnsureNodesResult:
+    """Outcome of ProvinceService.ensure_nodes (all lists sorted)."""
+
+    added: list[int] = field(default_factory=list)
+    kind_mismatch: list[int] = field(default_factory=list)
+    extra_in_db: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class OwnedProvinceInfo:
+    """
+    One currently-owned province with its nation's display fields —
+    the read shape ``/map/state`` (01_map) needs for the live turn.
+    """
+
+    province_id: int
+    nation_id: str
+    nation_name: str
+    nation_color: str
+
+
+class ProvinceService:
+    """Service for the provinces table (map nodes)."""
+
+    @staticmethod
+    async def ensure_nodes(
+        session: AsyncSession,
+        nodes: Sequence[NodeSpec],
+    ) -> EnsureNodesResult:
+        """
+        Insert missing provinces for the given map nodes (INV-M5 helper).
+
+        Only inserts rows that do not exist yet (nation_id NULL); never
+        updates or deletes. Idempotent: a second call adds nothing. Runs
+        inside the caller's transaction — this method never commits.
+
+        Args:
+            session: The async database session.
+            nodes: Node specs (id + kind) from manifest.json.
+
+        Returns:
+            EnsureNodesResult with the ids that were inserted, the ids
+            whose existing row has a different kind (left unchanged), and
+            ids present in the DB but absent from `nodes` (not removed) —
+            the caller decides whether extra rows are fatal (INV-M5).
+
+        Raises:
+            ValueError: On duplicate ids or an invalid kind in `nodes`;
+                nothing is written in that case.
+        """
+        ids = [node.id for node in nodes]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Duplicate node ids in input")
+        invalid_kinds = {node.kind for node in nodes} - {"LAND", "SEA"}
+        if invalid_kinds:
+            raise ValueError(
+                f"Invalid node kinds in input: {sorted(invalid_kinds)}"
+            )
+
+        result = await session.execute(select(Province.id, Province.kind))
+        existing = {row.id: row.kind for row in result.all()}
+
+        spec_by_id = {node.id: node.kind for node in nodes}
+        added = sorted(set(spec_by_id) - set(existing))
+        kind_mismatch = sorted(
+            node_id
+            for node_id in set(spec_by_id) & set(existing)
+            if existing[node_id] != spec_by_id[node_id]
+        )
+        extra_in_db = sorted(set(existing) - set(spec_by_id))
+
+        if added:
+            await session.execute(
+                insert(Province),
+                [
+                    {"id": node_id, "kind": spec_by_id[node_id]}
+                    for node_id in added
+                ],
+            )
+
+        return EnsureNodesResult(
+            added=added,
+            kind_mismatch=kind_mismatch,
+            extra_in_db=extra_in_db,
+        )
+
+    @staticmethod
+    async def list_current_owners(
+        session: AsyncSession,
+    ) -> list[OwnedProvinceInfo]:
+        """
+        Every owned province joined to its nation, ordered by province
+        id — the public read path for satellites (e.g. /map/state).
+
+        Read-only and never commits. Sea zones cannot appear:
+        ck_provinces_sea_unowned keeps their nation_id NULL.
+        """
+        result = await session.execute(
+            select(
+                Province.id, Nation.id, Nation.name, Nation.color_hex
+            )
+            .join(Nation, Province.nation_id == Nation.id)
+            .order_by(Province.id)
+        )
+        # Positional access: two `id` columns share a label name.
+        return [
+            OwnedProvinceInfo(
+                province_id=row[0],
+                nation_id=row[1],
+                nation_name=row[2],
+                nation_color=row[3],
+            )
+            for row in result.all()
+        ]
 
 
 class PlayerService:
@@ -84,6 +220,34 @@ class PlayerService:
         return player
 
 
+async def _current_turn(session: AsyncSession) -> int:
+    """
+    The game_clock.current_turn of the running transaction.
+
+    A migrated database always holds the singleton row (migration 0001);
+    bare create_all test schemas may not — in that case the change is
+    stamped turn 0 rather than failing the operation.
+    """
+    result = await session.execute(
+        select(GameClock).where(GameClock.id == 1)
+    )
+    clock = result.scalar_one_or_none()
+    return clock.current_turn if clock is not None else 0
+
+
+class GameClockService:
+    """Read-only access to the game_clock singleton for satellites."""
+
+    @staticmethod
+    async def current_turn(session: AsyncSession) -> int:
+        """
+        The current turn in the caller's transaction. Shares the
+        write path's rule: a missing singleton row (bare test schema)
+        reads as turn 0.
+        """
+        return await _current_turn(session)
+
+
 class NationService:
     """Service for Nation entity operations."""
     
@@ -105,9 +269,12 @@ class NationService:
         Enforces INV-1 (one nation per player), INV-7 (mandatory profile
         fields), INV-2 (unique name/color), INV-3 (atomic province
         assignment), and province count constraints — in exactly the
-        Spec Part 2 order: INV-1 -> profile fields (leader_name,
-        leader_title, history_url) -> INV-2 -> province count ->
-        province existence/freedom. Any failure persists nothing.
+        Spec order (00_core Part 2 extended by 01_map Part 5):
+        INV-1 -> profile fields (leader_name, leader_title,
+        history_url) -> INV-2 -> province existence -> province freedom
+        -> "after_free" satellite checks -> province count ->
+        "after_count" satellite checks -> create. Any failure persists
+        nothing.
 
         Args:
             session: The async database session.
@@ -161,6 +328,27 @@ class NationService:
         if result.scalar_one_or_none() is not None:
             raise ColorTakenError(color_hex)
         
+        # Fetch all provinces to validate they exist and are free
+        result = await session.execute(
+            select(Province).where(Province.id.in_(province_ids))
+        )
+        provinces = result.scalars().all()
+
+        # Check for missing provinces
+        found_ids = {p.id for p in provinces}
+        missing_ids = set(province_ids) - found_ids
+        if missing_ids:
+            raise ProvinceNotFoundError(missing_ids.pop())
+
+        # Check for already-owned provinces
+        for province in provinces:
+            if province.nation_id is not None:
+                raise ProvinceTakenError(province.id)
+
+        # Stage "after_free": satellite checks that need a loaded,
+        # existing, free province set (Spec 01_map Part 5 order).
+        await run_registration_checks(STAGE_AFTER_FREE, session, provinces)
+
         # Validate province count constraints
         province_count = len(province_ids)
         if (province_count < config.nation.min_provinces_per_nation or
@@ -170,24 +358,10 @@ class NationService:
                 config.nation.min_provinces_per_nation,
                 config.nation.max_provinces_per_nation,
             )
-        
-        # Fetch all provinces to validate they exist and are free
-        result = await session.execute(
-            select(Province).where(Province.id.in_(province_ids))
-        )
-        provinces = result.scalars().all()
-        
-        # Check for missing provinces
-        found_ids = {p.id for p in provinces}
-        missing_ids = set(province_ids) - found_ids
-        if missing_ids:
-            raise ProvinceNotFoundError(missing_ids.pop())
-        
-        # Check for already-owned provinces
-        for province in provinces:
-            if province.nation_id is not None:
-                raise ProvinceTakenError(province.id)
-        
+
+        # Stage "after_count": satellite checks on the sized group.
+        await run_registration_checks(STAGE_AFTER_COUNT, session, provinces)
+
         # INV-3: Atomic transaction - create nation and assign provinces
         nation = Nation(
             id=str(uuid.uuid4()),
@@ -201,13 +375,49 @@ class NationService:
         )
         session.add(nation)
         await session.flush()  # Get the nation ID
-        
-        # Assign provinces
-        for province in provinces:
+
+        # Assign provinces — the ONLY production code path that writes
+        # provinces.nation_id outside the admin world reset. Every such
+        # write is announced through notify_ownership_changed in the same
+        # transaction (INV-M7).
+        turn = await _current_turn(session)
+        ordered = sorted(provinces, key=lambda p: p.id)
+        for province in ordered:
             province.nation_id = nation.id
-        
+        await notify_ownership_changed(
+            session,
+            [
+                OwnershipChange(
+                    province_id=province.id,
+                    prev_nation_id=None,
+                    new_nation_id=nation.id,
+                    new_name=nation.name,
+                    new_color=nation.color_hex,
+                    turn=turn,
+                )
+                for province in ordered
+            ],
+        )
+
         return nation
-    
+
+    @staticmethod
+    async def existing_ids(
+        session: AsyncSession, nation_ids: Iterable[str]
+    ) -> set[str]:
+        """
+        The subset of ``nation_ids`` still present in the nations table —
+        one batched read for satellites (e.g. /map/state resolving which
+        past owners still exist). Read-only and never commits.
+        """
+        ids = set(nation_ids)
+        if not ids:
+            return set()
+        result = await session.execute(
+            select(Nation.id).where(Nation.id.in_(ids))
+        )
+        return set(result.scalars().all())
+
     @staticmethod
     async def update(
         session: AsyncSession,
@@ -332,7 +542,7 @@ class NationService:
         provinces = result.scalars().all()
         for province in provinces:
             province.nation_id = None
-        
+
         # Orphan scheduled actions the same way: explicit nulling, not
         # FK cascade, so SQLite (foreign_keys pragma off) behaves
         # identically to PostgreSQL ON DELETE SET NULL.
@@ -341,9 +551,27 @@ class NationService:
         )
         for action in result.scalars().all():
             action.nation_id = None
-        
+
         # Delete the nation
         await session.delete(nation)
+
+        # Announce the releases inside the same transaction (INV-M7):
+        # listeners keep the deleted nation's identity (id) per change.
+        turn = await _current_turn(session)
+        await notify_ownership_changed(
+            session,
+            [
+                OwnershipChange(
+                    province_id=province.id,
+                    prev_nation_id=nation_id,
+                    new_nation_id=None,
+                    new_name=None,
+                    new_color=None,
+                    turn=turn,
+                )
+                for province in sorted(provinces, key=lambda p: p.id)
+            ],
+        )
 
 
 class ScheduledActionService:

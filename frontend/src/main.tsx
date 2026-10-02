@@ -23,13 +23,24 @@ import {
   RouterProvider,
 } from '@vkontakte/vk-mini-apps-router';
 
-import { AppShell, PANEL_CREATE, PANEL_HOME } from './app/AppShell';
+import {
+  AppShell,
+  normalizeEntryHash,
+  PANEL_CREATE,
+  PANEL_HOME,
+  PANEL_MAP,
+} from './app/AppShell';
 
 import '@vkontakte/vkui/dist/vkui.css';
+
+// Deep link from the community menu: `https://vk.com/app<APP_ID>#map`
+// reaches the iframe as the bare hash `#map` — normalise before routing.
+normalizeEntryHash();
 
 const router = createHashRouter([
   { path: '/', panel: PANEL_HOME, view: 'main' },
   { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
+  { path: '/map', panel: PANEL_MAP, view: 'main' },
 ]);
 
 function App() {

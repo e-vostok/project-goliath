@@ -128,10 +128,11 @@ class NationDeleteRequest(BaseModel):
 
 
 class ProvinceDTO(BaseModel):
-    """Province representation."""
+    """Province representation (Spec 01_map Part 5 adds ``kind``)."""
 
     id: int
     nation_id: uuid.UUID | None
+    kind: Literal["LAND", "SEA"]
 
 
 class GameClockDTO(BaseModel):

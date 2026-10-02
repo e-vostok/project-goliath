@@ -223,7 +223,7 @@ async def list_provinces(
         stmt = stmt.where(Province.nation_id.is_(None))
     result = await session.execute(stmt)
     return [
-        ProvinceDTO(id=p.id, nation_id=p.nation_id)
+        ProvinceDTO(id=p.id, nation_id=p.nation_id, kind=p.kind)
         for p in result.scalars().all()
     ]
 

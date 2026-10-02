@@ -34,6 +34,7 @@ from modules._00_core.service import (
     ScheduledActionService,
 )
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import make_land_province
 
 
 class TestPlayerService:
@@ -85,24 +86,23 @@ class TestNationService:
     
     async def _create_provinces(self, session, ids: list[int]) -> list[Province]:
         """Helper to create provinces."""
-        provinces = [Province(id=pid, nation_id=None) for pid in ids]
-        for p in provinces:
-            session.add(p)
-        await session.flush()
+        provinces = []
+        for pid in ids:
+            provinces.append(await make_land_province(session, id=pid))
         return provinces
     
     @pytest.mark.asyncio
     async def test_create_nation_happy_path(self, test_db_session, config):
         """Test successful nation creation."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1, 2, 3])
+        await self._create_provinces(test_db_session, [1001, 1002, 1003])
         
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1, 2],
+            province_ids=[1001, 1002],
             config=config,
             **VALID_PROFILE,
         )
@@ -113,7 +113,7 @@ class TestNationService:
         
         # Verify provinces are assigned
         result = await test_db_session.execute(
-            select(Province).where(Province.id.in_([1, 2]))
+            select(Province).where(Province.id.in_([1001, 1002]))
         )
         provinces = result.scalars().all()
         assert all(p.nation_id == nation.id for p in provinces)
@@ -122,7 +122,7 @@ class TestNationService:
     async def test_create_nation_inv1_player_already_has_nation(self, test_db_session, config):
         """Test INV-1: Player cannot have two nations."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         
         # Create first nation
         await NationService.create(
@@ -130,7 +130,7 @@ class TestNationService:
             owner_player_id=player.id,
             name="First Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -142,7 +142,7 @@ class TestNationService:
                 owner_player_id=player.id,
                 name="Second Nation",
                 color_hex="#00FF00",
-                province_ids=[2],
+                province_ids=[1002],
                 config=config,
                 **VALID_PROFILE,
             )
@@ -151,7 +151,7 @@ class TestNationService:
     async def test_create_nation_inv2_name_taken(self, test_db_session, config):
         """Test INV-2: Nation name must be unique."""
         player = await self._create_player(test_db_session, vk_user_id=11111)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         
         # Create first nation
         await NationService.create(
@@ -159,7 +159,7 @@ class TestNationService:
             owner_player_id=player.id,
             name="Taken Name",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -174,7 +174,7 @@ class TestNationService:
                 owner_player_id=other_player.id,
                 name="Taken Name",
                 color_hex="#00FF00",
-                province_ids=[2],
+                province_ids=[1002],
                 config=config,
                 **VALID_PROFILE,
             )
@@ -183,7 +183,7 @@ class TestNationService:
     async def test_create_nation_inv2_color_taken(self, test_db_session, config):
         """Test INV-2: Nation color must be unique."""
         player = await self._create_player(test_db_session, vk_user_id=11111)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         
         # Create first nation
         await NationService.create(
@@ -191,7 +191,7 @@ class TestNationService:
             owner_player_id=player.id,
             name="First Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -206,7 +206,7 @@ class TestNationService:
                 owner_player_id=other_player.id,
                 name="Second Nation",
                 color_hex="#FF0000",
-                province_ids=[2],
+                province_ids=[1002],
                 config=config,
                 **VALID_PROFILE,
             )
@@ -232,7 +232,7 @@ class TestNationService:
         """Test that already-owned province raises error."""
         player = await self._create_player(test_db_session, vk_user_id=11111)
         other_player = await self._create_player(test_db_session, vk_user_id=22222)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         
         # Create nation that owns province 1
         await NationService.create(
@@ -240,7 +240,7 @@ class TestNationService:
             owner_player_id=other_player.id,
             name="Other Nation",
             color_hex="#00FF00",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -252,7 +252,7 @@ class TestNationService:
                 owner_player_id=player.id,
                 name="Test Nation",
                 color_hex="#FF0000",
-                province_ids=[1, 2],
+                province_ids=[1001, 1002],
                 config=config,
                 **VALID_PROFILE,
             )
@@ -261,7 +261,7 @@ class TestNationService:
     async def test_create_nation_province_count_out_of_range_min(self, test_db_session, config):
         """Test province count below minimum."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
         
         with pytest.raises(ProvinceCountOutOfRangeError):
             await NationService.create(
@@ -280,11 +280,9 @@ class TestNationService:
         player = await self._create_player(test_db_session)
         
         # Create many provinces
-        province_ids = list(range(1, 11))
-        provinces = [Province(id=pid, nation_id=None) for pid in province_ids]
-        for p in provinces:
-            test_db_session.add(p)
-        await test_db_session.flush()
+        province_ids = list(range(1001, 1011))
+        for pid in province_ids:
+            await make_land_province(test_db_session, id=pid)
         
         with pytest.raises(ProvinceCountOutOfRangeError):
             await NationService.create(
@@ -301,14 +299,14 @@ class TestNationService:
     async def test_update_nation_name(self, test_db_session, config):
         """Test updating nation name."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
         
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Old Name",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -327,14 +325,14 @@ class TestNationService:
     async def test_update_nation_color(self, test_db_session, config):
         """Test updating nation color."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
         
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -354,7 +352,7 @@ class TestNationService:
         """Test updating to a taken name."""
         player1 = await self._create_player(test_db_session, vk_user_id=11111)
         player2 = await self._create_player(test_db_session, vk_user_id=22222)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         
         # Create two nations
         nation1 = await NationService.create(
@@ -362,7 +360,7 @@ class TestNationService:
             owner_player_id=player1.id,
             name="Nation 1",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -372,7 +370,7 @@ class TestNationService:
             owner_player_id=player2.id,
             name="Nation 2",
             color_hex="#00FF00",
-            province_ids=[2],
+            province_ids=[1002],
             config=config,
             **VALID_PROFILE,
         )
@@ -401,14 +399,14 @@ class TestNationService:
     async def test_delete_nation_inv6(self, test_db_session, config):
         """Test INV-6: Deleting nation frees provinces instead of deleting them."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1, 2],
+            province_ids=[1001, 1002],
             config=config,
             **VALID_PROFILE,
         )
@@ -423,7 +421,7 @@ class TestNationService:
         
         # Verify provinces are freed (nation_id is NULL)
         result = await test_db_session.execute(
-            select(Province).where(Province.id.in_([1, 2]))
+            select(Province).where(Province.id.in_([1001, 1002]))
         )
         provinces = result.scalars().all()
         assert all(p.nation_id is None for p in provinces)
@@ -436,14 +434,14 @@ class TestNationService:
         orphaned historical record (nation_id -> NULL), not deleted.
         """
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
 
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -471,14 +469,14 @@ class TestNationService:
     async def test_delete_nation_orphans_applied_scheduled_actions(self, test_db_session, config):
         """Deleting a nation orphans its APPLIED scheduled actions too."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
 
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -530,8 +528,7 @@ class TestNationProfile:
 
     async def _create_provinces(self, session, ids: list[int]) -> None:
         for pid in ids:
-            session.add(Province(id=pid, nation_id=None))
-        await session.flush()
+            await make_land_province(session, id=pid)
 
     async def _nation_count(self, session) -> int:
         result = await session.execute(select(Nation))
@@ -546,14 +543,14 @@ class TestNationProfile:
     async def test_create_stores_normalized_profile(self, test_db_session, config):
         """Padded input is stored in its normalized (stripped) form."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
 
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             leader_name="  Ivan Grozny  ",
             leader_title="\tSupreme Ruler\n",
@@ -582,7 +579,7 @@ class TestNationProfile:
         """A rejected profile field leaves no nation row and frees no
         province (INV-3 atomicity)."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
 
         profile = dict(VALID_PROFILE)
         profile[field] = value
@@ -592,13 +589,13 @@ class TestNationProfile:
                 owner_player_id=player.id,
                 name="Test Nation",
                 color_hex="#FF0000",
-                province_ids=[1],
+                province_ids=[1001],
                 config=config,
                 **profile,
             )
 
         assert await self._nation_count(test_db_session) == 0
-        assert await self._province_is_free(test_db_session, 1)
+        assert await self._province_is_free(test_db_session, 1001)
 
     @pytest.mark.asyncio
     async def test_create_inv1_before_profile_errors(
@@ -606,13 +603,13 @@ class TestNationProfile:
     ):
         """Spec Part 2 order: NATION_ALREADY_EXISTS wins over profile errors."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="First Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -623,7 +620,7 @@ class TestNationProfile:
                 owner_player_id=player.id,
                 name="Second Nation",
                 color_hex="#00FF00",
-                province_ids=[2],
+                province_ids=[1002],
                 config=config,
                 leader_name="x",  # would fail on its own
                 leader_title="x",
@@ -637,13 +634,13 @@ class TestNationProfile:
         """Spec Part 2 order: profile errors are reported before INV-2."""
         owner = await self._create_player(test_db_session, vk_user_id=11111)
         player = await self._create_player(test_db_session, vk_user_id=22222)
-        await self._create_provinces(test_db_session, [1, 2])
+        await self._create_provinces(test_db_session, [1001, 1002])
         await NationService.create(
             test_db_session,
             owner_player_id=owner.id,
             name="Taken Name",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -654,7 +651,7 @@ class TestNationProfile:
                 owner_player_id=player.id,
                 name="Taken Name",  # also taken — but profile fails first
                 color_hex="#FF0000",
-                province_ids=[2],
+                province_ids=[1002],
                 config=config,
                 leader_name="x",
                 leader_title=VALID_PROFILE["leader_title"],
@@ -665,13 +662,13 @@ class TestNationProfile:
     async def test_update_partial_profile_fields(self, test_db_session, config):
         """Only provided fields change; None leaves the rest untouched."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -703,13 +700,13 @@ class TestNationProfile:
     ):
         """INV-8: a whitespace-only value is invalid, never a clear."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -732,13 +729,13 @@ class TestNationProfile:
         """An invalid profile field aborts the whole update — even a
         valid name in the same call is not applied."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
         nation = await NationService.create(
             test_db_session,
             owner_player_id=player.id,
             name="Old Name",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )
@@ -763,7 +760,7 @@ class TestNationProfile:
         """A NULL-profile legacy nation still accepts a rename/recolor,
         and its profile can be filled field by field."""
         player = await self._create_player(test_db_session)
-        await self._create_provinces(test_db_session, [1])
+        await self._create_provinces(test_db_session, [1001])
         legacy = Nation(
             owner_player_id=player.id,
             name="Legacy Nation",
@@ -816,10 +813,8 @@ class TestScheduledActionService:
         session.add(player)
         await session.flush()
 
-        provinces = [Province(id=pid, nation_id=None) for pid in [1, 2]]
-        for p in provinces:
-            session.add(p)
-        await session.flush()
+        for pid in [1001, 1002]:
+            await make_land_province(session, id=pid)
 
         config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
         nation = await NationService.create(
@@ -827,7 +822,7 @@ class TestScheduledActionService:
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1],
+            province_ids=[1001],
             config=config,
             **VALID_PROFILE,
         )

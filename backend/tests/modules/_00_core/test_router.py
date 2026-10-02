@@ -26,6 +26,7 @@ from main import app
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Nation, Player, Province
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import make_land_province
 
 TEST_VK_SECRET = "test-vk-app-secret"
 TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
@@ -92,10 +93,9 @@ async def seed_player(session, vk_user_id: int = 12345) -> Player:
 
 
 async def seed_provinces(session, ids: list[int]) -> list[Province]:
-    provinces = [Province(id=pid, nation_id=None) for pid in ids]
-    for p in provinces:
-        session.add(p)
-    await session.flush()
+    provinces = []
+    for pid in ids:
+        provinces.append(await make_land_province(session, id=pid))
     return provinces
 
 
@@ -209,7 +209,7 @@ class TestNationEndpoints:
 
     async def test_create_nation_happy_path(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1, 2, 3])
+        await seed_provinces(test_db_session, [1001, 1002, 1003])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -217,7 +217,7 @@ class TestNationEndpoints:
             json={
                 "name": "Test Nation",
                 "color_hex": "#FF0000",
-                "province_ids": [1, 2],
+                "province_ids": [1001, 1002],
                 **VALID_PROFILE,
             },
         )
@@ -227,16 +227,16 @@ class TestNationEndpoints:
         assert body["name"] == "Test Nation"
         assert body["color_hex"] == "#FF0000"
         assert body["owner_player_id"] == player.id
-        assert body["province_ids"] == [1, 2]
+        assert body["province_ids"] == [1001, 1002]
         assert body["leader_name"] == VALID_PROFILE["leader_name"]
         assert body["leader_title"] == VALID_PROFILE["leader_title"]
         assert body["history_url"] == VALID_PROFILE["history_url"]
 
     async def test_get_nations_me(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1, 2])
+        await seed_provinces(test_db_session, [1001, 1002])
         nation = await seed_nation(
-            test_db_session, player, province_ids=[1, 2]
+            test_db_session, player, province_ids=[1001, 1002]
         )
 
         resp = await client.get(
@@ -246,7 +246,7 @@ class TestNationEndpoints:
         assert resp.status_code == 200
         body = resp.json()
         assert body["id"] == nation.id
-        assert body["province_ids"] == [1, 2]
+        assert body["province_ids"] == [1001, 1002]
 
     async def test_get_nations_me_not_found(self, client, test_db_session):
         player = await seed_player(test_db_session)
@@ -261,8 +261,8 @@ class TestNationEndpoints:
     async def test_create_nation_name_taken(self, client, test_db_session):
         owner = await seed_player(test_db_session, vk_user_id=111)
         player = await seed_player(test_db_session, vk_user_id=222)
-        await seed_provinces(test_db_session, [1, 2])
-        await seed_nation(test_db_session, owner, name="Taken", province_ids=[1])
+        await seed_provinces(test_db_session, [1001, 1002])
+        await seed_nation(test_db_session, owner, name="Taken", province_ids=[1001])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -270,7 +270,7 @@ class TestNationEndpoints:
             json={
                 "name": "Taken",
                 "color_hex": "#00FF00",
-                "province_ids": [2],
+                "province_ids": [1002],
                 **VALID_PROFILE,
             },
         )
@@ -281,9 +281,9 @@ class TestNationEndpoints:
     async def test_create_nation_color_taken(self, client, test_db_session):
         owner = await seed_player(test_db_session, vk_user_id=111)
         player = await seed_player(test_db_session, vk_user_id=222)
-        await seed_provinces(test_db_session, [1, 2])
+        await seed_provinces(test_db_session, [1001, 1002])
         await seed_nation(
-            test_db_session, owner, color_hex="#AABBCC", province_ids=[1]
+            test_db_session, owner, color_hex="#AABBCC", province_ids=[1001]
         )
 
         resp = await client.post(
@@ -292,7 +292,7 @@ class TestNationEndpoints:
             json={
                 "name": "Other Nation",
                 "color_hex": "#AABBCC",
-                "province_ids": [2],
+                "province_ids": [1002],
                 **VALID_PROFILE,
             },
         )
@@ -303,8 +303,8 @@ class TestNationEndpoints:
     async def test_create_nation_province_taken(self, client, test_db_session):
         owner = await seed_player(test_db_session, vk_user_id=111)
         player = await seed_player(test_db_session, vk_user_id=222)
-        await seed_provinces(test_db_session, [1, 2])
-        await seed_nation(test_db_session, owner, province_ids=[1])
+        await seed_provinces(test_db_session, [1001, 1002])
+        await seed_nation(test_db_session, owner, province_ids=[1001])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -312,7 +312,7 @@ class TestNationEndpoints:
             json={
                 "name": "Test Nation",
                 "color_hex": "#FF0000",
-                "province_ids": [1, 2],
+                "province_ids": [1001, 1002],
                 **VALID_PROFILE,
             },
         )
@@ -322,8 +322,8 @@ class TestNationEndpoints:
 
     async def test_create_nation_already_exists(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1, 2])
-        await seed_nation(test_db_session, player, province_ids=[1])
+        await seed_provinces(test_db_session, [1001, 1002])
+        await seed_nation(test_db_session, player, province_ids=[1001])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -331,7 +331,7 @@ class TestNationEndpoints:
             json={
                 "name": "Second Nation",
                 "color_hex": "#00FF00",
-                "province_ids": [2],
+                "province_ids": [1002],
                 **VALID_PROFILE,
             },
         )
@@ -364,7 +364,9 @@ class TestNationEndpoints:
         player = await seed_player(test_db_session)
         await seed_provinces(
             test_db_session,
-            list(range(1, CORE_CONFIG.nation.max_provinces_per_nation + 2)),
+            list(
+                range(1001, 1002 + CORE_CONFIG.nation.max_provinces_per_nation)
+            ),
         )
 
         resp = await client.post(
@@ -374,7 +376,10 @@ class TestNationEndpoints:
                 "name": "Test Nation",
                 "color_hex": "#FF0000",
                 "province_ids": list(
-                    range(1, CORE_CONFIG.nation.max_provinces_per_nation + 2)
+                    range(
+                        1001,
+                        1002 + CORE_CONFIG.nation.max_provinces_per_nation,
+                    )
                 ),
                 **VALID_PROFILE,
             },
@@ -386,7 +391,7 @@ class TestNationEndpoints:
     async def test_create_nation_name_too_short(self, client, test_db_session):
         """Nation name length is enforced at the DTO layer."""
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
+        await seed_provinces(test_db_session, [1001])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -394,7 +399,7 @@ class TestNationEndpoints:
             json={
                 "name": "ab",
                 "color_hex": "#FF0000",
-                "province_ids": [1],
+                "province_ids": [1001],
                 **VALID_PROFILE,
             },
         )
@@ -403,7 +408,7 @@ class TestNationEndpoints:
 
     async def test_create_nation_name_too_long(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
+        await seed_provinces(test_db_session, [1001])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -411,7 +416,7 @@ class TestNationEndpoints:
             json={
                 "name": "x" * (CORE_CONFIG.nation.nation_name_max_length + 1),
                 "color_hex": "#FF0000",
-                "province_ids": [1],
+                "province_ids": [1001],
                 **VALID_PROFILE,
             },
         )
@@ -422,7 +427,7 @@ class TestNationEndpoints:
         self, client, test_db_session
     ):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
+        await seed_provinces(test_db_session, [1001])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -430,7 +435,7 @@ class TestNationEndpoints:
             json={
                 "name": "Test Nation",
                 "color_hex": "red",
-                "province_ids": [1],
+                "province_ids": [1001],
                 **VALID_PROFILE,
             },
         )
@@ -439,8 +444,8 @@ class TestNationEndpoints:
 
     async def test_update_nation_happy_path(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
-        nation = await seed_nation(test_db_session, player, province_ids=[1])
+        await seed_provinces(test_db_session, [1001])
+        nation = await seed_nation(test_db_session, player, province_ids=[1001])
 
         resp = await client.patch(
             "/api/v1/nations/me",
@@ -465,11 +470,11 @@ class TestNationEndpoints:
     async def test_update_nation_name_taken(self, client, test_db_session):
         player = await seed_player(test_db_session, vk_user_id=111)
         other = await seed_player(test_db_session, vk_user_id=222)
-        await seed_provinces(test_db_session, [1, 2])
-        await seed_nation(test_db_session, player, name="Mine", province_ids=[1])
+        await seed_provinces(test_db_session, [1001, 1002])
+        await seed_nation(test_db_session, player, name="Mine", province_ids=[1001])
         await seed_nation(
             test_db_session, other, name="Theirs",
-            color_hex="#445566", province_ids=[2],
+            color_hex="#445566", province_ids=[1002],
         )
 
         resp = await client.patch(
@@ -495,9 +500,9 @@ class TestNationEndpoints:
 
     async def test_delete_nation_happy_path(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1, 2])
+        await seed_provinces(test_db_session, [1001, 1002])
         nation = await seed_nation(
-            test_db_session, player, province_ids=[1, 2]
+            test_db_session, player, province_ids=[1001, 1002]
         )
 
         resp = await client.request(
@@ -516,14 +521,14 @@ class TestNationEndpoints:
 
         # Provinces were freed, not deleted (INV-6)
         result = await test_db_session.execute(
-            select(Province).where(Province.id.in_([1, 2]))
+            select(Province).where(Province.id.in_([1001, 1002]))
         )
         assert all(p.nation_id is None for p in result.scalars().all())
 
     async def test_delete_nation_requires_confirm(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
-        await seed_nation(test_db_session, player, province_ids=[1])
+        await seed_provinces(test_db_session, [1001])
+        await seed_nation(test_db_session, player, province_ids=[1001])
 
         resp = await client.request(
             "DELETE",
@@ -554,12 +559,12 @@ class TestNationProfileEndpoints:
     async def test_create_nation_missing_profile_field(self, client, test_db_session):
         """The three profile fields are required: FastAPI returns 422."""
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
+        await seed_provinces(test_db_session, [1001])
 
         body = {
             "name": "Test Nation",
             "color_hex": "#FF0000",
-            "province_ids": [1],
+            "province_ids": [1001],
             **VALID_PROFILE,
         }
         del body["history_url"]
@@ -585,12 +590,12 @@ class TestNationProfileEndpoints:
     ):
         """Each domain error lands as HTTP 422 in the {detail, code} shape."""
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
+        await seed_provinces(test_db_session, [1001])
 
         body = {
             "name": "Test Nation",
             "color_hex": "#FF0000",
-            "province_ids": [1],
+            "province_ids": [1001],
             **VALID_PROFILE,
             field: value,
         }
@@ -610,9 +615,9 @@ class TestNationProfileEndpoints:
     ):
         """A pre-migration nation returns null profile fields."""
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1])
+        await seed_provinces(test_db_session, [1001])
         await seed_nation(
-            test_db_session, player, province_ids=[1], legacy=True
+            test_db_session, player, province_ids=[1001], legacy=True
         )
 
         resp = await client.get(
@@ -657,33 +662,33 @@ class TestProvincesEndpoint:
 
     async def test_list_all_provinces(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1, 2, 3])
+        await seed_provinces(test_db_session, [1001, 1002, 1003])
 
         resp = await client.get(
             "/api/v1/provinces", headers=bearer_headers(player.id)
         )
 
         assert resp.status_code == 200
-        assert [p["id"] for p in resp.json()] == [1, 2, 3]
+        assert [p["id"] for p in resp.json()] == [1001, 1002, 1003]
 
     async def test_filter_by_ids(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1, 2, 3])
+        await seed_provinces(test_db_session, [1001, 1002, 1003])
 
         resp = await client.get(
             "/api/v1/provinces",
             headers=bearer_headers(player.id),
-            params=[("ids", 1), ("ids", 3)],
+            params=[("ids", 1001), ("ids", 1003)],
         )
 
         assert resp.status_code == 200
-        assert [p["id"] for p in resp.json()] == [1, 3]
+        assert [p["id"] for p in resp.json()] == [1001, 1003]
 
     async def test_filter_free_only(self, client, test_db_session):
         player = await seed_player(test_db_session)
         other = await seed_player(test_db_session, vk_user_id=999)
-        await seed_provinces(test_db_session, [1, 2, 3])
-        await seed_nation(test_db_session, other, province_ids=[2])
+        await seed_provinces(test_db_session, [1001, 1002, 1003])
+        await seed_nation(test_db_session, other, province_ids=[1002])
 
         resp = await client.get(
             "/api/v1/provinces",
@@ -693,7 +698,7 @@ class TestProvincesEndpoint:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert [p["id"] for p in body] == [1, 3]
+        assert [p["id"] for p in body] == [1001, 1003]
         assert all(p["nation_id"] is None for p in body)
 
 
@@ -740,7 +745,7 @@ class TestAuthRequired:
                 {
                     "name": "Valid Name",
                     "color_hex": "#FF0000",
-                    "province_ids": [1],
+                    "province_ids": [1001],
                     **VALID_PROFILE,
                 },
             ),
@@ -768,7 +773,7 @@ class TestAuthRequired:
                 {
                     "name": "Valid Name",
                     "color_hex": "#FF0000",
-                    "province_ids": [1],
+                    "province_ids": [1001],
                     **VALID_PROFILE,
                 },
             ),
