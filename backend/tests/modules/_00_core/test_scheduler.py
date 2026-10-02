@@ -23,12 +23,19 @@ from asgi_lifespan import LifespanManager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import modules._01_map.service as map_service_module
+from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator, TickPhase
 from core.tick.scheduler import run_scheduled_tick, scheduler_loop, seconds_until
 from main import app
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
 from modules._00_core.models import GameClock, TickLog, TickLogStatus
 from modules._00_core.tick_handler import register_tick_handlers
 from tests.fixtures.factories import GameClockFactory
+from tests.fixtures.provinces import MAP_MINI_DIR
 from tests.modules._00_core.test_router import TEST_JWT_SECRET, TEST_VK_SECRET
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -274,19 +281,30 @@ class TestLifespanWiring:
         monkeypatch.setenv("DATABASE_URL", db_url)
         monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
         monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+        # Lifespan startup syncs the mini map — never the real one.
+        monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
 
         alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
         command.upgrade(alembic_cfg, "head")
 
-        async with LifespanManager(app):
-            tasks = [
-                t
-                for t in asyncio.all_tasks()
-                if t.get_name() == "tick-scheduler"
-            ]
-            assert len(tasks) == 1
-            scheduler_task = tasks[0]
-            assert not scheduler_task.done()
+        saved_resets = AdminRegistry.get_reset_hooks()
+        saved_extensions = snapshot_extension_points()
+        saved_map_service = map_service_module._instance
+        try:
+            async with LifespanManager(app):
+                tasks = [
+                    t
+                    for t in asyncio.all_tasks()
+                    if t.get_name() == "tick-scheduler"
+                ]
+                assert len(tasks) == 1
+                scheduler_task = tasks[0]
+                assert not scheduler_task.done()
+        finally:
+            AdminRegistry._reset_hooks.clear()
+            AdminRegistry._reset_hooks.update(saved_resets)
+            restore_extension_points(saved_extensions)
+            map_service_module._instance = saved_map_service
 
         # Shutdown must cancel it without leaking CancelledError.
         assert scheduler_task.cancelled()

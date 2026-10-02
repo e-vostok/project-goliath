@@ -15,13 +15,22 @@ import shutil
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 
+import modules._01_map.service as map_service_module
+from core.admin.registry import AdminRegistry
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
+from modules._00_core.service import NodeSpec, ProvinceService
 from modules._01_map.config_schema import MapConfig
 from modules._01_map.hashing import (
     INPUT_HASH_RULES,
     geometry_version,
     input_sha256,
 )
+from modules._01_map.hooks import register_map_hooks
 from modules._01_map.loader import load_map_data
 from modules._01_map.service import MapService
 
@@ -137,3 +146,66 @@ def config() -> MapConfig:
 @pytest.fixture
 def mini_service(mini_dir, config) -> MapService:
     return MapService(load_map_data(mini_dir, config), config)
+
+
+@pytest.fixture
+def flat_map_service(config) -> MapService:
+    """MapService over the shared fixture dir — read-only, no copy."""
+    return MapService(load_map_data(FIXTURE_DIR, config), config)
+
+
+def map_config_disconnected() -> MapConfig:
+    """A config copy with starting_group.require_connected = false."""
+    config = map_config()
+    return config.model_copy(
+        update={
+            "starting_group": config.starting_group.model_copy(
+                update={"require_connected": False}
+            )
+        }
+    )
+
+
+async def sync_map_nodes(session, map_service: MapService) -> None:
+    """Sync a MapService's nodes into provinces via the real path."""
+    await ProvinceService.ensure_nodes(
+        session,
+        [
+            NodeSpec(id=node.id, kind=node.kind)
+            for node in map_service.all_nodes()
+        ],
+    )
+
+
+@pytest.fixture
+def extension_snapshot():
+    """
+    Snapshot/restore every registry the 01_map startup touches:
+    the core extension points, the admin hooks, and the
+    process-wide MapService singleton.
+    """
+    saved_views = AdminRegistry.get_state_view_hooks()
+    saved_resets = AdminRegistry.get_reset_hooks()
+    saved_extensions = snapshot_extension_points()
+    saved_service = map_service_module._instance
+    yield
+    restore_extension_points(saved_extensions)
+    AdminRegistry._state_view_hooks.clear()
+    AdminRegistry._state_view_hooks.update(saved_views)
+    AdminRegistry._reset_hooks.clear()
+    AdminRegistry._reset_hooks.update(saved_resets)
+    map_service_module._instance = saved_service
+
+
+@pytest.fixture
+def map_hooks(extension_snapshot, flat_map_service, config):
+    """The real 01_map hooks registered over the mini-map service."""
+    register_map_hooks(flat_map_service, config)
+    return flat_map_service
+
+
+@pytest_asyncio.fixture
+async def map_db_session(test_db_session, flat_map_service):
+    """In-memory DB with the mini-map nodes already synced in."""
+    await sync_map_nodes(test_db_session, flat_map_service)
+    return test_db_session

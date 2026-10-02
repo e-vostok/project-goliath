@@ -41,7 +41,10 @@ from tests.fixtures.postgres import (
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import (
+    make_land_province,
+    map_mini_node_ids,
+)
 from tests.modules._00_core.test_router import (
     TEST_VK_SECRET,
     make_launch_params,
@@ -332,7 +335,8 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
     """A pre-migration nation (NULL profile) reads nulls, accepts a plain
     rename, fills its profile field by field, and refuses empty values."""
     client = pg_live_client
-    await _seed_provinces(pg_db, [1010, 1011])
+    # Mini-map ids — the startup sync already inserted these rows.
+    await _seed_provinces(pg_db, [1003, 1004])
     token, player_id = await _auth(client, vk_user_id=930001)
     nation_id = str(uuid.uuid4())
 
@@ -354,7 +358,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
         await session.execute(
             text(
                 "UPDATE provinces SET nation_id = :nid "
-                "WHERE id IN (1010, 1011)"
+                "WHERE id IN (1003, 1004)"
             ),
             {"nid": nation_id},
         )
@@ -366,7 +370,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
     assert body["leader_name"] is None
     assert body["leader_title"] is None
     assert body["history_url"] is None
-    assert body["province_ids"] == [1010, 1011]
+    assert body["province_ids"] == [1003, 1004]
 
     # A plain rename works on a legacy row; profile stays NULL.
     patch = await client.patch(
@@ -425,7 +429,8 @@ async def test_admin_tick_and_state_reset_on_postgres(pg_live_client, pg_db):
     nations (and their profiles) go, provinces free, turn rewinds to 0,
     and players survive."""
     client = pg_live_client
-    await _seed_provinces(pg_db, [1020])
+    # Mini-map id — a valid single-province starting group.
+    await _seed_provinces(pg_db, [1008])
     token, _ = await _auth(client, vk_user_id=ADMIN_VK_ID)
 
     create = await client.post(
@@ -434,7 +439,7 @@ async def test_admin_tick_and_state_reset_on_postgres(pg_live_client, pg_db):
         json={
             "name": "Tickland",
             "color_hex": "#0ACE55",
-            "province_ids": [1020],
+            "province_ids": [1008],
             **VALID_PROFILE,
         },
     )
@@ -480,7 +485,8 @@ async def test_admin_tick_and_state_reset_on_postgres(pg_live_client, pg_db):
         assert nations.scalar_one() == 0
         provinces = await session.execute(select(Province))
         all_provinces = provinces.scalars().all()
-        assert len(all_provinces) == 1  # seeded rows survive
+        # The mini-map rows synced at startup survive the reset.
+        assert len(all_provinces) == len(map_mini_node_ids())
         assert all(p.nation_id is None for p in all_provinces)
         clock = (
             await session.execute(
@@ -506,7 +512,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
     FAILED with the error — and a clean retry lands COMPLETED under the
     same turn_number (attempt history, migration 0002)."""
     client = pg_live_client
-    await _seed_provinces(pg_db, [1030])
+    await _seed_provinces(pg_db, [1005])  # mini-map id
     token, _ = await _auth(client, vk_user_id=ADMIN_VK_ID)
 
     create = await client.post(
@@ -515,7 +521,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
         json={
             "name": "Immutable Realm",
             "color_hex": "#AA55AA",
-            "province_ids": [1030],
+            "province_ids": [1005],
             **VALID_PROFILE,
         },
     )
@@ -608,14 +614,14 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
         await session.rollback()
 
     token, _ = await _auth(client, vk_user_id=940001)
-    await _seed_provinces(pg_db, [1040])
+    await _seed_provinces(pg_db, [1006])  # mini-map id
     create = await client.post(
         "/api/v1/nations",
         headers=_headers(token),
         json={
             "name": "Actionland",
             "color_hex": "#C1C1C1",
-            "province_ids": [1040],
+            "province_ids": [1006],
             **VALID_PROFILE,
         },
     )

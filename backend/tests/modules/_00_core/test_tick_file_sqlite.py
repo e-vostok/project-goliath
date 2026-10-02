@@ -22,10 +22,15 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import modules._01_map.service as map_service_module
 from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator, TickPhase
 from core.tick.scheduler import run_scheduled_tick
 from main import app
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
 from modules._00_core.models import (
     GameClock,
     ScheduledAction,
@@ -35,6 +40,7 @@ from modules._00_core.models import (
 )
 from modules._00_core.tick_handler import register_tick_handlers
 from tests.fixtures.factories import ScheduledActionFactory
+from tests.fixtures.provinces import MAP_MINI_DIR
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -228,6 +234,8 @@ async def live_client(tmp_path, monkeypatch):
     monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
     monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+    # Lifespan startup syncs the mini map into provinces.
+    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
 
     alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
@@ -239,6 +247,8 @@ async def live_client(tmp_path, monkeypatch):
         for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
+    saved_extensions = snapshot_extension_points()
+    saved_map_service = map_service_module._instance
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
@@ -254,6 +264,8 @@ async def live_client(tmp_path, monkeypatch):
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved_handlers)
     TickOrchestrator._finalize_callback = saved_finalize
+    restore_extension_points(saved_extensions)
+    map_service_module._instance = saved_map_service
 
 
 @pytest.mark.asyncio

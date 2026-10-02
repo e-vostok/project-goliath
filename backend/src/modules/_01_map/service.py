@@ -6,10 +6,16 @@ No other module may read ``data/map/`` or import ``loader.py`` /
 ``map_data.py`` internals: everything goes through :class:`MapService`.
 The service holds only memory — it reads no database.
 
-Startup wiring (load -> :func:`init_map_service`) lives in ``main.py``
-and is Issue 3; this module provides the service and the module-level
-accessor for it. :func:`get_map_service` raises a clear error until a
-service has been initialised — there is no hidden global load.
+Startup wiring (load -> sync -> verify -> :func:`init_map_service` and
+hook registration) lives in ``startup.py`` and runs from the ``main.py``
+lifespan (Spec Part 2 "Порядок запуска"). :func:`get_map_service`
+raises a clear error until a service has been initialised — there is no
+hidden global load.
+
+The ownership journal API is re-exported here so this module stays the
+single public interface of 01_map: ``record_changes``/``clear_all``
+(the only writers), ``owners_at_turn``, ``records_for_province`` and
+the ``OwnerAtTurn`` result type come from ``ownership_service.py``.
 
 Iteration order is deterministic everywhere: ascending node id; ties in
 algorithms break by smaller id.
@@ -248,10 +254,35 @@ def init_map_service(service: MapService) -> None:
 
 
 def get_map_service() -> MapService:
-    """The installed service; a clear error until Issue 3 wires it."""
+    """The installed service; a clear error until startup installs it."""
     if _instance is None:
         raise RuntimeError(
-            "MapService is not initialised — load_map_data + "
-            "init_map_service run during server startup (Issue 3)"
+            "MapService is not initialised — startup.py installs it "
+            "during the application lifespan"
         )
     return _instance
+
+
+# ------------------------------------------------- journal re-exports
+
+from modules._01_map.ownership_service import (  # noqa: E402
+    OwnerAtTurn,
+    clear_all,
+    owners_at_turn,
+    record_changes,
+    records_for_province,
+)
+
+__all__ = [
+    "MapService",
+    "OwnerAtTurn",
+    "PathResult",
+    "UnknownNodeError",
+    "NodeNotLandError",
+    "clear_all",
+    "get_map_service",
+    "init_map_service",
+    "owners_at_turn",
+    "record_changes",
+    "records_for_province",
+]

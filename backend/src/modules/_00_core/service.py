@@ -16,6 +16,13 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.hooks import (
+    STAGE_AFTER_COUNT,
+    STAGE_AFTER_FREE,
+    OwnershipChange,
+    notify_ownership_changed,
+    run_registration_checks,
+)
 from modules._00_core.exceptions import (
     ColorTakenError,
     FrequencyCapExceededError,
@@ -171,6 +178,21 @@ class PlayerService:
         return player
 
 
+async def _current_turn(session: AsyncSession) -> int:
+    """
+    The game_clock.current_turn of the running transaction.
+
+    A migrated database always holds the singleton row (migration 0001);
+    bare create_all test schemas may not — in that case the change is
+    stamped turn 0 rather than failing the operation.
+    """
+    result = await session.execute(
+        select(GameClock).where(GameClock.id == 1)
+    )
+    clock = result.scalar_one_or_none()
+    return clock.current_turn if clock is not None else 0
+
+
 class NationService:
     """Service for Nation entity operations."""
     
@@ -192,9 +214,12 @@ class NationService:
         Enforces INV-1 (one nation per player), INV-7 (mandatory profile
         fields), INV-2 (unique name/color), INV-3 (atomic province
         assignment), and province count constraints — in exactly the
-        Spec Part 2 order: INV-1 -> profile fields (leader_name,
-        leader_title, history_url) -> INV-2 -> province count ->
-        province existence/freedom. Any failure persists nothing.
+        Spec order (00_core Part 2 extended by 01_map Part 5):
+        INV-1 -> profile fields (leader_name, leader_title,
+        history_url) -> INV-2 -> province existence -> province freedom
+        -> "after_free" satellite checks -> province count ->
+        "after_count" satellite checks -> create. Any failure persists
+        nothing.
 
         Args:
             session: The async database session.
@@ -248,6 +273,27 @@ class NationService:
         if result.scalar_one_or_none() is not None:
             raise ColorTakenError(color_hex)
         
+        # Fetch all provinces to validate they exist and are free
+        result = await session.execute(
+            select(Province).where(Province.id.in_(province_ids))
+        )
+        provinces = result.scalars().all()
+
+        # Check for missing provinces
+        found_ids = {p.id for p in provinces}
+        missing_ids = set(province_ids) - found_ids
+        if missing_ids:
+            raise ProvinceNotFoundError(missing_ids.pop())
+
+        # Check for already-owned provinces
+        for province in provinces:
+            if province.nation_id is not None:
+                raise ProvinceTakenError(province.id)
+
+        # Stage "after_free": satellite checks that need a loaded,
+        # existing, free province set (Spec 01_map Part 5 order).
+        await run_registration_checks(STAGE_AFTER_FREE, session, provinces)
+
         # Validate province count constraints
         province_count = len(province_ids)
         if (province_count < config.nation.min_provinces_per_nation or
@@ -257,24 +303,10 @@ class NationService:
                 config.nation.min_provinces_per_nation,
                 config.nation.max_provinces_per_nation,
             )
-        
-        # Fetch all provinces to validate they exist and are free
-        result = await session.execute(
-            select(Province).where(Province.id.in_(province_ids))
-        )
-        provinces = result.scalars().all()
-        
-        # Check for missing provinces
-        found_ids = {p.id for p in provinces}
-        missing_ids = set(province_ids) - found_ids
-        if missing_ids:
-            raise ProvinceNotFoundError(missing_ids.pop())
-        
-        # Check for already-owned provinces
-        for province in provinces:
-            if province.nation_id is not None:
-                raise ProvinceTakenError(province.id)
-        
+
+        # Stage "after_count": satellite checks on the sized group.
+        await run_registration_checks(STAGE_AFTER_COUNT, session, provinces)
+
         # INV-3: Atomic transaction - create nation and assign provinces
         nation = Nation(
             id=str(uuid.uuid4()),
@@ -288,11 +320,30 @@ class NationService:
         )
         session.add(nation)
         await session.flush()  # Get the nation ID
-        
-        # Assign provinces
-        for province in provinces:
+
+        # Assign provinces — the ONLY production code path that writes
+        # provinces.nation_id outside the admin world reset. Every such
+        # write is announced through notify_ownership_changed in the same
+        # transaction (INV-M7).
+        turn = await _current_turn(session)
+        ordered = sorted(provinces, key=lambda p: p.id)
+        for province in ordered:
             province.nation_id = nation.id
-        
+        await notify_ownership_changed(
+            session,
+            [
+                OwnershipChange(
+                    province_id=province.id,
+                    prev_nation_id=None,
+                    new_nation_id=nation.id,
+                    new_name=nation.name,
+                    new_color=nation.color_hex,
+                    turn=turn,
+                )
+                for province in ordered
+            ],
+        )
+
         return nation
     
     @staticmethod
@@ -419,7 +470,7 @@ class NationService:
         provinces = result.scalars().all()
         for province in provinces:
             province.nation_id = None
-        
+
         # Orphan scheduled actions the same way: explicit nulling, not
         # FK cascade, so SQLite (foreign_keys pragma off) behaves
         # identically to PostgreSQL ON DELETE SET NULL.
@@ -428,9 +479,27 @@ class NationService:
         )
         for action in result.scalars().all():
             action.nation_id = None
-        
+
         # Delete the nation
         await session.delete(nation)
+
+        # Announce the releases inside the same transaction (INV-M7):
+        # listeners keep the deleted nation's identity (id) per change.
+        turn = await _current_turn(session)
+        await notify_ownership_changed(
+            session,
+            [
+                OwnershipChange(
+                    province_id=province.id,
+                    prev_nation_id=nation_id,
+                    new_nation_id=None,
+                    new_name=None,
+                    new_color=None,
+                    turn=turn,
+                )
+                for province in sorted(provinces, key=lambda p: p.id)
+            ],
+        )
 
 
 class ScheduledActionService:
