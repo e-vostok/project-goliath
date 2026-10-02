@@ -210,15 +210,16 @@ def pg_clean(pg_schema: str) -> None:
     """
     Per-test data reset (autouse in the PG test modules).
 
-    Plain SQL in a fixed order; NEVER TRUNCATE … CASCADE — the 100
-    province rows seeded by migration 0001 are part of the world and
-    must survive. next_tick_at is pushed a day out so the app's
-    background scheduler never fires mid-test.
+    Plain SQL in a fixed order; NEVER TRUNCATE … CASCADE — provinces are
+    wiped too: migration 0006 removed the placeholder seed, so tests
+    seed exactly the province rows they use. next_tick_at is pushed a
+    day out so the app's background scheduler never fires mid-test.
     """
     engine = sa.create_engine(_sync_url(pg_schema))
     try:
         with engine.begin() as conn:
-            conn.execute(sa.text("UPDATE provinces SET nation_id = NULL"))
+            conn.execute(sa.text("DELETE FROM map_ownership_log"))
+            conn.execute(sa.text("DELETE FROM provinces"))
             conn.execute(sa.text("DELETE FROM scheduled_actions"))
             conn.execute(sa.text("DELETE FROM nations"))
             conn.execute(sa.text("DELETE FROM players"))

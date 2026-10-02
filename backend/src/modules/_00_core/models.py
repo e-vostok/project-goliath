@@ -71,15 +71,28 @@ class Nation(Base):
 
 
 class Province(Base):
-    """Represents a province on the map."""
-    
+    """Represents a map node: a land province or a sea zone."""
+
     __tablename__ = "provinces"
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     nation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("nations.id"), nullable=True, index=True)
-    
+    # LAND — a province a nation can own; SEA — a sea zone, never owned
+    # (INV-M4, enforced by ck_provinces_sea_unowned).
+    kind: Mapped[str] = mapped_column(
+        String(4), nullable=False, default="LAND", server_default="LAND"
+    )
+
     # Relationships
     nation: Mapped[Nation | None] = relationship(back_populates="provinces")
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('LAND','SEA')", name="ck_provinces_kind"),
+        CheckConstraint(
+            "kind = 'LAND' OR nation_id IS NULL",
+            name="ck_provinces_sea_unowned",
+        ),
+    )
 
 
 class ScheduledAction(Base):

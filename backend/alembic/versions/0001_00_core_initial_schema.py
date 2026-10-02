@@ -109,16 +109,22 @@ def upgrade() -> None:
     op.create_index(op.f("ix_tick_log_turn_number"), "tick_log", ["turn_number"], unique=False)
     op.create_index(op.f("ix_tick_log_status"), "tick_log", ["status"], unique=False)
     
-    # Seed provinces: 100 rows with id=1..100, nation_id=NULL
+    # Seed provinces: 100 rows with id=1..100, nation_id=NULL.
+    # A plain table construct (not the ORM model): later revisions add
+    # columns like `kind`, and an ORM-table insert would emit them
+    # against a schema that does not have them yet.
     from sqlalchemy import insert
-    from modules._00_core.models import Province
-    from datetime import datetime, timedelta
     
+    provinces_table = sa.table(
+        "provinces",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("nation_id", sa.String(36), nullable=True),
+    )
     provinces_data = [
         {"id": i, "nation_id": None}
         for i in range(1, 101)
     ]
-    op.execute(insert(Province.__table__).values(provinces_data))
+    op.execute(insert(provinces_table).values(provinces_data))
     
     # Seed game_clock: single row with id=1, current_turn=0, next_tick_at calculated from config
     from modules._00_core.models import GameClock

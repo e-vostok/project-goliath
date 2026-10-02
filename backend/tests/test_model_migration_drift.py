@@ -30,6 +30,7 @@ from alembic.migration import MigrationContext
 
 from core.db import Base
 import modules._00_core.models  # noqa: F401 — registers all ORM tables
+import modules._01_map.models  # noqa: F401 — registers all ORM tables
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 

@@ -8,10 +8,11 @@ Enforces all invariants defined in the system specification.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.config_schema import CoreConfig
@@ -45,11 +46,97 @@ if TYPE_CHECKING:
 
 class FrequencyRule(str):
     """Frequency rules for scheduled actions."""
-    
+
     ONCE_PER_TURN = "ONCE_PER_TURN"
     ONCE_PER_GAME = "ONCE_PER_GAME"
     MULTIPLE_PER_TURN = "MULTIPLE_PER_TURN"
     UNLIMITED = "UNLIMITED"
+
+
+ProvinceKind = Literal["LAND", "SEA"]
+
+
+@dataclass(frozen=True)
+class NodeSpec:
+    """One map node from manifest.json: an id and its kind."""
+
+    id: int
+    kind: ProvinceKind
+
+
+@dataclass(frozen=True)
+class EnsureNodesResult:
+    """Outcome of ProvinceService.ensure_nodes (all lists sorted)."""
+
+    added: list[int] = field(default_factory=list)
+    kind_mismatch: list[int] = field(default_factory=list)
+    extra_in_db: list[int] = field(default_factory=list)
+
+
+class ProvinceService:
+    """Service for the provinces table (map nodes)."""
+
+    @staticmethod
+    async def ensure_nodes(
+        session: AsyncSession,
+        nodes: Sequence[NodeSpec],
+    ) -> EnsureNodesResult:
+        """
+        Insert missing provinces for the given map nodes (INV-M5 helper).
+
+        Only inserts rows that do not exist yet (nation_id NULL); never
+        updates or deletes. Idempotent: a second call adds nothing. Runs
+        inside the caller's transaction — this method never commits.
+
+        Args:
+            session: The async database session.
+            nodes: Node specs (id + kind) from manifest.json.
+
+        Returns:
+            EnsureNodesResult with the ids that were inserted, the ids
+            whose existing row has a different kind (left unchanged), and
+            ids present in the DB but absent from `nodes` (not removed) —
+            the caller decides whether extra rows are fatal (INV-M5).
+
+        Raises:
+            ValueError: On duplicate ids or an invalid kind in `nodes`;
+                nothing is written in that case.
+        """
+        ids = [node.id for node in nodes]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Duplicate node ids in input")
+        invalid_kinds = {node.kind for node in nodes} - {"LAND", "SEA"}
+        if invalid_kinds:
+            raise ValueError(
+                f"Invalid node kinds in input: {sorted(invalid_kinds)}"
+            )
+
+        result = await session.execute(select(Province.id, Province.kind))
+        existing = {row.id: row.kind for row in result.all()}
+
+        spec_by_id = {node.id: node.kind for node in nodes}
+        added = sorted(set(spec_by_id) - set(existing))
+        kind_mismatch = sorted(
+            node_id
+            for node_id in set(spec_by_id) & set(existing)
+            if existing[node_id] != spec_by_id[node_id]
+        )
+        extra_in_db = sorted(set(existing) - set(spec_by_id))
+
+        if added:
+            await session.execute(
+                insert(Province),
+                [
+                    {"id": node_id, "kind": spec_by_id[node_id]}
+                    for node_id in added
+                ],
+            )
+
+        return EnsureNodesResult(
+            added=added,
+            kind_mismatch=kind_mismatch,
+            extra_in_db=extra_in_db,
+        )
 
 
 class PlayerService:
