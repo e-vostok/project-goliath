@@ -21,6 +21,7 @@ import {
 
 import { api, ApiError } from '../shared/api-client';
 import { useSession } from '../modules/00_core/hooks/useAuth';
+import { E1ProbePanel } from '../dev/e1_probe/E1ProbePanel';
 import { useAdminProbe } from './useAdminProbe';
 
 const NETWORK_ERROR_MESSAGE = 'Ошибка сети — попробуйте ещё раз.';
@@ -289,6 +290,8 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
           </pre>
         </div>
       )}
+
+      <E1ProbePanel />
     </Group>
   );
 }
