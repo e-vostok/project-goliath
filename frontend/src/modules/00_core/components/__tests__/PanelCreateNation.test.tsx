@@ -8,7 +8,12 @@
  * Badge instead of auto-switching.
  */
 
-import { screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
@@ -21,6 +26,7 @@ import {
 import {
   fillStep1,
   fillStep2,
+  pickProvinces,
   registerDefaultHandlers,
   renderWithProviders,
   RULES,
@@ -32,7 +38,7 @@ const NATION = {
   name: 'Testia',
   color_hex: '#e64545',
   owner_player_id: SESSION.player.id,
-  province_ids: [1],
+  province_ids: [1003, 1004],
   leader_name: 'Иван Грозный',
   leader_title: 'Верховный правитель',
   history_url: 'https://vk.com/@testia-istoriya',
@@ -231,7 +237,7 @@ describe('PanelCreateNation — submit', () => {
       {
         name: 'Testia',
         color_hex: '#e64545',
-        province_ids: [1],
+        province_ids: [1003, 1004],
         leader_name: 'Иван Грозный',
         leader_title: 'Верховный правитель',
         history_url: 'https://vk.com/@testia-istoriya',
@@ -366,36 +372,54 @@ describe('PanelCreateNation — server error mapping', () => {
     expect(screen.queryByTestId('step-error-2')).not.toBeInTheDocument();
   });
 
-  it('shows PROVINCE_COUNT_OUT_OF_RANGE inline on the provinces FormItem', async () => {
-    server.use(
-      http.post('*/api/v1/nations', () =>
-        HttpResponse.json(
-          {
-            detail:
-              'Province count 12 is out of range (must be between 1 and 5)',
-            code: 'PROVINCE_COUNT_OUT_OF_RANGE',
-          },
-          { status: 409 },
-        ),
-      ),
-    );
-    const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
-    await fillStep1(user);
-    await fillStep2(user);
-    await user.click(screen.getByTestId('step-prev'));
-    await user.click(submitButton());
-
-    const provincesItem = screen.getByTestId('form-item-provinces');
-    await waitFor(() =>
-      expect(
-        within(provincesItem).getByText(/out of range/i),
-      ).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId('form-item-name')).not.toHaveTextContent(
+  it.each([
+    [
+      'PROVINCE_COUNT_OUT_OF_RANGE',
+      'Province count 12 is out of range (must be between 1 and 5)',
       /out of range/i,
-    );
-  });
+    ],
+    [
+      'PROVINCE_TAKEN',
+      'Province 1003 is already taken',
+      /already taken/i,
+    ],
+    ['PROVINCE_NOT_FOUND', 'Province 9999 not found', /not found/i],
+    [
+      'PROVINCE_NOT_LAND',
+      'Province 2087 is a sea zone',
+      /sea zone/i,
+    ],
+    [
+      'STARTING_GROUP_NOT_CONNECTED',
+      'Starting provinces are not connected (2 parts)',
+      /not connected/i,
+    ],
+  ])(
+    'shows %s inline on the provinces FormItem',
+    async (code, detail, pattern) => {
+      server.use(
+        http.post('*/api/v1/nations', () =>
+          HttpResponse.json({ detail, code }, { status: 422 }),
+        ),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+      await fillStep1(user);
+      await fillStep2(user);
+      await user.click(screen.getByTestId('step-prev'));
+      await user.click(submitButton());
+
+      const provincesItem = screen.getByTestId('form-item-provinces');
+      await waitFor(() =>
+        expect(
+          within(provincesItem).getByText(pattern),
+        ).toBeInTheDocument(),
+      );
+      expect(screen.getByTestId('form-item-name')).not.toHaveTextContent(
+        pattern,
+      );
+    },
+  );
 
   it('shows unmapped codes in the generic banner', async () => {
     server.use(
@@ -417,31 +441,10 @@ describe('PanelCreateNation — server error mapping', () => {
   });
 });
 
-describe('PanelCreateNation — province chips', () => {
+describe('PanelCreateNation — province picker', () => {
   const provincesItem = () => screen.getByTestId('form-item-provinces');
-  // The placeholder disappears once a chip is present — target the input
-  // by role inside the provinces FormItem instead.
-  const provinceInput = () =>
-    within(provincesItem()).getByRole('textbox');
-  const removeButtonFor = (id: string) =>
-    within(provincesItem()).getByRole('button', { name: `Удалить ${id}` });
 
-  it('removes a chip when its remove button is clicked', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
-
-    await user.type(provinceInput(), '1001{Enter}');
-    expect(within(provincesItem()).getByRole('option')).toHaveTextContent(
-      '1001',
-    );
-
-    await user.click(removeButtonFor('1001'));
-    expect(
-      within(provincesItem()).queryByRole('option'),
-    ).not.toBeInTheDocument();
-  });
-
-  it('removes only the clicked chip and submits exactly the remaining ids', async () => {
+  it('opens the picker, returns named chips, submits their ids', async () => {
     const bodies: unknown[] = [];
     server.use(
       http.post('*/api/v1/nations', async ({ request }) => {
@@ -452,68 +455,128 @@ describe('PanelCreateNation — province chips', () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
+    await user.click(screen.getByTestId('open-province-picker'));
+    // The modal shows the mini map and the counter with server limits.
+    await screen.findByText(/Выбрано 0 из 7/);
+    const click = (id: number) => {
+      const path = document.querySelector(
+        `[data-testid="map-view"] path[data-id="${id}"]`,
+      );
+      expect(path).not.toBeNull();
+      fireEvent.mouseDown(path as Element, {
+        button: 0,
+        clientX: 5,
+        clientY: 5,
+      });
+      fireEvent(window, new MouseEvent('mouseup', { bubbles: true }));
+    };
+    click(1003);
+    click(1004);
+    await user.click(screen.getByRole('button', { name: 'Готово' }));
+
+    // Named chips (name_ru) in the provinces field — no numeric entry.
+    await waitFor(() =>
+      expect(
+        within(provincesItem()).getAllByRole('option'),
+      ).toHaveLength(2),
+    );
+    expect(provincesItem()).toHaveTextContent('Гамма');
+    expect(provincesItem()).toHaveTextContent('Дельта');
+
     await user.type(screen.getByLabelText('Название государства'), 'Testia');
     await user.type(screen.getByLabelText('Имя лидера'), 'Иван Грозный');
     await user.type(
       screen.getByLabelText('Должность лидера'),
       'Верховный правитель',
     );
-    await user.type(provinceInput(), '1001{Enter}');
-    await user.type(provinceInput(), '1122{Enter}');
-    expect(within(provincesItem()).getAllByRole('option')).toHaveLength(2);
-
-    await user.click(removeButtonFor('1001'));
-
-    const remaining = within(provincesItem()).getAllByRole('option');
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0]).toHaveTextContent('1122');
-    // Removing a chip must not wipe the other fields.
-    expect(screen.getByLabelText('Название государства')).toHaveValue(
-      'Testia',
-    );
-    expect(screen.getByLabelText('Имя лидера')).toHaveValue('Иван Грозный');
-
     await fillStep2(user);
     await user.click(submitButton());
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ province_ids: [1122] });
+    expect(bodies[0]).toMatchObject({ province_ids: [1003, 1004] });
   });
 
-  it('does not add the same province id twice', async () => {
+  it('cancel leaves the form unchanged', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
-    await user.type(provinceInput(), '1001{Enter}');
-    await user.type(provinceInput(), '1001{Enter}');
+    // Pick a pair first.
+    await pickProvinces(user, [1003, 1004]);
+    await waitFor(() =>
+      expect(
+        within(provincesItem()).getAllByRole('option'),
+      ).toHaveLength(2),
+    );
 
-    const chips = within(provincesItem()).getAllByRole('option');
-    expect(chips).toHaveLength(1);
-    expect(chips[0]).toHaveTextContent('1001');
+    // Reopen, click another province, then cancel — nothing changes.
+    await user.click(screen.getByTestId('open-province-picker'));
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          '[data-testid="map-view"] path[data-id]',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+    fireEvent.mouseDown(
+      document.querySelector(
+        '[data-testid="map-view"] path[data-id="1005"]',
+      ) as Element,
+      { button: 0, clientX: 5, clientY: 5 },
+    );
+    fireEvent(window, new MouseEvent('mouseup', { bubbles: true }));
+    await screen.findByText(/Выбрано 3 из 7/);
+    await user.click(screen.getByRole('button', { name: 'Отмена' }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Выбрано 3 из 7/),
+      ).not.toBeInTheDocument(),
+    );
+    expect(within(provincesItem()).getAllByRole('option')).toHaveLength(2);
   });
 
-  it('rejects a non-numeric entry', async () => {
+  it('removing a chip updates the form state', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post('*/api/v1/nations', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(NATION, { status: 201 });
+      }),
+    );
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
-    await user.type(provinceInput(), 'abc{Enter}');
+    await pickProvinces(user, [1003, 1004]);
+    await waitFor(() =>
+      expect(
+        within(provincesItem()).getAllByRole('option'),
+      ).toHaveLength(2),
+    );
 
-    expect(provinceInput()).toHaveValue('');
-    expect(
-      within(provincesItem()).queryByRole('option'),
-    ).not.toBeInTheDocument();
+    await user.click(
+      within(provincesItem()).getByRole('button', {
+        name: 'Удалить Гамма',
+      }),
+    );
+    const remaining = within(provincesItem()).getAllByRole('option');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toHaveTextContent('Дельта');
   });
 
-  it('keeps the entered chips when switching to window 2 and back', async () => {
+  it('keeps the selection when switching to window 2 and back', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
-    await user.type(provinceInput(), '1001{Enter}');
+    await pickProvinces(user, [1003, 1004]);
+    await waitFor(() =>
+      expect(
+        within(provincesItem()).getAllByRole('option'),
+      ).toHaveLength(2),
+    );
+
     await user.click(screen.getByTestId('step-next'));
     await user.click(screen.getByTestId('step-prev'));
-
-    expect(within(provincesItem()).getByRole('option')).toHaveTextContent(
-      '1001',
-    );
+    expect(provincesItem()).toHaveTextContent('Гамма');
+    expect(provincesItem()).toHaveTextContent('Дельта');
   });
 });
 
@@ -524,6 +587,11 @@ describe('mapErrorCodeToField', () => {
     expect(mapErrorCodeToField('PROVINCE_TAKEN')).toBe('provinces');
     expect(mapErrorCodeToField('PROVINCE_NOT_FOUND')).toBe('provinces');
     expect(mapErrorCodeToField('PROVINCE_COUNT_OUT_OF_RANGE')).toBe(
+      'provinces',
+    );
+    // 01_map registration-check codes land on the provinces field too.
+    expect(mapErrorCodeToField('PROVINCE_NOT_LAND')).toBe('provinces');
+    expect(mapErrorCodeToField('STARTING_GROUP_NOT_CONNECTED')).toBe(
       'provinces',
     );
     expect(mapErrorCodeToField('LEADER_NAME_INVALID')).toBe('leaderName');
