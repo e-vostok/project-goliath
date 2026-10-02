@@ -112,6 +112,23 @@ def run_graph(
     return main(argv)
 
 
+def run_build(
+    data_dir: Path,
+    out_dir: Path,
+    check: bool = False,
+    preview: bool = False,
+    crops: list[str] | None = None,
+) -> int:
+    argv = ["build", "--data-dir", str(data_dir), "--out-dir", str(out_dir)]
+    if check:
+        argv.append("--check")
+    if not preview:
+        argv.append("--no-preview")
+    if crops:
+        argv += ["--crop"] + list(crops)
+    return main(argv)
+
+
 @pytest.fixture
 def run_pipeline(tmp_path):
     def _run(data_dir: Path, check: bool = False) -> tuple[int, Path]:

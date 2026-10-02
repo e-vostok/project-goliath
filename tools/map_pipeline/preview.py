@@ -9,6 +9,7 @@ no edges red (should not occur).
 from __future__ import annotations
 
 import colorsys
+import math
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -95,4 +96,88 @@ def render_preview(
         col, row = _zone_label_pixel(sea.labels, z)
         draw.text((col * scale, row * scale), str(z), fill=_TEXT)
 
+    return img
+
+
+# ------------------------------------------------------------------- MP-3
+
+
+def _rgb(value: str) -> tuple[int, int, int]:
+    return tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
+
+
+def _stamp(img: Image.Image, polys, origin, ppu, fill, outline=None):
+    """Paint polygons through a mask so their holes stay transparent.
+
+    Each part's mask is cropped to its pixel bbox; outlines are drawn as
+    1 px lines on top of the fill.
+    """
+    ox, oy = origin
+    w_img, h_img = img.size
+    draw = ImageDraw.Draw(img)
+    for poly in polys:
+        bx0, by0, bx1, by1 = poly.bounds
+        x0 = max(0, math.floor((bx0 - ox) * ppu) - 1)
+        y0 = max(0, math.floor((by0 - oy) * ppu) - 1)
+        x1 = min(w_img, math.ceil((bx1 - ox) * ppu) + 1)
+        y1 = min(h_img, math.ceil((by1 - oy) * ppu) + 1)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        mask = Image.new("L", (x1 - x0, y1 - y0), 0)
+        md = ImageDraw.Draw(mask)
+
+        def mask_coords(ring):
+            return [
+                ((x - ox) * ppu - x0, (y - oy) * ppu - y0)
+                for x, y in ring.coords
+            ]
+
+        def img_coords(ring):
+            return [
+                ((x - ox) * ppu, (y - oy) * ppu) for x, y in ring.coords
+            ]
+
+        md.polygon(mask_coords(poly.exterior), fill=255)
+        for hole in poly.interiors:
+            md.polygon(mask_coords(hole), fill=0)
+        img.paste(fill, (x0, y0), mask)
+        if outline is not None:
+            draw.line(img_coords(poly.exterior), fill=outline, width=1,
+                      joint="curve")
+            for hole in poly.interiors:
+                draw.line(img_coords(hole), fill=outline, width=1,
+                          joint="curve")
+
+
+def render_map_preview(
+    paths: dict[str, list],
+    outside_parts: list,
+    window: tuple[float, float, float, float],
+    ppu: int,
+    colors,
+    sea_ids: set[str] | None = None,
+) -> Image.Image:
+    """Render parsed ``geometry.json`` over ``window`` at ``ppu``.
+
+    Layer order (Spec MapView): ``inland_water`` background, ``outside``,
+    sea zones (``sea`` fill, ``sea_border`` outline), land nodes (``land``
+    fill, ``border`` outline).
+    """
+    x0, y0, x1, y1 = window
+    w = max(1, round((x1 - x0) * ppu))
+    h = max(1, round((y1 - y0) * ppu))
+    img = Image.new("RGB", (w, h), _rgb(colors.inland_water))
+    _stamp(img, outside_parts, (x0, y0), ppu, _rgb(colors.outside))
+    seas = [
+        p for k in sorted(paths) if sea_ids and k in sea_ids
+        for p in paths[k]
+    ]
+    lands = [
+        p for k in sorted(paths) if not sea_ids or k not in sea_ids
+        for p in paths[k]
+    ]
+    _stamp(img, seas, (x0, y0), ppu, _rgb(colors.sea),
+           outline=_rgb(colors.sea_border))
+    _stamp(img, lands, (x0, y0), ppu, _rgb(colors.land),
+           outline=_rgb(colors.border))
     return img

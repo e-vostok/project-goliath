@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .errors import PipelineError, PipelineFailure, print_errors
-from .pipeline import run_graph, run_nodes
+from .pipeline import run_build, run_graph, run_nodes
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument(
             "--check",
             action="store_true",
-            help="never write; exit 1 if ids.lock.json would change",
+            help="never write; exit 1 if the final files would change",
         )
 
     nodes = sub.add_parser(
@@ -46,6 +46,24 @@ def main(argv: list[str] | None = None) -> int:
         help="skip writing graph_preview.png",
     )
 
+    build = sub.add_parser(
+        "build",
+        help="steps 1-10: full build — manifest.json, geometry.json, "
+        "ids.lock.json into --data-dir, reports and previews aside",
+    )
+    common(build)
+    build.add_argument(
+        "--no-preview",
+        action="store_true",
+        help="skip writing data/map/preview/*.png",
+    )
+    build.add_argument(
+        "--crop",
+        nargs="+",
+        metavar="NAME=x0,y0,x1,y1",
+        help="extra full-detail crops into data/map/preview/map_crop_*.png",
+    )
+
     args = parser.parse_args(argv)
 
     try:
@@ -55,6 +73,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_graph(
                 args.data_dir, args.out_dir, args.check,
                 preview=not args.no_preview,
+            )
+        if args.command == "build":
+            return run_build(
+                args.data_dir, args.out_dir, args.check,
+                preview=not args.no_preview,
+                crops=args.crop,
             )
     except PipelineFailure as failure:
         print_errors(failure.errors)

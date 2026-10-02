@@ -2,8 +2,7 @@
 
 Every tunable of the tool lives in ``tools/map_pipeline/pipeline_config.yaml``
 and is validated here against hard ranges. Unknown keys are forbidden: a typo
-in a key name fails the run instead of being silently ignored. The
-``simplify`` section is declared ahead of its logic, which arrives in MP-3.
+in a key name fails the run instead of being silently ignored.
 """
 from __future__ import annotations
 
@@ -64,16 +63,77 @@ class ReportConfig(_Strict):
     largest_lakes: int = Field(ge=1, le=50)
 
 
+class PreviewColors(_Strict):
+    """Map preview palette: hard copies of the Spec Part 4 defaults."""
+
+    inland_water: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    outside: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    sea: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    land: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    border: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    sea_border: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
 class PreviewConfig(_Strict):
-    """PNG preview density in pixels per SVG unit (MP-2)."""
+    """PNG preview density in pixels per SVG unit."""
 
     pixels_per_unit: int = Field(ge=2, le=12)
+    crop_pixels_per_unit: int = Field(ge=2, le=24)
+    colors: PreviewColors
 
 
 class SimplifyConfig(_Strict):
-    """Contour simplification tolerance (MP-3)."""
+    """Contour simplification tolerances (MP-3)."""
 
     tolerance: float = Field(ge=0.0, le=0.2)
+    sea_tolerance: float = Field(ge=0.05, le=1.0)
+
+
+class ViewConfig(_Strict):
+    """Source root viewBox the tool expects (MP-3)."""
+
+    width: int = Field(ge=100, le=4000)
+    height: int = Field(ge=100, le=4000)
+
+
+class GeorefConfig(_Strict):
+    """Gall-stereographic georeference constants (Spec 3.7)."""
+
+    x0: float
+    k: float = Field(gt=0.0)
+    y0: float
+    m: float = Field(gt=0.0)
+
+
+class OutputConfig(_Strict):
+    """Output coordinate grid in SVG units (MP-3)."""
+
+    grid: float = Field(ge=0.001, le=0.1)
+
+
+class SeaCutConfig(_Strict):
+    """Zone growth into land and leftover-water fill (MP-3, Spec 1.5)."""
+
+    dilate_pixels: int = Field(ge=1, le=4)
+    fill_max_area: float = Field(ge=0.0, le=20.0)
+
+
+class OutsideConfig(_Strict):
+    """``outside`` contour: sliver closing, underlap, minimum hole (MP-3)."""
+
+    closing: float = Field(ge=0.01, le=0.5)
+    underlap: float = Field(ge=0.0, le=0.2)
+    min_hole_area: float = Field(ge=0.0, le=0.5)
+    lake_near_land: float = Field(ge=0.0, le=2.0)
+
+
+class LimitsConfig(_Strict):
+    """Server-side size limits mirrored for the tool (Spec Part 4)."""
+
+    max_nodes: int = Field(ge=100, le=20000)
+    max_edges_per_node: int = Field(ge=4, le=100)
+    max_geometry_bytes: int = Field(ge=100_000, le=20_000_000)
+    max_manifest_bytes: int = Field(ge=100_000, le=20_000_000)
 
 
 class PipelineConfig(_Strict):
@@ -87,6 +147,12 @@ class PipelineConfig(_Strict):
     report: ReportConfig
     preview: PreviewConfig
     simplify: SimplifyConfig
+    view: ViewConfig
+    georef: GeorefConfig
+    output: OutputConfig
+    sea_cut: SeaCutConfig
+    outside: OutsideConfig
+    limits: LimitsConfig
 
 
 def load_pipeline_config(path: Path = DEFAULT_CONFIG_PATH) -> PipelineConfig:
