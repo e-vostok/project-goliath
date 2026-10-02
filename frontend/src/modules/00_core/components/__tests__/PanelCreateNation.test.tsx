@@ -417,6 +417,106 @@ describe('PanelCreateNation — server error mapping', () => {
   });
 });
 
+describe('PanelCreateNation — province chips', () => {
+  const provincesItem = () => screen.getByTestId('form-item-provinces');
+  // The placeholder disappears once a chip is present — target the input
+  // by role inside the provinces FormItem instead.
+  const provinceInput = () =>
+    within(provincesItem()).getByRole('textbox');
+  const removeButtonFor = (id: string) =>
+    within(provincesItem()).getByRole('button', { name: `Удалить ${id}` });
+
+  it('removes a chip when its remove button is clicked', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+    await user.type(provinceInput(), '1001{Enter}');
+    expect(within(provincesItem()).getByRole('option')).toHaveTextContent(
+      '1001',
+    );
+
+    await user.click(removeButtonFor('1001'));
+    expect(
+      within(provincesItem()).queryByRole('option'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('removes only the clicked chip and submits exactly the remaining ids', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post('*/api/v1/nations', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(NATION, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+    await user.type(screen.getByLabelText('Название государства'), 'Testia');
+    await user.type(screen.getByLabelText('Имя лидера'), 'Иван Грозный');
+    await user.type(
+      screen.getByLabelText('Должность лидера'),
+      'Верховный правитель',
+    );
+    await user.type(provinceInput(), '1001{Enter}');
+    await user.type(provinceInput(), '1122{Enter}');
+    expect(within(provincesItem()).getAllByRole('option')).toHaveLength(2);
+
+    await user.click(removeButtonFor('1001'));
+
+    const remaining = within(provincesItem()).getAllByRole('option');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toHaveTextContent('1122');
+    // Removing a chip must not wipe the other fields.
+    expect(screen.getByLabelText('Название государства')).toHaveValue(
+      'Testia',
+    );
+    expect(screen.getByLabelText('Имя лидера')).toHaveValue('Иван Грозный');
+
+    await fillStep2(user);
+    await user.click(submitButton());
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ province_ids: [1122] });
+  });
+
+  it('does not add the same province id twice', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+    await user.type(provinceInput(), '1001{Enter}');
+    await user.type(provinceInput(), '1001{Enter}');
+
+    const chips = within(provincesItem()).getAllByRole('option');
+    expect(chips).toHaveLength(1);
+    expect(chips[0]).toHaveTextContent('1001');
+  });
+
+  it('rejects a non-numeric entry', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+    await user.type(provinceInput(), 'abc{Enter}');
+
+    expect(provinceInput()).toHaveValue('');
+    expect(
+      within(provincesItem()).queryByRole('option'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the entered chips when switching to window 2 and back', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+    await user.type(provinceInput(), '1001{Enter}');
+    await user.click(screen.getByTestId('step-next'));
+    await user.click(screen.getByTestId('step-prev'));
+
+    expect(within(provincesItem()).getByRole('option')).toHaveTextContent(
+      '1001',
+    );
+  });
+});
+
 describe('mapErrorCodeToField', () => {
   it('maps every spec code to its FormItem', () => {
     expect(mapErrorCodeToField('NAME_TAKEN')).toBe('name');
