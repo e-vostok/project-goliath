@@ -1,0 +1,7 @@
+# Mini-map fixture stub — not parsed by the server; only hashed.
+sea_zones:
+  - { key: sea_mini_north, name_ru: "Северное мини-море", seeds: [[37.0, 7.0]] }
+  - { key: sea_mini_south, name_ru: "Южное мини-море", seeds: [[64.0, 54.0]] }
+straits:
+  - { a: mini_epsilon, b: mini_zeta, name: "Затонный пролив", multiplier: null }
+  - { a: mini_zeta, b: mini_eta, name: "Узкий проход", multiplier: 0.3 }

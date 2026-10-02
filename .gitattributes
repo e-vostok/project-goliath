@@ -2,3 +2,7 @@
 # tools/map_pipeline (real_data). Окончания CRLF — часть контрольной суммы,
 # поэтому для этого файла отключена любая текстовая нормализация.
 data/map/source/map.svg -text
+
+# Мини-карта для тестов 01_map: хэши её входов закреплены в её manifest.json,
+# поэтому байты фикстуры не должны зависеть от core.autocrlf при выгрузке.
+backend/tests/fixtures/map_mini/** -text

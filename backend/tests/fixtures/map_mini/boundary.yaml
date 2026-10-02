@@ -1,0 +1,12 @@
+# Mini-map fixture stub — the server never parses this file;
+# only its INV-M10 hash is pinned in manifest.json.
+include:
+  - mini_alpha
+  - mini_beta
+  - mini_gamma
+  - mini_delta
+  - mini_epsilon
+  - mini_zeta
+  - mini_eta
+  - mini_theta
+exclude_explicit: []
