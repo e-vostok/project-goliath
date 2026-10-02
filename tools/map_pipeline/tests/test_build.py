@@ -588,3 +588,244 @@ def test_failing_build_writes_nothing(make_data_dir, tmp_path):
     assert run_build(data_dir, out_dir) == 1
     for name, blob in before.items():
         assert (data_dir / name).read_bytes() == blob
+
+
+# ---------------------------------------------------- Spec 1.5: preview
+
+
+def _rgb(hexcolor: str) -> tuple[int, int, int]:
+    return tuple(int(hexcolor[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def test_preview_outline_scale():
+    """Outlines share the fill transform (Spec 1.5 review fix).
+
+    Regression: the outline pass reused mask-local coordinates, so every
+    border line was shifted by the part's tile offset toward the top-left
+    corner while fills rendered correctly.
+    """
+    from tools.map_pipeline.preview import render_map_preview
+
+    colors = CFG.preview.colors
+    border = _rgb(colors.border)
+    land_c = _rgb(colors.land)
+    a = box(300, 300, 310, 310)
+    b = box(310, 300, 320, 310)
+    paths = {"1001": [a], "1002": [b]}
+    outside = [box(0, 0, 1200, 680).difference(unary_union([a, b]))]
+
+    for window, ppu in (
+        ((0.0, 0.0, 1200.0, 680.0), CFG.preview.pixels_per_unit),
+        ((290.0, 290.0, 340.0, 330.0), CFG.preview.crop_pixels_per_unit),
+    ):
+        img = render_map_preview(paths, outside, window, ppu, colors)
+        # shared edge x=310, mid-height y=305 -> image column/row
+        edge_x = round((310 - window[0]) * ppu)
+        mid_y = round((305 - window[1]) * ppu)
+        strip = [img.getpixel((edge_x + dx, mid_y)) for dx in (-1, 0, 1)]
+        assert border in strip, (window, ppu)
+
+        # centres carry the land fill colour
+        for cx, cy in ((305, 305), (315, 305)):
+            px = (round((cx - window[0]) * ppu),
+                  round((cy - window[1]) * ppu))
+            assert img.getpixel(px) == land_c, (window, ppu, px)
+
+        # no border pixels tangled in the top-left corner
+        for x in range(10):
+            for y in range(10):
+                assert img.getpixel((x, y)) != border, (window, ppu, x, y)
+
+
+# ------------------------------------------- Spec 1.5: fjord fill (3.2)
+
+
+def _mini_sea() -> "object":
+    """A real SeaRaster on a small synthetic frame for _fill_leftover."""
+    import numpy as np
+
+    from tools.map_pipeline.seas import (
+        KIND_LAND,
+        RasterFrame,
+        SeaRaster,
+    )
+
+    frame = RasterFrame(0.0, 0.0, 40.0, 40.0, 4, 160, 160)
+    kinds = np.full((160, 160), KIND_LAND, dtype=np.uint8)
+    zeros = np.zeros((160, 160), dtype=bool)
+    return SeaRaster(
+        frame=frame, zone_keys=["sea_a", "sea_b"],
+        zone_name_ru=["A", "B"], water=zeros, band=zeros,
+        working=zeros, land=zeros.copy(), playable=zeros,
+        labels=np.zeros((160, 160), dtype=np.int16), kinds=kinds,
+        zone_areas=[0.0, 0.0],
+    )
+
+
+def _fill_setup():
+    """Land bar with a 0.1-wide x 5-deep inlet over a sea zone."""
+    mask = box(0, 0, 20, 10).difference(box(9.95, 5, 10.05, 10))
+    zones = {"sea_a": box(0, 10, 20, 16)}
+    clip = box(0, 0, 20, 20)
+    return zones, mask, clip
+
+
+def test_fjord_fill_merges_small_inlet():
+    import copy
+
+    from tools.map_pipeline.geometry import _fill_leftover
+
+    zones, mask, clip = _fill_setup()
+    sea = _mini_sea()
+    cfg = copy.deepcopy(CFG)
+    merged, marea, left, larea = _fill_leftover(
+        zones, mask, clip, sea, cfg, {"sea_a": 1001},
+    )
+    assert merged == 1 and 0.4 < marea < 0.6
+    assert zones["sea_a"].covers(Point(10.0, 7.5))
+    # merged piece is gone from the leftover accounting
+    assert left == 0 and larea == 0.0
+
+
+def test_fjord_fill_respects_area_limit():
+    import copy
+
+    from tools.map_pipeline.geometry import _fill_leftover
+
+    zones, mask, clip = _fill_setup()
+    sea = _mini_sea()
+    cfg = copy.deepcopy(CFG)
+    cfg.sea_cut.fill_max_area = 0.4   # inlet piece is ~0.5 sq. units
+    merged, _a, left, _b = _fill_leftover(
+        zones, mask, clip, sea, cfg, {"sea_a": 1001},
+    )
+    assert merged == 0
+    assert not zones["sea_a"].covers(Point(10.0, 7.5))
+
+
+def test_fjord_fill_disabled_at_zero():
+    import copy
+
+    from tools.map_pipeline.geometry import _fill_leftover
+
+    zones, mask, clip = _fill_setup()
+    sea = _mini_sea()
+    cfg = copy.deepcopy(CFG)
+    cfg.sea_cut.fill_max_area = 0.0
+    result = _fill_leftover(zones, mask, clip, sea, cfg, {"sea_a": 1001})
+    assert result == (0, 0.0, 0, 0.0)
+    assert not zones["sea_a"].covers(Point(10.0, 7.5))
+
+
+def test_fjord_fill_skips_lake_pieces():
+    import copy
+
+    from tools.map_pipeline.geometry import _fill_leftover
+    from tools.map_pipeline.seas import KIND_LAKE
+
+    zones, mask, clip = _fill_setup()
+    sea = _mini_sea()
+    col, row = sea.frame.point_to_pixel(10.0, 7.5)   # piece rep-point
+    sea.kinds[row, col] = KIND_LAKE
+    cfg = copy.deepcopy(CFG)
+    merged, _a, _l, _b = _fill_leftover(
+        zones, mask, clip, sea, cfg, {"sea_a": 1001},
+    )
+    assert merged == 0
+    assert not zones["sea_a"].covers(Point(10.0, 7.5))
+
+
+def test_fjord_fill_tie_breaks_by_node_id():
+    """Equal shared boundaries -> the smaller node id wins."""
+    import copy
+
+    from tools.map_pipeline.geometry import _fill_leftover
+
+    mask = box(0, 0, 20, 10).difference(box(9.95, 5, 10.05, 10))
+    zones = {"sea_a": box(0, 10, 10, 16), "sea_b": box(10, 10, 20, 16)}
+    clip = box(0, 0, 20, 20)
+    sea = _mini_sea()
+    cfg = copy.deepcopy(CFG)
+    merged, _a, _l, _b = _fill_leftover(
+        zones, mask, clip, sea, cfg, {"sea_a": 1002, "sea_b": 1001},
+    )
+    assert merged == 1
+    assert zones["sea_b"].covers(Point(10.0, 7.5))
+    assert not zones["sea_a"].covers(Point(10.0, 7.5))
+
+
+def test_fjord_fill_end_to_end(make_data_dir, tmp_path):
+    """Sub-pixel inlets on a real fixture build end up sea-covered.
+
+    Five 0.12-wide inlets at different pixel phases: at least one is
+    raster-land and produces a leftover piece, whichever alignment the
+    raster frame picks; all of them end up covered by the zone. A width
+    of 0.12 is under one raster pixel (0.25) but survives the land mask's
+    0.04 closing — the same geometry real fjords have.
+    """
+    cuts = []
+    for i in reversed(range(5)):   # coast runs right-to-left (x descends)
+        x = 20.0 + i * 0.31
+        cuts.append(
+            f"L {x + 0.12:.2f} 34 L {x + 0.12:.2f} 28 "
+            f"L {x:.2f} 28 L {x:.2f} 34"
+        )
+    elems = [
+        '<path id="Alpha" d="M 10 10 L 34 10 L 34 34 '
+        + " ".join(cuts)
+        + ' L 10 34 Z"/>',
+    ]
+    data_dir = make_data_dir(
+        svg_elems=elems,
+        include=["Alpha"],
+        overrides=graph_overrides(
+            sea_zones=[{"key": "sea_a", "name_ru": "A",
+                        "seeds": [[22.0, 36.5]]}],
+        ),
+    )
+    out_dir = tmp_path / "out"
+    assert run_build(data_dir, out_dir) == 0
+    geom = _geom_doc(data_dir)
+    mani = _manifest(data_dir)
+    paths = _node_paths(geom, mani)
+    sea = unary_union(paths["sea_a"])
+    for i in range(5):
+        assert sea.covers(Point(20.0 + i * 0.31 + 0.06, 28.2)), i
+    report = (out_dir / "build_report.md").read_text(encoding="utf-8")
+    m = re.search(r"Fjord fill: merged (\d+) leftover pieces", report)
+    assert m and int(m.group(1)) >= 1
+
+
+# --------------------------------------- Spec 1.5: lake windows (3.3)
+
+
+def test_lake_windows_only_near_playable_land(make_data_dir, tmp_path):
+    """A lake beside playable land is a window; inside excluded land —
+    dark ``outside``."""
+    elems = (
+        [square("Alpha", 10, 10, 12), square("Beta", 30, 10, 12)]
+        + _ring("W", 60, 30, cell=6)      # included ring -> pond window
+        + _ring("X", 100, 30, cell=6)     # excluded ring -> dark pond
+    )
+    data_dir = make_data_dir(
+        svg_elems=elems,
+        include=["Alpha", "Beta"] + _ring_keys("W"),
+        overrides=base_overrides(
+            sea_margin=30.0,
+            sea_zones=[{"key": "sea_a", "name_ru": "A",
+                        "seeds": [[24.0, 16.0]]}],
+        ),
+    )
+    out_dir = tmp_path / "out"
+    assert run_build(data_dir, out_dir) == 0
+    geom = _geom_doc(data_dir)
+    outside = unary_union(parse_path(geom["outside"]))
+    assert outside.is_valid
+    assert not outside.covers(Point(63.0, 33.0))     # window kept
+    assert outside.covers(Point(103.0, 33.0))        # stays dark
+    report = (out_dir / "build_report.md").read_text(encoding="utf-8")
+    m = re.search(
+        r"Lakes away from playable land \(no window\): (\d+) pieces",
+        report,
+    )
+    assert m and int(m.group(1)) >= 1

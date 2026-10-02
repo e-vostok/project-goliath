@@ -126,21 +126,26 @@ def _stamp(img: Image.Image, polys, origin, ppu, fill, outline=None):
         mask = Image.new("L", (x1 - x0, y1 - y0), 0)
         md = ImageDraw.Draw(mask)
 
-        def coords(ring):
+        def mask_coords(ring):
             return [
                 ((x - ox) * ppu - x0, (y - oy) * ppu - y0)
                 for x, y in ring.coords
             ]
 
-        md.polygon(coords(poly.exterior), fill=255)
+        def img_coords(ring):
+            return [
+                ((x - ox) * ppu, (y - oy) * ppu) for x, y in ring.coords
+            ]
+
+        md.polygon(mask_coords(poly.exterior), fill=255)
         for hole in poly.interiors:
-            md.polygon(coords(hole), fill=0)
+            md.polygon(mask_coords(hole), fill=0)
         img.paste(fill, (x0, y0), mask)
         if outline is not None:
-            draw.line(coords(poly.exterior), fill=outline, width=1,
+            draw.line(img_coords(poly.exterior), fill=outline, width=1,
                       joint="curve")
             for hole in poly.interiors:
-                draw.line(coords(hole), fill=outline, width=1,
+                draw.line(img_coords(hole), fill=outline, width=1,
                           joint="curve")
 
 

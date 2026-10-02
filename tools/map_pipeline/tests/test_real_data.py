@@ -288,8 +288,8 @@ def test_real_build(real_data_dir, tmp_path):
     out_v = _verts(geom["outside"])
     print(f"  vertices: land {land_v}, sea {sea_v}, outside {out_v}")
     assert 90_000 <= land_v <= 130_000
-    assert 3_000 <= sea_v <= 15_000
-    assert 60_000 <= out_v <= 140_000
+    assert 15_000 <= sea_v <= 60_000
+    assert 15_000 <= out_v <= 60_000
 
     # anchors inside their own largest part
     node_geoms = {
@@ -332,7 +332,11 @@ def test_real_build(real_data_dir, tmp_path):
     outside = unary_union(outside_parts)
     assert outside.is_valid
     allparts = [p for n in mani["nodes"] for p in node_geoms[n["id"]]]
-    n_union = unary_union(allparts).buffer(0.1).buffer(-0.1)
+    from tools.map_pipeline.pipeline_config_schema import (
+        load_pipeline_config,
+    )
+    closing = load_pipeline_config().outside.closing
+    n_union = unary_union(allparts).buffer(closing).buffer(-closing)
     strip = outside.intersection(n_union.buffer(-0.2)).area
     print(f"  outside x buffer(N,-0.2): {strip}")
     assert strip == 0.0
@@ -344,6 +348,29 @@ def test_real_build(real_data_dir, tmp_path):
     assert m and float(m.group(1)) <= 0.04
     m = re.search(r"Max node degree: (\d+) \(`(\w+)`\)", report)
     assert m and m.group(2) == "sea_north" and int(m.group(1)) == 41
+
+    # Spec 1.5: fjord fill, land-adjacent lake windows, fragment count
+    m = re.search(
+        r"Fjord fill: merged (\d+) leftover pieces \(([\d.]+)", report
+    )
+    assert m, "build_report.md lacks the fjord-fill line"
+    print(f"  fjord fill: {m.group(1)} pieces, {m.group(2)} sq. units")
+    m = re.search(r"(\d+) pieces <= [\d.]+ sq\. units touch no zone", report)
+    assert m is not None
+    print(f"  leftover pieces touching no zone: {m.group(1)}")
+    m = re.search(
+        r"Lakes away from playable land \(no window\): (\d+) pieces, "
+        r"([\d.]+)", report,
+    )
+    assert m
+    print(f"  dropped lake windows: {m.group(1)} ({m.group(2)} sq. units)")
+    m = re.search(
+        r"Small isolated outside fragments inside playable area "
+        r"\(<5 sq\. units\): (\d+)",
+        report,
+    )
+    assert m and int(m.group(1)) <= 80, m and m.group(1)
+    print(f"  small outside fragments: {m.group(1)}")
 
     # committed manifest must hash the committed inputs (any checkout)
     inputs = mani["inputs_sha256"]

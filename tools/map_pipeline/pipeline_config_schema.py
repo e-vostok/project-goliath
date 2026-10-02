@@ -112,9 +112,10 @@ class OutputConfig(_Strict):
 
 
 class SeaCutConfig(_Strict):
-    """How far zone labels grow into land before vectorising (MP-3)."""
+    """Zone growth into land and leftover-water fill (MP-3, Spec 1.5)."""
 
     dilate_pixels: int = Field(ge=1, le=4)
+    fill_max_area: float = Field(ge=0.0, le=20.0)
 
 
 class OutsideConfig(_Strict):
@@ -123,6 +124,7 @@ class OutsideConfig(_Strict):
     closing: float = Field(ge=0.01, le=0.5)
     underlap: float = Field(ge=0.0, le=0.2)
     min_hole_area: float = Field(ge=0.0, le=0.5)
+    lake_near_land: float = Field(ge=0.0, le=2.0)
 
 
 class LimitsConfig(_Strict):

@@ -37,6 +37,10 @@ from .seas import KIND_LAKE, KIND_LAND, SeaRaster, mask_from_geometry
 from .svgpath import polygons_of
 from .svg_source import safe_union
 
+# ``outside`` parts smaller than this are the "small isolated fragments"
+# the build report counts (Spec 1.5 §3.4).
+_FRAGMENT_MAX_AREA = 5.0
+
 
 @dataclass
 class NodeMetrics:
@@ -58,6 +62,10 @@ class SeaBuild:
     vertices_after_cut: int = 0
     area_before_cut: float = 0.0
     area_after_cut: float = 0.0
+    fill_merged: int = 0
+    fill_merged_area: float = 0.0
+    fill_leftover: int = 0
+    fill_leftover_area: float = 0.0
 
 
 @dataclass
@@ -73,6 +81,10 @@ class OutsideBuild:
     lake_windows: int = 0
     lake_holes: int = 0
     holes_dropped: int = 0
+    lakes_dropped: int = 0
+    lakes_dropped_area: float = 0.0
+    lake_rims: int = 0
+    lake_rims_area: float = 0.0
 
 
 def _polygon_list(geom) -> list[Polygon]:
@@ -372,10 +384,101 @@ def _vertex_count(geom) -> int:
     )
 
 
+def _fill_leftover(
+    zones: dict, land_mask, clip, sea: SeaRaster, cfg: PipelineConfig,
+    zone_ids: dict,
+) -> tuple[int, float, int, float]:
+    """Merge small uncovered water pieces into the adjacent zone (Spec 1.5).
+
+    Narrow inlets are deeper than the raster's 2-pixel growth, so the cut
+    leaves slivers of water covered by neither land nor a zone — they
+    render as ``outside``-coloured stains along coasts. Every leftover
+    piece with ``area <= sea_cut.fill_max_area`` that touches a zone
+    (within 0.05) and is not raster-lake is merged into the zone with the
+    longest shared boundary (ties: smaller node id). The dict ``zones``
+    is updated in place; the pieces keep their coverage-disjointness
+    because ``leftover`` never overlaps a zone.
+
+    Returns ``(merged_count, merged_area, leftover_count,
+    leftover_area)`` where the leftover pair counts pieces still within
+    ``fill_max_area`` that touch no zone at all.
+    """
+    limit = cfg.sea_cut.fill_max_area
+    if limit <= 0:
+        return 0, 0.0, 0, 0.0
+    leftover = clip.difference(land_mask).difference(
+        safe_union(list(zones.values()))
+    )
+    pieces = sorted(
+        _polygon_list(leftover),
+        key=lambda p: (p.bounds, -p.area),
+    )
+    assigned: dict[str, list] = {}
+    merged_count = 0
+    merged_area = 0.0
+    left_count = 0
+    left_area = 0.0
+    for piece in pieces:
+        if piece.area > limit:
+            continue
+        buf = piece.buffer(0.05)
+        touching = [
+            k for k in zones if buf.intersects(zones[k])
+        ]
+        if not touching:
+            left_count += 1
+            left_area += float(piece.area)
+            continue
+        rp = piece.representative_point()
+        col, row = sea.frame.point_to_pixel(rp.x, rp.y)
+        if (
+            0 <= col < sea.frame.width
+            and 0 <= row < sea.frame.height
+            and int(sea.kinds[row, col]) == KIND_LAKE
+        ):
+            continue
+        best = min(
+            touching,
+            key=lambda k: (
+                -buf.intersection(zones[k].boundary).length,
+                zone_ids.get(k, 1 << 30),
+                k,
+            ),
+        )
+        # The piece's land-facing edge carries the dense land-mask
+        # boundary; a light simplify keeps the fill exact within ~0.2 px
+        # at preview scale while dropping most of those vertices.
+        fill_piece = piece.simplify(
+            2 * cfg.output.grid, preserve_topology=True
+        )
+        if fill_piece.is_empty:
+            fill_piece = piece
+        assigned.setdefault(best, []).append(fill_piece)
+        merged_count += 1
+        merged_area += float(piece.area)
+
+    for key in sorted(assigned):
+        zone = _union_polygons([zones[key], *assigned[key]])
+        snapped = _union_polygons(_snap_pointwise(zone, cfg.output.grid))
+        if snapped.is_empty or not snapped.is_valid:
+            raise PipelineError(
+                GEOMETRY_INVALID,
+                f"sea zone {key!r}: invalid geometry after leftover fill",
+            )
+        zones[key] = snapped
+    return merged_count, merged_area, left_count, left_area
+
+
 def build_sea_geometries(
-    sea: SeaRaster, land_mask, cfg: PipelineConfig
+    sea: SeaRaster, land_mask, cfg: PipelineConfig,
+    clip=None, zone_ids: dict | None = None,
 ) -> SeaBuild:
-    """Vectorise the zone raster, simplify as one coverage, cut by land."""
+    """Vectorise the zone raster, simplify as one coverage, cut by land.
+
+    When ``clip`` (the playable bbox polygon) and ``zone_ids`` are given,
+    small uncovered water pieces inside ``clip`` are merged into the
+    adjacent zone afterwards (Spec 1.5 fjord fill).
+    """
     frame = sea.frame
     zd = _grow_labels_into_land(sea, cfg.sea_cut.dilate_pixels)
 
@@ -492,6 +595,22 @@ def build_sea_geometries(
         build.area_after_cut += float(snapped.area)
     if errors:
         raise PipelineFailure(errors)
+
+    if clip is not None:
+        (
+            build.fill_merged,
+            build.fill_merged_area,
+            build.fill_leftover,
+            build.fill_leftover_area,
+        ) = _fill_leftover(
+            build.geoms, land_mask, clip, sea, cfg, zone_ids or {},
+        )
+        build.vertices_after_cut = sum(
+            _vertex_count(g) for g in build.geoms.values()
+        )
+        build.area_after_cut = sum(
+            float(g.area) for g in build.geoms.values()
+        )
     return build
 
 
@@ -559,11 +678,20 @@ def node_metrics(geom, cfg: PipelineConfig) -> NodeMetrics:
 # ---------------------------------------------------------------- step 9
 
 
-def build_lake_region(sea: SeaRaster, land_mask, view_poly, cfg):
-    """Lake raster grown 1 px, clipped to exact water (viewBox - LandMask)."""
+def build_lake_region(
+    sea: SeaRaster, land_mask, view_poly, cfg, land_union=None
+):
+    """Lake raster grown 1 px, clipped to exact water (viewBox - LandMask).
+
+    Spec 1.5: only lakes within ``outside.lake_near_land`` of the final
+    included land become ``outside`` windows — lakes inside excluded
+    territory stay dark. Returns ``(region, pieces, area, spill,
+    dropped_count, dropped_area)``.
+    """
     rects = _run_boxes(sea.kinds == KIND_LAKE, sea.frame)
+    empty = (None, 0, 0.0, 0.0, 0, 0.0)
     if not rects:
-        return None, 0, 0.0, 0.0
+        return empty
     grown = safe_union(rects).buffer(
         1.0 / sea.frame.r, join_style="mitre"
     )
@@ -573,14 +701,27 @@ def build_lake_region(sea: SeaRaster, land_mask, view_poly, cfg):
         p for p in _polygon_list(region)
         if p.area >= cfg.outside.min_hole_area
     ]
+    dropped = []
+    if land_union is not None:
+        near = cfg.outside.lake_near_land
+        pieces, dropped = (
+            [p for p in pieces if p.distance(land_union) <= near],
+            [p for p in pieces if p.distance(land_union) > near],
+        )
     if not pieces:
-        return None, 0, 0.0, 0.0
+        return (
+            None, 0, 0.0, 0.0,
+            len(dropped), sum(float(p.area) for p in dropped),
+        )
     region = _union_polygons(pieces)
     spill_mask = mask_from_geometry(region, sea.frame)
     spill = float(
         np.count_nonzero(spill_mask & (sea.kinds != KIND_LAKE))
     ) / (sea.frame.r * sea.frame.r)
-    return region, len(pieces), float(region.area), spill
+    return (
+        region, len(pieces), float(region.area), spill,
+        len(dropped), sum(float(p.area) for p in dropped),
+    )
 
 
 def build_outside(
@@ -619,6 +760,24 @@ def build_outside(
         outside = outside.difference(lake_region)
     if not deep_pad.is_empty:
         outside = outside.difference(deep_pad)
+
+    # A kept lake inside a small unclaimed pocket leaves a dark rim of
+    # ``outside`` around its window; the pocket is the same inland water
+    # body, so it joins the window. Lakes in excluded land were dropped
+    # from ``lake_region`` — their pockets are not touched.
+    lake_rims = 0
+    lake_rims_area = 0.0
+    if lake_region is not None and not lake_region.is_empty:
+        near_lake = lake_region.buffer(0.05)
+        rims = [
+            p for p in _polygon_list(outside)
+            if p.area < _FRAGMENT_MAX_AREA
+            and near_lake.covers(p.representative_point())
+        ]
+        if rims:
+            lake_rims = len(rims)
+            lake_rims_area = sum(float(p.area) for p in rims)
+            outside = outside.difference(safe_union(rims))
 
     holes_dropped = 0
     cleaned: list[Polygon] = []
@@ -680,4 +839,5 @@ def build_outside(
         outside=snapped, nodes_union=n, lake_region=lake_region,
         holes_dropped=holes_dropped, lake_windows=lake_windows,
         lake_holes=lake_holes,
+        lake_rims=lake_rims, lake_rims_area=lake_rims_area,
     )

@@ -44,9 +44,11 @@ def test_committed_config_validates():
     assert cfg.georef.m == 459.3
     assert cfg.output.grid == 0.01
     assert cfg.sea_cut.dilate_pixels == 2
-    assert cfg.outside.closing == 0.1
+    assert cfg.sea_cut.fill_max_area == 3.0
+    assert cfg.outside.closing == 0.3
     assert cfg.outside.underlap == 0.05
     assert cfg.outside.min_hole_area == 0.02
+    assert cfg.outside.lake_near_land == 0.2
     assert cfg.limits.max_nodes == 3000
     assert cfg.limits.max_edges_per_node == 60
     assert cfg.limits.max_geometry_bytes == 5_000_000
@@ -76,9 +78,13 @@ def _committed() -> dict:
         ("output", "grid", 0.5),
         ("sea_cut", "dilate_pixels", 0),
         ("sea_cut", "dilate_pixels", 9),
+        ("sea_cut", "fill_max_area", -0.5),
+        ("sea_cut", "fill_max_area", 25.0),
         ("outside", "closing", 0.001),
         ("outside", "underlap", 0.5),
         ("outside", "min_hole_area", 1.0),
+        ("outside", "lake_near_land", -0.1),
+        ("outside", "lake_near_land", 3.0),
         ("limits", "max_nodes", 50),
         ("limits", "max_edges_per_node", 3),
         ("limits", "max_geometry_bytes", 10),

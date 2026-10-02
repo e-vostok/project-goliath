@@ -31,6 +31,7 @@ from .errors import (
     PipelineFailure,
 )
 from .geometry import (
+    _polygon_list,
     _vertex_count,
     build_land_geometries,
     build_land_mask,
@@ -58,7 +59,7 @@ from .models import (
 from .pipeline_config_schema import PipelineConfig, load_pipeline_config
 from .preview import render_map_preview, render_preview
 from .seas import SeaRaster, build_seas, land_label_raster
-from .svg_source import build_geometries, read_province_paths
+from .svg_source import build_geometries, read_province_paths, safe_union
 from .svgpath import build_geometry_doc, dumps, parse_path
 
 _KEY_RE = re.compile(r"^[a-z0-9_]+$")
@@ -706,8 +707,21 @@ def _build_report(
     manifest_bytes: int,
     geometry_version: str,
     inputs: dict,
+    playable: list,
 ) -> str:
     """Deterministic ``build_report.md`` — no timestamps."""
+    clip = box(*playable)
+    clip_boundary = clip.boundary
+    fragments = sorted(
+        (
+            p
+            for p in _polygon_list(outside_build.outside)
+            if p.area < 5.0
+            and clip.covers(p)
+            and p.disjoint(clip_boundary)
+        ),
+        key=lambda p: (-p.area, p.bounds),
+    )
     cfg = prep.cfg
     by_id = {n.id: n for n in graph.nodes}
     land_keys = {n.key for n in graph.nodes if n.kind != KIND_SEA}
@@ -776,12 +790,30 @@ def _build_report(
         f"{sea_build.vertices_after_cut}",
         f"- Sea area: {round(sea_build.area_before_cut, 2)} before the "
         f"land cut, {round(sea_build.area_after_cut, 2)} after",
+        f"- Fjord fill: merged {sea_build.fill_merged} leftover pieces "
+        f"({round(sea_build.fill_merged_area, 2)} sq. units) into sea "
+        f"zones; {sea_build.fill_leftover} pieces <= "
+        f"{cfg.sea_cut.fill_max_area} sq. units touch no zone "
+        f"({round(sea_build.fill_leftover_area, 2)} sq. units)",
         f"- Lake region: {outside_build.lake_pieces} pieces, area "
         f"{round(outside_build.lake_area, 2)}, raster spill "
         f"{round(outside_build.lake_spill, 3)}",
+        f"- Lakes away from playable land (no window): "
+        f"{outside_build.lakes_dropped} pieces, "
+        f"{round(outside_build.lakes_dropped_area, 2)} sq. units",
         f"- Lake windows in outside: {outside_build.lake_windows} "
         f"(enclosed holes {outside_build.lake_holes})",
+        f"- Lake pocket rims absorbed into windows: "
+        f"{outside_build.lake_rims} pieces, "
+        f"{round(outside_build.lake_rims_area, 2)} sq. units",
         f"- Outside holes dropped: {outside_build.holes_dropped}",
+        f"- Small isolated outside fragments inside playable area "
+        f"(<5 sq. units): {len(fragments)}",
+        *(
+            f"  - area {round(p.area, 2)}, centroid "
+            f"({round(p.centroid.x, 2)}, {round(p.centroid.y, 2)})"
+            for p in fragments[:10]
+        ),
         "",
         "## Limits",
         "",
@@ -836,7 +868,11 @@ def run_build(
         prep.nodes, cfg
     )
     land_mask = build_land_mask(land_geoms, prep, sea, cfg)
-    sea_build = build_sea_geometries(sea, land_mask, cfg)
+    playable = playable_bbox(land_geoms, prep.overrides, cfg)
+    zone_ids = {k: ids[k] for k in sea.zone_keys}
+    sea_build = build_sea_geometries(
+        sea, land_mask, cfg, box(*playable), zone_ids,
+    )
     all_geoms = {k: land_geoms[k] for k in sorted(land_geoms)}
     for key in sorted(sea_build.geoms):
         all_geoms[key] = sea_build.geoms[key]
@@ -863,8 +899,17 @@ def run_build(
     }
 
     view_poly = box(0.0, 0.0, float(cfg.view.width), float(cfg.view.height))
-    lake_region, lake_pieces, lake_area, lake_spill = build_lake_region(
-        sea, land_mask, view_poly, cfg
+    land_keys = sorted(
+        (k for k in canon if k in land_geoms), key=lambda k: ids[k]
+    )
+    land_union = safe_union(
+        [p for k in land_keys for p in _polygon_list(canon[k])]
+    )
+    (
+        lake_region, lake_pieces, lake_area, lake_spill,
+        lakes_dropped, lakes_dropped_area,
+    ) = build_lake_region(
+        sea, land_mask, view_poly, cfg, land_union,
     )
     outside_build = build_outside(
         [canon[k] for k in sorted(canon, key=lambda k: ids[k])],
@@ -873,6 +918,8 @@ def run_build(
     outside_build.lake_pieces = lake_pieces
     outside_build.lake_area = lake_area
     outside_build.lake_spill = lake_spill
+    outside_build.lakes_dropped = lakes_dropped
+    outside_build.lakes_dropped_area = lakes_dropped_area
 
     outside_d = dumps(outside_build.outside)
     geom_doc, geom_text = build_geometry_doc(paths, outside_d)
@@ -905,7 +952,6 @@ def run_build(
         data_dir / _OVERRIDES_FILE,
         lock_text,
     )
-    playable = playable_bbox(land_geoms, prep.overrides, cfg)
     manifest = build_manifest(
         graph,
         prep.nodes,
@@ -924,7 +970,7 @@ def run_build(
     report_text = _build_report(
         prep, sea, graph, land_geoms, sea_build, outside_build, metrics,
         land_dev, land_repairs, paths, outside_d, geom_bytes,
-        manifest_bytes, geom_doc["version"], inputs,
+        manifest_bytes, geom_doc["version"], inputs, playable,
     )
 
     if check:
