@@ -82,3 +82,9 @@ export interface MapStateDTO {
   /** [province_id, index into nations]; free provinces and SEA are absent. */
   owners: [number, number][];
 }
+
+/** POST /map/starting-group/check answer (Spec Part 5, Issue 6). */
+export interface StartingGroupCheckDTO {
+  connected: boolean;
+  component_count: number;
+}
