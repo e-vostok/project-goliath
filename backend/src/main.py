@@ -18,6 +18,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from starlette.middleware.gzip import GZipMiddleware
 
 from core.admin.router import router as admin_router
 from core.db import get_engine, init_engine
@@ -28,6 +29,8 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.router import router as core_router
 from modules._00_core.tick_handler import register_tick_handlers
+from modules._01_map.api_service import get_api_payloads
+from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
 
 
@@ -61,6 +64,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # request) can fire while the extension points are half-wired.
     await startup_map()
 
+    # Spec Part 5: the manifest/geometry bodies and the manifest ETag
+    # are built once here, never per request.
+    get_api_payloads()
+
     scheduler_task = asyncio.create_task(scheduler_loop(), name="tick-scheduler")
 
     yield
@@ -78,8 +85,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Spec 01_map Part 5 (§3.6 of the Issue-4 TZ): the map manifest (~1100
+# nodes) and geometry (~1.9 MB) responses go through gzip.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 app.include_router(core_router)
 app.include_router(admin_router)
+app.include_router(map_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
 # UNAUTHORIZED and GAME_CLOCK_NOT_FOUND are additions to the spec's
@@ -105,6 +117,8 @@ _ERROR_CODE_STATUS = {
     "HISTORY_URL_INVALID": 422,
     "PROVINCE_NOT_LAND": 422,
     "STARTING_GROUP_NOT_CONNECTED": 422,
+    "TURN_OUT_OF_RANGE": 422,
+    "MAP_VERSION_UNKNOWN": 404,
 }
 
 

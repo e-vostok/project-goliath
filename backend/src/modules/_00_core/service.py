@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,6 +80,19 @@ class EnsureNodesResult:
     extra_in_db: list[int] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class OwnedProvinceInfo:
+    """
+    One currently-owned province with its nation's display fields —
+    the read shape ``/map/state`` (01_map) needs for the live turn.
+    """
+
+    province_id: int
+    nation_id: str
+    nation_name: str
+    nation_color: str
+
+
 class ProvinceService:
     """Service for the provinces table (map nodes)."""
 
@@ -145,6 +158,35 @@ class ProvinceService:
             extra_in_db=extra_in_db,
         )
 
+    @staticmethod
+    async def list_current_owners(
+        session: AsyncSession,
+    ) -> list[OwnedProvinceInfo]:
+        """
+        Every owned province joined to its nation, ordered by province
+        id — the public read path for satellites (e.g. /map/state).
+
+        Read-only and never commits. Sea zones cannot appear:
+        ck_provinces_sea_unowned keeps their nation_id NULL.
+        """
+        result = await session.execute(
+            select(
+                Province.id, Nation.id, Nation.name, Nation.color_hex
+            )
+            .join(Nation, Province.nation_id == Nation.id)
+            .order_by(Province.id)
+        )
+        # Positional access: two `id` columns share a label name.
+        return [
+            OwnedProvinceInfo(
+                province_id=row[0],
+                nation_id=row[1],
+                nation_name=row[2],
+                nation_color=row[3],
+            )
+            for row in result.all()
+        ]
+
 
 class PlayerService:
     """Service for Player entity operations."""
@@ -191,6 +233,19 @@ async def _current_turn(session: AsyncSession) -> int:
     )
     clock = result.scalar_one_or_none()
     return clock.current_turn if clock is not None else 0
+
+
+class GameClockService:
+    """Read-only access to the game_clock singleton for satellites."""
+
+    @staticmethod
+    async def current_turn(session: AsyncSession) -> int:
+        """
+        The current turn in the caller's transaction. Shares the
+        write path's rule: a missing singleton row (bare test schema)
+        reads as turn 0.
+        """
+        return await _current_turn(session)
 
 
 class NationService:
@@ -345,7 +400,24 @@ class NationService:
         )
 
         return nation
-    
+
+    @staticmethod
+    async def existing_ids(
+        session: AsyncSession, nation_ids: Iterable[str]
+    ) -> set[str]:
+        """
+        The subset of ``nation_ids`` still present in the nations table —
+        one batched read for satellites (e.g. /map/state resolving which
+        past owners still exist). Read-only and never commits.
+        """
+        ids = set(nation_ids)
+        if not ids:
+            return set()
+        result = await session.execute(
+            select(Nation.id).where(Nation.id.in_(ids))
+        )
+        return set(result.scalars().all())
+
     @staticmethod
     async def update(
         session: AsyncSession,

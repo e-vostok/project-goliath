@@ -39,3 +39,29 @@ class StartingGroupNotConnectedError(MapDomainError):
             self.code,
             details={"component_count": component_count},
         )
+
+
+class MapVersionUnknownError(MapDomainError):
+    """Geometry version differs from the loaded one (Part 5: 404)."""
+
+    code = "MAP_VERSION_UNKNOWN"
+
+    def __init__(self, version: str):
+        super().__init__(
+            f"Версия геометрии {version!r} не совпадает с текущей — "
+            "перезапросите манифест карты",
+            self.code,
+        )
+
+
+class TurnOutOfRangeError(MapDomainError):
+    """Requested turn outside 0..current_turn (Part 5: 422)."""
+
+    code = "TURN_OUT_OF_RANGE"
+
+    def __init__(self, turn: int, current_turn: int):
+        super().__init__(
+            f"Ход {turn} вне диапазона 0..{current_turn}",
+            self.code,
+            details={"turn": turn, "current_turn": current_turn},
+        )
