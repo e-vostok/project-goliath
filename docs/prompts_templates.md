@@ -162,7 +162,7 @@
 
 ## 0. Process
 All git operations are Devin's responsibility (commits, branches, merge prep) — Project
-Owner only clicks "Merge" on GitHub, after Lead AI review of the diff.
+Owner only clicks "Merge" after PR is created by Devin on GitHub, after Lead AI review of the diff.
 
 ## 1. Scope & Blast Radius
 - ALLOWLIST: [Strict list of files permitted to create/edit]

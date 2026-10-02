@@ -1,8 +1,11 @@
 ---
 module: 01_map
-spec_version: 1.6
+spec_version: 1.7
 bible_ref: docs/01_GAME_BIBLE/01_map.md
 ---
+
+> **Изменения 1.7 (02.10.2026):** `ETag` манифеста считается от `geometry_version`, хэша `manifest.json` **и канонического JSON блока `rules`** (раньше только от первых двух: правка цветов или лимитов в `configs/01_map.yaml` не меняла бы `ETag`, и клиент получал бы `304` со старыми правилами); `POST /map/starting-group/check`: неизвестный узел — 404 (код ядра «провинция не найдена»), морская зона — 422 `PROVINCE_NOT_LAND`, пустой список — 422.
+>
 
 > **Изменения 1.6 (02.10.2026):** по итогам эксперимента E1 в настоящем ВК (широкоформатный режим выключен): полноэкранный режим страницы (`document.documentElement.requestFullscreen()`) работает внутри окна ВК, поэтому режим большого окна реализуется единственным способом — Fullscreen API для всей страницы. Удалены: метод `resize_window` (окно ВК ограничено 1000×4050, размер задаётся в кабинете разработчика), метод `separate_window`, FSM одноразового пропуска, эндпоинты `POST /map/big-window/pass` и `POST /auth/pass`, DTO `BigWindowPassDTO` и `PassExchangeRequest`, код `PASS_INVALID`, ключи конфига `big_window.method`, `resize_target_*`, `pass_ttl_seconds`; добавлен ключ `big_window.enabled`. Публичный адрес с https для этой функции не нужен.
 >
@@ -309,7 +312,7 @@ $$mult(\text{strait})=\begin{cases}\text{multiplier}, & \text{если зада�
 | GET | `/map/state` | `?turn=` | `MapStateDTO` | 200 / 422 |
 | POST | `/map/starting-group/check` | `StartingGroupCheckRequest` | `StartingGroupCheckResponse` | 200 / 404 |
 
-`GET /map/manifest` отдаёт содержимое `manifest.json` плюс правила интерфейса; поддерживает `ETag` (значение — `geometry_version` и хэш manifest) и условный запрос `If-None-Match`. `GET /map/geometry/{version}` отдаёт геометрию с заголовком `Cache-Control: public, max-age=31536000, immutable`; версия, отличная от текущей, даёт 404 `MAP_VERSION_UNKNOWN` (клиент перезапрашивает manifest). `GET /map/state` без `turn` — текущий ход; с `turn` — прошлый ход по журналу; вне диапазона `0…current_turn` — 422 `TURN_OUT_OF_RANGE`.
+`GET /map/manifest` отдаёт содержимое `manifest.json` плюс правила интерфейса; поддерживает `ETag` (значение — хэш от `geometry_version`, хэша `manifest.json` и канонического JSON блока `rules`) и условный запрос `If-None-Match`. `GET /map/geometry/{version}` отдаёт геометрию с заголовком `Cache-Control: public, max-age=31536000, immutable`; версия, отличная от текущей, даёт 404 `MAP_VERSION_UNKNOWN` (клиент перезапрашивает manifest). `GET /map/state` без `turn` — текущий ход; с `turn` — прошлый ход по журналу; вне диапазона `0…current_turn` — 422 `TURN_OUT_OF_RANGE`.
 
 ### DTO
 
