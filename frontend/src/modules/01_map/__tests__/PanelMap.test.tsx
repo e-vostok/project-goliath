@@ -237,6 +237,74 @@ describe('PanelMap — geometry version mismatch', () => {
   });
 });
 
+describe('PanelMap — background layers', () => {
+  it('confines inland_water to the view_box inside the transformed group', async () => {
+    renderMap();
+    await mapReady();
+    const colors = MINI_MANIFEST.rules.colors;
+    const view = document.querySelector(
+      '[data-testid="map-view"]',
+    ) as HTMLElement;
+    const worldG = view.querySelector('svg > g') as SVGGElement;
+    expect(worldG.querySelector('path[data-id]')).not.toBeNull();
+
+    // The background rect lives in map coordinates = view_box, inside
+    // the transformed group — visible only through the lakes of
+    // `outside`.
+    const water = view.querySelector(
+      `rect[fill="${colors.inland_water}"]`,
+    ) as SVGRectElement | null;
+    expect(water).not.toBeNull();
+    expect(worldG.contains(water)).toBe(true);
+    const [x, y, w, h] = MINI_MANIFEST.view_box;
+    expect(Number(water!.getAttribute('x'))).toBe(x);
+    expect(Number(water!.getAttribute('y'))).toBe(y);
+    expect(Number(water!.getAttribute('width'))).toBe(w);
+    expect(Number(water!.getAttribute('height'))).toBe(h);
+    // Layer order: the background sits under the outside path.
+    expect(worldG.firstElementChild).toBe(water);
+
+    // No element outside the world group may paint inland_water.
+    const waterProbe = document.createElement('div');
+    waterProbe.style.background = colors.inland_water;
+    view.querySelectorAll('*').forEach((el) => {
+      if (worldG.contains(el)) {
+        return;
+      }
+      expect(el.getAttribute('fill')).not.toBe(colors.inland_water);
+      expect((el as HTMLElement).style.background).not.toBe(
+        waterProbe.style.background,
+      );
+    });
+  });
+
+  it('shows the outside colour beyond the view_box (pan margin / viewport overflow)', async () => {
+    renderMap();
+    await mapReady();
+    const colors = MINI_MANIFEST.rules.colors;
+    const view = document.querySelector(
+      '[data-testid="map-view"]',
+    ) as HTMLElement;
+
+    // Best-effort drag to the clamp limit (jsdom has no layout — the
+    // gesture is a no-op here, the assertion is the layer invariant).
+    fireEvent.mouseDown(view, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent(
+      window,
+      new MouseEvent('mousemove', {
+        bubbles: true,
+        clientX: 5000,
+        clientY: 5000,
+      }),
+    );
+    fireEvent(window, new MouseEvent('mouseup', { bubbles: true }));
+
+    const probe = document.createElement('div');
+    probe.style.background = colors.outside;
+    expect(view.style.background).toBe(probe.style.background);
+  });
+});
+
 describe('PanelMap — big window', () => {
   it('hides the button when fullscreen is unsupported', async () => {
     renderMap();
