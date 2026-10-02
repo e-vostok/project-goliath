@@ -18,6 +18,7 @@ from sqlalchemy.engine import Connection
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.db import Base
+from core.settings import format_database_target, resolve_database_url
 
 # Register every module's ORM tables on Base.metadata so the migrated
 # schema can be compared against the models (drift-guard tests, future
@@ -37,14 +38,27 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    """Get the database URL from environment or config.
-    
-    Always returns a sync-compatible URL for use with synchronous create_engine().
-    Strips async driver suffixes (e.g., +aiosqlite, +asyncpg) if present.
+    """Get the database URL the same way the application does.
+
+    ``core.settings.resolve_database_url`` implements the project's
+    single rule: process environment first, otherwise the repo-root
+    .env. There is no fallback — an unresolvable URL raises, so a typo
+    or a missing .env can never again make alembic migrate a throwaway
+    SQLite database.
+
+    One masked target line is printed so the operator can see which
+    database a command will touch before any migration runs.
+
+    Always returns a sync-compatible URL for use with synchronous
+    create_engine(): async driver suffixes (e.g., +aiosqlite, +asyncpg)
+    are stripped — psycopg2 is installed for exactly this purpose.
     """
-    import os
-    url = os.getenv("DATABASE_URL", "sqlite:///:memory:")
-    
+    url = resolve_database_url()
+    print(
+        f"Alembic target: {format_database_target(url)}",
+        file=sys.stderr,
+    )
+
     # Strip async driver suffixes to ensure sync compatibility
     async_suffixes = [
         "+aiosqlite",
@@ -53,12 +67,12 @@ def get_database_url() -> str:
         "+aiomysql",
         "+aiopg",
     ]
-    
+
     for suffix in async_suffixes:
         if suffix in url:
             url = url.replace(suffix, "")
             break
-    
+
     return url
 
 
