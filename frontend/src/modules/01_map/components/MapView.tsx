@@ -487,16 +487,24 @@ export function MapView(props: MapViewProps) {
         overflow: 'hidden',
         cursor: 'grab',
         userSelect: 'none',
+        // Anything beyond view_box (pan margin, oversized window) is
+        // land/unknown sea outside the playable field.
+        background: colors.outside,
       }}
     >
       <svg width={viewport.width} height={viewport.height}>
-        {/* background — inland water shows through gaps (lakes) */}
-        <rect
-          width={viewport.width}
-          height={viewport.height}
-          fill={colors.inland_water}
-        />
         <g ref={worldRef}>
+          {/* background — inland water shows through the holes (lakes)
+              of `outside`; confined to view_box in MAP coordinates so
+              it can never bleed beyond the map area. */}
+          <rect
+            data-layer="inland-water"
+            x={manifest.view_box[0]}
+            y={manifest.view_box[1]}
+            width={manifest.view_box[2]}
+            height={manifest.view_box[3]}
+            fill={colors.inland_water}
+          />
           <path d={geometry.outside} fill={colors.outside} />
           <g>{nodePaths}</g>
           <g ref={labelsGRef} pointerEvents="none">
