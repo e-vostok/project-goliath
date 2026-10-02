@@ -27,17 +27,27 @@ from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from dotenv import dotenv_values
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import create_engine, delete, text
+from sqlalchemy import create_engine, delete, func, select, text
 
+import modules._01_map.service as map_service_module
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator, TickPhase
 from main import app
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
 from modules._00_core.models import GameClock, Province, TickLog, TickLogStatus
 from modules._00_core.tick_schedule import next_tick_after
+from modules._01_map.models import MapOwnershipLog
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import (
+    MAP_MINI_DIR,
+    make_land_province,
+    map_mini_node_ids,
+)
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -50,6 +60,10 @@ CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 ADMIN_VK_ID = 424242
 USER_VK_ID = 777001
+
+# The lifespan startup syncs the whole mini map into provinces, so every
+# live test sees exactly these rows (plus nothing extra).
+MINI_NODE_COUNT = len(map_mini_node_ids())
 
 ADMIN_ROUTES = [
     ("GET", "/api/v1/admin/me", None),
@@ -126,6 +140,10 @@ async def live_client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+    # The lifespan startup syncs the mini map into provinces and
+    # registers the 01_map hooks — the app's provinces are the fixture's
+    # 10 nodes for the whole test.
+    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
 
     alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
@@ -137,6 +155,8 @@ async def live_client(tmp_path, monkeypatch):
         for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
+    saved_extensions = snapshot_extension_points()
+    saved_map_service = map_service_module._instance
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
@@ -152,6 +172,8 @@ async def live_client(tmp_path, monkeypatch):
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved_handlers)
     TickOrchestrator._finalize_callback = saved_finalize
+    restore_extension_points(saved_extensions)
+    map_service_module._instance = saved_map_service
 
 
 async def _auth_headers(client: AsyncClient, vk_user_id: int) -> dict:
@@ -306,7 +328,7 @@ class TestAdminState:
         core = modules["00_core"]
         assert core["clock"]["current_turn"] == 0
         assert core["clock"]["next_tick_at"] is not None
-        assert core["counts"]["provinces_total"] == 3
+        assert core["counts"]["provinces_total"] == MINI_NODE_COUNT
         assert core["counts"]["provinces_owned"] == 0
         assert core["counts"]["players"] == 1  # the admin login created one
         assert core["players"][0]["vk_user_id"] == ADMIN_VK_ID
@@ -338,7 +360,7 @@ class TestAdminState:
         assert core["counts"] == {
             "players": 1,
             "nations": 1,
-            "provinces_total": 2,
+            "provinces_total": MINI_NODE_COUNT,
             "provinces_owned": 2,
         }
         nation = core["nations"][0]
@@ -361,7 +383,10 @@ class TestAdminState:
         assert response.status_code == 200
         modules = response.json()["modules"]
         assert modules["zzz_broken"] == {"error": "ValueError"}
-        assert modules["00_core"]["counts"]["provinces_total"] == 0
+        assert (
+            modules["00_core"]["counts"]["provinces_total"]
+            == MINI_NODE_COUNT
+        )
 
 
 class TestAdminTickLog:
@@ -644,7 +669,9 @@ class TestAdminStateReset:
         )
 
         assert response.status_code == 200
-        assert response.json() == {"reset": ["00_core"]}
+        # 01_map's journal hook runs first (reverse registration order),
+        # then 00_core wipes the world.
+        assert response.json() == {"reset": ["01_map", "00_core"]}
 
         me = await live_client.get("/api/v1/nations/me", headers=headers)
         assert me.status_code == 404
@@ -654,10 +681,18 @@ class TestAdminStateReset:
             params={"free_only": True},
             headers=headers,
         )
-        assert len(provinces.json()) == 2
+        assert len(provinces.json()) == MINI_NODE_COUNT
 
         clock = await live_client.get("/api/v1/game-clock", headers=headers)
         assert clock.json()["current_turn"] == 0
+
+        # The map reset hook wiped the ownership journal (INV-M8): the
+        # create wrote rows, the bulk free during reset writes none.
+        async with get_session_context() as session:
+            result = await session.execute(
+                select(func.count()).select_from(MapOwnershipLog)
+            )
+            assert result.scalar_one() == 0
 
     @pytest.mark.asyncio
     async def test_reset_single_module_slug(self, live_client, monkeypatch):
@@ -697,8 +732,14 @@ class TestAdminStateReset:
         )
 
         assert response.status_code == 200
-        # Registration order: 00_core, mod_a, mod_b -> executed reversed.
-        assert response.json()["reset"] == ["mod_b", "mod_a", "00_core"]
+        # Registration order: 00_core, 01_map (lifespan), mod_a, mod_b
+        # -> executed reversed.
+        assert response.json()["reset"] == [
+            "mod_b",
+            "mod_a",
+            "01_map",
+            "00_core",
+        ]
         assert calls == ["mod_b", "mod_a"]
 
     @pytest.mark.asyncio
@@ -749,7 +790,7 @@ class TestAdminStateReset:
         assert me.status_code == 200
         assert me.json()["province_ids"] == [1001]
         provinces = await live_client.get("/api/v1/provinces", headers=headers)
-        assert len(provinces.json()) == 2
+        assert len(provinces.json()) == MINI_NODE_COUNT
 
     @pytest.mark.asyncio
     async def test_reset_clears_tick_log_and_keeps_players(

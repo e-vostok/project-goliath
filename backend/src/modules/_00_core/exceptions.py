@@ -8,10 +8,13 @@ and are raised by domain services when business rules are violated.
 
 class CoreDomainError(Exception):
     """Base exception for all 00_core domain errors."""
-    
-    def __init__(self, message: str, code: str):
+
+    def __init__(
+        self, message: str, code: str, details: dict | None = None
+    ):
         self.message = message
         self.code = code
+        self.details = details
         super().__init__(message)
 
 

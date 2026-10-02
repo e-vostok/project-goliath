@@ -10,42 +10,65 @@ placeholder range or confuses a sea zone for ownable land.
 from __future__ import annotations
 
 import itertools
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.models import Province
 
+# The mini map that lifespan-booting tests point MAP_DATA_DIR at — the
+# startup sync inserts exactly these nodes (Spec Part 2), so a factory
+# row and the synced row for the same id always agree on kind.
+MAP_MINI_DIR = Path(__file__).resolve().parent / "map_mini"
+
+
+def map_mini_node_ids() -> tuple[int, ...]:
+    """All node ids of the mini-map fixture, ascending."""
+    manifest = json.loads(
+        (MAP_MINI_DIR / "manifest.json").read_text(encoding="utf-8")
+    )
+    return tuple(sorted(node["id"] for node in manifest["nodes"]))
+
+
 _land_ids = itertools.count(1001)
 _sea_ids = itertools.count(2001)
+
+
+async def _make_province(
+    session: AsyncSession, kind: str, id: int | None
+) -> Province:
+    """
+    Return the province with `id`, inserting it when absent. The startup
+    sync may already have created the row from the mini-map fixture —
+    reuse it instead of raising a duplicate-PK error; the factory kind
+    and the synced kind agree by construction.
+    """
+    province_id = id if id is not None else next(
+        _land_ids if kind == "LAND" else _sea_ids
+    )
+    existing = await session.get(Province, province_id)
+    if existing is not None:
+        return existing
+    province = Province(id=province_id, kind=kind, nation_id=None)
+    session.add(province)
+    await session.flush()
+    return province
 
 
 async def make_land_province(
     session: AsyncSession, id: int | None = None
 ) -> Province:
     """Insert one LAND province (id defaults to the next from 1001)."""
-    province = Province(
-        id=id if id is not None else next(_land_ids),
-        kind="LAND",
-        nation_id=None,
-    )
-    session.add(province)
-    await session.flush()
-    return province
+    return await _make_province(session, "LAND", id)
 
 
 async def make_sea_province(
     session: AsyncSession, id: int | None = None
 ) -> Province:
     """Insert one SEA zone (id defaults to the next from 2001)."""
-    province = Province(
-        id=id if id is not None else next(_sea_ids),
-        kind="SEA",
-        nation_id=None,
-    )
-    session.add(province)
-    await session.flush()
-    return province
+    return await _make_province(session, "SEA", id)
 
 
 @dataclass(frozen=True)

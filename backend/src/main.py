@@ -28,6 +28,7 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.router import router as core_router
 from modules._00_core.tick_handler import register_tick_handlers
+from modules._01_map.startup import startup_map
 
 
 @asynccontextmanager
@@ -54,6 +55,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Handlers must be registered before the scheduler fires its first tick.
     register_tick_handlers()
     register_admin_hooks()
+
+    # 01_map Spec Part 2 "Порядок запуска": load -> sync -> INV-M5 ->
+    # register hooks. Runs before the scheduler so no tick (and no
+    # request) can fire while the extension points are half-wired.
+    await startup_map()
 
     scheduler_task = asyncio.create_task(scheduler_loop(), name="tick-scheduler")
 
@@ -97,6 +103,8 @@ _ERROR_CODE_STATUS = {
     "LEADER_NAME_INVALID": 422,
     "LEADER_TITLE_INVALID": 422,
     "HISTORY_URL_INVALID": 422,
+    "PROVINCE_NOT_LAND": 422,
+    "STARTING_GROUP_NOT_CONNECTED": 422,
 }
 
 
@@ -107,9 +115,13 @@ async def domain_error_handler(
     exc: CoreDomainError | SecurityError,
 ) -> JSONResponse:
     """Map domain/security errors to the ErrorResponse JSON shape."""
+    content: dict = {"detail": exc.message, "code": exc.code}
+    details = getattr(exc, "details", None)
+    if details:
+        content["details"] = details
     return JSONResponse(
         status_code=_ERROR_CODE_STATUS.get(exc.code, 500),
-        content={"detail": exc.message, "code": exc.code},
+        content=content,
     )
 
 
