@@ -19,6 +19,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.db import Base
 
+# Register every module's ORM tables on Base.metadata so the migrated
+# schema can be compared against the models (drift-guard tests, future
+# autogenerate).
+import modules._00_core.models  # noqa: F401,E402
+import modules._01_map.models  # noqa: F401,E402
+
 # this is the Alembic Config object
 config = context.config
 

@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 from modules._00_core.models import GameClock, Nation, Player, Province, ScheduledAction
 from tests.fixtures.factories import PlayerFactory
+from tests.fixtures.provinces import make_land_province
 
 
 @pytest.mark.asyncio
@@ -278,14 +279,13 @@ async def test_game_clock_singleton_constraint(test_db_session):
 @pytest.mark.asyncio
 async def test_province_nation_id_nullable(test_db_session):
     """Test that province nation_id can be NULL (free province)."""
-    province = Province(id=1, nation_id=None)
-    test_db_session.add(province)
-    await test_db_session.flush()
-    
-    result = await test_db_session.execute(select(Province).where(Province.id == 1))
+    province = await make_land_province(test_db_session, id=1001)
+
+    result = await test_db_session.execute(select(Province).where(Province.id == 1001))
     retrieved_province = result.scalar_one()
-    
-    assert retrieved_province.id == 1
+
+    assert retrieved_province.id == 1001
+    assert retrieved_province.kind == "LAND"
     assert retrieved_province.nation_id is None
 
 
@@ -307,17 +307,16 @@ async def test_province_assignment(test_db_session):
         color_hex="#FF0000",
         created_at=datetime.now(timezone.utc)
     )
-    province = Province(id=1, nation_id=None)
-    
+    province = await make_land_province(test_db_session, id=1001)
+
     test_db_session.add(nation)
-    test_db_session.add(province)
     await test_db_session.flush()
-    
+
     # Assign province to nation
     province.nation_id = nation.id
     await test_db_session.flush()
-    
-    result = await test_db_session.execute(select(Province).where(Province.id == 1))
+
+    result = await test_db_session.execute(select(Province).where(Province.id == 1001))
     retrieved_province = result.scalar_one()
     
     assert retrieved_province.nation_id == nation.id

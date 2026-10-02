@@ -14,6 +14,7 @@ import yaml
 from pydantic import ValidationError
 
 from modules._00_core.config_schema import CoreConfig
+from modules._01_map.config_schema import MapConfig
 
 
 def _base_config() -> dict:
@@ -88,6 +89,17 @@ def test_valid_config_loads():
     assert config.nation.history_url_allowed_hosts == ["vk.com", "vk.ru"]
     assert str(config.calendar.epoch_start_date) == "0001-01-01"
     assert config.calendar.days_per_turn == 7
+
+
+def test_map_config_loads():
+    """configs/01_map.yaml ↔ MapConfig (module 01_map, Issue 1).
+
+    The full validation matrix lives in tests/test_01_map_config.py;
+    this is the registration gate proving the real file loads."""
+    config = MapConfig.from_yaml(MapConfig.get_default_config_path())
+
+    assert config.big_window.enabled is True
+    assert config.view.zoom_min < config.view.zoom_max
 
 
 def test_invalid_tick_interval_too_high(tmp_path):

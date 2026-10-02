@@ -37,6 +37,7 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Province, TickLog, TickLogStatus
 from modules._00_core.tick_schedule import next_tick_after
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import make_land_province
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -177,6 +178,18 @@ async def _request(client: AsyncClient, method: str, url: str, body, headers):
     return await client.post(url, json=body, headers=headers)
 
 
+async def _seed_provinces(ids: list[int]) -> None:
+    """Insert land provinces straight into the app's live database.
+
+    The migration no longer seeds placeholder rows, so tests that need
+    provinces seed exactly the ids they use.
+    """
+    async with get_session_context() as session:
+        for pid in ids:
+            await make_land_province(session, id=pid)
+        await session.commit()
+
+
 async def _insert_tick_log(
     turn_number: int,
     status: TickLogStatus = TickLogStatus.COMPLETED,
@@ -283,6 +296,7 @@ class TestAdminState:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
+        await _seed_provinces([1001, 1002, 1003])
 
         response = await live_client.get("/api/v1/admin/state", headers=headers)
 
@@ -292,7 +306,7 @@ class TestAdminState:
         core = modules["00_core"]
         assert core["clock"]["current_turn"] == 0
         assert core["clock"]["next_tick_at"] is not None
-        assert core["counts"]["provinces_total"] == 100
+        assert core["counts"]["provinces_total"] == 3
         assert core["counts"]["provinces_owned"] == 0
         assert core["counts"]["players"] == 1  # the admin login created one
         assert core["players"][0]["vk_user_id"] == ADMIN_VK_ID
@@ -305,13 +319,14 @@ class TestAdminState:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
+        await _seed_provinces([1001, 1002])
         created = await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Admin Nation",
                 "color_hex": "#0A1B2C",
-                "province_ids": [1, 2],
+                "province_ids": [1001, 1002],
                 **VALID_PROFILE,
             },
         )
@@ -323,12 +338,12 @@ class TestAdminState:
         assert core["counts"] == {
             "players": 1,
             "nations": 1,
-            "provinces_total": 100,
+            "provinces_total": 2,
             "provinces_owned": 2,
         }
         nation = core["nations"][0]
         assert nation["name"] == "Admin Nation"
-        assert nation["province_ids"] == [1, 2]
+        assert nation["province_ids"] == [1001, 1002]
         assert core["players"][0]["nation_id"] == nation["id"]
 
     @pytest.mark.asyncio
@@ -346,7 +361,7 @@ class TestAdminState:
         assert response.status_code == 200
         modules = response.json()["modules"]
         assert modules["zzz_broken"] == {"error": "ValueError"}
-        assert modules["00_core"]["counts"]["provinces_total"] == 100
+        assert modules["00_core"]["counts"]["provinces_total"] == 0
 
 
 class TestAdminTickLog:
@@ -564,13 +579,14 @@ class TestAdminStateReset:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
+        await _seed_provinces([1001])
         await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Keep Me",
                 "color_hex": "#102030",
-                "province_ids": [1],
+                "province_ids": [1001],
                 **VALID_PROFILE,
             },
         )
@@ -608,13 +624,14 @@ class TestAdminStateReset:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
+        await _seed_provinces([1001, 1002])
         created = await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Doomed Nation",
                 "color_hex": "#3A4B5C",
-                "province_ids": [1, 2],
+                "province_ids": [1001, 1002],
                 **VALID_PROFILE,
             },
         )
@@ -637,7 +654,7 @@ class TestAdminStateReset:
             params={"free_only": True},
             headers=headers,
         )
-        assert len(provinces.json()) == 100
+        assert len(provinces.json()) == 2
 
         clock = await live_client.get("/api/v1/game-clock", headers=headers)
         assert clock.json()["current_turn"] == 0
@@ -690,13 +707,14 @@ class TestAdminStateReset:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
+        await _seed_provinces([1001, 1002])
         created = await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Rollback Nation",
                 "color_hex": "#5C4B3A",
-                "province_ids": [1],
+                "province_ids": [1001],
                 **VALID_PROFILE,
             },
         )
@@ -707,7 +725,7 @@ class TestAdminStateReset:
 
         async def mutates_first(session):
             await session.execute(
-                delete(Province).where(Province.id == 99)
+                delete(Province).where(Province.id == 1002)
             )
 
         # Execution order is reversed registration: mutates_first runs
@@ -729,9 +747,9 @@ class TestAdminStateReset:
         # the nation and all provinces are untouched.
         me = await live_client.get("/api/v1/nations/me", headers=headers)
         assert me.status_code == 200
-        assert me.json()["province_ids"] == [1]
+        assert me.json()["province_ids"] == [1001]
         provinces = await live_client.get("/api/v1/provinces", headers=headers)
-        assert len(provinces.json()) == 100
+        assert len(provinces.json()) == 2
 
     @pytest.mark.asyncio
     async def test_reset_clears_tick_log_and_keeps_players(

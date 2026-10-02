@@ -43,12 +43,15 @@ from modules._00_core.models import (
     TickLogStatus,
 )
 from modules._00_core.tick_schedule import next_tick_after
+import modules._01_map.models  # noqa: F401 — registers map_ownership_log
+# so drop_all/create_all on the shared PG test DB sees its FK into
+# provinces and drops tables in dependency order.
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import make_land_province
 from tests.fixtures.factories import (
     GameClockFactory,
     NationFactory,
     PlayerFactory,
-    ProvinceFactory,
     ScheduledActionFactory,
     TickLogFactory,
 )
@@ -174,8 +177,7 @@ async def _seed_nation(
 
 async def _seed_provinces(session: AsyncSession, ids: list[int]) -> None:
     for pid in ids:
-        session.add(ProvinceFactory.build(id=pid, nation_id=None, nation=None))
-    await session.flush()
+        await make_land_province(session, id=pid)
 
 
 class TestRegisterAdminHooks:
@@ -208,9 +210,9 @@ class TestAdminStateView:
             vk_user_id=1002,
             created_at=t0 + timedelta(seconds=1),
         )
-        await _seed_provinces(test_db_session, [1, 2, 3])
+        await _seed_provinces(test_db_session, [1001, 1002, 1003])
         nation = await _seed_nation(
-            test_db_session, owner, "View Nation", "#112233", [2, 1]
+            test_db_session, owner, "View Nation", "#112233", [1002, 1001]
         )
         clock = GameClockFactory.build(
             current_turn=7,
@@ -262,7 +264,7 @@ class TestAdminStateView:
         assert nation_row["name"] == "View Nation"
         assert nation_row["color_hex"] == "#112233"
         assert nation_row["owner_player_id"] == owner.id
-        assert nation_row["province_ids"] == [1, 2]
+        assert nation_row["province_ids"] == [1001, 1002]
         assert nation_row["leader_name"] == VALID_PROFILE["leader_name"]
         assert nation_row["leader_title"] == VALID_PROFILE["leader_title"]
         assert nation_row["history_url"] == VALID_PROFILE["history_url"]
@@ -328,9 +330,9 @@ class TestAdminReset:
         self, test_db_session
     ):
         owner = await _seed_player(test_db_session, vk_user_id=3001)
-        await _seed_provinces(test_db_session, [1, 2, 3])
+        await _seed_provinces(test_db_session, [1001, 1002, 1003])
         nation = await _seed_nation(
-            test_db_session, owner, "Doomed Nation", "#445566", [1, 2]
+            test_db_session, owner, "Doomed Nation", "#445566", [1001, 1002]
         )
         test_db_session.add(
             ScheduledActionFactory.build(nation=nation)
@@ -408,9 +410,9 @@ class TestAdminReset:
     async def test_reset_inserts_missing_clock_row(self, test_db_session):
         """A populated world without game_clock gets the singleton back."""
         owner = await _seed_player(test_db_session, vk_user_id=4001)
-        await _seed_provinces(test_db_session, [1])
+        await _seed_provinces(test_db_session, [1001])
         await _seed_nation(
-            test_db_session, owner, "Clockless", "#778899", [1]
+            test_db_session, owner, "Clockless", "#778899", [1001]
         )
 
         await admin_reset(test_db_session)

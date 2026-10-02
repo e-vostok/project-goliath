@@ -41,6 +41,7 @@ from tests.fixtures.postgres import (
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import make_land_province
 from tests.modules._00_core.test_router import (
     TEST_VK_SECRET,
     make_launch_params,
@@ -86,6 +87,18 @@ async def _fetch_nation(pg_db, nation_id: str) -> Nation | None:
         return result.scalar_one_or_none()
 
 
+async def _seed_provinces(pg_db, ids: list[int]) -> None:
+    """Insert land provinces on the shared PG test database.
+
+    Migrations no longer seed placeholder rows, so each test creates
+    exactly the provinces it uses (pg_clean wipes them between tests).
+    """
+    async with pg_db() as session:
+        for pid in ids:
+            await make_land_province(session, id=pid)
+        await session.commit()
+
+
 async def _province_owners(pg_db, ids: list[int]) -> dict[int, str | None]:
     async with pg_db() as session:
         result = await session.execute(
@@ -112,6 +125,7 @@ async def _assert_world_clean(pg_db, province_ids: list[int]) -> None:
 async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     """auth -> rules -> create -> read -> patch -> reject -> delete."""
     client = pg_live_client
+    await _seed_provinces(pg_db, [1001, 1002, 1003])
     token, player_id = await _auth(client, vk_user_id=910001)
 
     rules = await client.get("/api/v1/nations/rules", headers=_headers(token))
@@ -137,7 +151,7 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
         json={
             "name": "Northern Reach",
             "color_hex": "#1A2B3C",
-            "province_ids": [1, 2],
+            "province_ids": [1001, 1002],
             "leader_name": f"  {VALID_PROFILE['leader_name']}  ",
             "leader_title": f"  {VALID_PROFILE['leader_title']}  ",
             "history_url": f"  {VALID_PROFILE['history_url']}  ",
@@ -152,10 +166,10 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     assert nation.leader_name == VALID_PROFILE["leader_name"]
     assert nation.leader_title == VALID_PROFILE["leader_title"]
     assert nation.history_url == VALID_PROFILE["history_url"]
-    assert await _province_owners(pg_db, [1, 2, 3]) == {
-        1: nation_id,
-        2: nation_id,
-        3: None,
+    assert await _province_owners(pg_db, [1001, 1002, 1003]) == {
+        1001: nation_id,
+        1002: nation_id,
+        1003: None,
     }
 
     me = await client.get("/api/v1/nations/me", headers=_headers(token))
@@ -165,7 +179,7 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     assert body["leader_name"] == VALID_PROFILE["leader_name"]
     assert body["leader_title"] == VALID_PROFILE["leader_title"]
     assert body["history_url"] == VALID_PROFILE["history_url"]
-    assert body["province_ids"] == [1, 2]
+    assert body["province_ids"] == [1001, 1002]
 
     # PATCH leader_title: exactly that one column changes in the DB.
     before = _nation_snapshot(await _fetch_nation(pg_db, nation_id))
@@ -199,7 +213,10 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     )
     assert delete.status_code == 204
     assert await _fetch_nation(pg_db, nation_id) is None
-    assert await _province_owners(pg_db, [1, 2]) == {1: None, 2: None}
+    assert await _province_owners(pg_db, [1001, 1002]) == {
+        1001: None,
+        1002: None,
+    }
 
 
 class TestCreateRejections:
@@ -225,10 +242,11 @@ class TestCreateRejections:
             "history_url": "http://vk.com/@x",
         }
         token, _ = await _auth(pg_live_client, vk_user_id=920001)
+        await _seed_provinces(pg_db, [1005])
         body = {
             "name": "Rejected Realm",
             "color_hex": "#A0B1C2",
-            "province_ids": [5],
+            "province_ids": [1005],
             **VALID_PROFILE,
         }
         body[field] = bad_values[field]
@@ -241,7 +259,7 @@ class TestCreateRejections:
         payload = resp.json()
         assert payload["code"] == code
         assert payload["detail"]
-        await _assert_world_clean(pg_db, [5])
+        await _assert_world_clean(pg_db, [1005])
 
     async def test_missing_profile_field_is_fastapi_422(
         self, pg_live_client, pg_db
@@ -249,10 +267,11 @@ class TestCreateRejections:
         """An absent required field hits pydantic, not the domain layer:
         422 in FastAPI's own shape (a detail list, no domain code)."""
         token, _ = await _auth(pg_live_client, vk_user_id=920002)
+        await _seed_provinces(pg_db, [1005])
         body = {
             "name": "Rejected Realm",
             "color_hex": "#A0B1C2",
-            "province_ids": [5],
+            "province_ids": [1005],
             **VALID_PROFILE,
         }
         del body["history_url"]
@@ -263,7 +282,7 @@ class TestCreateRejections:
 
         assert resp.status_code == 422
         assert "code" not in resp.json()
-        await _assert_world_clean(pg_db, [5])
+        await _assert_world_clean(pg_db, [1005])
 
     async def test_already_exists_beats_profile_validation(
         self, pg_live_client, pg_db
@@ -271,13 +290,14 @@ class TestCreateRejections:
         """Spec Part 2 check order: INV-1 precedes profile validation, so
         a second POST with an invalid profile answers 409 — not 422."""
         token, _ = await _auth(pg_live_client, vk_user_id=920003)
+        await _seed_provinces(pg_db, [1006, 1007])
         first = await pg_live_client.post(
             "/api/v1/nations",
             headers=_headers(token),
             json={
                 "name": "First Realm",
                 "color_hex": "#123123",
-                "province_ids": [6],
+                "province_ids": [1006],
                 **VALID_PROFILE,
             },
         )
@@ -290,7 +310,7 @@ class TestCreateRejections:
             json={
                 "name": "Second Realm",
                 "color_hex": "#321321",
-                "province_ids": [7],
+                "province_ids": [1007],
                 "leader_name": "Broken\nName",
                 "leader_title": "x",
                 "history_url": "http://vk.com/@x",
@@ -302,9 +322,9 @@ class TestCreateRejections:
         async with pg_db() as session:
             result = await session.execute(select(Nation))
             assert [n.id for n in result.scalars().all()] == [nation_id]
-        assert await _province_owners(pg_db, [6, 7]) == {
-            6: nation_id,
-            7: None,
+        assert await _province_owners(pg_db, [1006, 1007]) == {
+            1006: nation_id,
+            1007: None,
         }
 
 
@@ -312,6 +332,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
     """A pre-migration nation (NULL profile) reads nulls, accepts a plain
     rename, fills its profile field by field, and refuses empty values."""
     client = pg_live_client
+    await _seed_provinces(pg_db, [1010, 1011])
     token, player_id = await _auth(client, vk_user_id=930001)
     nation_id = str(uuid.uuid4())
 
@@ -333,7 +354,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
         await session.execute(
             text(
                 "UPDATE provinces SET nation_id = :nid "
-                "WHERE id IN (10, 11)"
+                "WHERE id IN (1010, 1011)"
             ),
             {"nid": nation_id},
         )
@@ -345,7 +366,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
     assert body["leader_name"] is None
     assert body["leader_title"] is None
     assert body["history_url"] is None
-    assert body["province_ids"] == [10, 11]
+    assert body["province_ids"] == [1010, 1011]
 
     # A plain rename works on a legacy row; profile stays NULL.
     patch = await client.patch(
@@ -404,6 +425,7 @@ async def test_admin_tick_and_state_reset_on_postgres(pg_live_client, pg_db):
     nations (and their profiles) go, provinces free, turn rewinds to 0,
     and players survive."""
     client = pg_live_client
+    await _seed_provinces(pg_db, [1020])
     token, _ = await _auth(client, vk_user_id=ADMIN_VK_ID)
 
     create = await client.post(
@@ -412,7 +434,7 @@ async def test_admin_tick_and_state_reset_on_postgres(pg_live_client, pg_db):
         json={
             "name": "Tickland",
             "color_hex": "#0ACE55",
-            "province_ids": [20],
+            "province_ids": [1020],
             **VALID_PROFILE,
         },
     )
@@ -458,7 +480,7 @@ async def test_admin_tick_and_state_reset_on_postgres(pg_live_client, pg_db):
         assert nations.scalar_one() == 0
         provinces = await session.execute(select(Province))
         all_provinces = provinces.scalars().all()
-        assert len(all_provinces) == 100  # seeded rows survive
+        assert len(all_provinces) == 1  # seeded rows survive
         assert all(p.nation_id is None for p in all_provinces)
         clock = (
             await session.execute(
@@ -484,6 +506,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
     FAILED with the error — and a clean retry lands COMPLETED under the
     same turn_number (attempt history, migration 0002)."""
     client = pg_live_client
+    await _seed_provinces(pg_db, [1030])
     token, _ = await _auth(client, vk_user_id=ADMIN_VK_ID)
 
     create = await client.post(
@@ -492,7 +515,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
         json={
             "name": "Immutable Realm",
             "color_hex": "#AA55AA",
-            "province_ids": [30],
+            "province_ids": [1030],
             **VALID_PROFILE,
         },
     )
@@ -585,13 +608,14 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
         await session.rollback()
 
     token, _ = await _auth(client, vk_user_id=940001)
+    await _seed_provinces(pg_db, [1040])
     create = await client.post(
         "/api/v1/nations",
         headers=_headers(token),
         json={
             "name": "Actionland",
             "color_hex": "#C1C1C1",
-            "province_ids": [40],
+            "province_ids": [1040],
             **VALID_PROFILE,
         },
     )

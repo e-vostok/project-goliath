@@ -1,9 +1,11 @@
 ---
 module: 01_map
-spec_version: 1.5
+spec_version: 1.6
 bible_ref: docs/01_GAME_BIBLE/01_map.md
 ---
 
+> **Изменения 1.6 (02.10.2026):** по итогам эксперимента E1 в настоящем ВК (широкоформатный режим выключен): полноэкранный режим страницы (`document.documentElement.requestFullscreen()`) работает внутри окна ВК, поэтому режим большого окна реализуется единственным способом — Fullscreen API для всей страницы. Удалены: метод `resize_window` (окно ВК ограничено 1000×4050, размер задаётся в кабинете разработчика), метод `separate_window`, FSM одноразового пропуска, эндпоинты `POST /map/big-window/pass` и `POST /auth/pass`, DTO `BigWindowPassDTO` и `PassExchangeRequest`, код `PASS_INVALID`, ключи конфига `big_window.method`, `resize_target_*`, `pass_ttl_seconds`; добавлен ключ `big_window.enabled`. Публичный адрес с https для этой функции не нужен.
+>
 > **Изменения 1.5 (02.10.2026):** по картинкам предпросмотра MP-3: (а) узкие заливы и фьорды, оставшиеся непокрытыми после обрезки зон по суше (пятна цвета `outside` в береговой линии), присоединяются к примыкающей морской зоне, если площадь остатка не больше `sea_cut.fill_max_area`; (б) окна-озёра в `outside` делаются только для озёр, примыкающих к игровой суше (озёра в исключённой земле остаются тёмными); (в) замыкание объединения узлов для `outside` увеличено до `outside.closing` = 0,3, чтобы щели береговой линии не оставляли тёмных пятен.
 >
 
@@ -168,10 +170,6 @@ names_ru: { moscow: "Москва" }                     # русские наз
 - **Реестр проверок регистрации.** `NationService.create` после проверки существования и свободы провинций вызывает зарегистрированные проверки; `01_map` регистрирует проверку «только суша» и «связная группа». Так ядро не зависит от сателлита.
 - **Хук сброса мира.** Админский сброс мира очищает `map_ownership_log` через зарегистрированный хук (по образцу `admin_hooks.py`).
 
-### FSM одноразового пропуска (только при `big_window.method = separate_window`)
-
-`ISSUED → USED` (при обмене на токен сессии) или `ISSUED → EXPIRED` (по истечении `pass_ttl_seconds`). Повторное использование и использование другим игроком запрещены. Пропуск хранится в памяти сервера (в первой версии — один процесс), не в БД.
-
 ---
 
 ## ЧАСТЬ 3: МАТЕМАТИЧЕСКИЙ АППАРАТ
@@ -287,17 +285,14 @@ $$mult(\text{strait})=\begin{cases}\text{multiplier}, & \text{если зада�
 | `colors.selected` | str | HEX | `#FFD24A` | `#RRGGBB` |
 | `strait.default_crossing_multiplier` | float | доля | 0.5 | 0.05…1.0 |
 | `starting_group.require_connected` | bool | — | true | true/false |
-| `big_window.method` | enum | — | `disabled` | `disabled`, `fullscreen_api`, `resize_window`, `separate_window` |
-| `big_window.resize_target_width_px` | int | px | 1000 | 630…1000 |
-| `big_window.resize_target_height_px` | int | px | 1200 | 600…4050 |
-| `big_window.pass_ttl_seconds` | int | сек | 60 | 10…600 |
+| `big_window.enabled` | bool | — | true | true/false |
 | `limits.max_nodes` | int | шт. | 3000 | 100…20000 |
 | `limits.max_edges_per_node` | int | шт. | 60 | 4…100 |
 | `limits.max_geometry_bytes` | int | байт | 5 000 000 | 100 000…20 000 000 |
 | `limits.max_manifest_bytes` | int | байт | 3 000 000 | 100 000…20 000 000 |
 | `attribution.text` | str | — | MapChart, CC BY-SA 4.0 | 1…300 симв. |
 
-**Перекрёстные правила схемы:** `zoom_min < zoom_max`; цвета `neutral_province`, `sea`, `outside` попарно различны. Границы размеров окна взяты из ограничений платформы, сообщённых Project Owner, и уточняются проверкой в ВК. Параметры инструмента подготовки (допуск, упрощение, шаг растра) в `01_map.yaml` не входят: они принадлежат конфигурации трека `map_pipeline`.
+**Перекрёстные правила схемы:** `zoom_min < zoom_max`; цвета `neutral_province`, `sea`, `outside` попарно различны. Размер окна приложения во ВК задаётся в кабинете разработчика (около 1000×1200), в конфиг карты не входит. Параметры инструмента подготовки (допуск, упрощение, шаг растра) в `01_map.yaml` не входят: они принадлежат конфигурации трека `map_pipeline`.
 
 ---
 
@@ -313,10 +308,6 @@ $$mult(\text{strait})=\begin{cases}\text{multiplier}, & \text{если зада�
 | GET | `/map/geometry/{version}` | — | `MapGeometryDTO` | 200 / 404 |
 | GET | `/map/state` | `?turn=` | `MapStateDTO` | 200 / 422 |
 | POST | `/map/starting-group/check` | `StartingGroupCheckRequest` | `StartingGroupCheckResponse` | 200 / 404 |
-| POST | `/map/big-window/pass` | — | `BigWindowPassDTO` | 200 / 404 |
-| POST | `/auth/pass` | `PassExchangeRequest` | `AuthResponseDTO` | 200 / 401 |
-
-Последние два эндпоинта **резервные**: реализуются только если по итогам проверки в ВК выбран метод `separate_window` и появился публичный адрес с https (см. Roadmap). При другом методе они отвечают 404.
 
 `GET /map/manifest` отдаёт содержимое `manifest.json` плюс правила интерфейса; поддерживает `ETag` (значение — `geometry_version` и хэш manifest) и условный запрос `If-None-Match`. `GET /map/geometry/{version}` отдаёт геометрию с заголовком `Cache-Control: public, max-age=31536000, immutable`; версия, отличная от текущей, даёт 404 `MAP_VERSION_UNKNOWN` (клиент перезапрашивает manifest). `GET /map/state` без `turn` — текущий ход; с `turn` — прошлый ход по журналу; вне диапазона `0…current_turn` — 422 `TURN_OUT_OF_RANGE`.
 
@@ -331,8 +322,7 @@ MapEdgeDTO       = { a: int, b: int, type: "land" | "coast" | "sea" | "strait",
                      name: str | None, multiplier: float | None }    # multiplier — итоговое значение с учётом конфига
 MapViewRulesDTO  = { zoom_min: float, zoom_max: float, pan_margin_fraction: float, label_min_width_px: int,
                      search_min_chars: int, search_max_results: int, colors: dict[str, str],
-                     require_connected_start: bool, big_window_method: str,
-                     resize_target_width_px: int, resize_target_height_px: int,
+                     require_connected_start: bool, big_window_enabled: bool,
                      refresh: { tick_refresh_delay_seconds: int, tick_refresh_jitter_seconds: int,
                                 retry_delay_seconds: int, max_retries: int, stale_after_seconds: int } }
 MapGeometryDTO   = { version: str, paths: dict[int, str], outside: str }
@@ -341,8 +331,6 @@ MapStateDTO      = { geometry_version: str, turn: int, nations: list[MapNationDT
 MapNationDTO     = { id: UUID | None, name: str, color_hex: str }     # id = None для государств, которых больше нет (прошлые ходы)
 StartingGroupCheckRequest  = { province_ids: list[int] }
 StartingGroupCheckResponse = { connected: bool, component_count: int }
-BigWindowPassDTO = { url: str, expires_in: int }                      # резерв
-PassExchangeRequest = { pass_token: str }                             # резерв
 ```
 
 Изменение существующих DTO `00_core`: `ProvinceDTO` получает поле `kind: "LAND" | "SEA"` (обратно совместимое добавление).
@@ -355,22 +343,27 @@ PassExchangeRequest = { pass_token: str }                             # резе
 | `STARTING_GROUP_NOT_CONNECTED` | 422 | группа провинций не связна при `require_connected = true` |
 | `TURN_OUT_OF_RANGE` | 422 | запрошенный ход вне диапазона |
 | `MAP_VERSION_UNKNOWN` | 404 | версия геометрии не совпадает с текущей |
-| `PASS_INVALID` | 401 | пропуск неверен, использован или истёк (резерв) |
 
 Порядок проверок при регистрации государства (дополнение к `00_core`): существование провинций → свобода провинций → `PROVINCE_NOT_LAND` → допустимое количество → `STARTING_GROUP_NOT_CONNECTED`.
 
 ### Клиентские компоненты (desktop, VKUI; тексты на русском; раскладка до ширины 1000 px)
 
-- **`PanelMap`** — основной экран карты. Верхняя строка: поле поиска (`Search`) и кнопка «Развернуть» (видна при `big_window_method ≠ disabled`). Центр: `MapView`. Справа поверх карты — `NodeCard` (около 280 px, закрывается крестиком и клавишей Esc). Внизу: строка состояния «Ход N · обновлено ЧЧ:ММ» с пометкой «данные устарели» при необходимости; легенда цветов; строка авторства из `attribution`.
+- **`PanelMap`** — основной экран карты. Верхняя строка: поле поиска (`Search`) и кнопка «Развернуть» (видна при `big_window_enabled = true` и если браузер разрешает полноэкранный режим). Центр: `MapView`. Справа поверх карты — `NodeCard` (около 280 px, закрывается крестиком и клавишей Esc). Внизу: строка состояния «Ход N · обновлено ЧЧ:ММ» с пометкой «данные устарели» при необходимости; легенда цветов; строка авторства из `attribution`.
 - **`MapView`** — единый компонент с режимами `view` и `select`. SVG со слоями снизу вверх: фон (цвет `colors.inland_water`: он виден в промежутках между провинциями на месте озёр); контур `outside` (всё остальное, включая «неизведанное море»); заливки узлов (одна `<g>`, одно делегированное событие, узел определяется по `data-id`); подписи (по правилу 3.9); подсветка наведения и выбора. Границы провинций — обводка тонкой линией с `vector-effect: non-scaling-stroke`. Перемещение — перетаскиванием, масштаб — колесом (3.8); смещение и масштаб применяются одним `transform` на контейнер, обновление через `requestAnimationFrame`.
 - **`NodeCard`** — название, вид, владелец (имя и цвет) или «свободна», список связанных узлов (клик переходит к узлу), место для данных модулей-сателлитов.
 - **`ProvincePicker`** — всплывающее окно (`ModalPage`) с `MapView` в режиме `select`: клик по свободной провинции суши добавляет или убирает её из выбора; морские зоны и занятые провинции не выбираются; счётчик «Выбрано N из M»; индикатор связности; кнопка «Готово». Заменяет ручной ввод ID в окне 1 регистрации государства: поле выбранных провинций показывает названия и позволяет убирать их по одной; ввод чисел вручную удаляется.
-- **Хуки:** `useMapManifest` (условный запрос по `ETag`), `useMapGeometry(version)` (кэш браузера, при `MAP_VERSION_UNKNOWN` перезапрос manifest), `useMapState` (политика 3.10; хранит последнее успешное состояние), `useMapSearch` (3.12), `useBigWindow` (по `big_window_method`).
-- **`vk-bridge`:** события не требуются, кроме метода `resize_window` (вызов изменения размера окна платформы с параметрами конфига) при `big_window.method = resize_window`. Прочие методы режима большого окна используют обычные средства браузера.
+- **Хуки:** `useMapManifest` (условный запрос по `ETag`), `useMapGeometry(version)` (кэш браузера, при `MAP_VERSION_UNKNOWN` перезапрос manifest), `useMapState` (политика 3.10; хранит последнее успешное состояние), `useMapSearch` (3.12), `useBigWindow` (состояние полного экрана и команды входа и выхода).
+- **`vk-bridge`:** для карты события не требуются. Режим большого окна использует только средства браузера.
 
 ### Режим большого окна
 
-Кнопка «Развернуть» вызывает способ, заданный `big_window.method`: `fullscreen_api` — полноэкранный режим для контейнера карты; `resize_window` — изменение размера окна приложения до целевых значений конфига; `separate_window` — запрос пропуска `POST /map/big-window/pass`, открытие полученного адреса в новой вкладке, где `POST /auth/pass` обменивает пропуск на токен сессии. При ошибке или недоступности способа игрок остаётся в обычном виде (Bible, граничные состояния). Выбор метода и его значение в конфиге фиксируются по итогам проверки в ВК (Issue проверки в Roadmap).
+Способ один, проверенный в настоящем ВК (эксперимент E1): полноэкранный режим **всей страницы** через `document.documentElement.requestFullscreen()`. Режим для отдельного блока не используется: всплывающие окна VKUI (выбор провинций, подтверждения) рисуются вне блока карты и в таком режиме были бы невидимы.
+
+- **Вход:** кнопка «Развернуть» вызывает `requestFullscreen()` и работает только по клику игрока (требование браузера).
+- **Состояние:** `useBigWindow` определяет полноэкранный режим только по событию `fullscreenchange` и значению `document.fullscreenElement`, а не по таймеру и не по результату вызова. Событие `fullscreenerror` и отклонённый вызов оставляют игрока в обычном виде с коротким сообщением.
+- **Выход:** клавиша Esc (поведение браузера) и кнопка «Свернуть» в той же строке, что и «Развернуть»; кнопка меняет подпись по состоянию и доступна всегда.
+- **Недоступность:** если `document.fullscreenEnabled` ложно, кнопка скрыта.
+- **Ширина:** в полноэкранном режиме карта занимает всю ширину окна; раскладка не должна предполагать 1000 px (в обычном виде остаётся до 1000 px).
 
 ---
 
@@ -395,7 +388,7 @@ PassExchangeRequest = { pass_token: str }                             # резе
 ## ПРИЛОЖЕНИЕ C: ОТКРЫТЫЕ ПУНКТЫ
 
 - **Русские названия.** Исходные названия латинские, часто средневековые («Constantinople», «Roman_Flanders»). Схема допускает пустой `name_ru` и показывает название источника; перевод ~1 100 названий — отдельная работа по частям, решение Project Owner.
-- **Проверка режима большого окна** в реальном ВК (три метода) и, при необходимости, публичный адрес с https — задача Roadmap.
+- **Режим большого окна** проверен в реальном ВК (E1, 02.10.2026, широкоформатный режим выключен): работает полноэкранный режим страницы; изменение размера окна упирается в 1000×4050 px. Проверка при включённом широкоформатном режиме (ширина обычного вида выше 1000 px) не проводилась и вынесена в бэклог.
 - **Морские «семена» и проливы:** утверждены Project Owner 01.10.2026 (37 морских зон, 16 проливов, 4 ручные морские связи; `data/map/overrides.yaml`). Границы зон — предварительные и подлежат правке после первого прогона инструмента (MP-2).
 - **Азорские острова** исключены решением Project Owner (01.10.2026). **Север Норвегии** (Тромс, Финнмарк) исключён намеренно; обособленные куски игровых провинций там удалены через `drop_parts`.
 - **Ключ `keep_parts`** (список сознательно сохраняемых обособленных кусков) в первой версии `overrides.yaml` пуст; схема допускает его появление.

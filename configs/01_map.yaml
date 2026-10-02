@@ -20,7 +20,8 @@ refresh:
 colors:
   neutral_province: "#8C8C8C"    # свободная провинция
   sea: "#1E3547"                 # морская зона
-  outside: "#2A2A2A"             # земли за краем игрового поля
+  outside: "#2A2A2A"             # земли и неизведанное море за краем игрового поля
+  inland_water: "#3E6B84"        # внутренняя вода: озёра (не узлы, фон под провинциями)
   province_border: "#3A3A3A"     # границы провинций
   hover: "#FFFFFF"               # подсветка при наведении
   selected: "#FFD24A"            # выбранный узел
@@ -32,14 +33,11 @@ starting_group:
   require_connected: true        # стартовая группа провинций обязана быть связной (Bible §6)
 
 big_window:
-  method: disabled               # disabled | fullscreen_api | resize_window | separate_window; выбирается по итогам проверки в ВК
-  resize_target_width_px: 1000   # целевая ширина окна для метода resize_window, px
-  resize_target_height_px: 1200  # целевая высота окна для метода resize_window, px
-  pass_ttl_seconds: 60           # срок действия одноразового пропуска для метода separate_window, сек
+  enabled: true                  # кнопка «Развернуть» (полноэкранный режим страницы, проверено в ВК в E1); false скрывает кнопку
 
 limits:
   max_nodes: 3000                # защита от подмены файла карты: максимум узлов в manifest
-  max_edges_per_node: 40         # защита: максимум связей у одного узла
+  max_edges_per_node: 60         # защита: максимум связей у одного узла (у Северного моря 41 связь)
   max_geometry_bytes: 5000000    # защита: максимальный размер файла геометрии, байт
   max_manifest_bytes: 3000000    # защита: максимальный размер manifest, байт
 

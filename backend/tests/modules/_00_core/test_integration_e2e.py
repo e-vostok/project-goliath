@@ -116,7 +116,7 @@ class TestEndToEnd:
             json={
                 "name": NATION_NAME,
                 "color_hex": NATION_COLOR,
-                "province_ids": [1, 2],
+                "province_ids": [1001, 1002],
                 **VALID_PROFILE,
             },
         )
@@ -135,13 +135,13 @@ class TestEndToEnd:
         assert nation.owner_player_id == player_id
 
         reservations = await fetch_nation_reservations(test_db_session)
-        assert reservations == {1: nation_id, 2: nation_id, 3: None}
+        assert reservations == {1001: nation_id, 1002: nation_id, 1003: None}
 
         return player_id, nation_id
 
     async def test_auth_nation_tick_happy_path(self, client, test_db_session):
         """VK auth -> nation founding -> tick: all state lands and turns."""
-        await seed_provinces(test_db_session, [1, 2, 3])
+        await seed_provinces(test_db_session, [1001, 1002, 1003])
         clock = await seed_game_clock(test_db_session)
         initial_turn = clock.current_turn
 
@@ -168,7 +168,7 @@ class TestEndToEnd:
         """A blowing-up phase handler must roll back the whole tick
         transaction: in-tick mutations are discarded, committed pre-tick
         state is untouched, and tick_log still records FAILED."""
-        await seed_provinces(test_db_session, [1, 2, 3])
+        await seed_provinces(test_db_session, [1001, 1002, 1003])
         clock = await seed_game_clock(test_db_session)
         initial_turn = clock.current_turn
 
@@ -187,7 +187,7 @@ class TestEndToEnd:
             )
             nation = result.scalar_one()
             result = await session.execute(
-                select(Province).where(Province.id == 1)
+                select(Province).where(Province.id == 1001)
             )
             province = result.scalar_one()
             nation.name = "Corrupted Name"
@@ -227,4 +227,4 @@ class TestEndToEnd:
         assert nation.color_hex == NATION_COLOR
 
         reservations = await fetch_nation_reservations(test_db_session)
-        assert reservations == {1: nation_id, 2: nation_id, 3: None}
+        assert reservations == {1001: nation_id, 1002: nation_id, 1003: None}

@@ -57,10 +57,12 @@ class NationFactory(SQLAlchemyFactory[Nation]):
 
 class ProvinceFactory(SQLAlchemyFactory[Province]):
     """Factory for creating Province instances."""
-    
+
     __model__ = Province
-    
-    id = 1
+
+    # Default id is outside the removed placeholder range 1..100.
+    id = 1001
+    kind = "LAND"
     nation_id = None
     __set_foreign_keys__ = False
 
