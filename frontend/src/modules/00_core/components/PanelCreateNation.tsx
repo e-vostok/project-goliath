@@ -5,6 +5,11 @@
  * provinces, leader name, leader title.
  * Window 2 «История государства» (CreateNationStepTwo): history link.
  *
+ * Provinces are picked on the map — the «Выбрать на карте» button opens
+ * the 01_map ProvincePicker modal; the selection lives in `chips` here
+ * (value = province id, label = display name), so window switching keeps
+ * it and submit sends `province_ids` exactly as before.
+ *
  * The current step and every field value live in this container — the
  * chevron arrows in CreateNationStepBar switch windows without sending or
  * losing anything; the single submit Button (rendered under both windows)
@@ -26,9 +31,9 @@ import bridge from '@vkontakte/vk-bridge';
 import {
   Button,
   Div,
-  Footnote,
   FormStatus,
   Group,
+  ModalRoot,
   PanelHeader,
 } from '@vkontakte/vkui';
 
@@ -36,7 +41,6 @@ import { api, ApiError } from '../../../shared/api-client';
 import { ErrorCodes, type NationDTO } from '../../../shared/types';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
-import { useProvinces } from '../hooks/useProvinces';
 import {
   nationRulesHints,
   type NationField,
@@ -47,6 +51,7 @@ import {
   type ChipOption,
 } from './CreateNationStepOne';
 import { CreateNationStepTwo } from './CreateNationStepTwo';
+import { ProvincePicker } from '../../01_map/components/ProvincePicker';
 
 export type { NationField };
 
@@ -60,6 +65,9 @@ export function mapErrorCodeToField(code: string): NationField | null {
     case ErrorCodes.PROVINCE_TAKEN:
     case ErrorCodes.PROVINCE_NOT_FOUND:
     case ErrorCodes.PROVINCE_COUNT_OUT_OF_RANGE:
+    // Emitted by the 01_map registration checks (land-only, connectivity).
+    case 'PROVINCE_NOT_LAND':
+    case 'STARTING_GROUP_NOT_CONNECTED':
       return 'provinces';
     case ErrorCodes.LEADER_NAME_INVALID:
       return 'leaderName';
@@ -77,8 +85,6 @@ export function fieldToStep(field: NationField): 1 | 2 {
   return field === 'historyUrl' ? 2 : 1;
 }
 
-const MAX_FREE_HINT_IDS = 20;
-
 const sendTaptic = () => {
   void bridge
     .send('VKWebAppTapticImpactOccurred', { style: 'medium' })
@@ -89,9 +95,10 @@ export interface PanelCreateNationProps {
   onCreated: (nation: NationDTO) => void;
 }
 
+const MODAL_PROVINCE_PICKER = 'province-picker';
+
 export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const { token } = useSession();
-  const freeProvinces = useProvinces({ freeOnly: true });
   const rulesState = useNationRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
   const hints = nationRulesHints(rules);
@@ -100,7 +107,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#e64545');
   const [chips, setChips] = useState<ChipOption[]>([]);
-  const [chipsInput, setChipsInput] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [leaderName, setLeaderName] = useState('');
   const [leaderTitle, setLeaderTitle] = useState('');
   const [historyUrl, setHistoryUrl] = useState('');
@@ -170,23 +177,16 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     }
   };
 
-  const freeIds =
-    freeProvinces.status === 'ready'
-      ? freeProvinces.provinces.map((p) => p.id)
-      : [];
-  const freeHint =
-    freeIds.length > 0
-      ? `Свободные провинции: ${freeIds.slice(0, MAX_FREE_HINT_IDS).join(', ')}` +
-        (freeIds.length > MAX_FREE_HINT_IDS
-          ? ` … (всего ${freeIds.length})`
-          : '')
-      : undefined;
-  const provincesHintParts = [freeHint, hints?.provinces].filter(
-    (part): part is string => Boolean(part),
-  );
-  const provincesHint = provincesHintParts.length
-    ? provincesHintParts.join('. ')
-    : undefined;
+  const onPickerDone = (ids: number[], names: Map<number, string>) => {
+    setChips(
+      ids.map((id) => ({
+        value: id,
+        label: names.get(id) ?? String(id),
+      })),
+    );
+    clearFieldError('provinces');
+    setPickerOpen(false);
+  };
 
   return (
     <>
@@ -210,13 +210,12 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
               name={name}
               color={color}
               chips={chips}
-              chipsInput={chipsInput}
               leaderName={leaderName}
               leaderTitle={leaderTitle}
               rules={rules}
               hints={hints}
               errors={fieldErrors}
-              provincesHint={provincesHint}
+              provincesHint={hints?.provinces}
               onNameChange={(v) => {
                 setName(v);
                 clearFieldError('name');
@@ -229,7 +228,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
                 setChips(next);
                 clearFieldError('provinces');
               }}
-              onChipsInputChange={setChipsInput}
+              onOpenPicker={() => setPickerOpen(true)}
               onLeaderNameChange={(v) => {
                 setLeaderName(v);
                 clearFieldError('leaderName');
@@ -264,12 +263,21 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             </Button>
           </Div>
         </form>
-        {freeProvinces.status === 'loading' && (
-          <Footnote style={{ padding: '0 16px 12px' }}>
-            Загрузка списка свободных провинций…
-          </Footnote>
-        )}
       </Group>
+      {pickerOpen && (
+        <ModalRoot activeModal={MODAL_PROVINCE_PICKER}>
+          <ProvincePicker
+            id={MODAL_PROVINCE_PICKER}
+            initialSelectedIds={chips.map((chip) => chip.value)}
+            limits={{
+              min: rules?.min_provinces ?? null,
+              max: rules?.max_provinces ?? null,
+            }}
+            onDone={onPickerDone}
+            onCancel={() => setPickerOpen(false)}
+          />
+        </ModalRoot>
+      )}
     </>
   );
 }

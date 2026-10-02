@@ -2,16 +2,21 @@
  * useMapGeometry(version) — GET /map/geometry/{version}.
  *
  * The body is immutable per version and served `Cache-Control: public,
- * max-age=31536000, immutable`, so the browser cache does persistence —
- * the hook just fetches. On 404 MAP_VERSION_UNKNOWN it re-requests the
- * manifest once (via `reloadManifest`) and retries the geometry once
- * with the fresh version; a second failure is an error state.
+ * max-age=31536000, immutable`; on top of the browser cache the
+ * session-level cache (lib/sessionCache) shares one copy between the
+ * viewing screen and the picker, so a same-session open never downloads
+ * the ~1.9 MB payload again. On 404 MAP_VERSION_UNKNOWN the hook
+ * re-requests the manifest once (via `reloadManifest`) and retries the
+ * geometry once with the fresh version; a second failure is an error.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '../../../shared/api-client';
-import { mapApi } from '../api';
+import {
+  loadGeometryCached,
+  readGeometryCache,
+} from '../lib/sessionCache';
 import type { MapGeometryDTO, MapManifestDTO } from '../types';
 import { useSession } from '../../00_core/hooks/useAuth';
 
@@ -25,9 +30,11 @@ export function useMapGeometry(
   reloadManifest: () => Promise<MapManifestDTO | null>,
 ): GeometryState & { retry: () => void } {
   const { token } = useSession();
-  const [state, setState] = useState<GeometryState>({
-    status: 'idle',
-    geometry: null,
+  const [state, setState] = useState<GeometryState>(() => {
+    const cached = version !== null ? readGeometryCache(version) : null;
+    return cached !== null
+      ? { status: 'ready', geometry: cached }
+      : { status: 'idle', geometry: null };
   });
   // Manual retry for the error state — re-runs the fetch effect.
   const [attempt, setAttempt] = useState(0);
@@ -36,8 +43,7 @@ export function useMapGeometry(
   const retried = useRef(new Set<string>());
 
   const fetchGeometry = useCallback(
-    async (v: string, signal?: AbortSignal) =>
-      mapApi.getGeometry(token, v, signal),
+    async (v: string) => loadGeometryCached(token, v),
     [token],
   );
 
@@ -46,10 +52,15 @@ export function useMapGeometry(
       setState({ status: 'idle', geometry: null });
       return;
     }
+    const cached = readGeometryCache(version);
+    if (cached !== null) {
+      setState({ status: 'ready', geometry: cached });
+      return;
+    }
     const controller = new AbortController();
     setState({ status: 'loading', geometry: null });
 
-    fetchGeometry(version, controller.signal)
+    fetchGeometry(version)
       .then((geometry) => {
         if (!controller.signal.aborted) {
           setState({ status: 'ready', geometry });
@@ -78,10 +89,7 @@ export function useMapGeometry(
             // Manifest revalidation returned the same version but the
             // geometry route rejected it — retry the geometry once anyway.
             try {
-              const geometry = await fetchGeometry(
-                version,
-                controller.signal,
-              );
+              const geometry = await fetchGeometry(version);
               if (!controller.signal.aborted) {
                 setState({ status: 'ready', geometry });
               }

@@ -16,8 +16,11 @@
  * - The wheel handler is registered non-passive and is the only zoom.
  * - Geometry is parsed once per version (paths memoised by version).
  *
- * `mode="select"` is reserved for Issue 6 — it throws in development
- * builds and falls back to 'view' in production.
+ * `mode="select"` (Issue 6): a settled click reports the node id via
+ * `onNodeClick` (the picker decides what it means), the selection draws
+ * as a translucent `colors.selected` overlay, the cursor is pointer /
+ * not-allowed over selectable / disabled nodes, and the tooltip line is
+ * «Название — свободна | занята: … | морская зона, выбрать нельзя».
  */
 
 import {
@@ -37,10 +40,12 @@ import {
   LABEL_HALO_PX,
   LABEL_TEXT_COLOR,
   OVERLAY_STROKE_PX,
+  SELECTED_FILL_OPACITY,
   TOOLTIP_OFFSET_PX,
 } from '../constants';
 import { buildOwnerMap, nodeFill } from '../lib/colors';
 import { displayName } from '../lib/search';
+import { selectTooltipStatus } from '../lib/selection';
 import { visibleLabelNodes } from '../lib/labels';
 import {
   bboxCenter,
@@ -101,14 +106,6 @@ function nodeIdFrom(target: EventTarget | null): number | null {
 
 export function MapView(props: MapViewProps) {
   const mode = props.mode ?? 'view';
-  if (mode === 'select') {
-    if (import.meta.env.DEV) {
-      throw new Error(
-        'MapView mode="select" is delivered by Issue 6 — not implemented',
-      );
-    }
-    // Production fallback: behave as 'view'.
-  }
 
   const { manifest, geometry } = props;
   const rules = manifest.rules;
@@ -468,10 +465,26 @@ export function MapView(props: MapViewProps) {
   );
 
   const selected = props.selectedIds ?? [];
+  const disabledSet = useMemo(
+    () => new Set(props.disabledIds ?? []),
+    [props.disabledIds],
+  );
   const hoverOwner =
     hoverNode && hoverNode.kind === 'LAND'
       ? owners.get(hoverNode.id)
       : undefined;
+
+  // Select-mode cursor (Spec Part 5): pointer over a selectable node,
+  // not-allowed over a disabled one — derived from `hoverNode`, so it
+  // changes only when the hovered node changes.
+  const cursorStyle =
+    mode !== 'select'
+      ? 'grab'
+      : hoverNode === null
+        ? 'grab'
+        : disabledSet.has(hoverNode.id)
+          ? 'not-allowed'
+          : 'pointer';
 
   return (
     <div
@@ -485,7 +498,7 @@ export function MapView(props: MapViewProps) {
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        cursor: 'grab',
+        cursor: cursorStyle,
         userSelect: 'none',
         // Anything beyond view_box (pan margin, oversized window) is
         // land/unknown sea outside the playable field.
@@ -531,7 +544,10 @@ export function MapView(props: MapViewProps) {
                 key={id}
                 data-selected={id}
                 d={geometry.paths[id] ?? ''}
-                fill="none"
+                fill={mode === 'select' ? colors.selected : 'none'}
+                fillOpacity={
+                  mode === 'select' ? SELECTED_FILL_OPACITY : undefined
+                }
                 stroke={colors.selected}
                 strokeWidth={OVERLAY_STROKE_PX}
                 vectorEffect="non-scaling-stroke"
@@ -565,14 +581,23 @@ export function MapView(props: MapViewProps) {
             whiteSpace: 'nowrap',
           }}
         >
-          <div>{displayName(hoverNode)}</div>
-          <div style={{ opacity: 0.75 }}>
-            {hoverNode.kind === 'SEA'
-              ? 'Морская зона'
-              : hoverOwner
-                ? hoverOwner.name
-                : 'свободна'}
-          </div>
+          {mode === 'select' ? (
+            <div>
+              {displayName(hoverNode)} —{' '}
+              {selectTooltipStatus(hoverNode, hoverOwner)}
+            </div>
+          ) : (
+            <>
+              <div>{displayName(hoverNode)}</div>
+              <div style={{ opacity: 0.75 }}>
+                {hoverNode.kind === 'SEA'
+                  ? 'Морская зона'
+                  : hoverOwner
+                    ? hoverOwner.name
+                    : 'свободна'}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

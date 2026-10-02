@@ -13,6 +13,7 @@ import type {
   MapGeometryDTO,
   MapManifestDTO,
   MapStateDTO,
+  StartingGroupCheckDTO,
 } from './types';
 
 export const mapApi = {
@@ -41,5 +42,23 @@ export const mapApi = {
   getState(token: string, turn?: number, signal?: AbortSignal) {
     const query = turn !== undefined ? `?turn=${turn}` : '';
     return apiFetch<MapStateDTO>(`/map/state${query}`, { token, signal });
+  },
+
+  /**
+   * POST /map/starting-group/check — server-side connectivity of a
+   * would-be starting group (Spec Part 5); the picker calls it before
+   * closing. Unknown ids -> PROVINCE_NOT_FOUND, sea -> PROVINCE_NOT_LAND.
+   */
+  checkStartingGroup(
+    token: string,
+    provinceIds: number[],
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<StartingGroupCheckDTO>('/map/starting-group/check', {
+      method: 'POST',
+      token,
+      body: { province_ids: provinceIds },
+      signal,
+    });
   },
 };

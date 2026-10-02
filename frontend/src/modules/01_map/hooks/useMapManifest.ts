@@ -1,20 +1,22 @@
 /**
  * useMapManifest — GET /map/manifest with ETag revalidation.
  *
- * Keeps the last ETag and body in memory (a ref — the manifest is large
- * and immutable per version). Revalidation sends `If-None-Match`; a 304
- * reuses the memory copy; a 304 without a memory copy triggers one
- * unconditional refetch (decided by lib/cache.decideConditional).
+ * The last ETag/body live in the session-level map cache
+ * (lib/sessionCache) so the viewing screen and the province picker share
+ * one copy. Mount-time revalidation still sends `If-None-Match`; a 304
+ * reuses the session copy; a 304 without one triggers one unconditional
+ * refetch (decided by lib/cache.decideConditional).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { ApiError } from '../../../shared/api-client';
 import { mapApi } from '../api';
+import { decideConditional } from '../lib/cache';
 import {
-  decideConditional,
-  type CachedBody,
-} from '../lib/cache';
+  readManifestCache,
+  writeManifestCache,
+} from '../lib/sessionCache';
 import type { MapManifestDTO } from '../types';
 import { useSession } from '../../00_core/hooks/useAuth';
 
@@ -28,10 +30,13 @@ export function useMapManifest(): ManifestState & {
   reload: () => Promise<MapManifestDTO | null>;
 } {
   const { token } = useSession();
-  const cache = useRef<CachedBody<MapManifestDTO> | null>(null);
-  const [state, setState] = useState<ManifestState>({
-    status: 'loading',
-    manifest: null,
+  const [state, setState] = useState<ManifestState>(() => {
+    // A warm session cache lets a second consumer render instantly while
+    // the conditional request still revalidates in the background.
+    const cached = readManifestCache();
+    return cached
+      ? { status: 'ready', manifest: cached.body }
+      : { status: 'loading', manifest: null };
   });
 
   const load = useCallback(
@@ -39,16 +44,17 @@ export function useMapManifest(): ManifestState & {
       conditional: boolean,
       signal?: AbortSignal,
     ): Promise<MapManifestDTO | null> => {
+      const cached = readManifestCache();
       const answer = await mapApi.getManifest(
         token,
-        conditional ? cache.current?.etag : null,
+        conditional ? cached?.etag : null,
         signal,
       );
-      const decision = decideConditional(answer, cache.current);
+      const decision = decideConditional(answer, cached);
       if (decision.action === 'refetch-unconditional') {
         return load(false, signal);
       }
-      cache.current = decision.value;
+      writeManifestCache(decision.value);
       setState({ status: 'ready', manifest: decision.value.body });
       return decision.value.body;
     },
@@ -61,14 +67,18 @@ export function useMapManifest(): ManifestState & {
       if (controller.signal.aborted) {
         return;
       }
-      setState({
-        status: 'error',
-        manifest: null,
-        error:
-          error instanceof Error
-            ? error
-            : new Error('Неизвестная ошибка загрузки манифеста'),
-      });
+      setState((prev) =>
+        prev.status === 'ready'
+          ? prev // keep the cached manifest — a failed revalidate isn't fatal
+          : {
+              status: 'error',
+              manifest: null,
+              error:
+                error instanceof Error
+                  ? error
+                  : new Error('Неизвестная ошибка загрузки манифеста'),
+            },
+      );
     });
     return () => controller.abort();
   }, [load]);

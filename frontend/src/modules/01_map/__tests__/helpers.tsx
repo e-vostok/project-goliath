@@ -13,14 +13,22 @@ import {
   ViewWidth,
 } from '@vkontakte/vkui';
 
-import type { PlayerDTO } from '../../../shared/types';
+import type {
+  NationRulesDTO,
+  PlayerDTO,
+} from '../../../shared/types';
 import { SessionProvider } from '../../00_core/hooks/useAuth';
 import {
   MINI_GEOMETRY,
   MINI_MANIFEST,
   MINI_STATE,
 } from '../fixtures/miniMap';
-import type { MapManifestDTO } from '../types';
+import { CONNECTING_EDGE_TYPES } from '../lib/selection';
+import { clearMapSessionCache } from '../lib/sessionCache';
+import type {
+  MapManifestDTO,
+  StartingGroupCheckDTO,
+} from '../types';
 
 export const SESSION = {
   token: 'jwt-token-abc',
@@ -83,11 +91,99 @@ export interface MapStubOptions {
   state?: typeof MINI_STATE;
   /** Called per state request; may return a Response to override. */
   onState?: () => Response | void;
+  /**
+   * POST /map/starting-group/check override — receives the requested
+   * ids; default computes real connectivity over land/strait edges.
+   */
+  onCheck?: (ids: number[]) => Response | void;
+  /** GET /nations/rules body — needed when a 00_core form is mounted. */
+  nationRules?: NationRulesDTO;
 }
 
 export interface MapStub {
-  calls: { manifest: number; geometry: number; state: number };
+  calls: {
+    manifest: number;
+    geometry: number;
+    state: number;
+    check: number;
+  };
   manifestIfNoneMatch: (string | null)[];
+  /** province_ids of every starting-group check request. */
+  checkRequests: number[][];
+}
+
+/**
+ * Backend-faithful answer for POST /map/starting-group/check over the
+ * stubbed manifest: unknown ids -> 404 PROVINCE_NOT_FOUND, sea -> 422
+ * PROVINCE_NOT_LAND, else real connectivity over land/strait edges.
+ */
+function defaultCheckAnswer(
+  ids: number[],
+  manifest: MapManifestDTO,
+): Response {
+  const byId = new Map(manifest.nodes.map((n) => [n.id, n]));
+  const missing = ids.filter((id) => !byId.has(id));
+  if (missing.length > 0) {
+    return json(
+      {
+        detail: `Province not found: ${missing.join(', ')}`,
+        code: 'PROVINCE_NOT_FOUND',
+      },
+      { status: 404 },
+    );
+  }
+  const sea = ids.filter((id) => byId.get(id)!.kind === 'SEA');
+  if (sea.length > 0) {
+    return json(
+      {
+        detail: `Province is not land: ${sea.join(', ')}`,
+        code: 'PROVINCE_NOT_LAND',
+      },
+      { status: 422 },
+    );
+  }
+  const adjacency = new Map<number, number[]>();
+  for (const edge of manifest.edges) {
+    if (!CONNECTING_EDGE_TYPES.has(edge.type)) {
+      continue;
+    }
+    let list = adjacency.get(edge.a);
+    if (!list) {
+      list = [];
+      adjacency.set(edge.a, list);
+    }
+    list.push(edge.b);
+    list = adjacency.get(edge.b);
+    if (!list) {
+      list = [];
+      adjacency.set(edge.b, list);
+    }
+    list.push(edge.a);
+  }
+  const wanted = new Set(ids);
+  const seen = new Set<number>();
+  let count = 0;
+  for (const start of ids) {
+    if (seen.has(start)) {
+      continue;
+    }
+    count += 1;
+    const queue = [start];
+    seen.add(start);
+    while (queue.length > 0) {
+      for (const next of adjacency.get(queue.pop() as number) ?? []) {
+        if (wanted.has(next) && !seen.has(next)) {
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+    }
+  }
+  const answer: StartingGroupCheckDTO = {
+    connected: count === 1,
+    component_count: count,
+  };
+  return json(answer);
 }
 
 /**
@@ -95,13 +191,18 @@ export interface MapStub {
  * endpoints. Returns call counters for assertions.
  */
 export function stubMapFetch(options: MapStubOptions = {}): MapStub {
+  // Session caches are module-level — reset them so every test starts
+  // cold and can count requests reliably.
+  clearMapSessionCache();
+
   const manifest = options.manifest ?? MINI_MANIFEST;
   const geometry = options.geometry ?? MINI_GEOMETRY;
   const state = options.state ?? MINI_STATE;
   const etag = options.manifestEtag ?? '"mini-etag-1"';
   const stub: MapStub = {
-    calls: { manifest: 0, geometry: 0, state: 0 },
+    calls: { manifest: 0, geometry: 0, state: 0, check: 0 },
     manifestIfNoneMatch: [],
+    checkRequests: [],
   };
 
   const impl = async (
@@ -143,6 +244,29 @@ export function stubMapFetch(options: MapStubOptions = {}): MapStub {
         return override;
       }
       return json(state);
+    }
+    if (path === '/api/v1/map/starting-group/check') {
+      stub.calls.check += 1;
+      const ids = (
+        (JSON.parse(String(init?.body ?? '[]')) as {
+          province_ids?: number[];
+        }).province_ids ?? []
+      ).slice();
+      stub.checkRequests.push(ids);
+      const override = options.onCheck?.(ids);
+      if (override) {
+        return override;
+      }
+      return defaultCheckAnswer(ids, manifest);
+    }
+    if (path === '/api/v1/nations/rules') {
+      return json(
+        options.nationRules ?? {
+          detail: 'not stubbed',
+          code: 'NOT_STUBBED',
+        },
+        options.nationRules ? {} : { status: 500 },
+      );
     }
     return json({ detail: 'not stubbed', code: 'NOT_STUBBED' }, { status: 500 });
   };
