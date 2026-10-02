@@ -24,7 +24,6 @@ import {
 } from '@vkontakte/vk-mini-apps-router';
 
 import { AppShell, PANEL_CREATE, PANEL_HOME } from './app/AppShell';
-import { e1ChildEntry } from './dev/e1_probe/childEntry';
 
 import '@vkontakte/vkui/dist/vkui.css';
 
@@ -51,8 +50,4 @@ function App() {
   );
 }
 
-// E1 experiment branch: '#e1-probe-child' renders only the probe child
-// page — App never mounts, so no VK Bridge init, no auth, no API calls.
-createRoot(document.getElementById('root')!).render(
-  e1ChildEntry(window.location.hash) ?? <App />,
-);
+createRoot(document.getElementById('root')!).render(<App />);
