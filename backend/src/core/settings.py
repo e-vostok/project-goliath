@@ -60,5 +60,15 @@ def resolve_database_url(env_path: Path | None = None) -> str:
 
 
 def format_database_target(url: str) -> str:
-    """Render a database URL for logs with the password masked."""
-    return make_url(url).render_as_string(hide_password=True)
+    """
+    Render a database URL for logs with the password masked.
+
+    SQLite URLs carry no password, so they are shown as given —
+    render_as_string() on some SQLAlchemy versions percent-encodes the
+    ':' in sqlite:///:memory: paths, which would print a misleading
+    "sqlite:///%3Amemory%3A" target.
+    """
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite":
+        return url
+    return parsed.render_as_string(hide_password=True)
