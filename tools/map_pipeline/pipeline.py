@@ -13,22 +13,41 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from lxml import etree
 from shapely import STRtree
-from shapely.geometry import Point, Polygon
+from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from .errors import (
     BOUNDARY_UNKNOWN_ID,
     DATA_INVALID,
     DROP_PART_EMPTIES_PROVINCE,
     DROP_PART_NOT_FOUND,
+    GEOMETRY_TOO_LARGE,
     ISOLATED_PART,
     KEY_COLLISION,
     KEY_INVALID,
+    VIEWBOX_MISMATCH,
     PipelineError,
     PipelineFailure,
 )
-from .graph import build_graph
+from .geometry import (
+    _vertex_count,
+    build_land_geometries,
+    build_land_mask,
+    build_lake_region,
+    build_outside,
+    build_sea_geometries,
+    node_metrics,
+)
+from .graph import KIND_SEA, build_graph
 from .ids import assign_ids
+from .manifest import (
+    build_inputs_sha256,
+    build_manifest,
+    dumps_manifest,
+    playable_bbox,
+)
+from .manifest_schema import validate_manifest
 from .models import (
     Boundary,
     Overrides,
@@ -37,9 +56,10 @@ from .models import (
     load_overrides,
 )
 from .pipeline_config_schema import PipelineConfig, load_pipeline_config
-from .preview import render_preview
+from .preview import render_map_preview, render_preview
 from .seas import SeaRaster, build_seas, land_label_raster
 from .svg_source import build_geometries, read_province_paths
+from .svgpath import build_geometry_doc, dumps, parse_path
 
 _KEY_RE = re.compile(r"^[a-z0-9_]+$")
 
@@ -263,8 +283,20 @@ def _check_isolated_parts(
 
 
 def _write_text(path: Path, text: str) -> None:
+    """Write generated text as raw UTF-8 bytes (LF endings only).
+
+    ``Path.write_text`` would translate ``\\n`` to CRLF on Windows, which
+    breaks byte-determinism and ``--check`` on hosts with
+    ``core.autocrlf=true``. Generated files always carry LF bytes; git
+    normalisation handles the worktree copy.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_bytes(text.encode("utf-8"))
+
+
+def _read_text_normalized(path: Path) -> str:
+    """Read a generated text file with EOL normalisation (CRLF -> LF)."""
+    return path.read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
 
 
 def _prepare(data_dir: Path) -> _Prep:
@@ -593,4 +625,360 @@ def run_graph(
         )
         out_dir.mkdir(parents=True, exist_ok=True)
         img.save(out_dir / "graph_preview.png")
+    return 0
+
+
+# ------------------------------------------------------------- MP-3: build
+
+_MANIFEST_FILE = "manifest.json"
+_GEOMETRY_FILE = "geometry.json"
+_CROP_RE = re.compile(r"^([A-Za-z0-9_-]+)=(-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)$")
+
+
+def _png_bytes(img) -> bytes:
+    """Encode a PIL image to PNG bytes without touching the filesystem."""
+    import io
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _check_viewbox(svg_path: Path, cfg: PipelineConfig) -> None:
+    """The source root viewBox must equal ``view.width x view.height``."""
+    root = None
+    context = etree.iterparse(str(svg_path), events=("start",))
+    for _event, el in context:
+        root = el
+        break
+    del context
+    if root is None or root.get("viewBox") is None:
+        raise PipelineError(
+            DATA_INVALID, f"{svg_path}: root <svg> has no viewBox"
+        )
+    try:
+        vals = [float(v) for v in root.get("viewBox").split()]
+    except ValueError:
+        raise PipelineError(
+            DATA_INVALID,
+            f"{svg_path}: unparsable viewBox {root.get('viewBox')!r}",
+        )
+    want = [0.0, 0.0, float(cfg.view.width), float(cfg.view.height)]
+    if vals != want:
+        raise PipelineError(
+            VIEWBOX_MISMATCH,
+            f"source viewBox {vals} does not match view config {want}",
+        )
+
+
+def _parse_crops(specs: list[str] | None) -> list[tuple[str, tuple]]:
+    crops = []
+    for spec in specs or []:
+        m = _CROP_RE.match(spec)
+        if not m:
+            raise PipelineError(
+                DATA_INVALID,
+                f"bad --crop spec {spec!r}; expected NAME=x0,y0,x1,y1",
+            )
+        name = m.group(1)
+        x0, y0, x1, y1 = (float(v) for v in m.groups()[1:])
+        if not (x0 < x1 and y0 < y1):
+            raise PipelineError(
+                DATA_INVALID, f"--crop {spec!r}: empty rectangle"
+            )
+        crops.append((name, (x0, y0, x1, y1)))
+    return crops
+
+
+def _build_report(
+    prep: _Prep,
+    sea: SeaRaster,
+    graph,
+    land_geoms: dict,
+    sea_build,
+    outside_build,
+    metrics: dict,
+    land_dev: dict,
+    repairs: list,
+    paths: dict,
+    outside_d: str,
+    geom_bytes: int,
+    manifest_bytes: int,
+    geometry_version: str,
+    inputs: dict,
+) -> str:
+    """Deterministic ``build_report.md`` — no timestamps."""
+    cfg = prep.cfg
+    by_id = {n.id: n for n in graph.nodes}
+    land_keys = {n.key for n in graph.nodes if n.kind != KIND_SEA}
+
+    land_v = sum(_vertex_count(land_geoms[k]) for k in land_geoms)
+    sea_v = sum(_vertex_count(g) for g in sea_build.geoms.values())
+    out_v = _vertex_count(outside_build.outside)
+    land_b = sum(
+        len(paths[str(n.id)].encode("utf-8"))
+        for n in graph.nodes
+        if n.kind != KIND_SEA
+    )
+    sea_b = sum(
+        len(paths[str(n.id)].encode("utf-8"))
+        for n in graph.nodes
+        if n.kind == KIND_SEA
+    )
+    out_b = len(outside_d.encode("utf-8"))
+    degree = {n.id: 0 for n in graph.nodes}
+    for e in graph.edges:
+        degree[e.a] += 1
+        degree[e.b] += 1
+    max_deg = max(degree.values())
+    max_key = by_id[max(degree, key=lambda i: (degree[i], i))].key
+
+    devs = sorted(land_dev.values())
+    max_dev = max(devs)
+    mean_dev = sum(devs) / len(devs)
+    worst_key = max(land_dev, key=lambda k: (land_dev[k], k))
+
+    small = [
+        (n.key, metrics[n.key].area)
+        for n in graph.nodes
+        if metrics[n.key].area < cfg.report.small_area_warn
+    ]
+
+    lines = [
+        "# map_pipeline — build report",
+        "",
+        f"- Nodes: {len(graph.nodes)} ({len(land_keys)} land, "
+        f"{len(graph.nodes) - len(land_keys)} sea)",
+        f"- Edges: {len(graph.edges)}",
+        "",
+        "## Geometry",
+        "",
+        f"- Land paths: {land_v} vertices, {land_b} bytes",
+        f"- Sea paths: {sea_v} vertices, {sea_b} bytes",
+        f"- Outside: {out_v} vertices, {out_b} bytes",
+        f"- geometry.json: {geom_bytes} bytes "
+        f"({round(100 * geom_bytes / cfg.limits.max_geometry_bytes, 1)}% "
+        f"of the {cfg.limits.max_geometry_bytes} limit)",
+        f"- manifest.json: {manifest_bytes} bytes "
+        f"({round(100 * manifest_bytes / cfg.limits.max_manifest_bytes, 1)}% "
+        f"of the {cfg.limits.max_manifest_bytes} limit)",
+        f"- geometry_version: {geometry_version}",
+        "",
+        "## Simplification",
+        "",
+        f"- Land Hausdorff deviation: max {round(max_dev, 4)} "
+        f"(`{worst_key}`), mean {round(mean_dev, 4)}",
+        "- Land needle-cleanup repairs: "
+        + (", ".join(f"`{k}`" for k in repairs) if repairs else "none"),
+        f"- Sea faces: {sea_build.face_count} "
+        f"(labelled {sea_build.labelled_faces}), vertices before the cut "
+        f"{sea_build.vertices_before_cut}, after the cut "
+        f"{sea_build.vertices_after_cut}",
+        f"- Sea area: {round(sea_build.area_before_cut, 2)} before the "
+        f"land cut, {round(sea_build.area_after_cut, 2)} after",
+        f"- Lake region: {outside_build.lake_pieces} pieces, area "
+        f"{round(outside_build.lake_area, 2)}, raster spill "
+        f"{round(outside_build.lake_spill, 3)}",
+        f"- Lake windows in outside: {outside_build.lake_windows} "
+        f"(enclosed holes {outside_build.lake_holes})",
+        f"- Outside holes dropped: {outside_build.holes_dropped}",
+        "",
+        "## Limits",
+        "",
+        f"- Max node degree: {max_deg} (`{max_key}`), limit "
+        f"{cfg.limits.max_edges_per_node}",
+        f"- Node count: {len(graph.nodes)}, limit {cfg.limits.max_nodes}",
+        "",
+        "## Small nodes",
+        "",
+    ]
+    if not small:
+        lines.append("- none")
+    for key, area in small:
+        lines.append(f"- `{key}`: area {area} < {cfg.report.small_area_warn}")
+    lines += ["", "## Input hashes (inputs_sha256)", ""]
+    for name in ("source", "boundary", "overrides", "ids_lock"):
+        lines.append(f"- {name}: `{inputs[name]}`")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def run_build(
+    data_dir: Path,
+    out_dir: Path,
+    check: bool = False,
+    preview: bool = True,
+    crops: list[str] | None = None,
+) -> int:
+    """Run steps 1–10. Returns the process exit code (0 ok / 1 failure).
+
+    ``--check`` writes nothing and exits 1 when any of the three final files
+    (``manifest.json``, ``geometry.json``, ``ids.lock.json``) would change.
+    """
+    crop_list = _parse_crops(crops)
+    prep = _prepare(data_dir)
+    cfg = prep.cfg
+    _check_viewbox(data_dir / _SOURCE_FILE, cfg)
+
+    sea = build_seas(prep.nodes, prep.geoms, prep.overrides, cfg)
+    ids, new_ids, lock_text, lock_changed = assign_ids(
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+    )
+    ordered = sorted(prep.nodes, key=lambda k: ids[k])
+    land_labels = land_label_raster(
+        [prep.nodes[k] for k in ordered], sea.land, sea.frame
+    )
+    graph = build_graph(
+        prep.nodes, sea, ids, prep.overrides, cfg, land_labels
+    )
+
+    land_geoms, land_dev, land_repairs = build_land_geometries(
+        prep.nodes, cfg
+    )
+    land_mask = build_land_mask(land_geoms, prep, sea, cfg)
+    sea_build = build_sea_geometries(sea, land_mask, cfg)
+    all_geoms = {k: land_geoms[k] for k in sorted(land_geoms)}
+    for key in sorted(sea_build.geoms):
+        all_geoms[key] = sea_build.geoms[key]
+
+    # Canonical geometry = what geometry.json will contain. Union
+    # intersection vertices are not on the grid, so the in-memory polygons
+    # differ from the written file by rounding; metrics, the nodes union
+    # and ``outside`` must be derived from the serialised form or a test
+    # that recomputes ``buffer(N, -0.2)`` from geometry.json would see a
+    # different (order- and rounding-sensitive) boundary.
+    paths = {
+        str(ids[key]): dumps(all_geoms[key]) for key in sorted(all_geoms)
+    }
+    canon = {
+        key: (
+            (lambda p: p[0] if len(p) == 1 else MultiPolygon(p))(
+                parse_path(paths[str(ids[key])])
+            )
+        )
+        for key in all_geoms
+    }
+    metrics = {
+        k: node_metrics(canon[k], cfg) for k in sorted(canon)
+    }
+
+    view_poly = box(0.0, 0.0, float(cfg.view.width), float(cfg.view.height))
+    lake_region, lake_pieces, lake_area, lake_spill = build_lake_region(
+        sea, land_mask, view_poly, cfg
+    )
+    outside_build = build_outside(
+        [canon[k] for k in sorted(canon, key=lambda k: ids[k])],
+        lake_region, view_poly, cfg,
+    )
+    outside_build.lake_pieces = lake_pieces
+    outside_build.lake_area = lake_area
+    outside_build.lake_spill = lake_spill
+
+    outside_d = dumps(outside_build.outside)
+    geom_doc, geom_text = build_geometry_doc(paths, outside_d)
+    geom_bytes = len(geom_text.encode("utf-8"))
+    if geom_bytes > cfg.limits.max_geometry_bytes:
+        land_b = sum(
+            len(paths[str(n.id)]) for n in graph.nodes if n.kind != KIND_SEA
+        )
+        sea_b = sum(
+            len(paths[str(n.id)]) for n in graph.nodes if n.kind == KIND_SEA
+        )
+        raise PipelineError(
+            GEOMETRY_TOO_LARGE,
+            f"geometry.json would be {geom_bytes} bytes, over "
+            f"limits.max_geometry_bytes {cfg.limits.max_geometry_bytes}",
+            [
+                f"land paths: {land_b} bytes",
+                f"sea paths: {sea_b} bytes",
+                f"outside: {len(outside_d)} bytes",
+                "suggestion: raise simplify.tolerance (e.g. "
+                f"{round(cfg.simplify.tolerance * 2, 3)}) and/or "
+                "simplify.sea_tolerance "
+                f"(e.g. {round(cfg.simplify.sea_tolerance * 1.5, 3)})",
+            ],
+        )
+
+    inputs = build_inputs_sha256(
+        data_dir / _SOURCE_FILE,
+        data_dir / _BOUNDARY_FILE,
+        data_dir / _OVERRIDES_FILE,
+        lock_text,
+    )
+    playable = playable_bbox(land_geoms, prep.overrides, cfg)
+    manifest = build_manifest(
+        graph,
+        prep.nodes,
+        prep.overrides,
+        metrics,
+        inputs,
+        geom_doc["version"],
+        [0, 0, cfg.view.width, cfg.view.height],
+        playable,
+        cfg,
+    )
+    manifest_text = dumps_manifest(manifest)
+    manifest_bytes = len(manifest_text.encode("utf-8"))
+    validate_manifest(manifest, set(paths), manifest_bytes, cfg)
+
+    report_text = _build_report(
+        prep, sea, graph, land_geoms, sea_build, outside_build, metrics,
+        land_dev, land_repairs, paths, outside_d, geom_bytes,
+        manifest_bytes, geom_doc["version"], inputs,
+    )
+
+    if check:
+        changed = lock_changed
+        for name, text in (
+            (_MANIFEST_FILE, manifest_text),
+            (_GEOMETRY_FILE, geom_text),
+        ):
+            target = data_dir / name
+            if (
+                not target.exists()
+                or _read_text_normalized(target) != text
+            ):
+                changed = True
+        return 1 if changed else 0
+
+    # Render the preview images fully in memory first: if anything below
+    # fails, no final file in --data-dir has been touched yet.
+    preview_pngs: list[tuple[Path, bytes]] = []
+    if preview:
+        parsed = {k: parse_path(d) for k, d in paths.items()}
+        outside_parts = parse_path(outside_d)
+        sea_ids = {
+            str(n.id) for n in graph.nodes if n.kind == KIND_SEA
+        }
+        prev_dir = data_dir / "preview"
+        img = render_map_preview(
+            parsed, outside_parts, tuple(playable),
+            cfg.preview.pixels_per_unit, cfg.preview.colors, sea_ids,
+        )
+        preview_pngs.append((prev_dir / "map_preview.png", _png_bytes(img)))
+        for name, rect in crop_list:
+            img = render_map_preview(
+                parsed, outside_parts, rect,
+                cfg.preview.crop_pixels_per_unit, cfg.preview.colors,
+                sea_ids,
+            )
+            preview_pngs.append(
+                (prev_dir / f"map_crop_{name}.png", _png_bytes(img))
+            )
+
+    _write_nodes_outputs(
+        data_dir, out_dir, prep, ids, new_ids, lock_text, lock_changed
+    )
+    _write_text(data_dir / _MANIFEST_FILE, manifest_text)
+    _write_text(data_dir / _GEOMETRY_FILE, geom_text)
+    _write_text(out_dir / "graph.json", _graph_json(graph))
+    np.save(out_dir / "sea_labels.npy", sea.labels)
+    np.save(out_dir / "sea_kinds.npy", sea.kinds)
+    _write_text(out_dir / "sea_raster.json", _sea_raster_json(sea))
+    _write_text(out_dir / "graph_report.md",
+                _build_graph_report(prep, sea, graph))
+    _write_text(out_dir / "build_report.md", report_text)
+    for path, payload in preview_pngs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
     return 0
