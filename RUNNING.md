@@ -16,7 +16,18 @@ DATABASE_URL_TEST=
 VK_APP_SECRET=<real secret from dev.vk.com>
 JWT_SECRET_KEY=<any random 32+ byte string>
 ADMIN_VK_USER_IDS=<comma-separated VK user ids of admins; empty = no admins>
+ADMIN_ALLOW_RESET=true
 ```
+
+`ADMIN_ALLOW_RESET` gates `POST /api/v1/admin/state/reset` (DEP-4): set
+`true` locally so the admin panel can reset the world; unset/disabled it
+fails closed with 403 `RESET_DISABLED`. On the production server it stays
+`false` until a reset is actually needed.
+
+`APP_ENV` controls the production startup guard: `production`/`prod`/
+`staging` make the app refuse to boot on a weak `JWT_SECRET_KEY`, a
+SQLite/loopback `DATABASE_URL` or a placeholder `VK_APP_SECRET`. Leave it
+**unset** locally — unset means no checks.
 
 ## 2. Apply migrations (run from `backend/`)
 

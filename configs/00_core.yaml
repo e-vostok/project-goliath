@@ -14,6 +14,10 @@ tick:
   # Шаг ожидания планировщика: спит не дольше этого интервала, перечитывает
   # next_tick_at при каждом пробуждении и обновляет метку жизни для /api/v1/health.
   heartbeat_interval_seconds: 30
+  # Порог «живости» планировщика для GET /api/v1/health: метка старше порога
+  # даёт scheduler=stale. Должен быть больше retry_delay_seconds +
+  # heartbeat_interval_seconds (при сбое БД метка отстаёт примерно на retry_delay).
+  health_max_heartbeat_age_seconds: 180
 
 auth:
   vk_ts_freshness_window_minutes: 30

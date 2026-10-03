@@ -52,6 +52,15 @@ class TickSettings(BaseModel):
         "не дольше этого интервала, перечитывает next_tick_at при каждом "
         "пробуждении и обновляет метку жизни для /api/v1/health.",
     )
+    health_max_heartbeat_age_seconds: int = Field(
+        ge=60,
+        le=3600,
+        default=180,
+        description="Порог «живости» планировщика для /api/v1/health, "
+        "секунды: метка старше порога даёт scheduler=stale. Обязан "
+        "превышать retry_delay_seconds + heartbeat_interval_seconds — "
+        "во время сбоя БД метка может отставать примерно на retry_delay.",
+    )
 
     @field_validator("tick_timezone")
     @classmethod
@@ -176,6 +185,29 @@ class CoreConfig(BaseModel):
     auth: AuthSettings
     nation: NationSettings
     calendar: CalendarSettings
+
+    @model_validator(mode="after")
+    def check_health_threshold(self) -> Self:
+        """
+        health_max_heartbeat_age_seconds must exceed retry + heartbeat.
+
+        During a DB outage the scheduler touches the heartbeat only once
+        per retry cycle (retry_delay_seconds apart, paced by
+        heartbeat_interval_seconds); a threshold at or below that sum
+        would flap /api/v1/health to "stale" on a recoverable transient.
+        """
+        minimum = (
+            self.tick.retry_delay_seconds
+            + self.tick.heartbeat_interval_seconds
+        )
+        if self.tick.health_max_heartbeat_age_seconds <= minimum:
+            raise ValueError(
+                "tick.health_max_heartbeat_age_seconds "
+                f"({self.tick.health_max_heartbeat_age_seconds}) must be "
+                "greater than tick.retry_delay_seconds + "
+                f"tick.heartbeat_interval_seconds ({minimum})"
+            )
+        return self
 
     @classmethod
     def from_yaml(cls, path: str) -> "CoreConfig":

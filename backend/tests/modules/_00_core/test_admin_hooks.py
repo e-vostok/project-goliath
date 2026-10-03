@@ -485,6 +485,11 @@ class TestAdminEndpointFunctions:
         TickOrchestrator._handlers.update(saved_handlers)
         TickOrchestrator._finalize_callback = saved_finalize
 
+    @pytest.fixture(autouse=True)
+    def _allow_reset(self, monkeypatch):
+        """DEP-4: admin_state_reset reads ADMIN_ALLOW_RESET at call time."""
+        monkeypatch.setenv("ADMIN_ALLOW_RESET", "true")
+
     @pytest.mark.asyncio
     async def test_admin_state_direct(self, test_db_session):
         from core.admin.router import admin_state
