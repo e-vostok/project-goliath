@@ -1,0 +1,33 @@
+# VCS / CI metadata
+.git
+.github
+
+# Secrets: the repo is public and .env must never enter an image.
+# (Covers .env, .env.*, .env.prod.example — none are needed at runtime:
+# config arrives via compose env_file.)
+.env*
+**/.env*
+
+# Dependencies and caches — rebuilt inside the images
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+
+# Local dev databases and scratch data
+**/*.db
+**/*.sqlite3
+
+# Tests are dev-only (Anti-Mock Guard fixtures stay out of prod images)
+backend/tests
+
+# Rebuilt inside the frontend image
+frontend/dist
+
+# Not needed at runtime
+docs
+tools
+
+# Map previews are dev aids. The map loader requires only the six input
+# files (manifest.json, geometry.json, ids.lock.json, boundary.yaml,
+# overrides.yaml, source/map.svg) — keep the rest of data/map/ intact.
+data/map/preview

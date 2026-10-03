@@ -6,3 +6,10 @@ data/map/source/map.svg -text
 # Мини-карта для тестов 01_map: хэши её входов закреплены в её manifest.json,
 # поэтому байты фикстуры не должны зависеть от core.autocrlf при выгрузке.
 backend/tests/fixtures/map_mini/** -text
+
+# Деплой-файлы исполняются на Linux-сервере: фиксируем LF независимо от
+# core.autocrlf на машине разработчика (Windows).
+*.sh text eol=lf
+Dockerfile* text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf

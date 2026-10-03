@@ -83,3 +83,15 @@ $env:REQUIRE_POSTGRES_TESTS="1"; pytest -m postgres   # fail instead of skip whe
 ```
 
 Without `DATABASE_URL_TEST` the PG tests report as skipped. `PG_TEST_REVISION` (default `head`) overrides the Alembic target the schema fixture migrates to — used to red-check the PG drift guard (e.g. `$env:PG_TEST_REVISION="0004"; pytest -m postgres tests/test_model_migration_drift_pg.py` must fail listing the three `nations` profile columns).
+
+## 6. Production stack: local smoke test
+
+The production topology (Postgres + one-shot `migrate` + backend + Caddy) lives in `docker-compose.prod.yml`. To verify it end-to-end on this machine you need Docker Engine/Desktop with the compose plugin and `curl`, then:
+
+```bash
+bash deploy/smoke_local.sh
+```
+
+The script generates a throwaway env file, builds both images, boots the stack on an EMPTY database, checks that `/` serves the SPA, `/api/*` reaches the backend, migrations land at head (`game_clock` seeded, `provinces` == manifest nodes), the backend log is clean and the service returns to healthy after a restart — then tears everything down with `down -v`.
+
+On a real server: copy `.env.prod.example` to `.env` (chmod 600), fill in real values, then `docker compose -f docker-compose.prod.yml up -d --build --wait`.
