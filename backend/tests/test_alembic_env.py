@@ -204,12 +204,13 @@ class TestToSyncDatabaseUrl:
                 "postgresql+asyncpg://u:p%40ss%2Fw@h:5432/d",
                 "postgresql+psycopg2://u:p%40ss%2Fw@h:5432/d",
             ),
-            # Query parameters are preserved.
+            # Query parameters are preserved (render_as_string emits
+            # them in canonical key order).
             (
                 "postgresql+asyncpg://u:p@h:5432/d"
                 "?sslmode=require&application_name=goliath",
                 "postgresql+psycopg2://u:p@h:5432/d"
-                "?sslmode=require&application_name=goliath",
+                "?application_name=goliath&sslmode=require",
             ),
             # SQLite: aiosqlite strips to the bare sync form; paths and
             # ':memory:' come out unchanged — never percent-encoded.
