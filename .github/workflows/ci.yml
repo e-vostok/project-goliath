@@ -122,6 +122,13 @@ jobs:
           docker compose -f docker-compose.prod.yml
           --env-file .env.prod.example config
 
+      # DEP-5: the ops scripts must be shellcheck-clean (warning level)
+      # and syntactically valid before anything else uses them.
+      - name: Lint deploy scripts (shellcheck + bash -n)
+        run: |
+          shellcheck -S warning deploy/*.sh
+          for f in deploy/*.sh; do bash -n "$f"; done
+
       # First real runtime run of DEP-1: builds both images, boots the
       # stack on an empty database and asserts the wiring end-to-end.
       # The script itself prints every service's log tail on failure.
