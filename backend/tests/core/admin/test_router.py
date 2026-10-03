@@ -140,6 +140,10 @@ async def live_client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+    # DEP-4: the reset gate reads ADMIN_ALLOW_RESET at request time.
+    # Enabled here so the pre-existing reset scenarios keep working;
+    # the RESET_DISABLED tests override it per test.
+    monkeypatch.setenv("ADMIN_ALLOW_RESET", "true")
     # The lifespan startup syncs the mini map into provinces and
     # registers the 01_map hooks — the app's provinces are the fixture's
     # 10 nodes for the whole test.
@@ -814,3 +818,77 @@ class TestAdminStateReset:
         assert tick_log.json() == []
         state = await live_client.get("/api/v1/admin/state", headers=headers)
         assert state.json()["modules"]["00_core"]["counts"]["players"] == 1
+
+
+class TestAdminResetGate:
+    """ADMIN_ALLOW_RESET gates POST /state/reset (DEP-4).
+
+    The live_client fixture sets the flag to "true"; these tests flip it
+    per test — the gate reads the variable at request time. Reset
+    semantics under an enabled flag are covered by TestAdminStateReset.
+    """
+
+    RESET_URL = "/api/v1/admin/state/reset"
+
+    @pytest.mark.asyncio
+    async def test_unset_flag_returns_403_reset_disabled(
+        self, live_client, monkeypatch
+    ):
+        monkeypatch.delenv("ADMIN_ALLOW_RESET", raising=False)
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+
+        response = await live_client.post(
+            self.RESET_URL, json={"confirm": True}, headers=headers
+        )
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "RESET_DISABLED"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "value", ["false", "0", "off", "no", "FALSE ", " random"]
+    )
+    async def test_falsy_flag_values_return_403_reset_disabled(
+        self, live_client, monkeypatch, value
+    ):
+        """Anything outside the truthy set fails closed."""
+        monkeypatch.setenv("ADMIN_ALLOW_RESET", value)
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+
+        response = await live_client.post(
+            self.RESET_URL, json={"confirm": True}, headers=headers
+        )
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "RESET_DISABLED"
+
+    @pytest.mark.asyncio
+    async def test_enabled_flag_allows_reset(self, live_client, monkeypatch):
+        monkeypatch.setenv("ADMIN_ALLOW_RESET", "true")
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+
+        response = await live_client.post(
+            self.RESET_URL, json={"confirm": True}, headers=headers
+        )
+
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_non_admin_gets_admin_required_not_reset_disabled(
+        self, live_client, monkeypatch
+    ):
+        """require_admin runs BEFORE the gate: a non-admin sees
+        ADMIN_REQUIRED even when reset is disabled."""
+        monkeypatch.delenv("ADMIN_ALLOW_RESET", raising=False)
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _auth_headers(live_client, USER_VK_ID)
+
+        response = await live_client.post(
+            self.RESET_URL, json={"confirm": True}, headers=headers
+        )
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "ADMIN_REQUIRED"

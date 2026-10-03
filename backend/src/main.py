@@ -22,7 +22,10 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from core.admin.router import router as admin_router
 from core.db import get_engine, init_engine
+from core.health.router import router as health_router
 from core.security import SecurityError
+from core.security.startup_guard import validate_production_environment
+from core.tick import heartbeat
 from core.tick.scheduler import scheduler_loop
 from modules._00_core.admin_hooks import register_admin_hooks
 from modules._00_core.config_schema import CoreConfig
@@ -41,6 +44,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     Validates configuration on startup to fail fast if balance values are invalid.
     """
+    # DEP-4: refuse to boot a strict-mode deployment (APP_ENV=production
+    # and friends) on dev-grade secrets or a local database. Runs before
+    # anything else so a misconfigured prod dies immediately.
+    validate_production_environment(os.environ)
+
     # Validate core configuration at startup
     try:
         config_path = Path(__file__).parent.parent.parent / "configs" / "00_core.yaml"
@@ -68,6 +76,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # are built once here, never per request.
     get_api_payloads()
 
+    # Stamp the heartbeat so a fresh process reports scheduler "ok" on
+    # /api/v1/health before the loop's first wake instead of "never".
+    heartbeat.touch()
     scheduler_task = asyncio.create_task(scheduler_loop(), name="tick-scheduler")
 
     yield
@@ -91,6 +102,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(core_router)
 app.include_router(admin_router)
+app.include_router(health_router)
 app.include_router(map_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
@@ -102,6 +114,7 @@ _ERROR_CODE_STATUS = {
     "TIMESTAMP_EXPIRED": 401,
     "UNAUTHORIZED": 401,
     "ADMIN_REQUIRED": 403,
+    "RESET_DISABLED": 403,
     "CONFIRM_REQUIRED": 400,
     "MODULE_NOT_FOUND": 404,
     "TICK_IN_PROGRESS": 409,

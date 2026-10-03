@@ -15,10 +15,15 @@ from datetime import datetime, timezone
 _last_beat_at: datetime | None = None
 
 
-def touch() -> None:
-    """Stamp the heartbeat with now (UTC)."""
+def touch(now: datetime | None = None) -> None:
+    """
+    Stamp the heartbeat with now (UTC).
+
+    `now` exists for tests: passing an old instant lets /api/v1/health
+    suites exercise the "stale" branch without waiting.
+    """
     global _last_beat_at
-    _last_beat_at = datetime.now(timezone.utc)
+    _last_beat_at = now if now is not None else datetime.now(timezone.utc)
 
 
 def last_beat_at() -> datetime | None:

@@ -14,6 +14,7 @@ path the automatic scheduler takes — so no tick logic is duplicated here.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -78,6 +79,27 @@ class TickInProgressError(CoreDomainError):
             "A tick is already in progress",
             "TICK_IN_PROGRESS",
         )
+
+
+class ResetDisabledError(CoreDomainError):
+    """Raised when ADMIN_ALLOW_RESET gates off the world-reset endpoint."""
+
+    def __init__(self):
+        super().__init__(
+            "World reset is disabled on this server",
+            "RESET_DISABLED",
+        )
+
+
+def _reset_allowed() -> bool:
+    """
+    Read ADMIN_ALLOW_RESET at REQUEST time (never import time), so the
+    flag can be flipped for one reset without a redeploy — only a
+    restart. Truthy values are 1/true/yes/on (case-insensitive,
+    stripped); anything else or a missing variable fails closed.
+    """
+    raw = os.environ.get("ADMIN_ALLOW_RESET") or ""
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class StateResetRequest(BaseModel):
@@ -224,7 +246,13 @@ async def admin_state_reset(
     One transaction on the request session: all-or-nothing. If any hook
     raises, everything is rolled back and a 500 RESET_FAILED names the
     offending slug.
+
+    The ADMIN_ALLOW_RESET gate sits after require_admin (non-admins still
+    see ADMIN_REQUIRED, not RESET_DISABLED) and before any body handling.
     """
+    if not _reset_allowed():
+        raise ResetDisabledError()
+
     if body.confirm is not True:
         raise ConfirmRequiredError()
 
