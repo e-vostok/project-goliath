@@ -51,11 +51,6 @@ def test_unset_or_blank_app_env_skips_all_checks(app_env):
 
 def test_unrecognised_app_env_warns_but_passes(caplog):
     """A typo like 'prodction' must not silently pass — it warns."""
-    # alembic env.py runs fileConfig() (disable_existing_loggers=True)
-    # inside every live-app fixture's `alembic upgrade` — by the time
-    # this test runs, our module logger may be disabled depending on
-    # suite order. Re-enable it so the assertion is deterministic.
-    logging.getLogger("core.security.startup_guard").disabled = False
     with caplog.at_level(logging.WARNING):
         validate_production_environment({"APP_ENV": "prodction"})
 

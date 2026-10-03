@@ -157,6 +157,101 @@ class TestAlembicEndToEnd:
         assert list(tmp_path.glob("*.db")) == []
 
 
+class TestToSyncDatabaseUrl:
+    """
+    to_sync_database_url() (FIX-ENV) converts async driver URLs into
+    the synchronous form env.py feeds to create_engine().
+
+    The old env.py stripped "+asyncpg" textually: the resulting bare
+    ``postgresql://`` resolves to psycopg3 on SQLAlchemy 2.x — not
+    installed — while the production .env ships exactly that asyncpg
+    shape. Every postgresql driver form must normalise to psycopg2.
+    """
+
+    @pytest.mark.parametrize(
+        "url,expected",
+        [
+            # The production shape: asyncpg -> psycopg2.
+            (
+                "postgresql+asyncpg://u:p@h:5432/d",
+                "postgresql+psycopg2://u:p@h:5432/d",
+            ),
+            # Bare postgresql -> psycopg2 (never psycopg3-by-default).
+            (
+                "postgresql://u:p@h:5432/d",
+                "postgresql+psycopg2://u:p@h:5432/d",
+            ),
+            # Already the sync driver: verbatim.
+            (
+                "postgresql+psycopg2://u:p@h:5432/d",
+                "postgresql+psycopg2://u:p@h:5432/d",
+            ),
+            # Other postgres drivers normalise too.
+            (
+                "postgresql+psycopg://u:p@h:5432/d",
+                "postgresql+psycopg2://u:p@h:5432/d",
+            ),
+            (
+                "postgresql+pg8000://u:p@h:5432/d",
+                "postgresql+psycopg2://u:p@h:5432/d",
+            ),
+            (
+                "postgresql+aiopg://u:p@h:5432/d",
+                "postgresql+psycopg2://u:p@h:5432/d",
+            ),
+            # Percent-encoded password (@ and /) survives byte-for-byte.
+            (
+                "postgresql+asyncpg://u:p%40ss%2Fw@h:5432/d",
+                "postgresql+psycopg2://u:p%40ss%2Fw@h:5432/d",
+            ),
+            # Query parameters are preserved.
+            (
+                "postgresql+asyncpg://u:p@h:5432/d"
+                "?sslmode=require&application_name=goliath",
+                "postgresql+psycopg2://u:p@h:5432/d"
+                "?sslmode=require&application_name=goliath",
+            ),
+            # SQLite: aiosqlite strips to the bare sync form; paths and
+            # ':memory:' come out unchanged — never percent-encoded.
+            ("sqlite+aiosqlite:///./dev.db", "sqlite:///./dev.db"),
+            ("sqlite+aiosqlite:///:memory:", "sqlite:///:memory:"),
+            # Already-sync URLs are returned unchanged.
+            ("sqlite:///:memory:", "sqlite:///:memory:"),
+            ("sqlite:///C:/data/dev.db", "sqlite:///C:/data/dev.db"),
+            # Legacy async suffixes on non-postgres backends strip to
+            # bare, as the old env.py did.
+            ("mysql+asyncmy://u:p@h/d", "mysql://u:p@h/d"),
+            ("mysql+aiomysql://u:p@h/d", "mysql://u:p@h/d"),
+        ],
+    )
+    def test_conversion(self, url, expected):
+        from core.settings import to_sync_database_url
+
+        assert to_sync_database_url(url) == expected
+
+
+class TestLoggingPreservation:
+    def test_upgrade_does_not_disable_existing_loggers(
+        self, tmp_path, monkeypatch
+    ):
+        """fileConfig() in env.py must not disable loggers created
+        before the upgrade: in-process alembic runs (tests, tooling)
+        share the interpreter with the application (FIX-ENV)."""
+        import logging
+
+        db_file = tmp_path / "loggers.db"
+        monkeypatch.setenv(
+            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
+        )
+        sentinel = logging.getLogger("tests.sentinel")
+        sentinel.disabled = False
+
+        command.upgrade(_alembic_cfg(), "head")
+
+        assert db_file.exists()
+        assert logging.getLogger("tests.sentinel").disabled is False
+
+
 class TestTargetMasking:
     @pytest.mark.parametrize(
         "url,expected",
