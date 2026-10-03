@@ -100,8 +100,10 @@ jobs:
 
       # Includes the `real_data` suite — it rebuilds geometry/graph from
       # the committed data/map inputs and verifies their checksums.
+      # `python -m pytest` (not bare `pytest`): the tests import
+      # `tools.map_pipeline`, so the repo root must be on sys.path.
       - name: pytest (incl. real_data)
-        run: pytest tools/map_pipeline/tests -v
+        run: python -m pytest tools/map_pipeline/tests -v
 
   docker:
     name: docker
