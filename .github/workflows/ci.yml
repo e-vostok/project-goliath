@@ -1,0 +1,129 @@
+name: CI
+
+# Public repo: no secrets are used anywhere in this workflow, and the
+# trigger is deliberately `pull_request` (never `pull_request_target`),
+# so a fork PR cannot run with elevated permissions or leaked context.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_postgres_password
+          POSTGRES_DB: goliath_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d goliath_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend
+        working-directory: backend
+        run: pip install -e ".[dev]"
+
+      # Full suite in ONE run: SQLite unit tests, config validity,
+      # migration drift and the destructive postgres-marked suite.
+      # DATABASE_URL_TEST -> the service container; the database name
+      # MUST end with `_test` and differ from DATABASE_URL's database
+      # (assert_safe_test_db refuses otherwise). REQUIRE_POSTGRES_TESTS=1
+      # turns "no test DB" into a failure instead of a silent skip.
+      # DATABASE_URL is intentionally left unset: every test that needs
+      # one sets it via monkeypatch.
+      - name: pytest (full suite incl. postgres marker)
+        working-directory: backend
+        env:
+          DATABASE_URL_TEST: postgresql+asyncpg://postgres:ci_postgres_password@localhost:5432/goliath_test
+          REQUIRE_POSTGRES_TESTS: "1"
+        run: pytest -v
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  map_pipeline:
+    name: map_pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/map_pipeline/requirements.txt
+
+      - run: pip install -r tools/map_pipeline/requirements.txt
+
+      # Includes the `real_data` suite — it rebuilds geometry/graph from
+      # the committed data/map inputs and verifies their checksums.
+      # `python -m pytest` (not bare `pytest`): the tests import
+      # `tools.map_pipeline`, so the repo root must be on sys.path.
+      - name: pytest (incl. real_data)
+        run: python -m pytest tools/map_pipeline/tests -v
+
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # ENV_FILE redirects the services' `env_file:` (default `.env`,
+      # which is gitignored and absent on the runner) at the existing
+      # .env.prod.example. Values are placeholders — `config` only
+      # validates structure, it never connects anywhere.
+      - name: Validate compose file
+        run: >
+          ENV_FILE=.env.prod.example
+          docker compose -f docker-compose.prod.yml
+          --env-file .env.prod.example config
+
+      # First real runtime run of DEP-1: builds both images, boots the
+      # stack on an empty database and asserts the wiring end-to-end.
+      # The script itself prints every service's log tail on failure.
+      - name: Stack smoke test (deploy/smoke_local.sh)
+        run: bash deploy/smoke_local.sh
