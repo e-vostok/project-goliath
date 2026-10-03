@@ -18,7 +18,11 @@ from sqlalchemy.engine import Connection
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.db import Base
-from core.settings import format_database_target, resolve_database_url
+from core.settings import (
+    format_database_target,
+    resolve_database_url,
+    to_sync_database_url,
+)
 
 # Register every module's ORM tables on Base.metadata so the migrated
 # schema can be compared against the models (drift-guard tests, future
@@ -30,8 +34,11 @@ import modules._01_map.models  # noqa: F401,E402
 config = context.config
 
 # Interpret the config file for Python logging.
+# disable_existing_loggers=False: in-process alembic runs (tests,
+# tooling) share the interpreter with the application — the default
+# would silently disable every logger created before this call.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 target_metadata = Base.metadata
@@ -50,8 +57,10 @@ def get_database_url() -> str:
     database a command will touch before any migration runs.
 
     Always returns a sync-compatible URL for use with synchronous
-    create_engine(): async driver suffixes (e.g., +aiosqlite, +asyncpg)
-    are stripped — psycopg2 is installed for exactly this purpose.
+    create_engine(): async driver suffixes are converted by
+    core.settings.to_sync_database_url — every postgresql form lands on
+    the declared psycopg2 driver, never on a bare, driver-ambiguous
+    ``postgresql://``.
     """
     url = resolve_database_url()
     print(
@@ -59,21 +68,7 @@ def get_database_url() -> str:
         file=sys.stderr,
     )
 
-    # Strip async driver suffixes to ensure sync compatibility
-    async_suffixes = [
-        "+aiosqlite",
-        "+asyncpg",
-        "+asyncmy",
-        "+aiomysql",
-        "+aiopg",
-    ]
-
-    for suffix in async_suffixes:
-        if suffix in url:
-            url = url.replace(suffix, "")
-            break
-
-    return url
+    return to_sync_database_url(url)
 
 
 def run_migrations_offline() -> None:
