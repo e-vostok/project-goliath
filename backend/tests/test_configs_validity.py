@@ -26,6 +26,7 @@ def _base_config() -> dict:
             "tick_timezone": "Europe/Moscow",
             "tick_interval_hours": 24,
             "retry_delay_seconds": 60,
+            "heartbeat_interval_seconds": 30,
         },
         "auth": {
             "vk_ts_freshness_window_minutes": 30,
@@ -75,6 +76,7 @@ def test_valid_config_loads():
     assert config.tick.tick_timezone == "Europe/Moscow"
     assert config.tick.tick_interval_hours == 24
     assert config.tick.retry_delay_seconds == 60
+    assert config.tick.heartbeat_interval_seconds == 30
     assert config.auth.vk_ts_freshness_window_minutes == 30
     assert config.auth.jwt_ttl_minutes == 60
     assert config.nation.nation_name_min_length == 3
@@ -185,6 +187,28 @@ def test_invalid_retry_delay_too_low(tmp_path):
         CoreConfig.from_yaml(path)
 
     assert "retry_delay_seconds" in str(exc_info.value)
+    assert "greater than or equal to 1" in str(exc_info.value)
+
+
+def test_invalid_heartbeat_interval_too_high(tmp_path):
+    """Test that heartbeat_interval_seconds > 300 raises ValidationError."""
+    path = _write_config(tmp_path, {"tick": {"heartbeat_interval_seconds": 301}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "heartbeat_interval_seconds" in str(exc_info.value)
+    assert "less than or equal to 300" in str(exc_info.value)
+
+
+def test_invalid_heartbeat_interval_too_low(tmp_path):
+    """Test that heartbeat_interval_seconds < 1 raises ValidationError."""
+    path = _write_config(tmp_path, {"tick": {"heartbeat_interval_seconds": 0}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "heartbeat_interval_seconds" in str(exc_info.value)
     assert "greater than or equal to 1" in str(exc_info.value)
 
 

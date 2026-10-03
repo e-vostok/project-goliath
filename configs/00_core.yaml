@@ -11,6 +11,9 @@ tick:
   # next_tick_at на свежей БД. Расписание тика задают tick_time/tick_timezone.
   tick_interval_hours: 24
   retry_delay_seconds: 60
+  # Шаг ожидания планировщика: спит не дольше этого интервала, перечитывает
+  # next_tick_at при каждом пробуждении и обновляет метку жизни для /api/v1/health.
+  heartbeat_interval_seconds: 30
 
 auth:
   vk_ts_freshness_window_minutes: 30

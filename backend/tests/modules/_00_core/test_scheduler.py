@@ -20,12 +20,14 @@ import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import modules._01_map.service as map_service_module
 from core.admin.registry import AdminRegistry
-from core.tick.orchestrator import TickOrchestrator, TickPhase
+from core.tick import heartbeat
+from core.tick.orchestrator import TickOrchestrator, TickOutcome, TickPhase
 from core.tick.scheduler import run_scheduled_tick, scheduler_loop, seconds_until
 from main import app
 from modules._00_core.hooks import (
@@ -33,7 +35,7 @@ from modules._00_core.hooks import (
     snapshot_extension_points,
 )
 from modules._00_core.models import GameClock, TickLog, TickLogStatus
-from modules._00_core.tick_handler import register_tick_handlers
+from modules._00_core.tick_handler import finalize_tick, register_tick_handlers
 from tests.fixtures.factories import GameClockFactory
 from tests.fixtures.provinces import MAP_MINI_DIR
 from tests.modules._00_core.test_router import TEST_JWT_SECRET, TEST_VK_SECRET
@@ -110,7 +112,7 @@ class TestRunScheduledTick:
         await _seed_game_clock(session_maker)
 
         async with session_maker() as session:
-            assert await run_scheduled_tick(session) is True
+            assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(session_maker)
         assert clock.current_turn == 1
@@ -138,7 +140,7 @@ class TestRunScheduledTick:
 
         for _ in range(2):
             async with session_maker() as session:
-                assert await run_scheduled_tick(session) is False
+                assert await run_scheduled_tick(session) is TickOutcome.FAILED
 
         clock = await _fetch_clock(session_maker)
         assert clock.current_turn == 0
@@ -173,7 +175,7 @@ class TestRunScheduledTick:
         TickOrchestrator.clear_handlers()
 
         async with session_maker() as session:
-            assert await run_scheduled_tick(session) is True
+            assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(session_maker)
         assert clock.current_turn == 1
@@ -195,9 +197,12 @@ class TestSchedulerLoop:
     ):
         """
         next_tick_at seeded in the past fires immediately (startup
-        catch-up); asyncio.sleep is patched to a real zero-yield so the
-        post-tick 24h cadence doesn't block the test — both iterations
-        still execute real ticks on the real DB.
+        catch-up). DEP-3's schedule re-check means a due slot is served
+        exactly once, so this test wraps finalize_tick to push
+        next_tick_at back into the past — keeping every bounded iteration
+        genuinely due while still exercising real ticks on the real DB.
+        asyncio.sleep is patched to a real zero-yield so an unexpected
+        wait never blocks the test.
         """
         real_sleep = asyncio.sleep
 
@@ -205,6 +210,19 @@ class TestSchedulerLoop:
             await real_sleep(0)
 
         monkeypatch.setattr(asyncio, "sleep", immediate_sleep)
+
+        async def finalize_then_overdue(session, turn_number):
+            await finalize_tick(session, turn_number)
+            await session.execute(
+                update(GameClock)
+                .where(GameClock.id == 1)
+                .values(
+                    next_tick_at=datetime.now(timezone.utc)
+                    - timedelta(minutes=1)
+                )
+            )
+
+        TickOrchestrator.register_finalize(finalize_then_overdue)
 
         await _seed_game_clock(
             session_maker,
@@ -262,6 +280,162 @@ class TestSchedulerLoop:
         logs = await _fetch_tick_logs(session_maker, turn_number=1)
         assert len(logs) == 2
         assert all(log.status == TickLogStatus.FAILED for log in logs)
+
+
+class TestSchedulerResilience:
+    """DEP-3: the loop survives transient failures, stamps a heartbeat,
+    and honours a moved schedule — real DB throughout (Anti-Mock Guard)."""
+
+    @pytest.mark.asyncio
+    async def test_survives_session_factory_failures(self, session_maker):
+        """
+        A session factory that explodes for the first N calls (DB down,
+        container restarting) must not kill the loop: each failure is a
+        counted, paced iteration, and the first healthy pass runs a real
+        tick.
+        """
+        await _seed_game_clock(
+            session_maker,
+            next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+        failures_left = {"count": 3}
+
+        class _DownCM:
+            async def __aenter__(self):
+                raise OperationalError(
+                    "SELECT 1", {}, Exception("connection refused")
+                )
+
+            async def __aexit__(self, *exc_info):
+                return False
+
+        def flaky_factory():
+            if failures_left["count"] > 0:
+                failures_left["count"] -= 1
+                return _DownCM()
+            return session_maker()
+
+        # 3 dead iterations + the first healthy one that fires the tick.
+        await scheduler_loop(
+            flaky_factory,
+            max_iterations=4,
+            retry_delay_seconds=0.01,
+            heartbeat_interval_seconds=0.01,
+        )
+
+        assert failures_left["count"] == 0
+        clock = await _fetch_clock(session_maker)
+        assert clock.current_turn == 1
+        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        assert len(logs) == 1
+        assert logs[0].status == TickLogStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_still_stops_loop(self, session_maker):
+        """except Exception must not swallow shutdown: cancellation
+        propagates out of the wait and out of the retry sleep."""
+        await _seed_game_clock(
+            session_maker,
+            next_tick_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        task = asyncio.create_task(
+            scheduler_loop(
+                session_maker,
+                retry_delay_seconds=0.01,
+                heartbeat_interval_seconds=0.05,
+            )
+        )
+        await asyncio.sleep(0.2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_touched_while_waiting(self, session_maker):
+        """While the loop waits out a future tick in chunks, every wake
+        stamps the heartbeat — age never exceeds interval + margin."""
+        await _seed_game_clock(
+            session_maker,
+            next_tick_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        task = asyncio.create_task(
+            scheduler_loop(
+                session_maker,
+                retry_delay_seconds=0.01,
+                heartbeat_interval_seconds=0.05,
+            )
+        )
+        try:
+            await asyncio.sleep(0.3)
+            first_beat = heartbeat.last_beat_at()
+            assert first_beat is not None
+            assert heartbeat.age_seconds() < 0.5
+            await asyncio.sleep(0.2)
+            # The beat keeps moving: the loop is alive, not wedged.
+            assert heartbeat.last_beat_at() > first_beat
+            assert heartbeat.age_seconds() < 0.5
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    @pytest.mark.asyncio
+    async def test_clock_moved_during_sleep_is_honoured(
+        self, session_maker
+    ):
+        """A world reset rewriting next_tick_at mid-wait takes effect
+        within one heartbeat interval — later and earlier moves alike."""
+        await _seed_game_clock(
+            session_maker,
+            next_tick_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        task = asyncio.create_task(
+            scheduler_loop(
+                session_maker,
+                retry_delay_seconds=0.01,
+                heartbeat_interval_seconds=0.05,
+            )
+        )
+        try:
+            # Waiting on a far-future slot: several wakes, no tick.
+            await asyncio.sleep(0.2)
+            assert (await _fetch_clock(session_maker)).current_turn == 0
+
+            # Move the slot LATER — still no tick.
+            async with session_maker() as session:
+                await session.execute(
+                    update(GameClock)
+                    .where(GameClock.id == 1)
+                    .values(
+                        next_tick_at=datetime.now(timezone.utc)
+                        + timedelta(hours=2)
+                    )
+                )
+                await session.commit()
+            await asyncio.sleep(0.2)
+            assert (await _fetch_clock(session_maker)).current_turn == 0
+
+            # Move it into the PAST — the next wake fires the tick.
+            async with session_maker() as session:
+                await session.execute(
+                    update(GameClock)
+                    .where(GameClock.id == 1)
+                    .values(
+                        next_tick_at=datetime.now(timezone.utc)
+                        - timedelta(minutes=1)
+                    )
+                )
+                await session.commit()
+            for _ in range(50):
+                if (await _fetch_clock(session_maker)).current_turn == 1:
+                    break
+                await asyncio.sleep(0.05)
+            clock = await _fetch_clock(session_maker)
+            assert clock.current_turn == 1
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
 
 
 class TestLifespanWiring:

@@ -44,6 +44,14 @@ class TickSettings(BaseModel):
         le=3600,
         description="Пауза перед повторной попыткой тика после сбоя, секунды.",
     )
+    heartbeat_interval_seconds: int = Field(
+        ge=1,
+        le=300,
+        default=30,
+        description="Шаг ожидания планировщика тиков, секунды: цикл спит "
+        "не дольше этого интервала, перечитывает next_tick_at при каждом "
+        "пробуждении и обновляет метку жизни для /api/v1/health.",
+    )
 
     @field_validator("tick_timezone")
     @classmethod

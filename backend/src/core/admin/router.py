@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.admin.registry import AdminRegistry
 from core.admin.security import require_admin
 from core.db import get_session, get_session_context
+from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
@@ -67,6 +68,16 @@ class ResetFailedError(CoreDomainError):
         if cause is not None:
             detail += f": {type(cause).__name__}: {cause}"
         super().__init__(detail, "RESET_FAILED")
+
+
+class TickInProgressError(CoreDomainError):
+    """Raised when a manual tick collides with an already-running tick."""
+
+    def __init__(self):
+        super().__init__(
+            "A tick is already in progress",
+            "TICK_IN_PROGRESS",
+        )
 
 
 class StateResetRequest(BaseModel):
@@ -161,12 +172,17 @@ async def admin_tick_run(
     while the tick commits from another connection.
 
     ok=false means the tick failed and was rolled back — the FAILED row is
-    still recorded in tick_log, same as a failed automatic tick.
+    still recorded in tick_log, same as a failed automatic tick. A manual
+    run racing another tick loses the advisory lock and answers 409
+    TICK_IN_PROGRESS instead of running a second time.
     """
     # Release the auth read transaction; nothing was written on it.
     await session.rollback()
     async with get_session_context() as tick_session:
-        ok = await run_scheduled_tick(tick_session)
+        outcome = await run_scheduled_tick(tick_session)
+        if outcome is TickOutcome.SKIPPED_LOCKED:
+            raise TickInProgressError()
+        ok = outcome is TickOutcome.EXECUTED
         clock_result = await tick_session.execute(
             select(GameClock).where(GameClock.id == 1)
         )
