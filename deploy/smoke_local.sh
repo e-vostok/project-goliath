@@ -24,6 +24,14 @@ dc() {
     docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" "$@"
 }
 
+dump_logs() {
+  echo "==> failure: tail of each service log"
+  for svc in db migrate backend caddy; do
+    echo "----- docker compose logs $svc -----"
+    dc logs --tail 100 "$svc" 2>&1 || true
+  done
+}
+
 cleanup() {
   echo "==> tearing down (down -v)"
   dc down -v --remove-orphans >/dev/null 2>&1 || true
@@ -70,7 +78,7 @@ if dc up -d --build --wait; then
   ok "stack up: migrate exited 0, backend healthy, caddy healthy"
 else
   bad "stack failed to come up (--wait returned non-zero)"
-  dc logs --tail 50 || true
+  dump_logs
   echo "RESULT: $PASS passed, $FAIL failed"
   exit 1
 fi
@@ -151,4 +159,7 @@ fi
 
 echo "=================================================="
 echo "RESULT: $PASS passed, $FAIL failed"
+if [ "$FAIL" -ne 0 ]; then
+  dump_logs
+fi
 [ "$FAIL" -eq 0 ]

@@ -95,3 +95,14 @@ bash deploy/smoke_local.sh
 The script generates a throwaway env file, builds both images, boots the stack on an EMPTY database, checks that `/` serves the SPA, `/api/*` reaches the backend, migrations land at head (`game_clock` seeded, `provinces` == manifest nodes), the backend log is clean and the service returns to healthy after a restart — then tears everything down with `down -v`.
 
 On a real server: copy `.env.prod.example` to `.env` (chmod 600), fill in real values, then `docker compose -f docker-compose.prod.yml up -d --build --wait`.
+
+## 7. CI (GitHub Actions)
+
+`.github/workflows/ci.yml` runs four jobs on every pull request and every push to `main`; all must be green to merge:
+
+- `backend` — full `pytest` on Python 3.12 against a real `postgres:16` service container (`DATABASE_URL_TEST=…/goliath_test`, `REQUIRE_POSTGRES_TESTS=1`): the `postgres`-marked suite can never silently skip.
+- `frontend` — Node 20: `npm ci`, `npm run typecheck`, `npm test`, `npm run build`.
+- `map_pipeline` — `pytest tools/map_pipeline/tests`, including the `real_data` suite on the committed map inputs.
+- `docker` — validates `docker-compose.prod.yml` against `.env.prod.example`, then runs the DEP-1 runtime acceptance (`deploy/smoke_local.sh`) on the Linux runner.
+
+No secrets are used; the workflow token has `contents: read` only and jobs run under `pull_request`, never `pull_request_target`.
