@@ -74,7 +74,9 @@ echo "==> docker compose config"
 dc config -q && ok "compose file is valid" || bad "compose file invalid"
 
 echo "==> building images and starting the stack (empty database)"
-if dc up -d --build --wait; then
+# --wait-timeout bounds the boot: a stack that never turns healthy
+# fails here with logs instead of hanging the CI job.
+if dc up -d --build --wait --wait-timeout 600; then
   ok "stack up: migrate exited 0, backend healthy, caddy healthy"
 else
   bad "stack failed to come up (--wait returned non-zero)"
