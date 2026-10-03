@@ -1,0 +1,33 @@
+{
+	# ACME account e-mail for automatic HTTPS (Let's Encrypt).
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# /api/* goes to the backend container. /health is intentionally NOT
+	# proxied: it is consumed by Docker healthchecks inside the network.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else is the built SPA with an index.html fallback.
+	handle {
+		root * /srv
+
+		# Default no-cache so index.html (and every SPA fallback that
+		# serves it) always reflects the latest deploy; Vite emits
+		# content-hashed files under /assets/, which are immutable.
+		header Cache-Control "no-cache"
+		@immutable path /assets/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+		try_files {path} /index.html
+		file_server
+	}
+
+	# No X-Frame-Options / frame-ancestors on purpose: the app runs
+	# inside a VK iframe — a wrong value shows players a white screen.
+	# See docs/02_SYSTEM_SPECS/deploy.md §5.
+}
