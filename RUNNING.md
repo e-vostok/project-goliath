@@ -107,6 +107,8 @@ The script generates a throwaway env file, builds both images, boots the stack o
 
 On a real server: copy `.env.prod.example` to `.env` (chmod 600), fill in real values, then `docker compose -f docker-compose.prod.yml up -d --build --wait`.
 
+The full production procedure — server setup, `deploy.sh`, backups, rollback, troubleshooting — lives in `docs/deploy_runbook.md` (Russian).
+
 ## 7. CI (GitHub Actions)
 
 `.github/workflows/ci.yml` runs four jobs on every pull request and every push to `main`; all must be green to merge:

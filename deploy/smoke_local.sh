@@ -6,13 +6,15 @@
 # Requires: Docker Engine/Desktop with the compose plugin, curl.
 # Usage:    bash deploy/smoke_local.sh
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 for tool in docker curl; do
   command -v "$tool" >/dev/null 2>&1 || { echo "FATAL: '$tool' not found"; exit 2; }
 done
 
 ENV_FILE_PATH="$(mktemp)"
+SMOKE_BACKUP_DIR=""
+DEPLOY_TEST_ENV=""
 PASS=0
 FAIL=0
 
@@ -36,6 +38,8 @@ cleanup() {
   echo "==> tearing down (down -v)"
   dc down -v --remove-orphans >/dev/null 2>&1 || true
   rm -f "$ENV_FILE_PATH"
+  if [ -n "$SMOKE_BACKUP_DIR" ]; then rm -rf "$SMOKE_BACKUP_DIR"; fi
+  if [ -n "$DEPLOY_TEST_ENV" ]; then rm -f "$DEPLOY_TEST_ENV" "${DEPLOY_TEST_ENV}.changeme"; fi
 }
 trap cleanup EXIT
 
@@ -146,7 +150,7 @@ fi
 
 dc restart backend >/dev/null
 healthy="no"
-for _ in $(seq 1 40); do
+for _ in {1..40}; do
   cid="$(dc ps -q backend | head -1)"
   st="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || true)"
   if [ "$st" = "healthy" ]; then healthy="yes"; break; fi
@@ -157,6 +161,78 @@ if [ "$healthy" = "yes" ] && [ "$after" = "$expected" ]; then
   ok "backend restart -> healthy, provinces still $after"
 else
   bad "backend restart: healthy=$healthy provinces=$after (expected $expected)"
+fi
+
+# ── check 10: DEP-5 backup + restore on the REAL smoke stack ────────
+# backup.sh streams pg_dump out of the live db container into a temp
+# BACKUP_DIR; restore_check.sh must accept the fresh dump.
+echo "==> check 10: backup.sh -> restore_check.sh PASS"
+SMOKE_BACKUP_DIR="$(mktemp -d)"
+smoke_dump=""
+if ENV_FILE="$ENV_FILE_PATH" BACKUP_DIR="$SMOKE_BACKUP_DIR" \
+   bash deploy/backup.sh --tag daily --local-only; then
+  smoke_dump="$(ls -t "$SMOKE_BACKUP_DIR"/daily/goliath-daily-*.dump 2>/dev/null | head -n 1 || true)"
+else
+  bad "backup.sh --tag daily --local-only exited non-zero on the smoke stack"
+fi
+if [ -n "$smoke_dump" ]; then
+  if ENV_FILE="$ENV_FILE_PATH" BACKUP_DIR="$SMOKE_BACKUP_DIR" \
+     bash deploy/restore_check.sh "$smoke_dump"; then
+    ok "restore_check.sh PASS on the fresh dump"
+  else
+    bad "restore_check.sh FAIL on a dump that should pass"
+  fi
+else
+  bad "backup.sh produced no dump file in $SMOKE_BACKUP_DIR/daily"
+fi
+
+# ── check 11: a corrupted dump must be REJECTED ─────────────────────
+echo "==> check 11: restore_check.sh rejects a corrupted dump"
+if [ -n "$smoke_dump" ]; then
+  corrupt_dump="$SMOKE_BACKUP_DIR/corrupt.dump"
+  head -c 100 "$smoke_dump" > "$corrupt_dump"
+  if ENV_FILE="$ENV_FILE_PATH" BACKUP_DIR="$SMOKE_BACKUP_DIR" \
+     bash deploy/restore_check.sh "$corrupt_dump" >/dev/null 2>&1; then
+    bad "restore_check.sh PASSED a truncated 100-byte dump (must fail)"
+  else
+    ok "restore_check.sh exits non-zero on a corrupted dump"
+  fi
+else
+  bad "no dump to corrupt (check 10 failed)"
+fi
+
+# ── checks 12-13: deploy.sh --check rejects bad env (no stack needed) ─
+echo "==> check 12: deploy.sh --check rejects a CHANGE_ME placeholder"
+DEPLOY_TEST_ENV="$(mktemp)"
+cat > "$DEPLOY_TEST_ENV" <<EOF
+POSTGRES_USER=$POSTGRES_USER
+POSTGRES_DB=$POSTGRES_DB
+POSTGRES_PASSWORD=x$POSTGRES_PASSWORD
+DATABASE_URL=postgresql+asyncpg://$POSTGRES_USER:x$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB
+JWT_SECRET_KEY=$(gen_secret)
+VK_APP_SECRET=smoke_throwaway_vk_secret
+ADMIN_VK_USER_IDS=123456789
+DOMAIN=localhost
+ACME_EMAIL=smoke@example.invalid
+APP_ENV=production
+ADMIN_ALLOW_RESET=false
+EOF
+chmod 600 "$DEPLOY_TEST_ENV"
+sed 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=CHANGE_ME/' \
+  "$DEPLOY_TEST_ENV" > "${DEPLOY_TEST_ENV}.changeme"
+chmod 600 "${DEPLOY_TEST_ENV}.changeme"
+if ENV_FILE="${DEPLOY_TEST_ENV}.changeme" bash deploy/deploy.sh --check >/dev/null 2>&1; then
+  bad "deploy.sh --check accepted an env file containing CHANGE_ME"
+else
+  ok "deploy.sh --check exits non-zero on CHANGE_ME"
+fi
+
+echo "==> check 13: deploy.sh --check rejects env file with mode 644"
+chmod 644 "$DEPLOY_TEST_ENV"
+if ENV_FILE="$DEPLOY_TEST_ENV" bash deploy/deploy.sh --check >/dev/null 2>&1; then
+  bad "deploy.sh --check accepted an env file with mode 644"
+else
+  ok "deploy.sh --check exits non-zero on mode 644"
 fi
 
 echo "=================================================="
