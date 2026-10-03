@@ -13,6 +13,10 @@
 	}
 
 	# Everything else is the built SPA with an index.html fallback.
+	# The header directives below live INSIDE this handle, so they never
+	# touch /api/* responses: the backend's own Cache-Control/ETag
+	# (e.g. immutable on /api/v1/map/geometry/{version}) passes through
+	# the proxy untouched.
 	handle {
 		root * /srv
 
