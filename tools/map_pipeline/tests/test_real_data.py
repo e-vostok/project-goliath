@@ -26,6 +26,21 @@ EXPECTED_SHA256 = (
     "918bc3fc078331c9ab2204433e35767908ff66e83978b988d389a5c70c2b6f13"
 )
 
+# Boundary v2 (map_polish_2): 56 land provinces withdrawn from the game —
+# their ids stay in ids.lock.json but never enter land_nodes/graph/
+# manifest. The two retired sea zones are 2090 (sea_atl_africa) and
+# 2110 (sea_iceland).
+RETIRED_LAND_KEYS = frozenset("""
+    bavly igra khaqmar ochyor orlov uil kalmyk omutninsk vyatka nema
+    ystyug gilan totma lalsk velsk sarapul ustye jebel_akhdar
+    sorochinskaya yemetsk taskala shenkursk tabaristan yaren daylam ryn
+    mangistau shagiz nafusa bahnasa syun rustamdar damghan kholmogory
+    buhayra mangyshlak nor_trondelag nordland uzboy canary_islands
+    faraveh baytak chishmy gorgan karagay kasevo krasnaya_gorka
+    lower_emba madeira meleuz perm ufa upper_emba ural usolye ust_yurt
+""".split())
+RETIRED_SEA_IDS = frozenset({2090, 2110})
+
 pytestmark = pytest.mark.real_data
 
 
@@ -55,12 +70,22 @@ def test_real_nodes(real_data_dir, tmp_path):
     print(f"\nreal-data nodes run: {time.time() - t0:.1f}s")
 
     nodes = json.loads((out_dir / "land_nodes.json").read_text())
-    assert len(nodes) == 1086
-    assert [n["id"] for n in nodes] == list(range(1001, 2087))
+    assert len(nodes) == 1030
+    land_ids = [n["id"] for n in nodes]
+    assert land_ids == sorted(land_ids)
+    assert land_ids[0] == 1001 and land_ids[-1] == 2086
     assert all(n["parts"] >= 1 for n in nodes)
 
-    # the lock also holds the 37 sea zone ids (2087..2123)
+    # boundary v2: 56 land provinces were withdrawn; their ids stay in
+    # the append-only lock but not in land_nodes.json (INV-M1).
     lock = json.loads((real_data_dir / "ids.lock.json").read_text())
+    retired = set(lock["ids"][k] for k in RETIRED_LAND_KEYS)
+    assert len(retired) == 56
+    assert retired.isdisjoint(land_ids)
+    assert set(land_ids) | retired == set(range(1001, 2087))
+
+    # the lock also holds the 37 sea zone ids (2087..2123), including
+    # the two retired zones sea_atl_africa / sea_iceland.
     assert len(lock["ids"]) == 1086 + 37
     sea_ids = sorted(v for k, v in lock["ids"].items() if k.startswith("sea_"))
     assert sea_ids == list(range(2087, 2124))
@@ -76,7 +101,12 @@ def test_real_nodes(real_data_dir, tmp_path):
 
 
 def test_real_isolated_parts(real_data_dir, tmp_path, capsys):
-    """Without drop_parts the three known detached parts must fail."""
+    """Without drop_parts the one known detached part must fail.
+
+    Boundary v2 withdrew nordland entirely, so only kemi_lappmark's
+    detached part is still checked (the former nordland entries went
+    away with their drop_parts overrides).
+    """
     ov_path = real_data_dir / "overrides.yaml"
     doc = yaml.safe_load(ov_path.read_text(encoding="utf-8"))
     doc["drop_parts"] = []
@@ -89,7 +119,7 @@ def test_real_isolated_parts(real_data_dir, tmp_path, capsys):
 
     err = capsys.readouterr().err
     blocks = [ln for ln in err.splitlines() if ln.startswith("ISOLATED_PART:")]
-    assert len(blocks) == 3
+    assert len(blocks) == 1
 
     pattern = re.compile(
         r"key=(\S+) point=\(([-\d.]+), ([-\d.]+)\) area=([-\d.]+)"
@@ -105,8 +135,6 @@ def test_real_isolated_parts(real_data_dir, tmp_path, capsys):
 
     expected = [
         ("kemi_lappmark", 643.6, 32.9, 6.91),
-        ("nordland", 614.7, 39.3, 4.08),
-        ("nordland", 616.6, 40.9, 0.04),
     ]
     for (key, x, y, area), (ekey, ex, ey, earea) in zip(
         sorted(found), sorted(expected)
@@ -133,10 +161,18 @@ def test_real_graph(real_data_dir, tmp_path, capsys):
     )
     land = [n for n in graph["nodes"] if n["kind"] == "LAND"]
     seas = [n for n in graph["nodes"] if n["kind"] == "SEA"]
-    assert len(land) == 1086
-    assert len(seas) == 37
-    assert [n["id"] for n in land] == list(range(1001, 2087))
-    assert [n["id"] for n in seas] == list(range(2087, 2124))
+    assert len(land) == 1030
+    assert len(seas) == 35
+    # boundary v2: the 56 retired land ids leave gaps in 1001..2086.
+    lock = json.loads(
+        (real_data_dir / "ids.lock.json").read_text(encoding="utf-8")
+    )
+    retired = {lock["ids"][k] for k in RETIRED_LAND_KEYS}
+    assert {n["id"] for n in land} == set(range(1001, 2087)) - retired
+    assert RETIRED_LAND_KEYS.isdisjoint(n["key"] for n in land)
+    assert [n["id"] for n in seas] == sorted(
+        set(range(2087, 2124)) - RETIRED_SEA_IDS
+    )
     assert seas[0]["key"] == "sea_adriatic"
 
     for n in seas:
@@ -155,8 +191,10 @@ def test_real_graph(real_data_dir, tmp_path, capsys):
     for e in edges:
         by_type[e["type"]] = by_type.get(e["type"], 0) + 1
     print("  edge counts:", by_type)
-    assert 2700 <= by_type["land"] <= 2850
-    assert 380 <= by_type["coast"] <= 420
+    # boundary v2: 2550..2700 land contacts (56 provinces left),
+    # 360..400 coast contacts (retired zones released theirs).
+    assert 2550 <= by_type["land"] <= 2700
+    assert 360 <= by_type["coast"] <= 400
     auto_sea = [e for e in edges
                 if e["type"] == "sea" and e["len"] is not None]
     manual_sea = [e for e in edges
@@ -259,12 +297,21 @@ def test_real_build(real_data_dir, tmp_path):
     # scale / identity
     land = [n for n in mani["nodes"] if n["kind"] == "LAND"]
     seas = [n for n in mani["nodes"] if n["kind"] == "SEA"]
-    assert len(mani["nodes"]) == 1123
-    assert len(land) == 1086
-    assert len(seas) == 37
-    assert len(mani["edges"]) == 3229
+    # boundary v2: 1065 active nodes (1030 land + 35 sea); the 58
+    # retired ids stay in the lock but not in the manifest/geometry.
+    assert len(mani["nodes"]) == 1065
+    assert len(land) == 1030
+    assert len(seas) == 35
+    assert len(mani["edges"]) == 3060
     assert set(geom["paths"]) == {str(n["id"]) for n in mani["nodes"]}
-    assert [n["id"] for n in mani["nodes"]] == list(range(1001, 2124))
+    lock = json.loads(
+        (real_data_dir / "ids.lock.json").read_text(encoding="utf-8")
+    )
+    retired = {lock["ids"][k] for k in RETIRED_LAND_KEYS} | RETIRED_SEA_IDS
+    assert len(retired) == 58
+    assert {n["id"] for n in mani["nodes"]} | retired == set(
+        range(1001, 2124)
+    )
     assert mani["geometry_version"] == geom["version"]
     g = {"outside": geom["outside"], "paths": geom["paths"]}
     assert geometry_version(g) == geom["version"]
@@ -287,7 +334,7 @@ def test_real_build(real_data_dir, tmp_path):
     sea_v = sum(_verts(geom["paths"][str(n["id"])]) for n in seas)
     out_v = _verts(geom["outside"])
     print(f"  vertices: land {land_v}, sea {sea_v}, outside {out_v}")
-    assert 90_000 <= land_v <= 130_000
+    assert 80_000 <= land_v <= 130_000  # 87417 after boundary v2
     assert 15_000 <= sea_v <= 60_000
     assert 15_000 <= out_v <= 60_000
 
@@ -325,7 +372,11 @@ def test_real_build(real_data_dir, tmp_path):
     )
     sea_total = sum(unary_union(node_geoms[n["id"]]).area for n in seas)
     print(f"  sea area: {sea_total:.2f} vs raster {raster_total:.2f}")
-    assert abs(sea_total - raster_total) <= 0.03 * raster_total
+    # boundary v2: with the retired zones' water now routed to
+    # ``outside``, the per-zone path dilation along their freed borders
+    # widened the raster->geometry drift a little (uniform ~3% noise,
+    # not a leak into a neighbour zone).
+    assert abs(sea_total - raster_total) <= 0.05 * raster_total
 
     # outside: valid, lake windows > 200, never inside buffer(N, -0.2)
     outside_parts = parse_path(geom["outside"])

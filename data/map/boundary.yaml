@@ -1,7 +1,7 @@
-# Граница игрового поля, версия 1 (утверждено Project Owner 01.10.2026).
+# Граница игрового поля, версия 2 (утверждено Project Owner 01.10.2026; доработано 04.10.2026 по boundary_v2_markup.png).
 # Источник: изображение с красной разметкой от Project Owner; провинции сопоставлены с исходным SVG автоматически (совпадение разметки около 93% по пикселям, остальное — границы линий).
 # Всё, чего нет в списке include, в игру не входит (в том числе Азорские острова: они лежат за кадром изображения).
-# include: 1086 провинций; exclude (явно отмечены красным): 138.
+# include: 1030 провинций; exclude (явно отмечены красным, решением Owner 04.10.2026 и недостижимые за кадром): 194.
 include:
   - Aargau
   - Aberdeenshire
@@ -81,7 +81,6 @@ include:
   - Bacs
   - Badajoz
   - Baghai
-  - Bahnasa
   - Baixo_Alentejo
   - Bakhmut
   - Baku
@@ -97,10 +96,8 @@ include:
   - Basarabia
   - Basilicata
   - Bassigny
-  - Bavly
   - Bayerischer_Wald
   - Bayonne
-  - Baytak
   - Bazadais
   - Bearn_Bigorre
   - Beaujolais
@@ -164,7 +161,6 @@ include:
   - Bryansk
   - Buckinghamshire
   - Buda
-  - Buhayra
   - Burgas
   - Burgos
   - Buskerud
@@ -180,7 +176,6 @@ include:
   - Calatayud
   - Cambridgeshire
   - Campagna
-  - Canary_Islands
   - Canik
   - Cankiri
   - Capitanata
@@ -202,7 +197,6 @@ include:
   - Cheshire
   - Chiemgau
   - Chios
-  - Chishmy
   - Chornobyl
   - Chrudimsko
   - Chyorny_Yar
@@ -236,11 +230,9 @@ include:
   - Dakahliyya
   - Dalarna
   - Dalsland
-  - Damghan
   - Danzig
   - Dardanelles
   - Dardeling
-  - Daylam
   - Deheubarth
   - Demena
   - Derbyshire
@@ -295,7 +287,6 @@ include:
   - Estremadura
   - Euboea
   - Evros
-  - Faraveh
   - Feher
   - Fejer
   - Ferrara
@@ -322,7 +313,6 @@ include:
   - Gelderland
   - Gevaudan
   - Gharbiyya
-  - Gilan
   - Gipuzkoa
   - Girgenti
   - Girona
@@ -332,7 +322,6 @@ include:
   - Gniezno
   - Gomel
   - Gonge
-  - Gorgan
   - Gorizia
   - Gorodets
   - Gothia
@@ -379,7 +368,6 @@ include:
   - Iasi
   - Icel
   - Ichnia
-  - Igra
   - Ilia
   - Illyria
   - Imereti
@@ -393,7 +381,6 @@ include:
   - Jaen
   - Jamtland
   - Jativa
-  - Jebel_Akhdar
   - Julich
   - Kabylia
   - Kachen
@@ -402,16 +389,13 @@ include:
   - Kakheti
   - Kalisz
   - Kalmius
-  - Kalmyk
   - Karachev
-  - Karagay
   - Karahisar
   - Karasi
   - Kargopol
   - Karlivka
   - Kars
   - Kartli
-  - Kasevo
   - Kashary
   - Kashin
   - Kasimov
@@ -424,8 +408,6 @@ include:
   - Kent
   - Kert
   - Khadjibey
-  - Khaqmar
-  - Kholmogory
   - Khoy
   - Kildare
   - Kilkenny
@@ -449,7 +431,6 @@ include:
   - Kozlov
   - Kraichgau
   - Krakow
-  - Krasnaya_Gorka
   - Kraszna
   - Kremenets
   - Kremenskaya
@@ -462,7 +443,6 @@ include:
   - Labinsk
   - Laconia
   - Lahoysk
-  - Lalsk
   - Lancashire
   - Larende
   - Latakia
@@ -501,7 +481,6 @@ include:
   - Lower_Berry
   - Lower_Carinthia
   - Lower_Carniola
-  - Lower_Emba
   - Lower_Macedonia
   - Lower_Maine
   - Lower_Poitou
@@ -520,7 +499,6 @@ include:
   - Lviv
   - Lyonnais
   - Macva
-  - Madeira
   - Madrid
   - Magdeburger_Borde
   - Main_Franconia
@@ -530,8 +508,6 @@ include:
   - Malazgirt
   - Mallorca
   - Malmohus
-  - Mangistau
-  - Mangyshlak
   - Mantua
   - Maramaros
   - Marash
@@ -547,7 +523,6 @@ include:
   - Mechetnaya
   - Medininkai
   - Medjerda
-  - Meleuz
   - Merida
   - Meskheti
   - Messenia
@@ -582,7 +557,6 @@ include:
   - Munsterland
   - Murcia
   - Murom
-  - Nafusa
   - Nagornaya
   - Naklo
   - Namur
@@ -591,7 +565,6 @@ include:
   - Navarre
   - Naxos
   - Neckar
-  - Nema
   - Neopatras
   - Nerike
   - Neuchatel
@@ -607,8 +580,6 @@ include:
   - Nizhny_Novgorod
   - Nizhyn
   - Nograd
-  - Nor_Trondelag
-  - Nordland
   - Norfolk
   - Norra_Osterbotten
   - Norrejylland
@@ -642,7 +613,6 @@ include:
   - Oberwallis
   - Obonezhskaya
   - Ocana
-  - Ochyor
   - Odenwald
   - Odoyev
   - Oleshia
@@ -650,7 +620,6 @@ include:
   - Olevsk
   - Olomoucko
   - Ommelanden
-  - Omutninsk
   - Onega
   - Opavsko
   - Opole
@@ -661,7 +630,6 @@ include:
   - Oriel
   - Orihuela
   - Orleanais
-  - Orlov
   - Orsha
   - Osona
   - Ostergotland
@@ -690,7 +658,6 @@ include:
   - Pereiaslav
   - Pereyaslavl
   - Perigord
-  - Perm
   - Perthois
   - Perthshire
   - Perugia
@@ -770,9 +737,7 @@ include:
   - Rouennais
   - Rouergue
   - Ruhr
-  - Rustamdar
   - Ryazan
-  - Ryn
   - Rzhev
   - Rzhevskaya
   - Saale
@@ -788,7 +753,6 @@ include:
   - Sandomierz
   - Sanok
   - Santiago
-  - Sarapul
   - Saratov
   - Sarov
   - Sarregueminois
@@ -808,11 +772,9 @@ include:
   - Senonais
   - Sergiyevsk
   - Sevilla
-  - Shagiz
   - Shaki
   - Sharat
   - Sharqiyya
-  - Shenkursk
   - Shirvan
   - Shropshire
   - Shuya
@@ -841,7 +803,6 @@ include:
   - Sopron
   - Sor_Trondelag
   - Soria
-  - Sorochinskaya
   - South_Dalmatia
   - South_Dobruja
   - South_Epirus
@@ -875,7 +836,6 @@ include:
   - Svir
   - Swabian_Alb
   - Swidnica
-  - Syun
   - Syunik
   - Szabolcs
   - Szatmar
@@ -883,7 +843,6 @@ include:
   - Szekelyfold
   - Szepes
   - Szolnok
-  - Tabaristan
   - Tabriz
   - Tadla
   - Talish
@@ -897,7 +856,6 @@ include:
   - Tartu
   - Tarusa
   - Tashir
-  - Taskala
   - Tauberfranken
   - Taunus
   - Tavastland
@@ -924,7 +882,6 @@ include:
   - Torne_Lappmark
   - Toropets
   - Torzhok
-  - Totma
   - Toulousain
   - Touraine
   - Trakai
@@ -949,9 +906,7 @@ include:
   - Tverskaya
   - Tyrone
   - Uckermark
-  - Ufa
   - Uglich
-  - Uil
   - Ume_Lappmark
   - Una_Sana
   - Unter_dem_Manhartsberg
@@ -965,7 +920,6 @@ include:
   - Upper_Berry
   - Upper_Carinthia
   - Upper_Carniola
-  - Upper_Emba
   - Upper_Macedonia
   - Upper_Maine
   - Upper_Poitou
@@ -973,17 +927,12 @@ include:
   - Upper_Styria
   - Uppland
   - Upyte
-  - Ural
   - Urbino
   - Uren
   - Urgell
   - Usak
-  - Usolye
   - Usora_And_Soli
   - Ust_Tsimla
-  - Ust_Yurt
-  - Ustye
-  - Uzboy
   - Valencia
   - Valentinois
   - Valladolid
@@ -999,7 +948,6 @@ include:
   - Vastmanland
   - Vaud
   - Vawkavysk
-  - Velsk
   - Vendsyssel_Thy
   - Venice
   - Verdunois
@@ -1028,7 +976,6 @@ include:
   - Vorpommern
   - Vosges
   - Vukovar_Syrmia
-  - Vyatka
   - Vyazma
   - Vyborg
   - Waldstatte
@@ -1058,15 +1005,12 @@ include:
   - Worcestershire
   - Wroclaw
   - Yaransk
-  - Yaren
   - Yaroslavl
   - Yazhelbitskaya
   - Yelan
   - Yelanets
   - Yelets
-  - Yemetsk
   - Yerevan
-  - Ystyug
   - Zagan
   - Zagore
   - Zagreb
@@ -1097,12 +1041,15 @@ exclude_explicit:
   - Ardestan
   - Aures
   - Baghdad
+  - Bahnasa
   - Bam
   - Bampur
   - Barza
   - Basra
   - Bataih
   - Batin
+  - Bavly
+  - Baytak
   - Behbahan
   - Beryozovka
   - Bijar
@@ -1111,9 +1058,14 @@ exclude_explicit:
   - Bitlis
   - Bojnurd
   - Borujerd
+  - Buhayra
+  - Canary_Islands
   - Central_Sahara
   - Cherdyn
+  - Chishmy
+  - Damghan
   - Darab
+  - Daylam
   - Deh_Kord
   - Deir
   - Dezful
@@ -1123,14 +1075,17 @@ exclude_explicit:
   - East_Farthing
   - East_Fezzan
   - Esfarayen
+  - Faraveh
   - Fezzan
   - Finnmark
   - Firuzabad
   - Furat
   - Gamrun
   - Garmian
+  - Gilan
   - Golpayegan
   - Gonabad
+  - Gorgan
   - Gourara
   - Guzzula
   - Hail
@@ -1141,6 +1096,7 @@ exclude_explicit:
   - Hawran
   - Hodna
   - Hulwan
+  - Igra
   - Impassable_Atlantic
   - Irgiz
   - Isfahan
@@ -1149,40 +1105,61 @@ exclude_explicit:
   - Izhma
   - Jahrom
   - Jawf
+  - Jebel_Akhdar
   - Jiroft
   - Kahnuj
+  - Kalmyk
+  - Karagay
   - Kariyan
+  - Kasevo
   - Kath
   - Kazerun
   - Kerman
   - Kermanshah
+  - Khaqmar
   - Khiva
+  - Kholmogory
   - Khorramabad
   - Konjikala
+  - Krasnaya_Gorka
   - Ksour
   - Kufa
   - Kuloy
   - Kushva
   - Laghouat
+  - Lalsk
   - Lar
+  - Lower_Emba
+  - Madeira
   - Madian
+  - Mangistau
+  - Mangyshlak
   - Mardin
   - Mashhad
+  - Meleuz
   - Mezen
   - Minab
   - Minya
   - Mosul
   - Mzab
   - Nafud
+  - Nafusa
   - Nahavand
+  - Nema
   - Nishapur
   - Nita
+  - Nor_Trondelag
+  - Nordland
   - North_Farthing
   - Novaya_Zemlya
   - Nusaybin
   - Oasis
+  - Ochyor
+  - Omutninsk
+  - Orlov
   - Ouargla
   - Oued_Edhahab
+  - Perm
   - Qaen
   - Qala_Safid
   - Qazvin
@@ -1193,37 +1170,60 @@ exclude_explicit:
   - Raqqa
   - Red_Sea_Coast
   - Rey
+  - Rustamdar
+  - Ryn
   - Sabzevar
   - Safhat_Jibal
   - Sahrazur
   - Samarra
   - Saoura
+  - Sarapul
   - Sarysu
   - Shaam
+  - Shagiz
+  - Shenkursk
   - Shiraz
   - Siraf
   - Sirhan
   - Sirjan
+  - Sorochinskaya
   - Sudair
   - Sus
+  - Syun
+  - Tabaristan
   - Tabas_Al_Tamr
   - Tabuk
   - Tadmur
   - Tafilalt
+  - Taskala
   - Tejend
   - Tih
   - Titteri
+  - Totma
   - Touggourt
   - Troms
   - Turaythith
+  - Ufa
+  - Uil
   - Uktus
+  - Upper_Emba
+  - Ural
   - Urmia
+  - Usolye
   - Ust_Sysola
+  - Ust_Yurt
+  - Ustye
+  - Uzboy
   - Vattnajokull_P
+  - Velsk
   - Vorkuta
   - Vukyl
+  - Vyatka
   - Wasit
+  - Yaren
   - Yazd
+  - Yemetsk
+  - Ystyug
   - Zanjan
   - Zarand
   - Zavolochye

@@ -56,6 +56,7 @@ from .models import (
     load_boundary,
     load_overrides,
 )
+from .patches import apply_geometry_patches
 from .pipeline_config_schema import PipelineConfig, load_pipeline_config
 from .preview import render_map_preview, render_preview
 from .seas import SeaRaster, build_seas, land_label_raster
@@ -312,6 +313,11 @@ def _prepare(data_dir: Path) -> _Prep:
     paths = read_province_paths(data_dir / _SOURCE_FILE)
     nodes, info = _select_nodes(paths, boundary, overrides)
     geoms = build_geometries(paths, cfg.clean)
+    # Step 3a (Spec 1.9): manual geometry patches act on the cleaned source
+    # geometry before the boundary filter — the donated side may be an
+    # excluded province (e.g. Buhayra's coastal notch -> Alexandria).
+    geoms, patch_info = apply_geometry_patches(geoms, overrides)
+    info.extend(patch_info)
     for node in nodes.values():
         node.parts = geoms[node.source_name]
 
@@ -322,6 +328,17 @@ def _prepare(data_dir: Path) -> _Prep:
 
 def _sea_keys(overrides: Overrides) -> list[str]:
     return [z.key for z in overrides.sea_zones]
+
+
+def _lock_keep_extra(boundary: Boundary) -> set[str]:
+    """Keys that may stay in ``ids.lock.json`` without producing a node.
+
+    1.9: provinces moved to ``boundary.exclude_explicit`` and retired sea
+    zones keep their ids forever (they are the retired-node set the backend
+    synchronises against). Retired sea keys are already in ``_sea_keys``;
+    only the excluded-land slugs are extra.
+    """
+    return {name.lower() for name in boundary.exclude_explicit}
 
 
 def _build_nodes_report(
@@ -398,7 +415,8 @@ def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
     """Run steps 1–4. Returns the process exit code (0 ok / 1 failure)."""
     prep = _prepare(data_dir)
     ids, new_ids, lock_text, lock_changed = assign_ids(
-        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
+        _lock_keep_extra(prep.boundary),
     )
     if check:
         return 1 if lock_changed else 0
@@ -475,7 +493,12 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
         "# map_pipeline — graph report",
         "",
         f"- Land nodes: {land_count}",
-        f"- Sea zones: {len(sea.zone_keys)}",
+        f"- Sea zones: {len(sea.zone_keys) - len(sea.retired)}"
+        + (
+            f" (+{len(sea.retired)} retired)"
+            if sea.retired
+            else ""
+        ),
         f"- Edges total: {len(graph.edges)}",
     ]
     for t in ("land", "coast", "sea", "strait"):
@@ -494,11 +517,19 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
     for z in prep.overrides.sea_zones:
         seeds_per_zone[z.key] = len(z.seeds)
     for z, key in enumerate(sea.zone_keys, start=1):
-        node = next(n for n in graph.nodes if n.zone_index == z and n.kind == "SEA")
+        node = next(
+            (
+                n
+                for n in graph.nodes
+                if n.zone_index == z and n.kind == "SEA"
+            ),
+            None,
+        )
         lines.append(
             f"| {z} | {key} | {sea.zone_name_ru[z - 1]} | "
             f"{round(sea.zone_areas[z - 1], 2)} | {seeds_per_zone[key]} | "
-            f"{len(neighbours[node.id])} |"
+            + ("retired" if node is None else str(len(neighbours[node.id])))
+            + " |"
         )
 
     lines += ["", "## Snapped seeds", ""]
@@ -561,7 +592,29 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
     if not flagged:
         lines.append("- none")
 
-    lines += ["", "## Islands (land nodes whose neighbours are all SEA)", ""]
+    # Report-only check (Spec 1.9): active zones expected to carry at least
+    # one coast edge to playable land; retired zones are listed separately.
+    coasted: set[int] = set()
+    for e in graph.edges:
+        if e.type == "coast":
+            if by_id[e.a].kind == "SEA":
+                coasted.add(e.a)
+            if by_id[e.b].kind == "SEA":
+                coasted.add(e.b)
+    coastless = [
+        n for n in graph.nodes if n.kind == "SEA" and n.id not in coasted
+    ]
+    lines += ["", "## Sea zones without a coast edge to playable land", ""]
+    if not coastless:
+        lines.append("- none")
+    for n in coastless:
+        lines.append(f"- `{n.key}` (id {n.id}) — active, no coast edge")
+    if sea.retired:
+        for key in sorted(sea.retired):
+            lines.append(f"- `{key}` — retired (no node)")
+    lines.append("")
+
+    lines += ["## Islands (land nodes whose neighbours are all SEA)", ""]
     islands = [
         n
         for n in graph.nodes
@@ -596,7 +649,8 @@ def run_graph(
     prep = _prepare(data_dir)
     sea = build_seas(prep.nodes, prep.geoms, prep.overrides, prep.cfg)
     ids, new_ids, lock_text, lock_changed = assign_ids(
-        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
+        _lock_keep_extra(prep.boundary),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(
@@ -854,7 +908,8 @@ def run_build(
 
     sea = build_seas(prep.nodes, prep.geoms, prep.overrides, cfg)
     ids, new_ids, lock_text, lock_changed = assign_ids(
-        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
+        _lock_keep_extra(prep.boundary),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(

@@ -95,6 +95,9 @@ class SeaRaster:
     labels: np.ndarray  # int16, zone index per pixel, 0 = none
     kinds: np.ndarray  # uint8, per-pixel kind map
     zone_areas: list[float]  # sq. units per zone index
+    # 1.9: retired zone keys — labels still claim water but the pixels are
+    # KIND_UNKNOWN_SEA and no graph node/geometry path is emitted.
+    retired: frozenset[str] = frozenset()
     snapped: list[SnappedSeed] = field(default_factory=list)
     lakes: list[Lake] = field(default_factory=list)
     water_outside: list[tuple[str, float]] = field(default_factory=list)
@@ -257,6 +260,9 @@ def _place_seeds(
                 col, row, working, frame, cfg.sea.seed_snap_radius
             )
             if pixel is None:
+                if zone.retired:
+                    # 1.9: a retired zone needs no reachable seed.
+                    continue
                 errors.append(
                     PipelineError(
                         SEED_OUTSIDE_WATER,
@@ -467,6 +473,16 @@ def build_seas(
             )
     kinds = kind_lut[wcomp]
     kinds[labels > 0] = KIND_ZONE_WATER
+    retired = frozenset(z.key for z in overrides.sea_zones if z.retired)
+    if retired:
+        # Retired zones still hold their labels (their water is not given
+        # to the neighbours) but the pixels render as unexplored sea.
+        retired_idx = [
+            i + 1
+            for i, z in enumerate(overrides.sea_zones)
+            if z.retired
+        ]
+        kinds[np.isin(labels, retired_idx)] = KIND_UNKNOWN_SEA
 
     # Unreached pieces of seeded water bodies (band parts without a seed):
     # a W' component carries no label iff none of its pixels was seeded.
@@ -513,6 +529,8 @@ def build_seas(
         for z in range(1, len(overrides.sea_zones) + 1)
     ]
     for z, zone in enumerate(overrides.sea_zones, start=1):
+        if zone.retired:
+            continue
         if zone_areas[z - 1] == 0:
             errors.append(
                 PipelineError(
@@ -535,6 +553,7 @@ def build_seas(
         labels=labels,
         kinds=kinds,
         zone_areas=zone_areas,
+        retired=retired,
         snapped=snapped,
         lakes=lakes,
         water_outside=[

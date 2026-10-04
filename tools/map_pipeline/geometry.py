@@ -481,6 +481,15 @@ def build_sea_geometries(
     """
     frame = sea.frame
     zd = _grow_labels_into_land(sea, cfg.sea_cut.dilate_pixels)
+    if sea.retired:
+        # 1.9: retired zones emit no path — their pixels join the
+        # unexplored-sea background inside `outside`.
+        retired_idx = [
+            i + 1
+            for i, k in enumerate(sea.zone_keys)
+            if k in sea.retired
+        ]
+        zd[np.isin(zd, retired_idx)] = 0
 
     boundaries = []
     for z in range(1, len(sea.zone_keys) + 1):
@@ -522,7 +531,10 @@ def build_sea_geometries(
     errors: list[PipelineError] = []
     min_area = cfg.clean.min_part_area
     cut_zones: list = []
+    cut_idx: list[int] = []  # zone index (1-based) of each cut_zones item
     for z, key in enumerate(sea.zone_keys, start=1):
+        if key in sea.retired:
+            continue
         parts = by_zone.get(z, [])
         if not parts:
             errors.append(
@@ -545,6 +557,7 @@ def build_sea_geometries(
             )
             continue
         cut_zones.append(_union_polygons(kept))
+        cut_idx.append(z)
     if errors:
         raise PipelineFailure(errors)
 
@@ -569,9 +582,8 @@ def build_sea_geometries(
     )
 
     errors = []
-    for i, key in enumerate(sea.zone_keys):
-        if i >= len(cut_zones):
-            continue
+    for i, z in enumerate(cut_idx):
+        key = sea.zone_keys[z - 1]
         snapped = _union_polygons(
             _snap_pointwise(simplified_zones[i], cfg.output.grid)
         )

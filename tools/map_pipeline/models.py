@@ -100,6 +100,26 @@ class SeaZone(_Strict):
     key: _SeaKeyStr
     name_ru: str = Field(min_length=1)
     seeds: list[SvgPoint] = Field(min_length=1)
+    # 1.9: a retired zone still competes for water pixels but produces no
+    # node, no edges and no path; its id stays in ids.lock.json.
+    retired: bool = False
+
+
+class TransferPatch(_Strict):
+    """``geometry_patches[].transfer`` — land of ``from`` inside ``polygon``
+    moves to ``to`` (Spec, Appendix A step 3a)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_key: _KeyStr = Field(alias="from")
+    to_key: _KeyStr = Field(alias="to")
+    polygon: list[SvgPoint] = Field(min_length=3)
+
+
+class GeometryPatch(_Strict):
+    """One ``geometry_patches`` entry; only ``transfer`` exists so far."""
+
+    transfer: TransferPatch
 
 
 class EdgeAdd(_Strict):
@@ -147,6 +167,7 @@ class Overrides(_Strict):
     water_outside: list[WaterOutside]
     technical_exclude: list[_KeyStr]
     names_ru: dict[str, str]
+    geometry_patches: list[GeometryPatch] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_zone_keys_unique(self) -> Self:
@@ -229,6 +250,11 @@ def collect_reference_errors(
     """
     errors: list[PipelineError] = []
     land_keys = {name.lower() for name in boundary.include}
+    # geometry_patches apply to the source geometry before the boundary
+    # filter, so a ``from`` key may name an excluded province.
+    patch_names = land_keys | {
+        name.lower() for name in boundary.exclude_explicit
+    }
     sea_keys = {z.key for z in overrides.sea_zones}
     seen: set[tuple[str, str]] = set()
 
@@ -281,4 +307,24 @@ def collect_reference_errors(
     for i, e in enumerate(overrides.edges_remove):
         endpoint(e.a, f"edges_remove[{i}].a")
         endpoint(e.b, f"edges_remove[{i}].b")
+    for i, patch in enumerate(overrides.geometry_patches):
+        t = patch.transfer
+        for key, side in ((t.from_key, "from"), (t.to_key, "to")):
+            if key not in patch_names:
+                errors.append(
+                    PipelineError(
+                        DATA_INVALID,
+                        f"geometry_patches[{i}].transfer.{side}: key "
+                        f"{key!r} is not a slug of a boundary name",
+                    )
+                )
+            elif side == "to" and key not in land_keys:
+                errors.append(
+                    PipelineError(
+                        DATA_INVALID,
+                        f"geometry_patches[{i}].transfer.to: key {key!r} "
+                        "names an excluded province — the receiving side "
+                        "must stay in the game",
+                    )
+                )
     return errors

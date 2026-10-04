@@ -62,6 +62,8 @@ def render_preview(
     base[sea.land] = _LAND_EXCLUDED
     base[land_labels > 0] = _LAND
     for z in range(1, len(sea.zone_keys) + 1):
+        if sea.zone_keys[z - 1] in sea.retired:
+            continue  # retired water stays unknown-sea coloured
         base[sea.labels == z] = _zone_color(z)
 
     img = Image.fromarray(base).resize((out_w, out_h), Image.NEAREST)
@@ -93,6 +95,8 @@ def render_preview(
         draw.line([px(pa.x, pa.y), px(pb.x, pb.y)], fill=_STRAIT, width=2)
 
     for z in range(1, len(sea.zone_keys) + 1):
+        if sea.zone_keys[z - 1] in sea.retired:
+            continue
         col, row = _zone_label_pixel(sea.labels, z)
         draw.text((col * scale, row * scale), str(z), fill=_TEXT)
 
