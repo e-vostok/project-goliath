@@ -16,9 +16,16 @@ from PIL import Image, ImageDraw
 
 from .graph import Graph
 from .pipeline_config_schema import PipelineConfig
-from .seas import KIND_LAKE, KIND_UNKNOWN_SEA, KIND_ZONE_WATER, SeaRaster
+from .seas import (
+    KIND_BAY,
+    KIND_LAKE,
+    KIND_UNKNOWN_SEA,
+    KIND_ZONE_WATER,
+    SeaRaster,
+)
 
 _UNKNOWN_SEA = (46, 60, 74)
+_BAY = (30, 53, 71)  # colors.sea — bays render in the sea colour (1.9)
 _LAKE = (150, 190, 225)
 _LAND = (210, 210, 210)
 _LAND_EXCLUDED = (140, 140, 140)
@@ -58,6 +65,7 @@ def render_preview(
 
     base = np.zeros((frame.height, frame.width, 3), dtype=np.uint8)
     base[sea.kinds == KIND_UNKNOWN_SEA] = _UNKNOWN_SEA
+    base[sea.kinds == KIND_BAY] = _BAY
     base[sea.kinds == KIND_LAKE] = _LAKE
     base[sea.land] = _LAND_EXCLUDED
     base[land_labels > 0] = _LAND
@@ -160,17 +168,21 @@ def render_map_preview(
     ppu: int,
     colors,
     sea_ids: set[str] | None = None,
+    sea_water_parts: list | None = None,
 ) -> Image.Image:
     """Render parsed ``geometry.json`` over ``window`` at ``ppu``.
 
-    Layer order (Spec MapView): ``inland_water`` background, ``outside``,
-    sea zones (``sea`` fill, ``sea_border`` outline), land nodes (``land``
-    fill, ``border`` outline).
+    Layer order (Spec MapView): ``inland_water`` background, ``sea_water``
+    bays (``sea`` fill, 1.9), ``outside``, sea zones (``sea`` fill,
+    ``sea_border`` outline), land nodes (``land`` fill, ``border``
+    outline).
     """
     x0, y0, x1, y1 = window
     w = max(1, round((x1 - x0) * ppu))
     h = max(1, round((y1 - y0) * ppu))
     img = Image.new("RGB", (w, h), _rgb(colors.inland_water))
+    if sea_water_parts:
+        _stamp(img, sea_water_parts, (x0, y0), ppu, _rgb(colors.sea))
     _stamp(img, outside_parts, (x0, y0), ppu, _rgb(colors.outside))
     seas = [
         p for k in sorted(paths) if sea_ids and k in sea_ids

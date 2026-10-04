@@ -168,6 +168,12 @@ class Overrides(_Strict):
     technical_exclude: list[_KeyStr]
     names_ru: dict[str, str]
     geometry_patches: list[GeometryPatch] = Field(default_factory=list)
+    # 1.9 (step 5a): small water bodies within ``sea_link_gap`` of zone or
+    # unexplored-sea water are bays (sea colour); ``sea_like_water`` points
+    # force the bay class, ``lake_force`` points force the lake class.
+    sea_like_water: list[SvgPoint] = Field(default_factory=list)
+    lake_force: list[SvgPoint] = Field(default_factory=list)
+    sea_link_gap: float = Field(default=0.6, ge=0.0, le=50.0)
 
     @model_validator(mode="after")
     def _check_zone_keys_unique(self) -> Self:

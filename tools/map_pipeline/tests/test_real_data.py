@@ -313,7 +313,11 @@ def test_real_build(real_data_dir, tmp_path):
         range(1001, 2124)
     )
     assert mani["geometry_version"] == geom["version"]
-    g = {"outside": geom["outside"], "paths": geom["paths"]}
+    g = {
+        "outside": geom["outside"],
+        "paths": geom["paths"],
+        "sea_water": geom["sea_water"],
+    }
     assert geometry_version(g) == geom["version"]
 
     # sizes
@@ -394,7 +398,17 @@ def test_real_build(real_data_dir, tmp_path):
 
     report = (out_dir / "build_report.md").read_text(encoding="utf-8")
     m = re.search(r"Lake windows in outside: (\d+)", report)
-    assert m and int(m.group(1)) > 200
+    assert m and int(m.group(1)) > 150
+
+    # Spec 1.9 step 5a: bays are a separate sea-coloured compound path;
+    # the IJsselmeer is a bay window, Ladoga stays a lake.
+    sea_water_parts = parse_path(geom["sea_water"])
+    sea_water = unary_union(sea_water_parts)
+    assert sea_water.is_valid and len(sea_water_parts) > 50
+    assert sea_water.covers(Point(580.5, 124.8))
+    assert not sea_water.covers(Point(667.6, 83.1))
+    g_report = (out_dir / "graph_report.md").read_text(encoding="utf-8")
+    assert re.search(r"Bays: (\d+)", g_report)
     m = re.search(r"Land Hausdorff deviation: max ([\d.]+)", report)
     assert m and float(m.group(1)) <= 0.04
     m = re.search(r"Max node degree: (\d+) \(`(\w+)`\)", report)
@@ -420,7 +434,8 @@ def test_real_build(real_data_dir, tmp_path):
         r"\(<5 sq\. units\): (\d+)",
         report,
     )
-    assert m and int(m.group(1)) <= 80, m and m.group(1)
+    # map_polish_3: bay windows reshaped outside, count 80 -> 81
+    assert m and int(m.group(1)) <= 90, m and m.group(1)
     print(f"  small outside fragments: {m.group(1)}")
 
     # committed manifest must hash the committed inputs (any checkout)

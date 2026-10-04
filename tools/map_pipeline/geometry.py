@@ -33,7 +33,13 @@ from .errors import (
     PipelineFailure,
 )
 from .pipeline_config_schema import PipelineConfig
-from .seas import KIND_LAKE, KIND_LAND, SeaRaster, mask_from_geometry
+from .seas import (
+    KIND_BAY,
+    KIND_LAKE,
+    KIND_LAND,
+    SeaRaster,
+    mask_from_geometry,
+)
 from .svgpath import polygons_of
 from .svg_source import safe_union
 
@@ -394,8 +400,9 @@ def _fill_leftover(
     leaves slivers of water covered by neither land nor a zone — they
     render as ``outside``-coloured stains along coasts. Every leftover
     piece with ``area <= sea_cut.fill_max_area`` that touches a zone
-    (within 0.05) and is not raster-lake is merged into the zone with the
-    longest shared boundary (ties: smaller node id). The dict ``zones``
+    (within 0.05) and is not raster-lake or raster-bay is merged into the
+    zone with the longest shared boundary (ties: smaller node id). The
+    dict ``zones``
     is updated in place; the pieces keep their coverage-disjointness
     because ``leftover`` never overlaps a zone.
 
@@ -434,7 +441,7 @@ def _fill_leftover(
         if (
             0 <= col < sea.frame.width
             and 0 <= row < sea.frame.height
-            and int(sea.kinds[row, col]) == KIND_LAKE
+            and int(sea.kinds[row, col]) in (KIND_LAKE, KIND_BAY)
         ):
             continue
         best = min(
@@ -736,8 +743,40 @@ def build_lake_region(
     )
 
 
+def build_bay_region(
+    sea: SeaRaster, land_mask, view_poly, cfg: PipelineConfig
+):
+    """Bay raster grown 1 px, clipped to exact water (viewBox - LandMask).
+
+    Step 5a/Appendix A step 9 (1.9): every bay piece of at least
+    ``outside.min_hole_area`` becomes a window in ``outside`` and is
+    exported as the ``sea_water`` path — bays keep their windows
+    everywhere, also inside excluded land (northern fjords), so there is
+    no ``lake_near_land`` filter here.
+    """
+    rects = _run_boxes(sea.kinds == KIND_BAY, sea.frame)
+    if not rects:
+        return None
+    grown = safe_union(rects).buffer(
+        1.0 / sea.frame.r, join_style="mitre"
+    )
+    region = grown.intersection(view_poly.difference(land_mask))
+    pieces = [
+        p
+        for p in _polygon_list(region)
+        if p.area >= cfg.outside.min_hole_area
+    ]
+    if not pieces:
+        return None
+    return _union_polygons(pieces)
+
+
 def build_outside(
-    node_geoms: list, lake_region, view_poly, cfg: PipelineConfig
+    node_geoms: list,
+    lake_region,
+    view_poly,
+    cfg: PipelineConfig,
+    bay_region=None,
 ) -> OutsideBuild:
     """``outside`` = viewBox − buffer(N, −underlap) − lakeRegion − deep pad.
 
@@ -770,6 +809,8 @@ def build_outside(
     outside = view_poly.difference(n_inset)
     if lake_region is not None and not lake_region.is_empty:
         outside = outside.difference(lake_region)
+    if bay_region is not None and not bay_region.is_empty:
+        outside = outside.difference(bay_region)
     if not deep_pad.is_empty:
         outside = outside.difference(deep_pad)
 
@@ -803,8 +844,12 @@ def build_outside(
                 lake_region is not None
                 and not lake_region.is_empty
                 and lake_region.covers(hole.representative_point())
+            ) or (
+                bay_region is not None
+                and not bay_region.is_empty
+                and bay_region.covers(hole.representative_point())
             ):
-                keep.append(ring)  # lake windows stay whatever the size
+                keep.append(ring)  # water windows stay whatever the size
             else:
                 holes_dropped += 1
         cleaned.append(

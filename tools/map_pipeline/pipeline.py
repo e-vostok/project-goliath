@@ -33,6 +33,7 @@ from .errors import (
 from .geometry import (
     _polygon_list,
     _vertex_count,
+    build_bay_region,
     build_land_geometries,
     build_land_mask,
     build_lake_region,
@@ -542,19 +543,43 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
             f"pixel {s.pixel}, distance {round(s.distance, 3)} units{flag}"
         )
 
-    lines += ["", "## Lakes (inland water)", ""]
+    lines += ["", "## Small water bodies (Spec 3.2 step 5a)", ""]
     lines.append(
         f"- Lakes: {len(sea.lakes)}, total area "
         f"{round(sum(l.area for l in sea.lakes), 2)}"
+    )
+    lines.append(
+        f"- Bays: {len(sea.bays)}, total area "
+        f"{round(sum(b.area for b in sea.bays), 2)}"
     )
     biggest = sorted(sea.lakes, key=lambda l: -l.area)[
         : cfg.report.largest_lakes
     ]
     for lake in biggest:
         lines.append(
-            f"  - area {round(lake.area, 2)}, centroid "
+            f"  - largest lake area {round(lake.area, 2)}, centroid "
             f"({round(lake.centroid[0], 2)}, {round(lake.centroid[1], 2)})"
         )
+    all_small = sorted(
+        [*sea.lakes, *sea.bays],
+        key=lambda l: (round(l.centroid[1], 2), round(l.centroid[0], 2)),
+    )
+    if all_small:
+        lines.append("")
+        lines.append("| area | class | dist to sea | centroid | note |")
+        lines.append("| ---- | ----- | ----------- | -------- | ---- |")
+        for rec in all_small:
+            dist = (
+                "inf"
+                if rec.sea_distance == float("inf")
+                else f"{rec.sea_distance:.2f}"
+            )
+            lines.append(
+                f"| {round(rec.area, 2)} | "
+                f"{'bay' if rec.bay else 'lake'} | {dist} | "
+                f"({round(rec.centroid[0], 2)}, "
+                f"{round(rec.centroid[1], 2)}) | {rec.forced or ''} |"
+            )
 
     lines += ["", "## water_outside", ""]
     if not sea.water_outside:
@@ -966,9 +991,10 @@ def run_build(
     ) = build_lake_region(
         sea, land_mask, view_poly, cfg, land_union,
     )
+    bay_region = build_bay_region(sea, land_mask, view_poly, cfg)
     outside_build = build_outside(
         [canon[k] for k in sorted(canon, key=lambda k: ids[k])],
-        lake_region, view_poly, cfg,
+        lake_region, view_poly, cfg, bay_region,
     )
     outside_build.lake_pieces = lake_pieces
     outside_build.lake_area = lake_area
@@ -977,7 +1003,8 @@ def run_build(
     outside_build.lakes_dropped_area = lakes_dropped_area
 
     outside_d = dumps(outside_build.outside)
-    geom_doc, geom_text = build_geometry_doc(paths, outside_d)
+    sea_water_d = dumps(bay_region) if bay_region is not None else ""
+    geom_doc, geom_text = build_geometry_doc(paths, outside_d, sea_water_d)
     geom_bytes = len(geom_text.encode("utf-8"))
     if geom_bytes > cfg.limits.max_geometry_bytes:
         land_b = sum(
@@ -1048,6 +1075,7 @@ def run_build(
     if preview:
         parsed = {k: parse_path(d) for k, d in paths.items()}
         outside_parts = parse_path(outside_d)
+        sea_water_parts = parse_path(sea_water_d) if sea_water_d else []
         sea_ids = {
             str(n.id) for n in graph.nodes if n.kind == KIND_SEA
         }
@@ -1055,13 +1083,14 @@ def run_build(
         img = render_map_preview(
             parsed, outside_parts, tuple(playable),
             cfg.preview.pixels_per_unit, cfg.preview.colors, sea_ids,
+            sea_water_parts,
         )
         preview_pngs.append((prev_dir / "map_preview.png", _png_bytes(img)))
         for name, rect in crop_list:
             img = render_map_preview(
                 parsed, outside_parts, rect,
                 cfg.preview.crop_pixels_per_unit, cfg.preview.colors,
-                sea_ids,
+                sea_ids, sea_water_parts,
             )
             preview_pngs.append(
                 (prev_dir / f"map_crop_{name}.png", _png_bytes(img))

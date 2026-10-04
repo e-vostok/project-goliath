@@ -424,7 +424,11 @@ def test_version_and_input_hashes(make_data_dir, tmp_path):
     geom = _geom_doc(data_dir)
     mani = _manifest(data_dir)
 
-    g = {"outside": geom["outside"], "paths": geom["paths"]}
+    g = {
+        "outside": geom["outside"],
+        "paths": geom["paths"],
+        "sea_water": geom["sea_water"],
+    }
     assert geometry_version(g) == geom["version"]
     assert mani["geometry_version"] == geom["version"]
 
@@ -829,3 +833,81 @@ def test_lake_windows_only_near_playable_land(make_data_dir, tmp_path):
         report,
     )
     assert m and int(m.group(1)) >= 1
+
+
+# --------------------------------- Spec 1.9: bays vs lakes (3.2 step 5a)
+
+
+def _c_shape(name, x, y, pond_w=4.6, pond_h=10.0, wall=0.4):
+    """Thin-walled ``⊃`` at ``(x, y)``: with the province ending at ``x``
+    it encloses a pond of ``pond_w x pond_h`` behind a ``wall``-thin bar."""
+    t = wall
+    return (
+        f'<path id="{name}" d="M {x} {y} L {x + pond_w + t} {y} '
+        f"L {x + pond_w + t} {y + pond_h + 2 * t} "
+        f"L {x} {y + pond_h + 2 * t} "
+        f"L {x} {y + pond_h + t} L {x + pond_w} {y + pond_h + t} "
+        f'L {x + pond_w} {y + t} L {x} {y + t} Z"/>'
+    )
+
+
+def test_bays_and_lakes_step5a(make_data_dir, tmp_path):
+    """Ponds within ``sea_link_gap`` of sea water are bays (exported as
+    ``sea_water``, sea-coloured windows); remote ponds stay lakes.
+    ``sea_like_water`` forces a bay, ``lake_force`` wins over both.
+
+    The rings hug the main landmass so their moat stays inside the
+    reached band piece (isolated rings would be unreached band water).
+    """
+    from conftest import kind_at
+
+    elems = (
+        [
+            square("Alpha", 10, 10, 30),           # land (10..40, 10..40)
+            _c_shape("Beta", 40.0, 19.6),          # pond (40..44.6, 20..30)
+            _c_shape("Gamma", 40.0, 32.6, pond_h=5.4),  # pond 33..38.4
+        ]
+        + _ring("W", 52, 30, cell=6)               # pond (52..58, 30..36)
+        + _ring("S", 72, 30, cell=6)               # pond (72..78, 30..36)
+    )
+    data_dir = make_data_dir(
+        svg_elems=elems,
+        include=(
+            ["Alpha", "Beta", "Gamma"]
+            + _ring_keys("W") + _ring_keys("S")
+        ),
+        overrides=graph_overrides(
+            sea_zones=[{"key": "sea_a", "name_ru": "A",
+                        "seeds": [[86.0, 33.0]]}],
+            sea_like_water=[[75.0, 33.0], [42.3, 35.7]],
+            lake_force=[[42.3, 35.7]],
+            # pixel-centre distance across the 0.4 wall is ~0.75
+            sea_link_gap=1.0,
+        ),
+    )
+    out_dir = tmp_path / "out"
+    assert run_build(data_dir, out_dir) == 0
+
+    geom = _geom_doc(data_dir)
+    bay_d = Point(42.3, 25.0)      # behind a 0.4 wall -> bay by distance
+    bay_f = Point(75.0, 33.0)      # remote pond, sea_like_water -> bay
+    lake_f = Point(42.3, 35.7)     # lake_force beats sea_like_water
+    lake_d = Point(55.0, 33.0)     # remote pond -> lake
+
+    assert kind_at(out_dir, 42.3, 25.0) == 4   # KIND_BAY
+    assert kind_at(out_dir, 75.0, 33.0) == 4
+    assert kind_at(out_dir, 42.3, 35.7) == 3   # KIND_LAKE
+    assert kind_at(out_dir, 55.0, 33.0) == 3
+
+    sea_water = unary_union(parse_path(geom["sea_water"]))
+    assert sea_water.covers(bay_d) and sea_water.covers(bay_f)
+    assert not sea_water.covers(lake_f) and not sea_water.covers(lake_d)
+
+    # every small body is a window in ``outside`` (bay or lake alike)
+    outside = unary_union(parse_path(geom["outside"]))
+    for p in (bay_d, bay_f, lake_f, lake_d):
+        assert not outside.covers(p)
+
+    report = (out_dir / "graph_report.md").read_text()
+    assert "Lakes: 2" in report
+    assert "Bays: 2" in report
