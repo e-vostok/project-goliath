@@ -200,3 +200,47 @@ jobs:
       # The script itself prints every service's log tail on failure.
       - name: Stack smoke test (deploy/smoke_local.sh)
         run: bash deploy/smoke_local.sh
+
+      # DEP-7b: the retired-nodes pre-deploy check must work in exactly
+      # the form the runbook hands to the owner — `compose run` inside
+      # the built backend image (WORKDIR /app/backend, no PYTHONPATH).
+      # smoke_local.sh tears its stack down, so this step boots a
+      # throwaway db, applies migrations and runs the report against
+      # it. A freshly migrated schema has no retired rows, so the
+      # expected verdict is exit 0 and "ГОТОВО ... удалено 0 строк":
+      # the guard proves the command form, it does not reproduce
+      # production data. `-T` replaces the interactive TTY the
+      # production command gets over SSH.
+      - name: Retired nodes pre-deploy check (retired_report)
+        run: |
+          set -euo pipefail
+          ENV_FILE_PATH="$(mktemp)"
+          PG_PW="$(openssl rand -hex 24)"
+          cat > "$ENV_FILE_PATH" <<EOF
+          POSTGRES_USER=goliath
+          POSTGRES_DB=goliath
+          POSTGRES_PASSWORD=$PG_PW
+          DATABASE_URL=postgresql+asyncpg://goliath:$PG_PW@db:5432/goliath
+          JWT_SECRET_KEY=$(openssl rand -hex 32)
+          VK_APP_SECRET=ci_throwaway_vk_secret_0123456789
+          ADMIN_VK_USER_IDS=
+          DOMAIN=localhost
+          ACME_EMAIL=smoke@example.invalid
+          APP_ENV=production
+          ADMIN_ALLOW_RESET=false
+          EOF
+          export ENV_FILE="$ENV_FILE_PATH"
+          cleanup() {
+            docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+              down -v --remove-orphans >/dev/null 2>&1 || true
+            rm -f "$ENV_FILE_PATH"
+          }
+          trap cleanup EXIT
+          docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+            up -d --wait db
+          docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+            run --rm --no-deps -T migrate
+          docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+            run --rm --no-deps -T backend \
+            python -m src.modules._01_map.retired_report | tee /tmp/retired-report.txt
+          grep -q "ГОТОВО" /tmp/retired-report.txt
