@@ -15,7 +15,8 @@ Check order (the first failure wins):
 3. JSON parse + strict schema validation of ``manifest.json``,
    ``geometry.json`` and ``ids.lock.json`` — ``SCHEMA_INVALID``.
    ``boundary.yaml``/``overrides.yaml`` are never parsed by the server;
-   ``source/map.svg`` is only hashed.
+   ``source/map.svg`` is only hashed. Cross-rule (1.9): ``view.frame``
+   must lie entirely inside ``manifest.view_box`` — ``SCHEMA_INVALID``.
 4. ``limits.max_nodes`` / ``limits.max_edges_per_node`` —
    ``LIMIT_EXCEEDED``.
 5. INV-M1: manifest <-> ids.lock correspondence, key/id uniqueness,
@@ -159,6 +160,21 @@ def _load_json_model(data_dir: Path, rel: str, model):
         _fail(SCHEMA_INVALID, f"{rel} failed schema validation: {summary}")
 
 
+def _check_view_frame(manifest: Manifest, config: MapConfig) -> None:
+    """Cross-rule (Spec Part 4): ``view.frame`` must lie entirely inside
+    ``manifest.view_box`` — the zoom-out limit is measured against it."""
+    f = config.view.frame
+    vx0, vy0, vx1, vy1 = manifest.view_box
+    if f.x < vx0 or f.y < vy0 or f.x + f.width > vx1 or f.y + f.height > vy1:
+        _fail(
+            SCHEMA_INVALID,
+            f"configs/01_map.yaml view.frame (x={f.x}, y={f.y}, "
+            f"width={f.width}, height={f.height}) is not entirely inside "
+            f"manifest.view_box (x={vx0}, y={vy0}, width={vx1 - vx0}, "
+            f"height={vy1 - vy0})",
+        )
+
+
 def _check_limits(manifest: Manifest, config: MapConfig) -> None:
     limits = config.limits
     if len(manifest.nodes) > limits.max_nodes:
@@ -187,8 +203,14 @@ def _check_limits(manifest: Manifest, config: MapConfig) -> None:
         )
 
 
-def _check_inv_m1(manifest: Manifest, lock: IdsLock) -> tuple[str, ...]:
-    """Manifest <-> ids.lock correspondence; returns warnings."""
+def _check_inv_m1(
+    manifest: Manifest, lock: IdsLock
+) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    """Manifest <-> ids.lock correspondence.
+
+    Returns ``(warnings, retired_ids)`` — retired ids are lock ids with no
+    manifest node (1.9: provinces out of the game and retired sea zones).
+    """
     seen_keys: set[str] = set()
     seen_ids: set[int] = set()
     for n in manifest.nodes:
@@ -241,14 +263,16 @@ def _check_inv_m1(manifest: Manifest, lock: IdsLock) -> tuple[str, ...]:
             )
 
     # Lock entries with no manifest node are legal (append-only) — listed
-    # as warnings, ascending id.
+    # as warnings, ascending id. Their ids are also returned as the
+    # retired-node set for INV-M5 synchronisation (1.9).
     extra = sorted(
         (i, k) for k, i in lock.ids.items() if k not in seen_keys
     )
-    return tuple(
+    warnings = tuple(
         f"ids.lock.json entry {key!r} (id {i}) has no manifest node"
         for i, key in extra
     )
+    return warnings, tuple(i for i, _key in extra)
 
 
 def _check_inv_m2(manifest: Manifest) -> None:
@@ -351,7 +375,9 @@ def _check_inv_m3(manifest: Manifest) -> None:
 
 
 def _check_inv_m6(manifest: Manifest, geometry: Geometry) -> None:
-    computed = geometry_version(geometry.outside, geometry.paths)
+    computed = geometry_version(
+        geometry.outside, geometry.paths, geometry.sea_water
+    )
     if (
         computed != manifest.geometry_version
         or computed != geometry.version
@@ -402,6 +428,7 @@ def _build_map_data(
     manifest: Manifest,
     geometry: Geometry,
     warnings: tuple[str, ...],
+    retired_ids: tuple[int, ...],
 ) -> MapData:
     nodes = {
         n.id: MapNode(
@@ -448,6 +475,7 @@ def _build_map_data(
         manifest=manifest,
         geometry=geometry,
         warnings=warnings,
+        retired_ids=retired_ids,
     )
 
 
@@ -468,12 +496,15 @@ def load_map_data(data_dir: Path, config: MapConfig) -> MapData:
     manifest = _load_json_model(data_dir, _MANIFEST, Manifest)
     geometry = _load_json_model(data_dir, _GEOMETRY, Geometry)
     lock = _load_json_model(data_dir, _IDS_LOCK, IdsLock)
+    _check_view_frame(manifest, config)
 
     _check_limits(manifest, config)
-    warnings = _check_inv_m1(manifest, lock)
+    warnings, retired_ids = _check_inv_m1(manifest, lock)
     _check_inv_m2(manifest)
     _check_inv_m3(manifest)
     _check_inv_m6(manifest, geometry)
     _check_inv_m10(data_dir, manifest)
 
-    return _build_map_data(data_dir, manifest, geometry, warnings)
+    return _build_map_data(
+        data_dir, manifest, geometry, warnings, retired_ids
+    )

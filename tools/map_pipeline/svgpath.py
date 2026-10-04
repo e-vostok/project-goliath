@@ -114,9 +114,12 @@ def geometry_version(g: dict) -> str:
     return hashlib.sha256(canonical_json(g).encode("utf-8")).hexdigest()[:12]
 
 
-def build_geometry_doc(paths: dict[str, str], outside_d: str) -> tuple[dict, str]:
+def build_geometry_doc(
+    paths: dict[str, str], outside_d: str, sea_water_d: str
+) -> tuple[dict, str]:
     """Assemble ``geometry.json`` content; returns ``(doc, text)``."""
-    g = {"outside": outside_d, "paths": paths}
+    g = {"outside": outside_d, "paths": paths, "sea_water": sea_water_d}
     doc = {"outside": outside_d, "paths": paths,
+           "sea_water": sea_water_d,
            "version": geometry_version(g)}
     return doc, canonical_json(doc) + "\n"

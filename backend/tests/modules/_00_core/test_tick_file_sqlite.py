@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import modules._01_map.service as map_service_module
 from core.admin.registry import AdminRegistry
-from core.tick.orchestrator import TickOrchestrator, TickPhase
+from core.tick.orchestrator import TickOrchestrator, TickOutcome, TickPhase
 from core.tick.scheduler import run_scheduled_tick
 from main import app
 from modules._00_core.hooks import (
@@ -138,7 +138,7 @@ class TestTickOnFileSQLite:
         )
 
         async with file_session_maker() as session:
-            assert await run_scheduled_tick(session) is True
+            assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(file_session_maker)
         assert clock.current_turn == 1
@@ -176,7 +176,7 @@ class TestTickOnFileSQLite:
         TickOrchestrator.register(TickPhase.PHASE_4_RESOLVE, write_then_fail)
 
         async with file_session_maker() as session:
-            assert await run_scheduled_tick(session) is False
+            assert await run_scheduled_tick(session) is TickOutcome.FAILED
 
         clock = await _fetch_clock(file_session_maker)
         assert clock.current_turn == 0
@@ -204,12 +204,12 @@ class TestTickOnFileSQLite:
         )
 
         async with file_session_maker() as session:
-            assert await run_scheduled_tick(session) is False
+            assert await run_scheduled_tick(session) is TickOutcome.FAILED
 
         TickOrchestrator.clear_handlers()
 
         async with file_session_maker() as session:
-            assert await run_scheduled_tick(session) is True
+            assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(file_session_maker)
         assert clock.current_turn == 1
@@ -222,7 +222,7 @@ class TestTickOnFileSQLite:
 
 
 @pytest_asyncio.fixture
-async def live_client(tmp_path, monkeypatch):
+async def live_client(tmp_path, monkeypatch, mini_map_config):
     """
     The real app over its real ASGI lifespan on a migrated tmp SQLite
     file (the test_app_startup.py pattern). Class-level registries are

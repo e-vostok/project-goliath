@@ -424,10 +424,13 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
     assert nation.history_url == "https://vk.com/@old-realm"
 
 
-async def test_admin_tick_and_state_reset_on_postgres(pg_live_client, pg_db):
+async def test_admin_tick_and_state_reset_on_postgres(
+    pg_live_client, pg_db, monkeypatch
+):
     """Admin founds a nation, fires a real tick, then resets the world:
     nations (and their profiles) go, provinces free, turn rewinds to 0,
     and players survive."""
+    monkeypatch.setenv("ADMIN_ALLOW_RESET", "true")  # DEP-4 reset gate
     client = pg_live_client
     # Mini-map id — a valid single-province starting group.
     await _seed_provinces(pg_db, [1008])

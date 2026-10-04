@@ -1,0 +1,90 @@
+name: goliath
+
+# Production stack: db → migrate (one-shot) → backend (single worker)
+# → caddy. Contract: docs/02_SYSTEM_SPECS/deploy.md §2–§6.
+#
+# Every service reads the SAME env file: ./.env on a server (chmod 600,
+# never committed). ENV_FILE exists so deploy/smoke_local.sh can inject
+# a throwaway file instead of the developer's local .env.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16
+    env_file: ${ENV_FILE:-.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # No published ports: the database is reachable only inside the stack.
+    restart: unless-stopped
+    logging: *default-logging
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: goliath-backend
+    env_file: ${ENV_FILE:-.env}
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+    # One-shot: on failure the stack does not proceed (backend requires
+    # service_completed_successfully).
+    restart: "no"
+    logging: *default-logging
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: goliath-backend
+    env_file: ${ENV_FILE:-.env}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # python:3.12-slim has no curl — probe with urllib instead.
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      # Map loading + hash verification at boot take a while.
+      start_period: 90s
+    restart: unless-stopped
+    logging: *default-logging
+
+  caddy:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: goliath-frontend
+    env_file: ${ENV_FILE:-.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      # ACME account data and issued certificates — do not lose.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

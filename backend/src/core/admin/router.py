@@ -14,6 +14,7 @@ path the automatic scheduler takes — so no tick logic is duplicated here.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -24,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.admin.registry import AdminRegistry
 from core.admin.security import require_admin
 from core.db import get_session, get_session_context
+from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
@@ -67,6 +69,37 @@ class ResetFailedError(CoreDomainError):
         if cause is not None:
             detail += f": {type(cause).__name__}: {cause}"
         super().__init__(detail, "RESET_FAILED")
+
+
+class TickInProgressError(CoreDomainError):
+    """Raised when a manual tick collides with an already-running tick."""
+
+    def __init__(self):
+        super().__init__(
+            "A tick is already in progress",
+            "TICK_IN_PROGRESS",
+        )
+
+
+class ResetDisabledError(CoreDomainError):
+    """Raised when ADMIN_ALLOW_RESET gates off the world-reset endpoint."""
+
+    def __init__(self):
+        super().__init__(
+            "World reset is disabled on this server",
+            "RESET_DISABLED",
+        )
+
+
+def _reset_allowed() -> bool:
+    """
+    Read ADMIN_ALLOW_RESET at REQUEST time (never import time), so the
+    flag can be flipped for one reset without a redeploy — only a
+    restart. Truthy values are 1/true/yes/on (case-insensitive,
+    stripped); anything else or a missing variable fails closed.
+    """
+    raw = os.environ.get("ADMIN_ALLOW_RESET") or ""
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class StateResetRequest(BaseModel):
@@ -161,12 +194,17 @@ async def admin_tick_run(
     while the tick commits from another connection.
 
     ok=false means the tick failed and was rolled back — the FAILED row is
-    still recorded in tick_log, same as a failed automatic tick.
+    still recorded in tick_log, same as a failed automatic tick. A manual
+    run racing another tick loses the advisory lock and answers 409
+    TICK_IN_PROGRESS instead of running a second time.
     """
     # Release the auth read transaction; nothing was written on it.
     await session.rollback()
     async with get_session_context() as tick_session:
-        ok = await run_scheduled_tick(tick_session)
+        outcome = await run_scheduled_tick(tick_session)
+        if outcome is TickOutcome.SKIPPED_LOCKED:
+            raise TickInProgressError()
+        ok = outcome is TickOutcome.EXECUTED
         clock_result = await tick_session.execute(
             select(GameClock).where(GameClock.id == 1)
         )
@@ -208,7 +246,13 @@ async def admin_state_reset(
     One transaction on the request session: all-or-nothing. If any hook
     raises, everything is rolled back and a 500 RESET_FAILED names the
     offending slug.
+
+    The ADMIN_ALLOW_RESET gate sits after require_admin (non-admins still
+    see ADMIN_REQUIRED, not RESET_DISABLED) and before any body handling.
     """
+    if not _reset_allowed():
+        raise ResetDisabledError()
+
     if body.confirm is not True:
         raise ConfirmRequiredError()
 

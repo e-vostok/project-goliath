@@ -105,8 +105,8 @@ export function ProvincePicker({
     [manifest],
   );
   const owners = useMemo(
-    () => buildOwnerMap(mapState.state),
-    [mapState.state],
+    () => buildOwnerMap(mapState.state, nodesById),
+    [mapState.state, nodesById],
   );
   const ctx = useMemo(
     () => ({ nodes: nodesById, owners, max: limits.max }),

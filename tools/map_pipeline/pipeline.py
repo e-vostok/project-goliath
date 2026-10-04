@@ -33,6 +33,7 @@ from .errors import (
 from .geometry import (
     _polygon_list,
     _vertex_count,
+    build_bay_region,
     build_land_geometries,
     build_land_mask,
     build_lake_region,
@@ -56,6 +57,7 @@ from .models import (
     load_boundary,
     load_overrides,
 )
+from .patches import apply_geometry_patches
 from .pipeline_config_schema import PipelineConfig, load_pipeline_config
 from .preview import render_map_preview, render_preview
 from .seas import SeaRaster, build_seas, land_label_raster
@@ -312,6 +314,11 @@ def _prepare(data_dir: Path) -> _Prep:
     paths = read_province_paths(data_dir / _SOURCE_FILE)
     nodes, info = _select_nodes(paths, boundary, overrides)
     geoms = build_geometries(paths, cfg.clean)
+    # Step 3a (Spec 1.9): manual geometry patches act on the cleaned source
+    # geometry before the boundary filter — the donated side may be an
+    # excluded province (e.g. Buhayra's coastal notch -> Alexandria).
+    geoms, patch_info = apply_geometry_patches(geoms, overrides)
+    info.extend(patch_info)
     for node in nodes.values():
         node.parts = geoms[node.source_name]
 
@@ -322,6 +329,17 @@ def _prepare(data_dir: Path) -> _Prep:
 
 def _sea_keys(overrides: Overrides) -> list[str]:
     return [z.key for z in overrides.sea_zones]
+
+
+def _lock_keep_extra(boundary: Boundary) -> set[str]:
+    """Keys that may stay in ``ids.lock.json`` without producing a node.
+
+    1.9: provinces moved to ``boundary.exclude_explicit`` and retired sea
+    zones keep their ids forever (they are the retired-node set the backend
+    synchronises against). Retired sea keys are already in ``_sea_keys``;
+    only the excluded-land slugs are extra.
+    """
+    return {name.lower() for name in boundary.exclude_explicit}
 
 
 def _build_nodes_report(
@@ -398,7 +416,8 @@ def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
     """Run steps 1–4. Returns the process exit code (0 ok / 1 failure)."""
     prep = _prepare(data_dir)
     ids, new_ids, lock_text, lock_changed = assign_ids(
-        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
+        _lock_keep_extra(prep.boundary),
     )
     if check:
         return 1 if lock_changed else 0
@@ -475,7 +494,12 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
         "# map_pipeline — graph report",
         "",
         f"- Land nodes: {land_count}",
-        f"- Sea zones: {len(sea.zone_keys)}",
+        f"- Sea zones: {len(sea.zone_keys) - len(sea.retired)}"
+        + (
+            f" (+{len(sea.retired)} retired)"
+            if sea.retired
+            else ""
+        ),
         f"- Edges total: {len(graph.edges)}",
     ]
     for t in ("land", "coast", "sea", "strait"):
@@ -494,11 +518,19 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
     for z in prep.overrides.sea_zones:
         seeds_per_zone[z.key] = len(z.seeds)
     for z, key in enumerate(sea.zone_keys, start=1):
-        node = next(n for n in graph.nodes if n.zone_index == z and n.kind == "SEA")
+        node = next(
+            (
+                n
+                for n in graph.nodes
+                if n.zone_index == z and n.kind == "SEA"
+            ),
+            None,
+        )
         lines.append(
             f"| {z} | {key} | {sea.zone_name_ru[z - 1]} | "
             f"{round(sea.zone_areas[z - 1], 2)} | {seeds_per_zone[key]} | "
-            f"{len(neighbours[node.id])} |"
+            + ("retired" if node is None else str(len(neighbours[node.id])))
+            + " |"
         )
 
     lines += ["", "## Snapped seeds", ""]
@@ -511,19 +543,43 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
             f"pixel {s.pixel}, distance {round(s.distance, 3)} units{flag}"
         )
 
-    lines += ["", "## Lakes (inland water)", ""]
+    lines += ["", "## Small water bodies (Spec 3.2 step 5a)", ""]
     lines.append(
         f"- Lakes: {len(sea.lakes)}, total area "
         f"{round(sum(l.area for l in sea.lakes), 2)}"
+    )
+    lines.append(
+        f"- Bays: {len(sea.bays)}, total area "
+        f"{round(sum(b.area for b in sea.bays), 2)}"
     )
     biggest = sorted(sea.lakes, key=lambda l: -l.area)[
         : cfg.report.largest_lakes
     ]
     for lake in biggest:
         lines.append(
-            f"  - area {round(lake.area, 2)}, centroid "
+            f"  - largest lake area {round(lake.area, 2)}, centroid "
             f"({round(lake.centroid[0], 2)}, {round(lake.centroid[1], 2)})"
         )
+    all_small = sorted(
+        [*sea.lakes, *sea.bays],
+        key=lambda l: (round(l.centroid[1], 2), round(l.centroid[0], 2)),
+    )
+    if all_small:
+        lines.append("")
+        lines.append("| area | class | dist to sea | centroid | note |")
+        lines.append("| ---- | ----- | ----------- | -------- | ---- |")
+        for rec in all_small:
+            dist = (
+                "inf"
+                if rec.sea_distance == float("inf")
+                else f"{rec.sea_distance:.2f}"
+            )
+            lines.append(
+                f"| {round(rec.area, 2)} | "
+                f"{'bay' if rec.bay else 'lake'} | {dist} | "
+                f"({round(rec.centroid[0], 2)}, "
+                f"{round(rec.centroid[1], 2)}) | {rec.forced or ''} |"
+            )
 
     lines += ["", "## water_outside", ""]
     if not sea.water_outside:
@@ -561,7 +617,29 @@ def _build_graph_report(prep: _Prep, sea: SeaRaster, graph) -> str:
     if not flagged:
         lines.append("- none")
 
-    lines += ["", "## Islands (land nodes whose neighbours are all SEA)", ""]
+    # Report-only check (Spec 1.9): active zones expected to carry at least
+    # one coast edge to playable land; retired zones are listed separately.
+    coasted: set[int] = set()
+    for e in graph.edges:
+        if e.type == "coast":
+            if by_id[e.a].kind == "SEA":
+                coasted.add(e.a)
+            if by_id[e.b].kind == "SEA":
+                coasted.add(e.b)
+    coastless = [
+        n for n in graph.nodes if n.kind == "SEA" and n.id not in coasted
+    ]
+    lines += ["", "## Sea zones without a coast edge to playable land", ""]
+    if not coastless:
+        lines.append("- none")
+    for n in coastless:
+        lines.append(f"- `{n.key}` (id {n.id}) — active, no coast edge")
+    if sea.retired:
+        for key in sorted(sea.retired):
+            lines.append(f"- `{key}` — retired (no node)")
+    lines.append("")
+
+    lines += ["## Islands (land nodes whose neighbours are all SEA)", ""]
     islands = [
         n
         for n in graph.nodes
@@ -596,7 +674,8 @@ def run_graph(
     prep = _prepare(data_dir)
     sea = build_seas(prep.nodes, prep.geoms, prep.overrides, prep.cfg)
     ids, new_ids, lock_text, lock_changed = assign_ids(
-        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
+        _lock_keep_extra(prep.boundary),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(
@@ -854,7 +933,8 @@ def run_build(
 
     sea = build_seas(prep.nodes, prep.geoms, prep.overrides, cfg)
     ids, new_ids, lock_text, lock_changed = assign_ids(
-        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides)
+        data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
+        _lock_keep_extra(prep.boundary),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(
@@ -905,15 +985,23 @@ def run_build(
     land_union = safe_union(
         [p for k in land_keys for p in _polygon_list(canon[k])]
     )
+    # 1.10: a water body that touches no node stays dark — windows are cut
+    # only for bays/lakes within contact distance of the node union.
+    nodes_union = safe_union(
+        [p for k in canon for p in _polygon_list(canon[k])]
+    )
     (
         lake_region, lake_pieces, lake_area, lake_spill,
         lakes_dropped, lakes_dropped_area,
     ) = build_lake_region(
-        sea, land_mask, view_poly, cfg, land_union,
+        sea, land_mask, view_poly, cfg, land_union, nodes_union,
+    )
+    bay_region = build_bay_region(
+        sea, land_mask, view_poly, cfg, nodes_union
     )
     outside_build = build_outside(
         [canon[k] for k in sorted(canon, key=lambda k: ids[k])],
-        lake_region, view_poly, cfg,
+        lake_region, view_poly, cfg, bay_region,
     )
     outside_build.lake_pieces = lake_pieces
     outside_build.lake_area = lake_area
@@ -922,7 +1010,8 @@ def run_build(
     outside_build.lakes_dropped_area = lakes_dropped_area
 
     outside_d = dumps(outside_build.outside)
-    geom_doc, geom_text = build_geometry_doc(paths, outside_d)
+    sea_water_d = dumps(bay_region) if bay_region is not None else ""
+    geom_doc, geom_text = build_geometry_doc(paths, outside_d, sea_water_d)
     geom_bytes = len(geom_text.encode("utf-8"))
     if geom_bytes > cfg.limits.max_geometry_bytes:
         land_b = sum(
@@ -993,6 +1082,7 @@ def run_build(
     if preview:
         parsed = {k: parse_path(d) for k, d in paths.items()}
         outside_parts = parse_path(outside_d)
+        sea_water_parts = parse_path(sea_water_d) if sea_water_d else []
         sea_ids = {
             str(n.id) for n in graph.nodes if n.kind == KIND_SEA
         }
@@ -1000,13 +1090,14 @@ def run_build(
         img = render_map_preview(
             parsed, outside_parts, tuple(playable),
             cfg.preview.pixels_per_unit, cfg.preview.colors, sea_ids,
+            sea_water_parts,
         )
         preview_pngs.append((prev_dir / "map_preview.png", _png_bytes(img)))
         for name, rect in crop_list:
             img = render_map_preview(
                 parsed, outside_parts, rect,
                 cfg.preview.crop_pixels_per_unit, cfg.preview.colors,
-                sea_ids,
+                sea_ids, sea_water_parts,
             )
             preview_pngs.append(
                 (prev_dir / f"map_crop_{name}.png", _png_bytes(img))

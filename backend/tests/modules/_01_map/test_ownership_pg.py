@@ -10,14 +10,19 @@ import pytest
 from sqlalchemy import func, select
 
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.exceptions import (
+    RetiredProvinceHistoryError,
+    RetiredProvinceOwnedError,
+)
 from modules._00_core.hooks import OwnershipChange
-from modules._00_core.models import GameClock, Nation, Player
-from modules._00_core.service import NationService
+from modules._00_core.models import GameClock, Nation, Player, Province
+from modules._00_core.service import NationService, ProvinceService
 from modules._01_map.models import MapOwnershipLog
 from modules._01_map.service import (
     OwnerAtTurn,
     clear_all,
     owners_at_turn,
+    province_ids_with_journal,
     record_changes,
     records_for_province,
 )
@@ -210,3 +215,105 @@ class TestListenerOnPg:
                 select(func.count()).select_from(MapOwnershipLog)
             )
             assert count.scalar_one() == 0
+
+
+class TestRemoveRetiredPg:
+    """
+    ``ProvinceService.remove_retired`` on PostgreSQL (Spec 1.9, INV-M5).
+
+    Here the map_ownership_log -> provinces FK is actually enforced, so
+    the journal probe must run before the delete — an orphaned journal
+    row cannot exist even by accident.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unowned_removed_and_history_blocks(
+        self, pg_db, flat_map_service
+    ):
+        # Nodes 1007/1008 pretend to be retired by a newer map version;
+        # 1008 carries a journal row, 1007 does not.
+        async with pg_db() as session:
+            await sync_map_nodes(session, flat_map_service)
+            await record_changes(
+                session,
+                [
+                    OwnershipChange(
+                        province_id=1008,
+                        prev_nation_id=None,
+                        new_nation_id="n-old",
+                        new_name="Old Realm",
+                        new_color="#123456",
+                        turn=1,
+                    ),
+                ],
+            )
+            await session.commit()
+
+        async with pg_db() as session:
+            history = await province_ids_with_journal(
+                session, [1007, 1008]
+            )
+            assert history == {1008}
+            with pytest.raises(RetiredProvinceHistoryError) as exc_info:
+                await ProvinceService.remove_retired(
+                    session, [1007, 1008], history_ids=history
+                )
+            assert exc_info.value.details["province_ids"] == [1008]
+            await session.rollback()
+
+            # The clean one alone deletes fine; the journal row and the
+            # provinces row of 1008 are untouched.
+            result = await ProvinceService.remove_retired(
+                session,
+                [1007],
+                history_ids=await province_ids_with_journal(
+                    session, [1007]
+                ),
+            )
+            assert result.removed == [1007]
+            await session.commit()
+
+        async with pg_db() as session:
+            ids = (
+                await session.execute(select(Province.id))
+            ).scalars().all()
+            assert 1007 not in ids
+            assert 1008 in ids
+            count = await session.execute(
+                select(func.count())
+                .select_from(MapOwnershipLog)
+                .where(MapOwnershipLog.province_id == 1008)
+            )
+            assert count.scalar_one() == 1
+
+    @pytest.mark.asyncio
+    async def test_owned_retired_row_is_fatal(
+        self, pg_db, flat_map_service, map_hooks
+    ):
+        async with pg_db() as session:
+            await sync_map_nodes(session, flat_map_service)
+            player = Player(vk_user_id=992001)
+            session.add(player)
+            await session.flush()
+            await _set_turn(session, 0)
+            nation = await NationService.create(
+                session,
+                owner_player_id=player.id,
+                name="Retired PG",
+                color_hex="#0D0E0F",
+                province_ids=[1004],
+                config=CORE_CONFIG,
+                **VALID_PROFILE,
+            )
+            await session.commit()
+
+        async with pg_db() as session:
+            with pytest.raises(RetiredProvinceOwnedError) as exc_info:
+                await ProvinceService.remove_retired(session, [1004])
+            assert exc_info.value.code == "RETIRED_PROVINCE_OWNED"
+            assert "1004" in exc_info.value.message
+            assert "Retired PG" in exc_info.value.message
+            await session.rollback()
+
+            row = await session.get(Province, 1004)
+            assert row.nation_id == nation.id
