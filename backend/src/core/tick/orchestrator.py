@@ -12,10 +12,14 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# PostgreSQL advisory-lock key serializing ticks across every process
+# that shares the database ('GOLIATH' as ASCII hex). Must fit bigint.
+TICK_ADVISORY_LOCK_KEY = 0x474F4C49415448
 
 
 class TickPhase(enum.IntEnum):
@@ -26,6 +30,20 @@ class TickPhase(enum.IntEnum):
     PHASE_3_CONSUMPTION = 300
     PHASE_4_RESOLVE = 400
     PHASE_5_EXPIRATION = 500
+
+
+class TickOutcome(enum.Enum):
+    """Result of a single run_tick call.
+
+    SKIPPED_* outcomes mean nothing was read or written beyond the lock
+    probes — in particular no tick_log row exists for a skipped attempt.
+    A failed tick is not an outcome: it still raises.
+    """
+
+    EXECUTED = "EXECUTED"
+    SKIPPED_LOCKED = "SKIPPED_LOCKED"
+    SKIPPED_NOT_DUE = "SKIPPED_NOT_DUE"
+    FAILED = "FAILED"
 
 
 class TickOrchestrator:
@@ -70,11 +88,28 @@ class TickOrchestrator:
         logger.info("Registered finalize callback")
     
     @classmethod
-    async def run_tick(cls, session: AsyncSession) -> None:
+    async def run_tick(
+        cls, session: AsyncSession, *, enforce_schedule: bool = False
+    ) -> TickOutcome:
         """
         Execute a complete game tick.
         
-        This method:
+        Before anything is read or written:
+        1. On PostgreSQL, take pg_try_advisory_xact_lock on
+           TICK_ADVISORY_LOCK_KEY inside the caller's transaction — a
+           second concurrent tick (overlapping deploy, admin manual run
+           racing the scheduler) gets SKIPPED_LOCKED instead of running
+           the phases a second time. The lock is transaction-scoped: the
+           caller's commit or the internal failure rollback releases it.
+           Skipped on SQLite (single-process test dialect).
+        2. Read game_clock.next_tick_at under SELECT ... FOR UPDATE so a
+           winner's committed schedule is visible to the loser. With
+           enforce_schedule=True a next_tick_at still in the future means
+           the slot was already served — SKIPPED_NOT_DUE. The manual path
+           (enforce_schedule=False) skips only this re-check, not the
+           advisory lock.
+        
+        An executed tick then:
         1. Iterates through all TickPhase values in enum order
         2. Executes all handlers registered for each phase
         3. Calls finalize_tick() to increment the turn counter
@@ -82,16 +117,53 @@ class TickOrchestrator:
         The entire operation is atomic - if any handler raises an exception,
         the transaction is rolled back and current_turn remains unchanged.
         On failure the session's transaction is rolled back inside this
-        method (releasing the write lock) so the FAILED row can be recorded
-        on a separate connection; callers passing an already-begun session
-        should treat a raised exception as "the tick transaction was
-        rolled back" and may still commit unrelated work afterwards.
+        method (releasing the write lock and the advisory lock) so the
+        FAILED row can be recorded on a separate connection; callers
+        passing an already-begun session should treat a raised exception
+        as "the tick transaction was rolled back" and may still commit
+        unrelated work afterwards.
         
         Args:
             session: The async session to use for the tick transaction.
                     This session is used for all phase handlers and finalize_tick.
+            enforce_schedule: When True, skip the tick if game_clock says
+                    the slot is not yet due (scheduler path). When False
+                    (manual admin run) always proceed once the lock is held.
+        
+        Returns:
+            TickOutcome.EXECUTED, SKIPPED_LOCKED or SKIPPED_NOT_DUE.
+            Failures raise as before.
         """
         from modules._00_core.models import GameClock, TickLog, TickLogStatus
+        
+        # 1. Cross-process tick mutex — the very first statement, before
+        # any read or the RUNNING row (a loser must leave no trace).
+        if session.bind.dialect.name == "postgresql":
+            lock_result = await session.execute(
+                text("SELECT pg_try_advisory_xact_lock(:key)"),
+                {"key": TICK_ADVISORY_LOCK_KEY},
+            )
+            if not lock_result.scalar_one():
+                logger.info("Tick skipped: advisory lock already held")
+                return TickOutcome.SKIPPED_LOCKED
+        
+        # 2. Lock the clock row for the whole tick transaction and, for
+        # the automatic path, re-check the schedule under that lock.
+        clock_row = await session.execute(
+            select(GameClock.next_tick_at)
+            .where(GameClock.id == 1)
+            .with_for_update()
+        )
+        next_tick_at = clock_row.scalar_one()
+        if enforce_schedule:
+            # SQLite returns naive datetimes even for timezone=True columns.
+            if next_tick_at.tzinfo is None:
+                next_tick_at = next_tick_at.replace(tzinfo=timezone.utc)
+            if next_tick_at > datetime.now(timezone.utc):
+                logger.info(
+                    "Tick skipped: not due until %s", next_tick_at
+                )
+                return TickOutcome.SKIPPED_NOT_DUE
         
         # Get the current turn number before starting
         clock_result = await session.execute(
@@ -143,6 +215,7 @@ class TickOrchestrator:
             )
             
             logger.info(f"Tick {next_turn} completed successfully")
+            return TickOutcome.EXECUTED
             
         except Exception as e:
             # The caller owns the commit boundary, but the rollback must

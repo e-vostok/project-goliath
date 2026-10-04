@@ -47,6 +47,7 @@ preview:
 # MP-3: допуски упрощения контуров (суша — по узлам, моря — единым покрытием).
 simplify:
   tolerance: 0.03               # суша и outside; допустимо 0.0..0.2
+  small_part_factor: 0.012      # часть суши: tol = min(tolerance, factor·√area); 0.0..0.2
   sea_tolerance: 0.3            # морские зоны; допустимо 0.05..1.0
 
 # MP-3: ожидаемый корневой viewBox исходного SVG (расхождение — VIEWBOX_MISMATCH).

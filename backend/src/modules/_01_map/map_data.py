@@ -91,6 +91,9 @@ class MapData:
         geometry:         the validated ``Geometry`` model.
         warnings:         non-fatal notes collected during loading
                           (e.g. ids.lock entries with no manifest node).
+        retired_ids:      ids in ``ids.lock.json`` with no manifest node —
+                          the retired-node set INV-M5 synchronisation
+                          removes from ``provinces`` at startup (1.9).
     """
 
     nodes: Mapping[int, MapNode]
@@ -102,6 +105,7 @@ class MapData:
     manifest: Manifest
     geometry: Geometry
     warnings: tuple[str, ...]
+    retired_ids: tuple[int, ...] = ()
 
     @staticmethod
     def other_end(edge: MapEdge, node_id: int) -> int:

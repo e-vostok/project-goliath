@@ -82,6 +82,27 @@ async def clear_all(session: AsyncSession) -> None:
     await session.execute(delete(MapOwnershipLog))
 
 
+async def province_ids_with_journal(
+    session: AsyncSession, province_ids: Iterable[int]
+) -> set[int]:
+    """
+    Which of ``province_ids`` have at least one journal row.
+
+    Read-only probe used by startup synchronisation (INV-M5, 1.9): a
+    retired province row carrying journal history must not be deleted —
+    the FK forbids it on PostgreSQL and would orphan append-only history.
+    """
+    ids = list(province_ids)
+    if not ids:
+        return set()
+    result = await session.execute(
+        select(MapOwnershipLog.province_id)
+        .where(MapOwnershipLog.province_id.in_(ids))
+        .distinct()
+    )
+    return {row[0] for row in result.all()}
+
+
 async def owners_at_turn(
     session: AsyncSession, turn: int
 ) -> dict[int, OwnerAtTurn]:

@@ -15,11 +15,16 @@ import time
 import pytest
 from sqlalchemy import func, select
 
+from modules._00_core.exceptions import (
+    RetiredProvinceHistoryError,
+    RetiredProvinceOwnedError,
+)
 from modules._00_core.models import Province
 from modules._00_core.service import (
     EnsureNodesResult,
     NodeSpec,
     ProvinceService,
+    RetiredRemovalResult,
 )
 from tests.fixtures.provinces import make_land_province, make_sea_province
 
@@ -27,6 +32,41 @@ from tests.fixtures.provinces import make_land_province, make_sea_province
 async def _province_count(session) -> int:
     result = await session.execute(select(func.count()).select_from(Province))
     return result.scalar_one()
+
+
+async def _province_ids(session) -> list[int]:
+    result = await session.execute(select(Province.id))
+    return sorted(result.scalars().all())
+
+
+async def _make_owned_province(
+    session, province_id: int, nation_name: str = "Owning Nation"
+) -> None:
+    """A player, their nation, and a LAND province owned by it."""
+    import uuid as _uuid
+    from datetime import datetime, timezone
+
+    from modules._00_core.models import Nation, Player
+    from tests.fixtures.profile import VALID_PROFILE
+
+    player = Player(
+        id=str(_uuid.uuid4()),
+        vk_user_id=777001,
+        created_at=datetime.now(timezone.utc),
+    )
+    nation = Nation(
+        id=str(_uuid.uuid4()),
+        owner_player_id=player.id,
+        name=nation_name,
+        color_hex="#101010",
+        created_at=datetime.now(timezone.utc),
+        **VALID_PROFILE,
+    )
+    session.add_all([player, nation])
+    await session.flush()
+    province = await make_land_province(session, id=province_id)
+    province.nation_id = nation.id
+    await session.flush()
 
 
 async def _kind_of(session, province_id: int) -> str:
@@ -241,3 +281,95 @@ class TestEnsureNodesPerformance:
 
         # 1 SELECT + 1 bulk INSERT — nowhere near 1123 round trips.
         assert len(statements) <= 5
+
+
+class TestRemoveRetired:
+    """
+    ProvinceService.remove_retired — INV-M5 retired-node removal (1.9).
+
+    ``retired_ids`` are lock ids absent from the manifest; the caller
+    (01_map startup) probes journal history itself and passes it via
+    ``history_ids``. The method never commits.
+    """
+
+    async def test_empty_retired_set_is_noop(self, test_db_session):
+        result = await ProvinceService.remove_retired(test_db_session, [])
+
+        assert result == RetiredRemovalResult()
+        assert await _province_count(test_db_session) == 0
+
+    async def test_absent_ids_are_reported_not_inserted(
+        self, test_db_session
+    ):
+        result = await ProvinceService.remove_retired(
+            test_db_session, [1001, 1002]
+        )
+
+        assert result.removed == []
+        assert result.absent == [1001, 1002]
+        assert await _province_count(test_db_session) == 0
+
+    async def test_unowned_rows_are_deleted(self, test_db_session):
+        await make_land_province(test_db_session, id=1001)
+        await make_sea_province(test_db_session, id=2001)
+        await make_land_province(test_db_session, id=1002)
+
+        result = await ProvinceService.remove_retired(
+            test_db_session, [1001, 2001, 3000]
+        )
+
+        assert result.removed == [1001, 2001]
+        assert result.absent == [3000]
+        assert await _province_ids(test_db_session) == [1002]
+
+    async def test_owned_row_is_fatal_with_nation_list(
+        self, test_db_session
+    ):
+        await _make_owned_province(test_db_session, 1001)
+
+        with pytest.raises(RetiredProvinceOwnedError) as exc_info:
+            await ProvinceService.remove_retired(test_db_session, [1001])
+
+        assert exc_info.value.code == "RETIRED_PROVINCE_OWNED"
+        assert "1001" in exc_info.value.message
+        assert "Owning Nation" in exc_info.value.message
+        # The row survives — the caller's transaction is untouched.
+        assert await _province_ids(test_db_session) == [1001]
+
+    async def test_owned_error_wins_over_history(
+        self, test_db_session
+    ):
+        """An owned retired row reports ownership, not journal history —
+        the spec's error takes precedence."""
+        await _make_owned_province(test_db_session, 1001)
+
+        with pytest.raises(RetiredProvinceOwnedError):
+            await ProvinceService.remove_retired(
+                test_db_session, [1001], history_ids={1001}
+            )
+
+    async def test_history_ids_block_unowned_delete(
+        self, test_db_session
+    ):
+        """An unowned retired row carrying journal history aborts the
+        boot — deleting it would violate the FK or orphan the journal."""
+        await make_land_province(test_db_session, id=1001)
+
+        with pytest.raises(RetiredProvinceHistoryError) as exc_info:
+            await ProvinceService.remove_retired(
+                test_db_session, [1001], history_ids={1001}
+            )
+
+        assert exc_info.value.code == "RETIRED_PROVINCE_HISTORY"
+        assert exc_info.value.details["province_ids"] == [1001]
+        assert await _province_ids(test_db_session) == [1001]
+
+    async def test_history_for_absent_id_is_ignored(
+        self, test_db_session
+    ):
+        result = await ProvinceService.remove_retired(
+            test_db_session, [1001], history_ids={1001}
+        )
+
+        assert result.removed == []
+        assert result.absent == [1001]

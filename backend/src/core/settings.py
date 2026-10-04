@@ -59,6 +59,48 @@ def resolve_database_url(env_path: Path | None = None) -> str:
     )
 
 
+def to_sync_database_url(url: str) -> str:
+    """
+    Convert an async SQLAlchemy URL into its synchronous counterpart.
+
+    Alembic's env.py runs synchronous ``create_engine``; the
+    application's ``postgresql+asyncpg://`` and ``sqlite+aiosqlite://``
+    forms must not reach it raw. Textual suffix-stripping (the old env.py
+    approach) produced a bare ``postgresql://`` whose resolved driver is
+    whatever the environment happens to install — the production URL
+    must land on the driver that is actually declared: psycopg2.
+
+    Rules:
+    - any ``postgresql`` backend (+asyncpg, +psycopg, +psycopg2, bare,
+      pg8000, aiopg, …) normalises to ``postgresql+psycopg2``;
+    - ``sqlite+aiosqlite`` → ``sqlite``;
+    - legacy async suffixes on other backends (+asyncmy, +aiomysql,
+      +aiopg) strip to the bare backend, as the old env.py did;
+    - anything else is returned unchanged.
+
+    Components are preserved verbatim — username, percent-encoded
+    password, host, port, database, query — via make_url().set().
+    SQLite URLs swap the driver textually so ``:memory:`` and ``./``
+    paths can never come out percent-encoded.
+    """
+    parsed = make_url(url)
+    backend = parsed.get_backend_name()
+    if backend == "postgresql":
+        if parsed.drivername == "postgresql+psycopg2":
+            return url
+        return parsed.set(
+            drivername="postgresql+psycopg2"
+        ).render_as_string(hide_password=False)
+    if parsed.drivername == "sqlite+aiosqlite":
+        return url.replace("+aiosqlite", "", 1)
+    for suffix in ("+asyncmy", "+aiomysql", "+aiopg"):
+        if parsed.drivername.endswith(suffix):
+            return parsed.set(
+                drivername=backend
+            ).render_as_string(hide_password=False)
+    return url
+
+
 def format_database_target(url: str) -> str:
     """
     Render a database URL for logs with the password masked.

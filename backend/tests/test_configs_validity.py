@@ -26,6 +26,8 @@ def _base_config() -> dict:
             "tick_timezone": "Europe/Moscow",
             "tick_interval_hours": 24,
             "retry_delay_seconds": 60,
+            "heartbeat_interval_seconds": 30,
+            "health_max_heartbeat_age_seconds": 180,
         },
         "auth": {
             "vk_ts_freshness_window_minutes": 30,
@@ -75,6 +77,8 @@ def test_valid_config_loads():
     assert config.tick.tick_timezone == "Europe/Moscow"
     assert config.tick.tick_interval_hours == 24
     assert config.tick.retry_delay_seconds == 60
+    assert config.tick.heartbeat_interval_seconds == 30
+    assert config.tick.health_max_heartbeat_age_seconds == 180
     assert config.auth.vk_ts_freshness_window_minutes == 30
     assert config.auth.jwt_ttl_minutes == 60
     assert config.nation.nation_name_min_length == 3
@@ -99,7 +103,9 @@ def test_map_config_loads():
     config = MapConfig.from_yaml(MapConfig.get_default_config_path())
 
     assert config.big_window.enabled is True
-    assert config.view.zoom_min < config.view.zoom_max
+    assert config.view.frame.width > 0
+    assert config.view.frame.height > 0
+    assert config.view.zoom_max > 1.0
 
 
 def test_invalid_tick_interval_too_high(tmp_path):
@@ -186,6 +192,63 @@ def test_invalid_retry_delay_too_low(tmp_path):
 
     assert "retry_delay_seconds" in str(exc_info.value)
     assert "greater than or equal to 1" in str(exc_info.value)
+
+
+def test_invalid_heartbeat_interval_too_high(tmp_path):
+    """Test that heartbeat_interval_seconds > 300 raises ValidationError."""
+    path = _write_config(tmp_path, {"tick": {"heartbeat_interval_seconds": 301}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "heartbeat_interval_seconds" in str(exc_info.value)
+    assert "less than or equal to 300" in str(exc_info.value)
+
+
+def test_invalid_heartbeat_interval_too_low(tmp_path):
+    """Test that heartbeat_interval_seconds < 1 raises ValidationError."""
+    path = _write_config(tmp_path, {"tick": {"heartbeat_interval_seconds": 0}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "heartbeat_interval_seconds" in str(exc_info.value)
+    assert "greater than or equal to 1" in str(exc_info.value)
+
+
+def test_health_max_heartbeat_age_out_of_bounds_rejected(tmp_path):
+    """health_max_heartbeat_age_seconds outside [60, 3600] is rejected."""
+    for bad_value in (59, 3601):
+        path = _write_config(
+            tmp_path, {"tick": {"health_max_heartbeat_age_seconds": bad_value}}
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            CoreConfig.from_yaml(path)
+        assert "health_max_heartbeat_age_seconds" in str(exc_info.value)
+
+
+def test_health_max_heartbeat_age_must_exceed_retry_plus_interval(tmp_path):
+    """The stale threshold must exceed retry_delay + heartbeat_interval.
+
+    During a DB outage the heartbeat can lag by ~retry_delay_seconds, so
+    a threshold at or below that sum would flap /api/v1/health to
+    "stale" on a recoverable transient."""
+    # 60 + 30 = 90; exactly at the sum is already too tight.
+    path = _write_config(
+        tmp_path, {"tick": {"health_max_heartbeat_age_seconds": 90}}
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+    assert "health_max_heartbeat_age_seconds" in str(exc_info.value)
+
+    # One second above the sum is the tightest valid value.
+    path = _write_config(
+        tmp_path, {"tick": {"health_max_heartbeat_age_seconds": 91}}
+    )
+    assert (
+        CoreConfig.from_yaml(path).tick.health_max_heartbeat_age_seconds
+        == 91
+    )
 
 
 def test_missing_required_field(tmp_path):

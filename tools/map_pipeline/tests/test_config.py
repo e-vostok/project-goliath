@@ -35,6 +35,7 @@ def test_committed_config_validates():
     assert cfg.preview.colors.border == "#3A3A3A"
     assert cfg.preview.colors.sea_border == "#2C4A62"
     assert cfg.simplify.tolerance == 0.03
+    assert cfg.simplify.small_part_factor == 0.012
     assert cfg.simplify.sea_tolerance == 0.3
     assert cfg.view.width == 1200
     assert cfg.view.height == 680

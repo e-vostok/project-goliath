@@ -2,7 +2,8 @@
  * MapView — the SVG map surface (Spec Part 5, gestures per 3.8).
  *
  * Performance contract (1 123 paths, ~1.9 MB geometry):
- * - Layers bottom→top: background rect (inland_water) · `outside` path ·
+ * - Layers bottom→top: background rect (inland_water) · `sea_water`
+ *   bays path (sea fill, Spec 1.9 step 5a) · `outside` path ·
  *   ONE <g> with all node paths (single delegated mouse handling,
  *   resolved via `data-id`, no per-path listeners) · labels · overlays.
  * - Pan/zoom live in refs, never in React state; the transform is
@@ -50,12 +51,13 @@ import { visibleLabelNodes } from '../lib/labels';
 import {
   bboxCenter,
   centerOn,
-  clampPan,
+  clampOffset,
   fitBBox,
-  fitScale,
-  fitView,
+  initialTransform,
+  minScale,
   rescaleOnResize,
   scaleBounds,
+  zoomAt,
   type BBox,
   type Point,
   type Size,
@@ -141,8 +143,8 @@ export function MapView(props: MapViewProps) {
     [manifest],
   );
   const owners = useMemo(
-    () => buildOwnerMap(props.state ?? null),
-    [props.state],
+    () => buildOwnerMap(props.state ?? null, nodesById),
+    [props.state, nodesById],
   );
 
   /* ------------------------------------------------ transform plumbing */
@@ -170,14 +172,14 @@ export function MapView(props: MapViewProps) {
   }, [applyTransform]);
 
   const bounds = useCallback((): [number, number] => {
-    const sFit = fitScale(manifest.playable_bbox, viewport);
-    return scaleBounds(sFit, rules.zoom_min, rules.zoom_max);
-  }, [manifest.playable_bbox, viewport, rules.zoom_min, rules.zoom_max]);
+    const sMin = minScale(rules.frame, viewport);
+    return scaleBounds(sMin, rules.zoom_max);
+  }, [rules.frame, viewport, rules.zoom_max]);
 
   const clamped = useCallback(
     (v: ViewTransform): ViewTransform =>
-      clampPan(v, manifest.playable_bbox, viewport, rules.pan_margin_fraction),
-    [manifest.playable_bbox, viewport, rules.pan_margin_fraction],
+      clampOffset(v, rules.frame, viewport, rules.pan_margin_fraction),
+    [rules.frame, viewport, rules.pan_margin_fraction],
   );
 
   const setLabelsVisible = useCallback((visible: boolean) => {
@@ -188,7 +190,7 @@ export function MapView(props: MapViewProps) {
 
   /* ------------------------------------------------------ viewport fit */
 
-  // Measure the container; fit the playable area on first layout and keep
+  // Measure the container; centre the frame on first layout and keep
   // the view centre on every later resize (incl. fullscreen switches).
   useEffect(() => {
     const el = containerRef.current;
@@ -217,10 +219,10 @@ export function MapView(props: MapViewProps) {
     prevViewport.current = viewport;
     const next =
       prev.width === 0 || viewRef.current === null
-        ? fitView(manifest.playable_bbox, viewport)
+        ? initialTransform(rules.frame, viewport)
         : rescaleOnResize(
             viewRef.current,
-            manifest.playable_bbox,
+            rules.frame,
             prev,
             viewport,
           );
@@ -236,7 +238,7 @@ export function MapView(props: MapViewProps) {
     }
     const [sMin, sMax] = bounds();
     const current =
-      viewRef.current ?? fitView(manifest.playable_bbox, viewport);
+      viewRef.current ?? initialTransform(rules.frame, viewport);
     const next =
       props.focus.mode === 'fit'
         ? fitBBox(props.focus.bbox, viewport, FOCUS_BBOX_MARGIN, sMin, sMax)
@@ -290,11 +292,7 @@ export function MapView(props: MapViewProps) {
         return;
       }
       beginGesture();
-      viewRef.current = clamped({
-        s: nextScale,
-        tx: c.x - (c.x - viewRef.current.tx) * (nextScale / viewRef.current.s),
-        ty: c.y - (c.y - viewRef.current.ty) * (nextScale / viewRef.current.s),
-      });
+      viewRef.current = clamped(zoomAt(viewRef.current, c, nextScale));
       applyTransform();
       endGestureSoon();
     };
@@ -518,6 +516,14 @@ export function MapView(props: MapViewProps) {
             height={manifest.view_box[3]}
             fill={colors.inland_water}
           />
+          {geometry.sea_water !== '' && (
+            <path
+              data-layer="sea-water"
+              d={geometry.sea_water}
+              fill={colors.sea}
+              pointerEvents="none"
+            />
+          )}
           <path d={geometry.outside} fill={colors.outside} />
           <g>{nodePaths}</g>
           <g ref={labelsGRef} pointerEvents="none">

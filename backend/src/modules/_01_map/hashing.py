@@ -80,14 +80,20 @@ def input_sha256(path: Path, rule: str) -> str:
     raise ValueError(f"unknown input hash rule {rule!r}")
 
 
-def geometry_version(outside: str, paths: Mapping[str, str]) -> str:
+def geometry_version(
+    outside: str, paths: Mapping[str, str], sea_water: str
+) -> str:
     """
     Spec 3.6: ``sha256(canon(G))[:12]`` where ``canon`` is the JSON of
-    ``{"outside": ..., "paths": ...}`` (no ``version`` field) with sorted
-    keys, tight ``,``/``:`` separators, encoded UTF-8.
+    ``{"outside": ..., "paths": ..., "sea_water": ...}`` (no ``version``
+    field) with sorted keys, tight ``,``/``:`` separators, encoded UTF-8.
     """
     canon = json.dumps(
-        {"outside": outside, "paths": dict(paths)},
+        {
+            "outside": outside,
+            "paths": dict(paths),
+            "sea_water": sea_water,
+        },
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,

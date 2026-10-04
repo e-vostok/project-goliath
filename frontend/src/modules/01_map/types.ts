@@ -40,7 +40,8 @@ export interface MapRefreshRulesDTO {
 }
 
 export interface MapViewRulesDTO {
-  zoom_min: number;
+  /** [x, y, width, height] in view_box units — Spec 3.8 zoom-out frame. */
+  frame: [number, number, number, number];
   zoom_max: number;
   pan_margin_fraction: number;
   label_min_width_px: number;
@@ -67,6 +68,8 @@ export interface MapGeometryDTO {
   version: string;
   paths: Record<number, string>;
   outside: string;
+  /** Compound path of bays/fjords drawn in `colors.sea` (Spec 1.9, 5a). */
+  sea_water: string;
 }
 
 export interface MapNationDTO {

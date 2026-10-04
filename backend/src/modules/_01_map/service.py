@@ -269,6 +269,7 @@ from modules._01_map.ownership_service import (  # noqa: E402
     OwnerAtTurn,
     clear_all,
     owners_at_turn,
+    province_ids_with_journal,
     record_changes,
     records_for_province,
 )
@@ -283,6 +284,7 @@ __all__ = [
     "get_map_service",
     "init_map_service",
     "owners_at_turn",
+    "province_ids_with_journal",
     "record_changes",
     "records_for_province",
 ]

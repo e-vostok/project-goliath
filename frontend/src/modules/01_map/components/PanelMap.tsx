@@ -71,8 +71,8 @@ export function PanelMap() {
     [manifest],
   );
   const owners = useMemo(
-    () => buildOwnerMap(mapState.state),
-    [mapState.state],
+    () => buildOwnerMap(mapState.state, nodesById),
+    [mapState.state, nodesById],
   );
 
   const selectedNode =
@@ -347,7 +347,15 @@ export function PanelMap() {
       >
         <span>{statusParts.join(' · ')}</span>
         {colors &&
-          LEGEND.map((item) => (
+          // «Озёра» is shown only while lakes differ from the sea
+          // (normalised HEX, case-insensitive) — equal colours would
+          // describe one colour twice.
+          LEGEND.filter(
+            (item) =>
+              item.key !== 'inland_water' ||
+              colors.inland_water.toUpperCase() !==
+                colors.sea.toUpperCase(),
+          ).map((item) => (
             <span
               key={item.key}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
