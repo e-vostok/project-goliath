@@ -94,6 +94,10 @@ export function zoomAt(
   };
 }
 
+/** Below this range width (px) an axis counts as locked — guards
+ *  against a hairline [lo, hi] band left by float rounding at μ = 0. */
+const LOCK_EPSILON = 1e-6;
+
 /**
  * Pan clamp (Spec 3.8), per axis: if the visible length exceeds the
  * frame length on an axis, the map is centred on that axis and cannot
@@ -113,12 +117,18 @@ export function clampOffset(
     fLen: number,
     mu: number,
   ): number => {
+    const centre = (vLen - view.s * (2 * fPos + fLen)) / 2;
     if (vLen > view.s * fLen) {
       // Viewport longer than the frame on this axis — centre, no pan.
-      return (vLen - view.s * (2 * fPos + fLen)) / 2;
+      return centre;
     }
     const lo = vLen - view.s * (fPos + fLen) - mu * vLen;
     const hi = -view.s * fPos + mu * vLen;
+    if (hi - lo < LOCK_EPSILON) {
+      // Degenerate band (μ = 0 at z = 1, or rounding dust): lock the
+      // axis on the centred value so the map cannot creep.
+      return centre;
+    }
     return Math.min(hi, Math.max(lo, t));
   };
   return {

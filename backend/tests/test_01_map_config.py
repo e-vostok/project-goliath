@@ -33,7 +33,7 @@ def _base_config() -> dict:
                 "height": 217.3,
             },
             "zoom_max": 16.0,
-            "pan_margin_fraction": 0.1,
+            "pan_margin_fraction": 0.0,
             "label_min_width_px": 48,
             "search_min_chars": 2,
             "search_max_results": 20,
