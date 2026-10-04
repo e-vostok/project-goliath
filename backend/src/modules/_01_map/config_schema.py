@@ -28,16 +28,35 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class FrameConfig(_Strict):
+    """Рамка предела отдаления в единицах ``view_box`` (Spec 3.8)."""
+
+    x: float = Field(
+        ge=0.0,
+        description="Левый край рамки, ед. view_box.",
+    )
+    y: float = Field(
+        ge=0.0,
+        description="Верхний край рамки, ед. view_box.",
+    )
+    width: float = Field(
+        gt=0.0,
+        description="Ширина рамки, ед. view_box.",
+    )
+    height: float = Field(
+        gt=0.0,
+        description="Высота рамки, ед. view_box.",
+    )
+
+
 class ViewSettings(_Strict):
-    zoom_min: float = Field(
-        ge=0.5,
-        le=1.0,
-        description="Минимальный масштаб; 1.0 = карта целиком вписана в окно.",
+    frame: FrameConfig = Field(
+        description="Рамка вида при минимальном масштабе; целиком внутри view_box манифеста (проверяет загрузчик).",
     )
     zoom_max: float = Field(
         ge=2.0,
         le=40.0,
-        description="Максимальный масштаб относительно вписанного вида.",
+        description="Максимальный масштаб относительно минимального (вид рамки по высоте окна).",
     )
     pan_margin_fraction: float = Field(
         ge=0.0,
@@ -59,12 +78,6 @@ class ViewSettings(_Strict):
         le=100,
         description="Максимум результатов в списке поиска.",
     )
-
-    @model_validator(mode="after")
-    def check_zoom_order(self) -> Self:
-        if self.zoom_min >= self.zoom_max:
-            raise ValueError("view.zoom_min must be less than view.zoom_max")
-        return self
 
 
 class RefreshSettings(_Strict):

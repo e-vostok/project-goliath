@@ -159,11 +159,15 @@ async def _auth_headers(client, vk_user_id: int) -> dict[str, str]:
 
 
 @pytest_asyncio.fixture
-async def live_client(tmp_path, monkeypatch, extension_snapshot):
+async def live_client(
+    tmp_path, monkeypatch, extension_snapshot, mini_map_config
+):
     """
     The real ASGI lifespan on a migrated tmp SQLite file — the
     production engine path, no get_session override. Admin allowlist
     enabled so the tick can be advanced via POST /admin/tick/run.
+    ``mini_map_config`` swaps view.frame for a rect inside the mini
+    fixture's view_box.
     """
     db_file = tmp_path / "live.db"
     monkeypatch.setenv(
@@ -261,7 +265,12 @@ class TestManifest:
         )
         config = map_config()
         rules = resp.json()["rules"]
-        assert rules["zoom_min"] == config.view.zoom_min
+        assert rules["frame"] == [
+            config.view.frame.x,
+            config.view.frame.y,
+            config.view.frame.width,
+            config.view.frame.height,
+        ]
         assert rules["zoom_max"] == config.view.zoom_max
         assert rules["pan_margin_fraction"] == config.view.pan_margin_fraction
         assert rules["label_min_width_px"] == config.view.label_min_width_px

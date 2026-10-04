@@ -62,8 +62,9 @@ async def booted_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def map_env(monkeypatch, extension_snapshot):
-    """Point MAP_DATA_DIR at the mini fixture; restore registries."""
+def map_env(monkeypatch, extension_snapshot, mini_map_config):
+    """Point MAP_DATA_DIR at the mini fixture (and the config frame at
+    the mini view_box via ``mini_map_config``); restore registries."""
     monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
     yield
 
@@ -120,7 +121,7 @@ class TestHappyPath:
 
     @pytest.mark.asyncio
     async def test_lifespan_boots_with_hooks_registered(
-        self, tmp_path, monkeypatch, extension_snapshot
+        self, tmp_path, monkeypatch, extension_snapshot, mini_map_config
     ):
         """The real ASGI lifespan: provinces synced, service installed."""
         db_url = f"sqlite+aiosqlite:///{(tmp_path / 'live.db').as_posix()}"
@@ -183,7 +184,8 @@ class TestInvM5:
 class TestMapDataFailure:
     @pytest.mark.asyncio
     async def test_corrupted_map_file_stops_startup(
-        self, tmp_path, monkeypatch, booted_db, extension_snapshot
+        self, tmp_path, monkeypatch, booted_db, extension_snapshot,
+        mini_map_config
     ):
         """Touching an input file breaks inputs_sha256 -> INV_M10."""
         from tests.modules._01_map.conftest import copy_map_mini

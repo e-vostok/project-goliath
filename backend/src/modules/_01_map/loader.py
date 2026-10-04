@@ -15,7 +15,8 @@ Check order (the first failure wins):
 3. JSON parse + strict schema validation of ``manifest.json``,
    ``geometry.json`` and ``ids.lock.json`` — ``SCHEMA_INVALID``.
    ``boundary.yaml``/``overrides.yaml`` are never parsed by the server;
-   ``source/map.svg`` is only hashed.
+   ``source/map.svg`` is only hashed. Cross-rule (1.9): ``view.frame``
+   must lie entirely inside ``manifest.view_box`` — ``SCHEMA_INVALID``.
 4. ``limits.max_nodes`` / ``limits.max_edges_per_node`` —
    ``LIMIT_EXCEEDED``.
 5. INV-M1: manifest <-> ids.lock correspondence, key/id uniqueness,
@@ -157,6 +158,21 @@ def _load_json_model(data_dir: Path, rel: str, model):
             for e in exc.errors()
         )
         _fail(SCHEMA_INVALID, f"{rel} failed schema validation: {summary}")
+
+
+def _check_view_frame(manifest: Manifest, config: MapConfig) -> None:
+    """Cross-rule (Spec Part 4): ``view.frame`` must lie entirely inside
+    ``manifest.view_box`` — the zoom-out limit is measured against it."""
+    f = config.view.frame
+    vx0, vy0, vx1, vy1 = manifest.view_box
+    if f.x < vx0 or f.y < vy0 or f.x + f.width > vx1 or f.y + f.height > vy1:
+        _fail(
+            SCHEMA_INVALID,
+            f"configs/01_map.yaml view.frame (x={f.x}, y={f.y}, "
+            f"width={f.width}, height={f.height}) is not entirely inside "
+            f"manifest.view_box (x={vx0}, y={vy0}, width={vx1 - vx0}, "
+            f"height={vy1 - vy0})",
+        )
 
 
 def _check_limits(manifest: Manifest, config: MapConfig) -> None:
@@ -468,6 +484,7 @@ def load_map_data(data_dir: Path, config: MapConfig) -> MapData:
     manifest = _load_json_model(data_dir, _MANIFEST, Manifest)
     geometry = _load_json_model(data_dir, _GEOMETRY, Geometry)
     lock = _load_json_model(data_dir, _IDS_LOCK, IdsLock)
+    _check_view_frame(manifest, config)
 
     _check_limits(manifest, config)
     warnings = _check_inv_m1(manifest, lock)

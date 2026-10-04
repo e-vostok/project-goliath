@@ -80,7 +80,12 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
     """MapViewRulesDTO straight from MapConfig — no literals."""
     config = service._config  # same package: the service's own config
     return MapViewRulesDTO(
-        zoom_min=config.view.zoom_min,
+        frame=[
+            config.view.frame.x,
+            config.view.frame.y,
+            config.view.frame.width,
+            config.view.frame.height,
+        ],
         zoom_max=config.view.zoom_max,
         pan_margin_fraction=config.view.pan_margin_fraction,
         label_min_width_px=config.view.label_min_width_px,

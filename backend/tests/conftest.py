@@ -68,3 +68,23 @@ async def test_db_session(test_db_engine: Any) -> AsyncGenerator[AsyncSession, N
 def anyio_backend() -> str:
     """Configure pytest-asyncio to use asyncio backend."""
     return "asyncio"
+
+
+@pytest.fixture
+def mini_map_config(monkeypatch):
+    """
+    For tests that boot ``startup_map()`` / the ASGI lifespan against
+    ``MAP_DATA_DIR=tests/fixtures/map_mini``: ``MapConfig.from_yaml``
+    returns the real ``configs/01_map.yaml`` with ``view.frame`` swapped
+    for a rect inside the mini fixture's view_box (the real frame is
+    calibrated to the real map and would fail the loader's
+    frame-inside-view_box check there).
+    """
+    from modules._01_map.config_schema import MapConfig
+    from tests.modules._01_map.conftest import map_config
+
+    config = map_config()
+    monkeypatch.setattr(
+        MapConfig, "from_yaml", classmethod(lambda cls, path: config)
+    )
+    return config

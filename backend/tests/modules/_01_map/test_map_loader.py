@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from modules._01_map.config_schema import MapConfig
+from modules._01_map.config_schema import FrameConfig, MapConfig
 from modules._01_map.loader import (
     FILE_MISSING,
     INV_M1,
@@ -175,6 +175,31 @@ def test_malformed_lock_json(mini_dir):
 def test_wrong_lock_version(mini_dir):
     _mutate_lock(mini_dir, lambda d: d.update(version=2))
     _expect(mini_dir, SCHEMA_INVALID)
+
+
+def test_frame_outside_view_box_rejected(mini_dir):
+    """Cross-rule (Spec 1.9): ``view.frame`` must lie entirely inside
+    ``manifest.view_box`` — a config copy with the real map's frame
+    (519.1 × 221.3 over a 100 × 80 view_box) must fail startup."""
+    base = map_config()
+    config = base.model_copy(
+        update={
+            "view": base.view.model_copy(
+                update={
+                    "frame": FrameConfig(
+                        x=519.1, y=20.9, width=221.3, height=217.3
+                    )
+                }
+            )
+        }
+    )
+
+    err = _expect(mini_dir, SCHEMA_INVALID, config)
+
+    # The message must print both rectangles.
+    assert "view.frame" in str(err)
+    assert "view_box" in str(err)
+    assert "519.1" in str(err)
 
 
 def test_bad_node_key_charset(mini_dir):

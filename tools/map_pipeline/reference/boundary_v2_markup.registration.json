@@ -1,0 +1,19 @@
+{
+  "image_size": [
+    1328,
+    1304
+  ],
+  "scale": 6.0,
+  "offset": [
+    519.1248,
+    20.8812
+  ],
+  "iou": 0.9972,
+  "base_rect": {
+    "x": 519.1,
+    "y": 20.9,
+    "width": 221.3,
+    "height": 217.3
+  },
+  "_comment": "px -> base: base = offset + px / scale (scale px per base unit). base -> px: px = (base - offset) * scale. base_rect = the full image rectangle in base coordinates, rounded to 0.1 (units of manifest.view_box)."
+}

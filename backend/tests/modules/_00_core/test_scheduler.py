@@ -449,7 +449,7 @@ class TestLifespanWiring:
 
     @pytest.mark.asyncio
     async def test_scheduler_task_starts_and_cancels_cleanly(
-        self, tmp_path, monkeypatch
+        self, tmp_path, monkeypatch, mini_map_config
     ):
         db_url = f"sqlite+aiosqlite:///{(tmp_path / 'scheduler.db').as_posix()}"
         monkeypatch.setenv("DATABASE_URL", db_url)

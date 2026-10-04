@@ -125,7 +125,7 @@ def _async_url(url: str) -> str:
 
 
 @pytest_asyncio.fixture
-async def live_client(tmp_path, monkeypatch):
+async def live_client(tmp_path, monkeypatch, mini_map_config):
     """
     Serve the real app over its real lifespan against a migrated
     temporary database — the dedicated PostgreSQL test DB when

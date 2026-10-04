@@ -13,7 +13,8 @@ import type {
 } from '../types';
 
 export const MINI_RULES: MapViewRulesDTO = {
-  zoom_min: 1.0,
+  // A frame inside the mini view_box [0, 0, 100, 80].
+  frame: [10, 10, 60, 50],
   zoom_max: 8.0,
   pan_margin_fraction: 0.1,
   label_min_width_px: 40,

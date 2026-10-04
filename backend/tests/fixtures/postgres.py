@@ -243,7 +243,7 @@ def pg_clean(pg_schema: str) -> None:
 
 @pytest_asyncio.fixture
 async def pg_live_client(
-    pg_url: str, pg_clean: None, monkeypatch
+    pg_url: str, pg_clean: None, monkeypatch, mini_map_config
 ) -> AsyncGenerator[AsyncClient, None]:
     """
     The real app over its real ASGI lifespan on the migrated PostgreSQL
