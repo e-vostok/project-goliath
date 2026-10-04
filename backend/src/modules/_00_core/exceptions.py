@@ -118,6 +118,54 @@ class HistoryUrlInvalidError(CoreDomainError):
         )
 
 
+class RetiredProvinceOwnedError(CoreDomainError):
+    """A retired map node still belongs to a nation (INV-M5, Spec 1.9).
+
+    Raised by ``ProvinceService.remove_retired`` — the startup aborts and
+    the message names the provinces and their nations so the world can be
+    reset or the nations deleted first.
+    """
+
+    def __init__(self, owned: list[tuple[int, str, str | None]]):
+        listed = ", ".join(
+            f"province {pid} -> nation {nid} ({name})"
+            for pid, nid, name in owned
+        )
+        super().__init__(
+            f"Retired map nodes are still owned: {listed} — delete these "
+            "nations or reset the world first",
+            "RETIRED_PROVINCE_OWNED",
+            details={
+                "owned": [
+                    {
+                        "province_id": pid,
+                        "nation_id": nid,
+                        "nation_name": name,
+                    }
+                    for pid, nid, name in owned
+                ]
+            },
+        )
+
+
+class RetiredProvinceHistoryError(CoreDomainError):
+    """A retired map node still has ownership-journal rows (INV-M5, 1.9).
+
+    The journal is append-only history and must not be touched, and the
+    map_ownership_log -> provinces FK forbids deleting a referenced row.
+    The only safe resolution is a manual reconcile / world reset.
+    """
+
+    def __init__(self, province_ids: list[int]):
+        super().__init__(
+            f"Retired map nodes still carry ownership-journal history: "
+            f"{province_ids} — the journal is append-only, reconcile the "
+            "map data or reset the world",
+            "RETIRED_PROVINCE_HISTORY",
+            details={"province_ids": province_ids},
+        )
+
+
 class FrequencyCapExceededError(CoreDomainError):
     """Raised when an action frequency cap is exceeded."""
     

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.config_schema import CoreConfig
@@ -32,6 +32,8 @@ from modules._00_core.exceptions import (
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
     ProvinceTakenError,
+    RetiredProvinceHistoryError,
+    RetiredProvinceOwnedError,
 )
 from modules._00_core.models import (
     GameClock,
@@ -78,6 +80,14 @@ class EnsureNodesResult:
     added: list[int] = field(default_factory=list)
     kind_mismatch: list[int] = field(default_factory=list)
     extra_in_db: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RetiredRemovalResult:
+    """Outcome of ProvinceService.remove_retired (all lists sorted)."""
+
+    removed: list[int] = field(default_factory=list)
+    absent: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -156,6 +166,65 @@ class ProvinceService:
             added=added,
             kind_mismatch=kind_mismatch,
             extra_in_db=extra_in_db,
+        )
+
+    @staticmethod
+    async def remove_retired(
+        session: AsyncSession,
+        retired_ids: Sequence[int],
+        history_ids: Iterable[int] = frozenset(),
+    ) -> RetiredRemovalResult:
+        """
+        Delete the ``provinces`` rows of retired map nodes (INV-M5, 1.9).
+
+        ``retired_ids`` are ids present in ``ids.lock.json`` but absent
+        from ``manifest.json`` — nodes taken out of the game by the map
+        pipeline. A row that exists and is unowned is deleted; one that
+        is owned aborts startup with :class:`RetiredProvinceOwnedError`
+        naming the provinces and their nations.
+
+        ``history_ids`` is the subset of ``retired_ids`` that still carry
+        ``map_ownership_log`` rows — probed by the caller through the
+        journal's own module (data sovereignty). Deleting such a row
+        would either violate the FK (PostgreSQL) or orphan the append-only
+        journal (SQLite), so it aborts startup with
+        :class:`RetiredProvinceHistoryError` instead; the journal is never
+        touched.
+
+        Runs inside the caller's transaction — this method never commits.
+        The journal is not modified (INV-M7; the rows are history).
+        """
+        ids = set(retired_ids)
+        if not ids:
+            return RetiredRemovalResult()
+        history = set(history_ids) & ids
+
+        result = await session.execute(
+            select(Province.id, Province.nation_id, Nation.name)
+            .outerjoin(Nation, Province.nation_id == Nation.id)
+            .where(Province.id.in_(ids))
+            .order_by(Province.id)
+        )
+        rows = result.all()
+        present = {row[0] for row in rows}
+
+        owned = [
+            (row[0], row[1], row[2]) for row in rows if row[1] is not None
+        ]
+        if owned:
+            raise RetiredProvinceOwnedError(owned)
+        blocked = sorted(present & history)
+        if blocked:
+            raise RetiredProvinceHistoryError(blocked)
+
+        removable = sorted(present)
+        if removable:
+            await session.execute(
+                delete(Province).where(Province.id.in_(removable))
+            )
+        return RetiredRemovalResult(
+            removed=removable,
+            absent=sorted(ids - present),
         )
 
     @staticmethod

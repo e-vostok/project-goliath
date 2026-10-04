@@ -92,7 +92,7 @@ class TestRealConfig:
         assert config.view.frame.width > 0
         assert config.view.frame.height > 0
         assert config.view.zoom_max > 1.0
-        assert config.limits.max_nodes >= 1123
+        assert config.limits.max_nodes >= 1065  # boundary v2 node count
 
     @pytest.mark.parametrize(
         "cwd_name",

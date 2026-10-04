@@ -9,6 +9,7 @@ map directory exactly like production.
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,10 @@ import core.db as core_db
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context, init_engine
 from main import app
+from modules._00_core.exceptions import (
+    RetiredProvinceHistoryError,
+    RetiredProvinceOwnedError,
+)
 from modules._00_core.hooks import (
     STAGE_AFTER_COUNT,
     STAGE_AFTER_FREE,
@@ -34,8 +39,15 @@ from modules._00_core.hooks import (
 )
 from modules._00_core.models import Province
 from modules._01_map.loader import MapDataError
+from modules._01_map.models import MapOwnershipLog
 from modules._01_map.startup import resolve_data_dir, startup_map
 from tests.fixtures.provinces import MAP_MINI_DIR
+from tests.modules._01_map.conftest import (
+    copy_map_mini,
+    fix_input_hashes,
+    load_lock,
+    save_lock,
+)
 from tests.modules._00_core.test_router import TEST_JWT_SECRET, TEST_VK_SECRET
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -181,6 +193,171 @@ class TestInvM5:
         assert "01_map" not in AdminRegistry.get_reset_hooks()
 
 
+class TestRetiredNodes:
+    """
+    Retired-node synchronisation (INV-M5, Spec 1.9): a lock id absent
+    from the manifest marks a withdrawn node. An unowned provinces row
+    for it is removed; an owned one or one with journal history aborts
+    the boot. The journal is never touched.
+    """
+
+    RETIRED_ID = 9999
+
+    @pytest.fixture
+    def retired_map_env(
+        self, tmp_path, monkeypatch, extension_snapshot, mini_map_config
+    ):
+        """A mini-map copy whose ids.lock.json names one retired id."""
+        data_dir = copy_map_mini(tmp_path)
+        lock = load_lock(data_dir)
+        lock["ids"]["mini_retired"] = self.RETIRED_ID
+        save_lock(data_dir, lock)
+        fix_input_hashes(data_dir)
+        monkeypatch.setenv("MAP_DATA_DIR", str(data_dir))
+        yield
+
+    @pytest.mark.asyncio
+    async def test_unowned_retired_row_is_removed(
+        self, booted_db, retired_map_env
+    ):
+        async with get_session_context() as session:
+            session.add(
+                Province(id=self.RETIRED_ID, kind="LAND", nation_id=None)
+            )
+            await session.commit()
+
+        service = await startup_map()
+
+        assert service.map_data.retired_ids == (self.RETIRED_ID,)
+        async with get_session_context() as session:
+            kinds = await _province_kinds(session)
+        assert self.RETIRED_ID not in kinds
+        assert len(kinds) == 10
+        assert list(get_ownership_listeners()) == ["01_map.ownership_log"]
+
+    @pytest.mark.asyncio
+    async def test_retired_id_without_row_is_noop(
+        self, booted_db, retired_map_env
+    ):
+        service = await startup_map()
+
+        assert service.map_data.retired_ids == (self.RETIRED_ID,)
+        async with get_session_context() as session:
+            kinds = await _province_kinds(session)
+        assert len(kinds) == 10
+
+    @pytest.mark.asyncio
+    async def test_owned_retired_row_is_fatal(
+        self, booted_db, retired_map_env
+    ):
+        from modules._00_core.models import Nation, Player
+        from tests.fixtures.profile import VALID_PROFILE
+
+        player_id = "player-retired"
+        nation_id = "nation-retired"
+        async with get_session_context() as session:
+            session.add(
+                Player(
+                    id=player_id,
+                    vk_user_id=777002,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+            session.add(
+                Nation(
+                    id=nation_id,
+                    owner_player_id=player_id,
+                    name="Retired Owner",
+                    color_hex="#102030",
+                    created_at=datetime.now(timezone.utc),
+                    **VALID_PROFILE,
+                )
+            )
+            session.add(
+                Province(
+                    id=self.RETIRED_ID,
+                    kind="LAND",
+                    nation_id=nation_id,
+                )
+            )
+            await session.commit()
+
+        with pytest.raises(RetiredProvinceOwnedError) as exc_info:
+            await startup_map()
+
+        assert exc_info.value.code == "RETIRED_PROVINCE_OWNED"
+        assert str(self.RETIRED_ID) in exc_info.value.message
+        assert "Retired Owner" in exc_info.value.message
+        # Rollback: only the pre-seeded row survives; no hooks claimed.
+        async with get_session_context() as session:
+            kinds = await _province_kinds(session)
+        assert kinds == {self.RETIRED_ID: "LAND"}
+        assert get_ownership_listeners() == {}
+        assert "01_map" not in AdminRegistry.get_reset_hooks()
+
+    @pytest.mark.asyncio
+    async def test_journal_carried_retired_row_is_fatal(
+        self, booted_db, retired_map_env
+    ):
+        """An unowned retired row with journal history cannot be deleted
+        (FK + append-only journal) — startup must refuse, not orphan."""
+        async with get_session_context() as session:
+            session.add(
+                Province(id=self.RETIRED_ID, kind="LAND", nation_id=None)
+            )
+            session.add(
+                MapOwnershipLog(
+                    province_id=self.RETIRED_ID,
+                    turn_number=1,
+                    prev_nation_id="gone-nation",
+                    new_nation_id=None,
+                    new_nation_name=None,
+                    new_nation_color=None,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+
+        with pytest.raises(RetiredProvinceHistoryError) as exc_info:
+            await startup_map()
+
+        assert exc_info.value.code == "RETIRED_PROVINCE_HISTORY"
+        assert exc_info.value.details["province_ids"] == [self.RETIRED_ID]
+        # The journal row and the province survive the aborted sync.
+        async with get_session_context() as session:
+            log_count = await session.execute(
+                sa.select(sa.func.count())
+                .select_from(MapOwnershipLog)
+                .where(MapOwnershipLog.province_id == self.RETIRED_ID)
+            )
+            assert log_count.scalar_one() == 1
+            kinds = await _province_kinds(session)
+        assert kinds == {self.RETIRED_ID: "LAND"}
+        assert get_ownership_listeners() == {}
+
+    @pytest.mark.asyncio
+    async def test_unknown_extra_row_still_fatal_beside_retired(
+        self, booted_db, retired_map_env
+    ):
+        """A row whose id is in neither manifest nor lock keeps failing
+        INV-M5 even when a retired row was correctly removed."""
+        async with get_session_context() as session:
+            session.add(
+                Province(id=self.RETIRED_ID, kind="LAND", nation_id=None)
+            )
+            session.add(Province(id=8888, kind="LAND", nation_id=None))
+            await session.commit()
+
+        with pytest.raises(MapDataError) as exc_info:
+            await startup_map()
+
+        assert exc_info.value.code == "INV_M5"
+        assert "8888" in exc_info.value.message
+        async with get_session_context() as session:
+            kinds = await _province_kinds(session)
+        assert sorted(kinds) == [8888, self.RETIRED_ID]
+
+
 class TestMapDataFailure:
     @pytest.mark.asyncio
     async def test_corrupted_map_file_stops_startup(
@@ -188,8 +365,6 @@ class TestMapDataFailure:
         mini_map_config
     ):
         """Touching an input file breaks inputs_sha256 -> INV_M10."""
-        from tests.modules._01_map.conftest import copy_map_mini
-
         data_dir = copy_map_mini(tmp_path)
         boundary = data_dir / "boundary.yaml"
         boundary.write_text(
@@ -207,10 +382,11 @@ class TestMapDataFailure:
 
 class TestRealMap:
     @pytest.mark.asyncio
-    async def test_real_map_syncs_1123_nodes(
+    async def test_real_map_syncs_1065_nodes(
         self, tmp_path, monkeypatch, extension_snapshot
     ):
-        """The production map loads and syncs into an empty test DB."""
+        """The production map loads and syncs into an empty test DB
+        (boundary v2: 1065 active nodes, 58 retired lock ids)."""
         db_file = tmp_path / "real_map.db"
         monkeypatch.setenv(
             "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
@@ -226,12 +402,13 @@ class TestRealMap:
             elapsed = time.monotonic() - started
         print(f"\n[real-map startup] {elapsed:.2f}s")
 
-        assert len(service.all_nodes()) == 1123
+        assert len(service.all_nodes()) == 1065
+        assert len(service.map_data.retired_ids) == 58
         async with get_session_context() as session:
             count = await session.execute(
                 sa.select(sa.func.count()).select_from(Province)
             )
-            assert count.scalar_one() == 1123
+            assert count.scalar_one() == 1065
         await core_db.get_engine().dispose()
         core_db._engine = None
         core_db._async_session_maker = None
