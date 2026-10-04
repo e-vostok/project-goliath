@@ -88,3 +88,5 @@ $RECYCLE.BIN/
 # 6. ИНСТРУМЕНТ ПОДГОТОВКИ КАРТЫ (map_pipeline)
 # ==========================================
 tools/map_pipeline/out/
+tools/map_pipeline/relief_proto/dl/
+tools/map_pipeline/relief_proto/out/
