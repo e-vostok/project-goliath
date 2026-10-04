@@ -68,6 +68,8 @@ export interface MapGeometryDTO {
   version: string;
   paths: Record<number, string>;
   outside: string;
+  /** Compound path of bays/fjords drawn in `colors.sea` (Spec 1.9, 5a). */
+  sea_water: string;
 }
 
 export interface MapNationDTO {

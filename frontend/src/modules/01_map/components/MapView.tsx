@@ -2,7 +2,8 @@
  * MapView — the SVG map surface (Spec Part 5, gestures per 3.8).
  *
  * Performance contract (1 123 paths, ~1.9 MB geometry):
- * - Layers bottom→top: background rect (inland_water) · `outside` path ·
+ * - Layers bottom→top: background rect (inland_water) · `sea_water`
+ *   bays path (sea fill, Spec 1.9 step 5a) · `outside` path ·
  *   ONE <g> with all node paths (single delegated mouse handling,
  *   resolved via `data-id`, no per-path listeners) · labels · overlays.
  * - Pan/zoom live in refs, never in React state; the transform is
@@ -515,6 +516,14 @@ export function MapView(props: MapViewProps) {
             height={manifest.view_box[3]}
             fill={colors.inland_water}
           />
+          {geometry.sea_water !== '' && (
+            <path
+              data-layer="sea-water"
+              d={geometry.sea_water}
+              fill={colors.sea}
+              pointerEvents="none"
+            />
+          )}
           <path d={geometry.outside} fill={colors.outside} />
           <g>{nodePaths}</g>
           <g ref={labelsGRef} pointerEvents="none">

@@ -76,6 +76,7 @@ export const MINI_MANIFEST: MapManifestDTO = {
 export const MINI_GEOMETRY: MapGeometryDTO = {
   version: 'mini01',
   outside: 'M 0 0 L 100 0 L 100 80 L 0 80 Z',
+  sea_water: '',
   paths: {
     1001: 'M 0 20 L 10 20 L 10 30 L 0 30 Z',
     1002: 'M 10 20 L 20 20 L 20 30 L 10 30 Z',
