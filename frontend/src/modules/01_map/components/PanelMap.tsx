@@ -71,8 +71,8 @@ export function PanelMap() {
     [manifest],
   );
   const owners = useMemo(
-    () => buildOwnerMap(mapState.state),
-    [mapState.state],
+    () => buildOwnerMap(mapState.state, nodesById),
+    [mapState.state, nodesById],
   );
 
   const selectedNode =

@@ -142,8 +142,8 @@ export function MapView(props: MapViewProps) {
     [manifest],
   );
   const owners = useMemo(
-    () => buildOwnerMap(props.state ?? null),
-    [props.state],
+    () => buildOwnerMap(props.state ?? null, nodesById),
+    [props.state, nodesById],
   );
 
   /* ------------------------------------------------ transform plumbing */
