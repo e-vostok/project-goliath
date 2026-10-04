@@ -197,7 +197,7 @@ class TestApiStatus:
     """The error-code table maps both codes to HTTP 422 end to end."""
 
     @pytest_asyncio.fixture
-    async def live_client(self, tmp_path, monkeypatch):
+    async def live_client(self, tmp_path, monkeypatch, mini_map_config):
         db_url = f"sqlite+aiosqlite:///{(tmp_path / 'checks.db').as_posix()}"
         monkeypatch.setenv("DATABASE_URL", db_url)
         monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)

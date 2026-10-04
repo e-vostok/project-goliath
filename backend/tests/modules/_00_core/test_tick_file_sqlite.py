@@ -222,7 +222,7 @@ class TestTickOnFileSQLite:
 
 
 @pytest_asyncio.fixture
-async def live_client(tmp_path, monkeypatch):
+async def live_client(tmp_path, monkeypatch, mini_map_config):
     """
     The real app over its real ASGI lifespan on a migrated tmp SQLite
     file (the test_app_startup.py pattern). Class-level registries are

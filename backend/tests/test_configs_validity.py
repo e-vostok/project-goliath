@@ -103,7 +103,9 @@ def test_map_config_loads():
     config = MapConfig.from_yaml(MapConfig.get_default_config_path())
 
     assert config.big_window.enabled is True
-    assert config.view.zoom_min < config.view.zoom_max
+    assert config.view.frame.width > 0
+    assert config.view.frame.height > 0
+    assert config.view.zoom_max > 1.0
 
 
 def test_invalid_tick_interval_too_high(tmp_path):

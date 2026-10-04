@@ -37,7 +37,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest_asyncio.fixture
-async def live_client(tmp_path, monkeypatch):
+async def live_client(tmp_path, monkeypatch, mini_map_config):
     """
     Serve the real app over its real lifespan, backed by a migrated
     temporary SQLite file. No ``get_session`` override — requests go

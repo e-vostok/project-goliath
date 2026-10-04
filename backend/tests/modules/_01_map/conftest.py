@@ -24,7 +24,7 @@ from modules._00_core.hooks import (
     snapshot_extension_points,
 )
 from modules._00_core.service import NodeSpec, ProvinceService
-from modules._01_map.config_schema import MapConfig
+from modules._01_map.config_schema import FrameConfig, MapConfig
 from modules._01_map.hashing import (
     INPUT_HASH_RULES,
     geometry_version,
@@ -55,9 +55,21 @@ def copy_map_mini(dst: Path) -> Path:
     return target
 
 
+# A frame inside the mini fixture's view_box [0, 0, 100, 80]: the real
+# config's frame is calibrated to the real map (519.1, 20.9, 221.3,
+# 217.3) and would fail the loader's frame-inside-view_box check here.
+MINI_FRAME = FrameConfig(x=10.0, y=10.0, width=60.0, height=50.0)
+
+
 def map_config(**limit_overrides: int) -> MapConfig:
-    """The real ``configs/01_map.yaml``, optionally with patched limits."""
+    """The real ``configs/01_map.yaml`` with ``view.frame`` swapped for
+    the mini-map frame, optionally with patched limits."""
     config = MapConfig.from_yaml(MapConfig.get_default_config_path())
+    config = config.model_copy(
+        update={
+            "view": config.view.model_copy(update={"frame": MINI_FRAME})
+        }
+    )
     if limit_overrides:
         config = config.model_copy(
             update={

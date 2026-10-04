@@ -57,7 +57,8 @@ class MapRefreshRulesDTO(BaseModel):
 class MapViewRulesDTO(BaseModel):
     """``MapManifestDTO.rules`` — client-side view rules from the config."""
 
-    zoom_min: float
+    # [x, y, width, height] in view_box units (Spec 1.9).
+    frame: list[float]
     zoom_max: float
     pan_margin_fraction: float
     label_min_width_px: int

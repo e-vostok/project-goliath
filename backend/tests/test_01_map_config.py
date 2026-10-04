@@ -18,7 +18,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from modules._01_map.config_schema import MapConfig
+from modules._01_map.config_schema import FrameConfig, MapConfig
 
 
 def _base_config() -> dict:
@@ -26,7 +26,12 @@ def _base_config() -> dict:
     where new required keys get their valid value."""
     return {
         "view": {
-            "zoom_min": 1.0,
+            "frame": {
+                "x": 519.1,
+                "y": 20.9,
+                "width": 221.3,
+                "height": 217.3,
+            },
             "zoom_max": 16.0,
             "pan_margin_fraction": 0.1,
             "label_min_width_px": 48,
@@ -84,7 +89,9 @@ class TestRealConfig:
         config = MapConfig.from_yaml(MapConfig.get_default_config_path())
 
         assert config.big_window.enabled is True
-        assert config.view.zoom_min < config.view.zoom_max
+        assert config.view.frame.width > 0
+        assert config.view.frame.height > 0
+        assert config.view.zoom_max > 1.0
         assert config.limits.max_nodes >= 1123
 
     @pytest.mark.parametrize(
@@ -145,8 +152,6 @@ class TestRanges:
     @pytest.mark.parametrize(
         "section,key,value",
         [
-            ("view", "zoom_min", 0),
-            ("view", "zoom_min", 1.01),
             ("view", "zoom_max", 40.01),
             ("view", "zoom_max", 41),
             ("strait", "default_crossing_multiplier", 0),
@@ -167,27 +172,36 @@ class TestRanges:
         assert key in str(exc_info.value)
 
 
-class TestCrossFieldRules:
+class TestFrame:
     @pytest.mark.parametrize(
-        "zoom_min,zoom_max",
+        "field,value",
         [
-            (2.0, 2.0),   # equal — the cross rule must reject
-            (3.0, 2.0),   # inverted — also rejected
+            ("x", -0.1),
+            ("y", -0.1),
+            ("width", 0.0),
+            ("width", -1.0),
+            ("height", 0.0),
+            ("height", -1.0),
         ],
     )
-    def test_zoom_min_not_less_than_zoom_max_rejected(
-        self, tmp_path, zoom_min, zoom_max
-    ):
-        """zoom_min >= zoom_max must be rejected. Each individual field
-        bound already rejects these values on its own (zoom_min <= 1.0
-        and zoom_max >= 2.0 imply zoom_min < zoom_max), so the schema is
-        doubly safe — the assertion only checks rejection happens."""
-        path = _write_config(
-            tmp_path, {"view": {"zoom_min": zoom_min, "zoom_max": zoom_max}}
-        )
+    def test_frame_bounds_rejected(self, tmp_path, field, value):
+        """FrameConfig: x/y are >= 0, width/height are > 0."""
+        frame = {
+            "x": 519.1,
+            "y": 20.9,
+            "width": 221.3,
+            "height": 217.3,
+            field: value,
+        }
+        path = _write_config(tmp_path, {"view": {"frame": frame}})
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError) as exc_info:
             MapConfig.from_yaml(path)
+
+        assert field in str(exc_info.value)
+
+
+class TestCrossFieldRules:
 
     @pytest.mark.parametrize(
         "field,value",
