@@ -1,13 +1,16 @@
 /**
- * View mathematics of the map screen — Spec 3.8, pure functions.
+ * View mathematics of the map screen — Spec 3.8 (v1.9), pure functions.
  *
  * Coordinates: the map lives in "world" units of the source SVG; the
- * screen transform is `screen = t + s·world`, where `s = s_fit · z`
- * (s_fit fits `playable_bbox` into the viewport, `z` is the user zoom
- * within [zoom_min, zoom_max]).
+ * screen transform is `screen = t + s·world`, where `s = s_min · z`.
+ * `s_min` fits the *frame* (`view.frame`, a rect in view_box units)
+ * by the window HEIGHT only — at z = 1 the whole frame height is
+ * visible and the width is centred; a wider window shows `outside`.
+ * `z` is the user zoom within [1, zoom_max].
  */
 
 export type BBox = [number, number, number, number]; // [x0, y0, x1, y1]
+export type Frame = [number, number, number, number]; // [x, y, w, h]
 
 export interface Size {
   width: number;
@@ -26,7 +29,7 @@ export interface ViewTransform {
   ty: number;
 }
 
-/** Fit scale of a bbox into a viewport (Spec 3.8: s_fit). */
+/** Fit scale of a bbox into a viewport. */
 export function fitScale(bbox: BBox, viewport: Size): number {
   const w = bbox[2] - bbox[0];
   const h = bbox[3] - bbox[1];
@@ -45,25 +48,40 @@ export function centeredAt(bbox: BBox, viewport: Size, s: number): ViewTransform
   };
 }
 
-/** The initial view: the playable area fitted to the window (z = 1). */
-export function fitView(bbox: BBox, viewport: Size): ViewTransform {
-  return centeredAt(bbox, viewport, fitScale(bbox, viewport));
+/** `s_min = H_v / frame.height` — the frame height fills the window. */
+export function minScale(frame: Frame, viewport: Size): number {
+  if (frame[3] <= 0 || viewport.width <= 0 || viewport.height <= 0) {
+    return 0;
+  }
+  return viewport.height / frame[3];
 }
 
-/** Total-scale bounds implied by the zoom rules (s = s_fit · z). */
+/** Total-scale bounds implied by the zoom rules (s = s_min · z). */
 export function scaleBounds(
-  sFit: number,
-  zoomMin: number,
+  sMin: number,
   zoomMax: number,
 ): [number, number] {
-  return [sFit * zoomMin, sFit * zoomMax];
+  return [sMin, sMin * zoomMax];
+}
+
+/** The initial view: z = 1, the frame centred on the viewport. */
+export function initialTransform(
+  frame: Frame,
+  viewport: Size,
+): ViewTransform {
+  const s = minScale(frame, viewport);
+  return {
+    s,
+    tx: (viewport.width - s * (2 * frame[0] + frame[2])) / 2,
+    ty: (viewport.height - s * (2 * frame[1] + frame[3])) / 2,
+  };
 }
 
 /**
  * Zoom around a screen point (Spec 3.8): the point `c` keeps the same
  * world point under the cursor — t' = c − (c − t)·(s′/s).
  */
-export function zoomAtPoint(
+export function zoomAt(
   view: ViewTransform,
   cursor: Point,
   nextScale: number,
@@ -77,32 +95,47 @@ export function zoomAtPoint(
 }
 
 /**
- * Pan clamp (Spec 3.8): with margin μ the bbox may leave the viewport by
- * at most a μ fraction of the window size on each side.
+ * Pan clamp (Spec 3.8), per axis: if the visible length exceeds the
+ * frame length on an axis, the map is centred on that axis and cannot
+ * pan there; otherwise the frame may leave the window by at most a
+ * `marginFraction` share of the window size on each side.
  */
-export function clampPan(
+export function clampOffset(
   view: ViewTransform,
-  bbox: BBox,
+  frame: Frame,
   viewport: Size,
   marginFraction: number,
 ): ViewTransform {
-  const mx = marginFraction * viewport.width;
-  const my = marginFraction * viewport.height;
-  const clampAxis = (v: number, lo: number, hi: number) =>
-    // An empty interval (content smaller than viewport + margins) has no
-    // legal value; its midpoint is exactly the centred position.
-    lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
+  const clampAxis = (
+    t: number,
+    vLen: number,
+    fPos: number,
+    fLen: number,
+    mu: number,
+  ): number => {
+    if (vLen > view.s * fLen) {
+      // Viewport longer than the frame on this axis — centre, no pan.
+      return (vLen - view.s * (2 * fPos + fLen)) / 2;
+    }
+    const lo = vLen - view.s * (fPos + fLen) - mu * vLen;
+    const hi = -view.s * fPos + mu * vLen;
+    return Math.min(hi, Math.max(lo, t));
+  };
   return {
     s: view.s,
     tx: clampAxis(
       view.tx,
-      viewport.width - view.s * bbox[2] - mx,
-      -view.s * bbox[0] + mx,
+      viewport.width,
+      frame[0],
+      frame[2],
+      marginFraction,
     ),
     ty: clampAxis(
       view.ty,
-      viewport.height - view.s * bbox[3] - my,
-      -view.s * bbox[1] + my,
+      viewport.height,
+      frame[1],
+      frame[3],
+      marginFraction,
     ),
   };
 }
@@ -158,26 +191,27 @@ export function bboxCenter(bbox: BBox): Point {
 
 /**
  * Recompute the view after the viewport resized: the world point at the
- * old centre stays at the new centre, and the user zoom z = s/s_fit is
- * preserved (s_fit itself is viewport-dependent).
+ * old centre stays at the new centre, and the user zoom z = s/s_min is
+ * preserved (s_min itself is viewport-dependent). The caller re-clamps
+ * the result against the new viewport.
  */
 export function rescaleOnResize(
   view: ViewTransform,
-  bbox: BBox,
+  frame: Frame,
   oldViewport: Size,
   newViewport: Size,
 ): ViewTransform {
-  const oldFit = fitScale(bbox, oldViewport);
-  const newFit = fitScale(bbox, newViewport);
-  if (oldFit === 0 || newFit === 0) {
-    return fitView(bbox, newViewport);
+  const oldMin = minScale(frame, oldViewport);
+  const newMin = minScale(frame, newViewport);
+  if (oldMin === 0 || newMin === 0) {
+    return initialTransform(frame, newViewport);
   }
-  const z = view.s / oldFit;
+  const z = view.s / oldMin;
   const centre = screenToWorld(view, {
     x: oldViewport.width / 2,
     y: oldViewport.height / 2,
   });
-  const s = newFit * z;
+  const s = newMin * z;
   return {
     s,
     tx: newViewport.width / 2 - s * centre.x,
