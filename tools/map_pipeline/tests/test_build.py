@@ -911,3 +911,101 @@ def test_bays_and_lakes_step5a(make_data_dir, tmp_path):
     report = (out_dir / "graph_report.md").read_text()
     assert "Lakes: 2" in report
     assert "Bays: 2" in report
+
+
+# --------------------------------- Spec 1.10: coast cosmetics (map_polish_4)
+
+
+def test_bay_window_needs_a_node(make_data_dir, tmp_path):
+    """1.10: a bay touching no node stays dark inside ``outside`` and does
+    not go into ``sea_water``; a node-touching bay keeps its window."""
+    elems = (
+        [square("Alpha", 10, 10, 12)]
+        + _ring("W", 60, 30, cell=6)      # included ring -> bay window
+        + _ring("G", 140, 30, cell=6)     # excluded ring -> dark pond
+    )
+    data_dir = make_data_dir(
+        svg_elems=elems,
+        include=["Alpha"] + _ring_keys("W"),
+        overrides=base_overrides(
+            sea_margin=30.0,
+            sea_like_water=[[63.0, 33.0], [143.0, 33.0]],
+            sea_zones=[{"key": "sea_a", "name_ru": "A",
+                        "seeds": [[24.0, 16.0]]}],
+        ),
+    )
+    assert run_build(data_dir, tmp_path / "out") == 0
+    geom = _geom_doc(data_dir)
+    outside = unary_union(parse_path(geom["outside"]))
+    sea_water = (
+        unary_union(parse_path(geom["sea_water"]))
+        if geom["sea_water"]
+        else MultiPolygon()
+    )
+    node_pond = Point(63.0, 33.0)
+    ghost_pond = Point(143.0, 33.0)
+    assert not outside.covers(node_pond)
+    assert sea_water.covers(node_pond)
+    assert outside.covers(ghost_pond)
+    assert not sea_water.covers(ghost_pond)
+
+
+def test_small_part_scaled_tolerance(make_data_dir, tmp_path):
+    """1.10: tol = min(tolerance, small_part_factor·sqrt(area)) — a small
+    island keeps > 6 vertices while a large part still gets 0.03."""
+    import math
+
+    n = 14
+    island = (
+        " ".join(
+            f"{'M' if i == 0 else 'L'} "
+            f"{60.0 + (0.55 if i % 2 else 0.45) * math.cos(2 * math.pi * i / n):.2f} "
+            f"{60.0 + (0.55 if i % 2 else 0.45) * math.sin(2 * math.pi * i / n):.2f}"
+            for i in range(n)
+        )
+        + " Z"
+    )
+    zig = " ".join(
+        f"L {10.5 + i * 0.5:.2f} {10.0 if i % 2 else 10.02:.2f}"
+        for i in range(23)
+    )
+    elems = [
+        f'<path id="Alpha" d="M 10 10 {zig} L 22 22 L 10 22 Z {island}"/>',
+    ]
+    data_dir = make_data_dir(
+        svg_elems=elems,
+        include=["Alpha"],
+        overrides=graph_overrides(
+            sea_zones=[{"key": "sea_a", "name_ru": "A",
+                        "seeds": [[24.0, 16.0]]}],
+        ),
+    )
+    assert run_build(data_dir, tmp_path / "out") == 0
+    geom = _geom_doc(data_dir)
+    mani = _manifest(data_dir)
+    parts = _node_paths(geom, mani)["alpha"]
+    island_part = min(parts, key=lambda p: p.area)
+    big_part = max(parts, key=lambda p: p.area)
+    assert island_part.area < 3.0
+    assert len(island_part.exterior.coords) - 1 > 6
+    assert len(big_part.exterior.coords) - 1 <= 8
+
+
+def test_sea_cut_exact_land_edge(make_data_dir, tmp_path):
+    """1.10: sea zones are cut by the exact land contours — a zone does
+    not overlap a land rim (intersection area ~ 0)."""
+    data_dir = make_data_dir(**_two_lands())
+    assert run_build(data_dir, tmp_path / "out") == 0
+    geom = _geom_doc(data_dir)
+    mani = _manifest(data_dir)
+    paths = _node_paths(geom, mani)
+    land = unary_union(
+        [
+            p
+            for n in mani["nodes"]
+            if n["kind"] == "LAND"
+            for p in paths[n["key"]]
+        ]
+    )
+    sea = unary_union(paths["sea_a"])
+    assert land.intersection(sea).area < 0.002

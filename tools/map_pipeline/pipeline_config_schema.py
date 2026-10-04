@@ -86,6 +86,7 @@ class SimplifyConfig(_Strict):
     """Contour simplification tolerances (MP-3)."""
 
     tolerance: float = Field(ge=0.0, le=0.2)
+    small_part_factor: float = Field(ge=0.0, le=0.2)
     sea_tolerance: float = Field(ge=0.05, le=1.0)
 
 

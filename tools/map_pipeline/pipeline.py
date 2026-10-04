@@ -985,13 +985,20 @@ def run_build(
     land_union = safe_union(
         [p for k in land_keys for p in _polygon_list(canon[k])]
     )
+    # 1.10: a water body that touches no node stays dark — windows are cut
+    # only for bays/lakes within contact distance of the node union.
+    nodes_union = safe_union(
+        [p for k in canon for p in _polygon_list(canon[k])]
+    )
     (
         lake_region, lake_pieces, lake_area, lake_spill,
         lakes_dropped, lakes_dropped_area,
     ) = build_lake_region(
-        sea, land_mask, view_poly, cfg, land_union,
+        sea, land_mask, view_poly, cfg, land_union, nodes_union,
     )
-    bay_region = build_bay_region(sea, land_mask, view_poly, cfg)
+    bay_region = build_bay_region(
+        sea, land_mask, view_poly, cfg, nodes_union
+    )
     outside_build = build_outside(
         [canon[k] for k in sorted(canon, key=lambda k: ids[k])],
         lake_region, view_poly, cfg, bay_region,
