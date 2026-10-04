@@ -20,12 +20,15 @@ WORKDIR /app/backend
 
 # Runtime dependencies only, taken from [project].dependencies of
 # backend/pyproject.toml (kept in sync by deriving requirements from the
-# file itself). The project and the `dev` extra are NOT installed — the
-# app imports via `uvicorn --app-dir src`. This layer is built before
-# the source copy so it stays cached across code changes.
+# file itself) and pinned by requirements.lock — every package in the
+# image, transitive ones included, lands on the exact locked version.
+# The project and the `dev` extra are NOT installed — the app imports
+# via `uvicorn --app-dir src`. This layer is built before the source
+# copy so it stays cached across code changes.
 COPY backend/pyproject.toml ./pyproject.toml
+COPY backend/requirements.lock ./requirements.lock
 RUN python -c "import tomllib; open('/tmp/requirements.txt', 'w').write('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" \
- && pip install --no-cache-dir -r /tmp/requirements.txt
+ && pip install --no-cache-dir -r /tmp/requirements.txt -c requirements.lock
 
 # Source and the repo-root files the app resolves relative to itself:
 #   configs/*.yaml   — balance configs, validated at startup

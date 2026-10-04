@@ -35,13 +35,6 @@ services:
       dockerfile: backend/Dockerfile
     image: goliath-backend
     env_file: ${ENV_FILE:-.env}
-    environment:
-      # Alembic runs SYNC. The shared DATABASE_URL carries +asyncpg for
-      # the app; env.py strips that suffix, leaving a bare postgresql://
-      # which SQLAlchemy resolves to psycopg3 — not installed. Hand the
-      # migrator the psycopg2 URL explicitly (psycopg2-binary is in the
-      # image for exactly this purpose).
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     command: alembic upgrade head
     depends_on:
       db:
