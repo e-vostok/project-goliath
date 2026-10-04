@@ -24,7 +24,7 @@ export const MINI_RULES: MapViewRulesDTO = {
     neutral_province: '#8C8C8C',
     sea: '#1E3547',
     outside: '#2A2A2A',
-    inland_water: '#3E6B84',
+    inland_water: '#1E3547',
     province_border: '#3A3A3A',
     hover: '#FFFFFF',
     selected: '#FFD24A',
