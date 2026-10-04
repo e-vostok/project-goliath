@@ -188,6 +188,7 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
             "version": geometry.version,
             "paths": dict(geometry.paths),
             "outside": geometry.outside,
+            "sea_water": geometry.sea_water,
         },
         ensure_ascii=False,
     ).encode("utf-8")

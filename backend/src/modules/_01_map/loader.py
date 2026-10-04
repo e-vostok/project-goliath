@@ -375,7 +375,9 @@ def _check_inv_m3(manifest: Manifest) -> None:
 
 
 def _check_inv_m6(manifest: Manifest, geometry: Geometry) -> None:
-    computed = geometry_version(geometry.outside, geometry.paths)
+    computed = geometry_version(
+        geometry.outside, geometry.paths, geometry.sea_water
+    )
     if (
         computed != manifest.geometry_version
         or computed != geometry.version

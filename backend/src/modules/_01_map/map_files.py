@@ -135,11 +135,13 @@ class Manifest(_Strict):
 
 
 class Geometry(_Strict):
-    """``geometry.json`` — SVG path per node id plus the ``outside`` ring."""
+    """``geometry.json`` — SVG path per node id, the ``outside`` ring and
+    the ``sea_water`` bays path (1.9 step 5a; may be empty)."""
 
     version: str = Field(pattern=_HEX12)
     paths: Mapping[str, str]
     outside: str
+    sea_water: str
 
     @field_validator("paths")
     @classmethod
@@ -157,6 +159,11 @@ class Geometry(_Strict):
     @classmethod
     def _outside_charset(cls, value: str) -> str:
         return _svg_path(value)
+
+    @field_validator("sea_water")
+    @classmethod
+    def _sea_water_charset(cls, value: str) -> str:
+        return _svg_path(value) if value else value
 
 
 class IdsLock(_Strict):

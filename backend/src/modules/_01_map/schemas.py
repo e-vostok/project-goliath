@@ -89,6 +89,7 @@ class MapGeometryDTO(BaseModel):
     version: str
     paths: dict[int, str]
     outside: str
+    sea_water: str
 
 
 class MapNationDTO(BaseModel):
