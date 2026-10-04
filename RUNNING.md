@@ -119,3 +119,24 @@ The full production procedure — server setup, `deploy.sh`, backups, rollback, 
 - `docker` — validates `docker-compose.prod.yml` against `.env.prod.example`, then runs the DEP-1 runtime acceptance (`deploy/smoke_local.sh`) on the Linux runner.
 
 No secrets are used; the workflow token has `contents: read` only and jobs run under `pull_request`, never `pull_request_target`.
+
+## 8. Как обновить зависимости бэкенда
+
+Версии всех Python-пакетов зафиксированы в `backend/requirements.lock` (боевые зависимости) и `backend/requirements-dev.lock` (боевые + инструменты разработки). Боевой Docker-образ и CI ставят ровно эти версии — обновление делается только осознанно.
+
+**Lock-файлы никогда не правятся руками** — они пересобираются командой `uv` (установка: `pip install uv`). Выполняется из папки `backend/`:
+
+```bash
+cd backend
+uv pip compile pyproject.toml --upgrade --python-version 3.12 --python-platform x86_64-manylinux_2_28 -o requirements.lock
+uv pip compile pyproject.toml --extra dev --upgrade --python-version 3.12 --python-platform x86_64-manylinux_2_28 -o requirements-dev.lock
+```
+
+`--upgrade` поднимает все пакеты до самых свежих версий, разрешённых рамками в `pyproject.toml`. Чтобы обновить только одну библиотеку — поднимите её нижнюю границу в `pyproject.toml` и выполните те же команды без `--upgrade`.
+
+Затем:
+
+1. Прогнать тесты: `pytest` из папки `backend/`.
+2. Закоммитить **оба** lock-файла вместе с `pyproject.toml` одним коммитом — CI упадёт, если `pyproject.toml` изменился, а lock'и нет.
+
+Нюанс локальной установки: lock собран под Linux (в нём `uvloop`, которого нет под Windows), поэтому на Windows ставьте зависимости как раньше — `pip install -e ".[dev]"`. На Linux/macOS можно ставить строго по lock: `pip install -e ".[dev]" -c requirements-dev.lock`.
