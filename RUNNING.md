@@ -140,3 +140,14 @@ uv pip compile pyproject.toml --extra dev --upgrade --python-version 3.12 --pyth
 2. Закоммитить **оба** lock-файла вместе с `pyproject.toml` одним коммитом — CI упадёт, если `pyproject.toml` изменился, а lock'и нет.
 
 Нюанс локальной установки: lock собран под Linux (в нём `uvloop`, которого нет под Windows), поэтому на Windows ставьте зависимости как раньше — `pip install -e ".[dev]"`. На Linux/macOS можно ставить строго по lock: `pip install -e ".[dev]" -c requirements-dev.lock`.
+
+## 9. Проверка базы перед выкладкой (отставленные узлы карты)
+
+Перед деплоем версии, которая удаляет отставленные узлы карты из `provinces`, можно заранее проверить, пройдёт ли запуск на конкретной базе. Команда только читает — ничего не меняет, `DATABASE_URL` берётся как у приложения и alembic (env → `.env`), карта — из `MAP_DATA_DIR` или `data/map`:
+
+```powershell
+cd backend
+python -m src.modules._01_map.retired_report
+```
+
+На сервере в Docker: `docker compose run --rm backend python -m src.modules._01_map.retired_report`. Коды выхода: `0` — ГОТОВО, запуск пройдёт; `1` — СТОП, запуск остановится (причины перечислены в отчёте); `2` — ошибка в данных карты.

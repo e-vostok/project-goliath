@@ -25,10 +25,16 @@ def _commited(name: str) -> dict:
 def test_committed_boundary_and_overrides_validate():
     boundary = load_boundary(DATA_DIR / "boundary.yaml")
     overrides = load_overrides(DATA_DIR / "overrides.yaml")
-    assert len(boundary.include) == 1086
-    assert len(boundary.exclude_explicit) == 138
+    assert len(boundary.include) == 1030
+    assert len(boundary.exclude_explicit) == 194
     assert len(overrides.sea_zones) == 37
     assert len(overrides.straits) == 16
+    assert len(overrides.drop_parts) == 1
+    assert {z.key for z in overrides.sea_zones if z.retired} == {
+        "sea_atl_africa",
+        "sea_iceland",
+    }
+    assert len(overrides.geometry_patches) == 1
     assert collect_reference_errors(overrides, boundary) == []
 
 
@@ -44,6 +50,9 @@ def _mini_overrides(**kw) -> dict:
         sea_margin_shape="square",
         sea_margin_smooth=10.0,
         lake_max_area=70.0,
+        sea_like_water=[],
+        lake_force=[],
+        sea_link_gap=0.6,
         drop_parts=[],
         keep_parts=[],
         sea_zones=[],

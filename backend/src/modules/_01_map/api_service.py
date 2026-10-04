@@ -188,6 +188,7 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
             "version": geometry.version,
             "paths": dict(geometry.paths),
             "outside": geometry.outside,
+            "sea_water": geometry.sea_water,
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -261,10 +262,16 @@ async def build_state(
     # (province_id, journal nation id, dto nation id, name, color) —
     # the journal id stays in the dedup key even when the nation is
     # gone, so two vanished look-alikes never merge (Spec Part 5).
+    # Retired/absent nodes (id not in the active manifest) never appear
+    # in the answer — live rows or journal snapshot alike (Spec 1.9:
+    # ``GET /map/state`` does not return owners of withdrawn nodes).
+    active_ids = service.map_data.nodes
     entries: list[tuple[int, str, str | None, str, str]] = []
     if turn is None or turn == current:
         described = current
         for row in await ProvinceService.list_current_owners(session):
+            if row.province_id not in active_ids:
+                continue
             entries.append(
                 (
                     row.province_id,
@@ -281,6 +288,8 @@ async def build_state(
             session, {o.nation_id for o in snapshot.values()}
         )
         for province_id, owner in sorted(snapshot.items()):
+            if province_id not in active_ids:
+                continue
             entries.append(
                 (
                     province_id,

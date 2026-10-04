@@ -33,7 +33,13 @@ from .errors import (
     PipelineFailure,
 )
 from .pipeline_config_schema import PipelineConfig
-from .seas import KIND_LAKE, KIND_LAND, SeaRaster, mask_from_geometry
+from .seas import (
+    KIND_BAY,
+    KIND_LAKE,
+    KIND_LAND,
+    SeaRaster,
+    mask_from_geometry,
+)
 from .svgpath import polygons_of
 from .svg_source import safe_union
 
@@ -230,7 +236,7 @@ def _clean_hairpins(geom, grid: float):
 
 
 def _finalize_land(
-    source, tol: float, grid: float
+    source, tol: float, grid: float, factor: float = 0.0
 ) -> Polygon | MultiPolygon:
     """Per-part ``simplify`` + pointwise snap, then union.
 
@@ -240,12 +246,19 @@ def _finalize_land(
     real province boundary by 0.43 units). Pointwise snapping keeps every
     vertex and repairs self-intersections afterwards; the final union is
     safe because it only merges the snapped parts' own coverage.
+
+    Spec 1.10: a part's effective tolerance is
+    ``min(tol, factor * sqrt(part.area))`` — small parts (islands) keep
+    their detail instead of collapsing to triangles.
     """
     parts: list[Polygon] = []
     for part in sorted(
         _polygon_list(source), key=lambda p: (-p.area, p.bounds)
     ):
-        simplified = part.simplify(tol, preserve_topology=True)
+        part_tol = (
+            tol if factor <= 0 else min(tol, factor * math.sqrt(part.area))
+        )
+        simplified = part.simplify(part_tol, preserve_topology=True)
         parts.extend(_snap_pointwise(simplified, grid))
     return _union_polygons(parts)
 
@@ -288,7 +301,9 @@ def build_land_geometries(
                 and abs(final.area - cleaned.area) <= area_limit
             )
 
-        final = _finalize_land(cleaned, tol, grid)
+        final = _finalize_land(
+            cleaned, tol, grid, cfg.simplify.small_part_factor
+        )
         if final.is_empty:
             errors.append(
                 PipelineError(
@@ -301,7 +316,9 @@ def build_land_geometries(
         dev = deviation(cleaned, final)
         if not _ok(final, dev):
             for finer in (tol / 2, tol / 4, 0.0):
-                final = _finalize_land(cleaned, finer, grid)
+                final = _finalize_land(
+                    cleaned, finer, grid, cfg.simplify.small_part_factor
+                )
                 dev = deviation(cleaned, final)
                 if _ok(final, dev):
                     break
@@ -333,7 +350,9 @@ def build_land_mask(
     in ``boundary.include``) plus the parts ``drop_parts`` removed from
     included provinces. ``technical_exclude`` entries never contribute.
     Non-included parts are simplified and snapped with the same settings as
-    game land, then the whole mask is closed by ``geometry.border_epsilon``.
+    game land and closed by ``geometry.border_epsilon``. Spec 1.10: the
+    included nodes contribute their final contours EXACTLY — the sea cut
+    against this mask can never overlap a playable land rim or an island.
     """
     eps = cfg.geometry.border_epsilon
     tol = cfg.simplify.tolerance
@@ -345,7 +364,7 @@ def build_land_mask(
     tech = set(prep.overrides.technical_exclude)
     node_by_name = {n.source_name: n for n in prep.nodes.values()}
 
-    pieces = list(land_geoms.values())
+    excluded = []
     for name in sorted(prep.geoms):
         if name.lower() in tech:
             continue
@@ -359,9 +378,17 @@ def build_land_mask(
             if not part.intersects(frame_box):
                 continue
             simp = part.simplify(tol, preserve_topology=True)
-            pieces.extend(_snap_pointwise(simp, grid))
+            excluded.extend(_snap_pointwise(simp, grid))
 
-    return safe_union([p.buffer(eps) for p in pieces]).buffer(-eps)
+    included = safe_union(
+        [
+            p
+            for key in sorted(land_geoms)
+            for p in _polygon_list(land_geoms[key])
+        ]
+    )
+    closed = safe_union([p.buffer(eps) for p in excluded]).buffer(-eps)
+    return safe_union(_polygon_list(included) + _polygon_list(closed))
 
 
 def _grow_labels_into_land(sea: SeaRaster, dilate_pixels: int) -> np.ndarray:
@@ -394,8 +421,9 @@ def _fill_leftover(
     leaves slivers of water covered by neither land nor a zone — they
     render as ``outside``-coloured stains along coasts. Every leftover
     piece with ``area <= sea_cut.fill_max_area`` that touches a zone
-    (within 0.05) and is not raster-lake is merged into the zone with the
-    longest shared boundary (ties: smaller node id). The dict ``zones``
+    (within 0.05) and is not raster-lake or raster-bay is merged into the
+    zone with the longest shared boundary (ties: smaller node id). The
+    dict ``zones``
     is updated in place; the pieces keep their coverage-disjointness
     because ``leftover`` never overlaps a zone.
 
@@ -434,7 +462,7 @@ def _fill_leftover(
         if (
             0 <= col < sea.frame.width
             and 0 <= row < sea.frame.height
-            and int(sea.kinds[row, col]) == KIND_LAKE
+            and int(sea.kinds[row, col]) in (KIND_LAKE, KIND_BAY)
         ):
             continue
         best = min(
@@ -481,6 +509,15 @@ def build_sea_geometries(
     """
     frame = sea.frame
     zd = _grow_labels_into_land(sea, cfg.sea_cut.dilate_pixels)
+    if sea.retired:
+        # 1.9: retired zones emit no path — their pixels join the
+        # unexplored-sea background inside `outside`.
+        retired_idx = [
+            i + 1
+            for i, k in enumerate(sea.zone_keys)
+            if k in sea.retired
+        ]
+        zd[np.isin(zd, retired_idx)] = 0
 
     boundaries = []
     for z in range(1, len(sea.zone_keys) + 1):
@@ -522,7 +559,10 @@ def build_sea_geometries(
     errors: list[PipelineError] = []
     min_area = cfg.clean.min_part_area
     cut_zones: list = []
+    cut_idx: list[int] = []  # zone index (1-based) of each cut_zones item
     for z, key in enumerate(sea.zone_keys, start=1):
+        if key in sea.retired:
+            continue
         parts = by_zone.get(z, [])
         if not parts:
             errors.append(
@@ -545,6 +585,7 @@ def build_sea_geometries(
             )
             continue
         cut_zones.append(_union_polygons(kept))
+        cut_idx.append(z)
     if errors:
         raise PipelineFailure(errors)
 
@@ -569,9 +610,8 @@ def build_sea_geometries(
     )
 
     errors = []
-    for i, key in enumerate(sea.zone_keys):
-        if i >= len(cut_zones):
-            continue
+    for i, z in enumerate(cut_idx):
+        key = sea.zone_keys[z - 1]
         snapped = _union_polygons(
             _snap_pointwise(simplified_zones[i], cfg.output.grid)
         )
@@ -611,6 +651,27 @@ def build_sea_geometries(
         build.area_after_cut = sum(
             float(g.area) for g in build.geoms.values()
         )
+
+    # 1.10: coverage simplification can push a zone edge back across a
+    # land rim or an island; re-cut every zone by the exact land mask so
+    # the sea never overlaps the final land contours.
+    for key in sorted(build.geoms):
+        diff = build.geoms[key].difference(land_mask)
+        kept = [p for p in _polygon_list(diff) if p.area >= min_area]
+        if not kept:
+            raise PipelineError(
+                GEOMETRY_EMPTY,
+                f"sea zone {key!r}: empty after the exact land cut",
+            )
+        build.geoms[key] = _union_polygons(
+            _snap_pointwise(_union_polygons(kept), cfg.output.grid)
+        )
+    build.vertices_after_cut = sum(
+        _vertex_count(g) for g in build.geoms.values()
+    )
+    build.area_after_cut = sum(
+        float(g.area) for g in build.geoms.values()
+    )
     return build
 
 
@@ -679,14 +740,16 @@ def node_metrics(geom, cfg: PipelineConfig) -> NodeMetrics:
 
 
 def build_lake_region(
-    sea: SeaRaster, land_mask, view_poly, cfg, land_union=None
+    sea: SeaRaster, land_mask, view_poly, cfg, land_union=None,
+    nodes_u=None,
 ):
     """Lake raster grown 1 px, clipped to exact water (viewBox - LandMask).
 
     Spec 1.5: only lakes within ``outside.lake_near_land`` of the final
     included land become ``outside`` windows — lakes inside excluded
-    territory stay dark. Returns ``(region, pieces, area, spill,
-    dropped_count, dropped_area)``.
+    territory stay dark. Spec 1.10: a water body that touches no node
+    (within ``geometry.border_epsilon``) is not cut out at all. Returns
+    ``(region, pieces, area, spill, dropped_count, dropped_area)``.
     """
     rects = _run_boxes(sea.kinds == KIND_LAKE, sea.frame)
     empty = (None, 0, 0.0, 0.0, 0, 0.0)
@@ -704,10 +767,14 @@ def build_lake_region(
     dropped = []
     if land_union is not None:
         near = cfg.outside.lake_near_land
-        pieces, dropped = (
-            [p for p in pieces if p.distance(land_union) <= near],
-            [p for p in pieces if p.distance(land_union) > near],
-        )
+        keep = [p for p in pieces if p.distance(land_union) <= near]
+        dropped = [p for p in pieces if p.distance(land_union) > near]
+        pieces = keep
+    if nodes_u is not None:
+        eps = cfg.geometry.border_epsilon
+        keep = [p for p in pieces if p.distance(nodes_u) <= eps]
+        dropped += [p for p in pieces if p.distance(nodes_u) > eps]
+        pieces = keep
     if not pieces:
         return (
             None, 0, 0.0, 0.0,
@@ -724,8 +791,44 @@ def build_lake_region(
     )
 
 
+def build_bay_region(
+    sea: SeaRaster, land_mask, view_poly, cfg: PipelineConfig,
+    nodes_u=None,
+):
+    """Bay raster grown 1 px, clipped to exact water (viewBox - LandMask).
+
+    Step 5a/Appendix A step 9: every bay piece of at least
+    ``outside.min_hole_area`` that touches a node (within
+    ``geometry.border_epsilon``) becomes a window in ``outside`` and is
+    exported as the ``sea_water`` path. Spec 1.10: a bay touching no node
+    stays dark inside excluded land.
+    """
+    rects = _run_boxes(sea.kinds == KIND_BAY, sea.frame)
+    if not rects:
+        return None
+    grown = safe_union(rects).buffer(
+        1.0 / sea.frame.r, join_style="mitre"
+    )
+    region = grown.intersection(view_poly.difference(land_mask))
+    pieces = [
+        p
+        for p in _polygon_list(region)
+        if p.area >= cfg.outside.min_hole_area
+    ]
+    if nodes_u is not None:
+        eps = cfg.geometry.border_epsilon
+        pieces = [p for p in pieces if p.distance(nodes_u) <= eps]
+    if not pieces:
+        return None
+    return _union_polygons(pieces)
+
+
 def build_outside(
-    node_geoms: list, lake_region, view_poly, cfg: PipelineConfig
+    node_geoms: list,
+    lake_region,
+    view_poly,
+    cfg: PipelineConfig,
+    bay_region=None,
 ) -> OutsideBuild:
     """``outside`` = viewBox − buffer(N, −underlap) − lakeRegion − deep pad.
 
@@ -758,6 +861,8 @@ def build_outside(
     outside = view_poly.difference(n_inset)
     if lake_region is not None and not lake_region.is_empty:
         outside = outside.difference(lake_region)
+    if bay_region is not None and not bay_region.is_empty:
+        outside = outside.difference(bay_region)
     if not deep_pad.is_empty:
         outside = outside.difference(deep_pad)
 
@@ -791,8 +896,12 @@ def build_outside(
                 lake_region is not None
                 and not lake_region.is_empty
                 and lake_region.covers(hole.representative_point())
+            ) or (
+                bay_region is not None
+                and not bay_region.is_empty
+                and bay_region.covers(hole.representative_point())
             ):
-                keep.append(ring)  # lake windows stay whatever the size
+                keep.append(ring)  # water windows stay whatever the size
             else:
                 holes_dropped += 1
         cleaned.append(

@@ -136,7 +136,9 @@ def fix_input_hashes(data_dir: Path) -> None:
 def fix_geometry_pin(data_dir: Path) -> None:
     """Re-pin ``geometry.version`` and ``manifest.geometry_version``."""
     geom = load_geometry(data_dir)
-    geom["version"] = geometry_version(geom["outside"], geom["paths"])
+    geom["version"] = geometry_version(
+        geom["outside"], geom["paths"], geom["sea_water"]
+    )
     save_geometry(data_dir, geom)
     doc = load_manifest(data_dir)
     doc["geometry_version"] = geom["version"]

@@ -20,6 +20,8 @@ import {
   zoomAt,
   type BBox,
   type Frame,
+  type Size,
+  type ViewTransform,
 } from '../lib/view';
 
 // [x, y, width, height] in view_box units — one frame exercises both
@@ -171,6 +173,188 @@ describe('clampOffset — per-axis margin and centring', () => {
     // y: 1000 == 4·250 → margin band: t_y ≤ −4·50 + 100 = −100
     const dy = clampOffset({ ...v, ty: 500 }, FRAME, PORTRAIT, MU);
     expect(dy.ty).toBeCloseTo(-100);
+  });
+});
+
+describe('clampOffset — μ = 0 locks the view at the frame', () => {
+  /** The μ = 0 invariant per axis: where the scaled frame is wider
+   *  than the window it must cover the window edge to edge; where it
+   *  is narrower the frame sits centred (and shows `outside`). */
+  const expectFrameCovered = (v: ViewTransform, vp: Size) => {
+    const axis = (t: number, vLen: number, fPos: number, fLen: number) => {
+      if (vLen > v.s * fLen) {
+        expect(t).toBe((vLen - v.s * (2 * fPos + fLen)) / 2);
+      } else {
+        expect(t).toBeLessThanOrEqual(-v.s * fPos + 1e-9);
+        expect(t + v.s * (fPos + fLen)).toBeGreaterThanOrEqual(vLen - 1e-9);
+      }
+    };
+    axis(v.tx, vp.width, FRAME[0], FRAME[2]);
+    axis(v.ty, vp.height, FRAME[1], FRAME[3]);
+  };
+
+  // At z = 1 the y band degenerates to a single value in every window
+  // (s·f_h == H_v); x is locked only where the scaled frame is not
+  // wider than the window.
+  it.each([
+    // [label, viewport, x axis locked]
+    ['fullscreen 1920×1080', FS_1080, true], // s·w = 1728 < 1920
+    ['VK ~1000×800', VK_800, false], // s·w = 1280 > 1000
+    ['VK ~1000×1200', VK_1200, false], // s·w = 1920 > 1000
+    ['fullscreen 2560×1440', FS_1440, true], // s·w = 2304 < 2560
+  ])('%s — a drag cannot move the locked axes', (_label, vp, xLocked) => {
+    const v = initialTransform(FRAME, vp);
+    for (const [dx, dy] of [
+      [5000, 0],
+      [-5000, 0],
+      [0, 5000],
+      [0, -5000],
+      [5000, 5000],
+      [-5000, -5000],
+    ]) {
+      const dragged = clampOffset(
+        { ...v, tx: v.tx + dx, ty: v.ty + dy },
+        FRAME,
+        vp,
+        0,
+      );
+      if (xLocked) {
+        expect(dragged.tx).toBe(v.tx);
+      }
+      expect(dragged.ty).toBe(v.ty);
+      expectFrameCovered(dragged, vp);
+    }
+    if (!xLocked) {
+      // The pannable axis still drags inside the frame band.
+      const nudged = clampOffset({ ...v, tx: v.tx + 100 }, FRAME, vp, 0);
+      expect(nudged.tx).toBe(v.tx + 100);
+    }
+  });
+
+  it.each([
+    ['fullscreen 1920×1080', FS_1080, 2.5],
+    ['VK ~1000×800', VK_800, 4],
+    ['fullscreen 2560×1440', FS_1440, ZOOM_MAX],
+  ])(
+    '%s at z = %s — pan works, the frame cannot be left',
+    (_label, vp, z) => {
+      const v0 = initialTransform(FRAME, vp);
+      const centre = { x: vp.width / 2, y: vp.height / 2 };
+      const zoomed = clampOffset(
+        zoomAt(v0, centre, v0.s * z),
+        FRAME,
+        vp,
+        0,
+      );
+      expect(zoomed.s).toBeCloseTo(v0.s * z);
+      expectFrameCovered(zoomed, vp);
+      // Hard drags pin the frame edges to the window edges, never past.
+      for (const [dx, dy] of [
+        [99999, 0],
+        [-99999, 0],
+        [0, 99999],
+        [0, -99999],
+      ]) {
+        const dragged = clampOffset(
+          { ...zoomed, tx: zoomed.tx + dx, ty: zoomed.ty + dy },
+          FRAME,
+          vp,
+          0,
+        );
+        expectFrameCovered(dragged, vp);
+      }
+      // …and an ordinary drag really moves the view.
+      const panned = clampOffset(
+        { ...zoomed, tx: zoomed.tx - 40, ty: zoomed.ty - 40 },
+        FRAME,
+        vp,
+        0,
+      );
+      expect(panned.tx).toBe(zoomed.tx - 40);
+      expect(panned.ty).toBe(zoomed.ty - 40);
+    },
+  );
+
+  it('zooming back out to z = 1 restores the exact initial view', () => {
+    const v0 = initialTransform(FRAME, FS_1080);
+    const zoomed = clampOffset(
+      zoomAt(v0, { x: 700, y: 200 }, v0.s * 4),
+      FRAME,
+      FS_1080,
+      0,
+    );
+    const back = clampOffset(
+      zoomAt(zoomed, { x: 700, y: 200 }, minScale(FRAME, FS_1080)),
+      FRAME,
+      FS_1080,
+      0,
+    );
+    expect(back).toEqual(v0);
+  });
+
+  it.each([
+    ['VK 1000×800 → fullscreen 1920×1080', VK_800, FS_1080],
+    ['fullscreen 1920×1080 → QHD 2560×1440', FS_1080, FS_1440],
+  ])(
+    'fullscreen switch %s at z = 1 lands on the exact new initial view',
+    (_label, vpA, vpB) => {
+      const v0 = initialTransform(FRAME, vpA);
+      const wide = clampOffset(
+        rescaleOnResize(v0, FRAME, vpA, vpB),
+        FRAME,
+        vpB,
+        0,
+      );
+      expect(wide).toEqual(initialTransform(FRAME, vpB));
+      const back = clampOffset(
+        rescaleOnResize(wide, FRAME, vpB, vpA),
+        FRAME,
+        vpA,
+        0,
+      );
+      expect(back.s).toBe(v0.s);
+      // The locked axis snaps back bit-exact; the still-pannable x
+      // axis of the VK window keeps the same world centre.
+      expect(back.ty).toBe(v0.ty);
+      expect(back.tx).toBeCloseTo(v0.tx, 10);
+    },
+  );
+
+  it('search «show on map» and neighbour focus respect the same lock', () => {
+    const [sMin, sMax] = scaleBounds(minScale(FRAME, FS_1080), ZOOM_MAX);
+    // A corner node: centring it raw would pull the frame's far edge
+    // inside the window — the clamp must pull it back.
+    const corner: BBox = [460, 270, 500, 300];
+    const fitted = clampOffset(
+      fitBBox(corner, FS_1080, 1.2, sMin, sMax),
+      FRAME,
+      FS_1080,
+      0,
+    );
+    const centred = clampOffset(
+      centerOn(
+        { s: sMax, tx: 0, ty: 0 },
+        bboxCenter(corner),
+        FS_1080,
+        sMin,
+        sMax,
+      ),
+      FRAME,
+      FS_1080,
+      0,
+    );
+    expectFrameCovered(fitted, FS_1080);
+    expectFrameCovered(centred, FS_1080);
+    // A fit landing back on sMin snaps to the exact initial view.
+    const whole: BBox = [
+      FRAME[0],
+      FRAME[1],
+      FRAME[0] + FRAME[2],
+      FRAME[1] + FRAME[3],
+    ];
+    expect(
+      clampOffset(fitBBox(whole, FS_1080, 1.2, sMin, sMax), FRAME, FS_1080, 0),
+    ).toEqual(initialTransform(FRAME, FS_1080));
   });
 });
 

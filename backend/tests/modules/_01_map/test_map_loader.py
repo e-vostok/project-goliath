@@ -468,6 +468,15 @@ def test_inv_m6_geometry_changed_without_version_bump(mini_dir):
     _expect(mini_dir, INV_M6)
 
 
+def test_inv_m6_sea_water_is_hashed(mini_dir):
+    """Changing only ``sea_water`` must change the recomputed version."""
+    _mutate_geometry(
+        mini_dir,
+        lambda d: d.update(sea_water="M 1 1 L 2 1 L 2 2 Z"),
+    )
+    _expect(mini_dir, INV_M6)
+
+
 def test_inv_m6_paths_missing_node(mini_dir):
     _mutate_geometry(mini_dir, lambda d: d["paths"].pop("1008"))
     fix_geometry_pin(mini_dir)  # versions stay consistent -> set check fires

@@ -33,7 +33,7 @@ def _base_config() -> dict:
                 "height": 217.3,
             },
             "zoom_max": 16.0,
-            "pan_margin_fraction": 0.1,
+            "pan_margin_fraction": 0.0,
             "label_min_width_px": 48,
             "search_min_chars": 2,
             "search_max_results": 20,
@@ -49,7 +49,7 @@ def _base_config() -> dict:
             "neutral_province": "#8C8C8C",
             "sea": "#1E3547",
             "outside": "#2A2A2A",
-            "inland_water": "#3E6B84",
+            "inland_water": "#1E3547",
             "province_border": "#3A3A3A",
             "hover": "#FFFFFF",
             "selected": "#FFD24A",
@@ -92,7 +92,7 @@ class TestRealConfig:
         assert config.view.frame.width > 0
         assert config.view.frame.height > 0
         assert config.view.zoom_max > 1.0
-        assert config.limits.max_nodes >= 1123
+        assert config.limits.max_nodes >= 1065  # boundary v2 node count
 
     @pytest.mark.parametrize(
         "cwd_name",

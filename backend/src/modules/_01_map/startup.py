@@ -8,8 +8,9 @@ core registries exist, BEFORE the scheduler starts:
 2. ``load_map_data(data_dir, config)`` — ``data_dir`` is the
    ``MAP_DATA_DIR`` env var, else ``<repo>/data/map``;
 3. ``ProvinceService.ensure_nodes(...)`` for every manifest node, then
-   INV-M5: extra DB rows and kind mismatches are fatal with a message
-   saying what to do;
+   ``ProvinceService.remove_retired(...)`` for retired nodes (lock ids
+   absent from the manifest — 1.9), then INV-M5: remaining extra DB rows
+   and kind mismatches are fatal with a message saying what to do;
 4. register the ownership listener, the two registration checks and the
    reset hook; install the ``MapService`` singleton.
 
@@ -26,11 +27,20 @@ import os
 from pathlib import Path
 
 from core.db import get_session_context
-from modules._00_core.service import NodeSpec, ProvinceService
+from modules._00_core.service import (
+    EnsureNodesResult,
+    NodeSpec,
+    ProvinceService,
+    RetiredRemovalResult,
+)
 from modules._01_map.config_schema import MapConfig
 from modules._01_map.hooks import register_map_hooks
 from modules._01_map.loader import INV_M5, MapDataError, load_map_data
-from modules._01_map.service import MapService, init_map_service
+from modules._01_map.service import (
+    MapService,
+    init_map_service,
+    province_ids_with_journal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +59,19 @@ def resolve_data_dir() -> Path:
     return Path(raw) if raw else _DEFAULT_DATA_DIR
 
 
-def _verify_inv_m5(result) -> None:
-    """provinces == manifest, or startup dies here (INV-M5)."""
+def _verify_inv_m5(
+    result: EnsureNodesResult, removal: RetiredRemovalResult
+) -> None:
+    """provinces == manifest, or startup dies here (INV-M5).
+
+    ``extra_in_db`` minus the retired rows just removed is what stays
+    fatal: ids not in ids.lock.json at all. Owned or journal-carrying
+    retired rows never reach here — ``remove_retired`` raises first.
+    """
     problems: list[str] = []
-    if result.extra_in_db:
-        shown = result.extra_in_db[:_MAX_LISTED]
+    extra_in_db = sorted(set(result.extra_in_db) - set(removal.removed))
+    if extra_in_db:
+        shown = extra_in_db[:_MAX_LISTED]
         problems.append(
             "provinces contains rows absent from manifest.json: "
             f"{shown} — run the world reset; the database likely belongs "
@@ -81,6 +99,11 @@ async def startup_map() -> MapService:
     map_data = load_map_data(data_dir, config)
 
     async with get_session_context() as session:
+        # 1.9 / INV-M5, order matters: insert missing manifest nodes,
+        # then remove unowned provinces rows of retired nodes (an owned
+        # row or one carrying journal history aborts the boot — the
+        # append-only journal is never touched), then treat whatever is
+        # left unexpected as fatal, and commit only on success.
         result = await ProvinceService.ensure_nodes(
             session,
             [
@@ -88,7 +111,13 @@ async def startup_map() -> MapService:
                 for node in map_data.nodes.values()
             ],
         )
-        _verify_inv_m5(result)
+        history_ids = await province_ids_with_journal(
+            session, map_data.retired_ids
+        )
+        removal = await ProvinceService.remove_retired(
+            session, map_data.retired_ids, history_ids=history_ids
+        )
+        _verify_inv_m5(result, removal)
         await session.commit()
 
     # Only once the DB provably matches the manifest (INV-M5) may the
@@ -98,10 +127,11 @@ async def startup_map() -> MapService:
     init_map_service(service)
     logger.info(
         "01_map started: %d nodes from %s "
-        "(%d added to provinces, %d already present)",
+        "(%d added to provinces, %d already present, %d retired removed)",
         len(map_data.nodes),
         data_dir,
         len(result.added),
         len(map_data.nodes) - len(result.added),
+        len(removal.removed),
     )
     return service

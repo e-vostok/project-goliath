@@ -24,7 +24,7 @@ export const MINI_RULES: MapViewRulesDTO = {
     neutral_province: '#8C8C8C',
     sea: '#1E3547',
     outside: '#2A2A2A',
-    inland_water: '#3E6B84',
+    inland_water: '#1E3547',
     province_border: '#3A3A3A',
     hover: '#FFFFFF',
     selected: '#FFD24A',
@@ -76,6 +76,7 @@ export const MINI_MANIFEST: MapManifestDTO = {
 export const MINI_GEOMETRY: MapGeometryDTO = {
   version: 'mini01',
   outside: 'M 0 0 L 100 0 L 100 80 L 0 80 Z',
+  sea_water: '',
   paths: {
     1001: 'M 0 20 L 10 20 L 10 30 L 0 30 Z',
     1002: 'M 10 20 L 20 20 L 20 30 L 10 30 Z',

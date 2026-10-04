@@ -84,6 +84,45 @@ describe('PanelMap — rendering', () => {
     ).toBeInTheDocument();
   });
 
+  it('hides the «Озёра» legend entry only while inland_water equals sea', async () => {
+    // Fixture: inland_water === sea → the entry is not rendered.
+    const first = renderMap();
+    await mapReady();
+    expect(screen.queryByText('Озёра')).not.toBeInTheDocument();
+    first.unmount();
+
+    // The comparison is case-insensitive.
+    const lowercaseWater: MapManifestDTO = {
+      ...MINI_MANIFEST,
+      rules: {
+        ...MINI_MANIFEST.rules,
+        colors: {
+          ...MINI_MANIFEST.rules.colors,
+          inland_water:
+            MINI_MANIFEST.rules.colors.sea.toLowerCase(),
+        },
+      },
+    };
+    const second = renderMap({ manifest: lowercaseWater });
+    await mapReady();
+    expect(screen.queryByText('Озёра')).not.toBeInTheDocument();
+    second.unmount();
+
+    const distinctWater: MapManifestDTO = {
+      ...MINI_MANIFEST,
+      rules: {
+        ...MINI_MANIFEST.rules,
+        colors: {
+          ...MINI_MANIFEST.rules.colors,
+          inland_water: '#3E6B84',
+        },
+      },
+    };
+    renderMap({ manifest: distinctWater });
+    await mapReady();
+    expect(screen.getByText('Озёра')).toBeInTheDocument();
+  });
+
   it('paints owned provinces in the owner colour and seas in sea colour', async () => {
     renderMap();
     await mapReady();

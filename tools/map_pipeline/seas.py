@@ -49,6 +49,7 @@ KIND_LAND = 0
 KIND_ZONE_WATER = 1
 KIND_UNKNOWN_SEA = 2
 KIND_LAKE = 3
+KIND_BAY = 4
 
 
 @dataclass
@@ -78,8 +79,13 @@ class SnappedSeed:
 
 @dataclass
 class Lake:
+    """One small unseeded water body (Spec 3.2 step 5/5a)."""
+
     area: float
     centroid: tuple[float, float]
+    sea_distance: float = math.inf
+    bay: bool = False
+    forced: str | None = None  # "sea_like_water" | "lake_force"
 
 
 @dataclass
@@ -95,8 +101,12 @@ class SeaRaster:
     labels: np.ndarray  # int16, zone index per pixel, 0 = none
     kinds: np.ndarray  # uint8, per-pixel kind map
     zone_areas: list[float]  # sq. units per zone index
+    # 1.9: retired zone keys — labels still claim water but the pixels are
+    # KIND_UNKNOWN_SEA and no graph node/geometry path is emitted.
+    retired: frozenset[str] = frozenset()
     snapped: list[SnappedSeed] = field(default_factory=list)
     lakes: list[Lake] = field(default_factory=list)
+    bays: list[Lake] = field(default_factory=list)
     water_outside: list[tuple[str, float]] = field(default_factory=list)
     unreached_small_count: int = 0
     unreached_small_area: float = 0.0
@@ -257,6 +267,9 @@ def _place_seeds(
                 col, row, working, frame, cfg.sea.seed_snap_radius
             )
             if pixel is None:
+                if zone.retired:
+                    # 1.9: a retired zone needs no reachable seed.
+                    continue
                 errors.append(
                     PipelineError(
                         SEED_OUTSIDE_WATER,
@@ -433,21 +446,24 @@ def build_seas(
         outside_comps.add(cid)
 
     # Per-component kind lookup: 0 land, 1 zone water (labelled W' pixels
-    # only), 2 unknown sea, 3 lake. Water beyond the band stays unknown sea
-    # even inside a seeded body.
+    # only), 2 unknown sea, 3 lake (4 bay after the step-5a split below).
+    # Water beyond the band stays unknown sea even inside a seeded body.
     kind_lut = np.zeros(ncomp + 1, dtype=np.uint8)
     kind_lut[1:] = KIND_UNKNOWN_SEA
-    lakes: list[Lake] = []
+    small: list[tuple[int, Lake]] = []  # (component id, record)
     for cid in range(1, ncomp + 1):
         if cid in seeded_comps:
             pass  # zone water, marked per-pixel via `labels` below
         elif comp_area[cid] < overrides.lake_max_area:
             kind_lut[cid] = KIND_LAKE
-            lakes.append(
-                Lake(
-                    area=float(comp_area[cid]),
-                    centroid=_component_centroid(
-                        comp_centers[cid - 1], frame
+            small.append(
+                (
+                    cid,
+                    Lake(
+                        area=float(comp_area[cid]),
+                        centroid=_component_centroid(
+                            comp_centers[cid - 1], frame
+                        ),
                     ),
                 )
             )
@@ -467,6 +483,56 @@ def build_seas(
             )
     kinds = kind_lut[wcomp]
     kinds[labels > 0] = KIND_ZONE_WATER
+    retired = frozenset(z.key for z in overrides.sea_zones if z.retired)
+    if retired:
+        # Retired zones still hold their labels (their water is not given
+        # to the neighbours) but the pixels render as unexplored sea.
+        retired_idx = [
+            i + 1
+            for i, z in enumerate(overrides.sea_zones)
+            if z.retired
+        ]
+        kinds[np.isin(labels, retired_idx)] = KIND_UNKNOWN_SEA
+
+    # Step 5a (Spec 1.9): a small body is a bay when it lies within
+    # ``sea_link_gap`` of zone or unexplored-sea water (pixel-centre
+    # distance on the raster) or holds a ``sea_like_water`` point;
+    # ``lake_force`` pins it to lake in any case.
+    lakes: list[Lake] = []
+    bays: list[Lake] = []
+    if small:
+        sea_side = np.isin(kinds, (KIND_ZONE_WATER, KIND_UNKNOWN_SEA))
+        dist_to_sea = ndimage.distance_transform_edt(~sea_side) / r
+        comp_dist = np.full(ncomp + 1, np.inf)
+        np.minimum.at(comp_dist, wcomp.ravel(), dist_to_sea.ravel())
+
+        def _point_comp(pt) -> int:
+            col, row = frame.point_to_pixel(pt.x, pt.y)
+            if 0 <= col < frame.width and 0 <= row < frame.height:
+                return int(wcomp[row, col])
+            return 0
+
+        sea_like_comps = {
+            c for p in overrides.sea_like_water if (c := _point_comp(p))
+        }
+        lake_force_comps = {
+            c for p in overrides.lake_force if (c := _point_comp(p))
+        }
+        for cid, rec in small:
+            mask = wcomp == cid
+            rec.sea_distance = float(comp_dist[cid])
+            if cid in lake_force_comps:
+                rec.forced = "lake_force"
+            elif cid in sea_like_comps:
+                rec.bay = True
+                rec.forced = "sea_like_water"
+            elif rec.sea_distance <= overrides.sea_link_gap:
+                rec.bay = True
+            if rec.bay:
+                kinds[mask] = KIND_BAY
+                bays.append(rec)
+            else:
+                lakes.append(rec)
 
     # Unreached pieces of seeded water bodies (band parts without a seed):
     # a W' component carries no label iff none of its pixels was seeded.
@@ -513,6 +579,8 @@ def build_seas(
         for z in range(1, len(overrides.sea_zones) + 1)
     ]
     for z, zone in enumerate(overrides.sea_zones, start=1):
+        if zone.retired:
+            continue
         if zone_areas[z - 1] == 0:
             errors.append(
                 PipelineError(
@@ -535,8 +603,10 @@ def build_seas(
         labels=labels,
         kinds=kinds,
         zone_areas=zone_areas,
+        retired=retired,
         snapped=snapped,
         lakes=lakes,
+        bays=bays,
         water_outside=[
             (name, float(comp_area[cid])) for name, cid in outside_pts
         ],

@@ -151,27 +151,35 @@ def _contact_edges(
     sea: SeaRaster,
     land_labels: np.ndarray,
     land_nodes: list[GraphNode],
-    sea_nodes: list[GraphNode],
+    sea_nodes: dict[int, GraphNode],
     cfg: PipelineConfig,
 ) -> dict[tuple[int, int], Edge]:
-    """LAND-SEA (coast) and SEA-SEA (sea) pairs from pixel contacts."""
+    """LAND-SEA (coast) and SEA-SEA (sea) pairs from pixel contacts.
+
+    ``sea_nodes`` maps zone index -> node; retired zones have no entry, so
+    their pixels never produce an edge.
+    """
     r = sea.frame.r
     l_min = cfg.geometry.min_border_length
     coast, sea_pairs = _contact_pairs(sea.labels, land_labels)
     edges: dict[tuple[int, int], Edge] = {}
     for (zi, li), count in sorted(coast.items()):
+        if zi not in sea_nodes:
+            continue
         length = count / r
         if length < l_min:
             continue
         a, b = sorted(
-            (sea_nodes[zi - 1].id, land_nodes[li - 1].id)
+            (sea_nodes[zi].id, land_nodes[li - 1].id)
         )
         edges[(a, b)] = Edge(a=a, b=b, type="coast", len=length)
     for (z1, z2), count in sorted(sea_pairs.items()):
+        if z1 not in sea_nodes or z2 not in sea_nodes:
+            continue
         length = count / r
         if length < l_min:
             continue
-        a, b = sorted((sea_nodes[z1 - 1].id, sea_nodes[z2 - 1].id))
+        a, b = sorted((sea_nodes[z1].id, sea_nodes[z2].id))
         edges[(a, b)] = Edge(a=a, b=b, type="sea", len=length)
     return edges
 
@@ -387,8 +395,10 @@ def build_graph(
         )
         for key in ordered_keys
     ]
-    sea_nodes = [
-        GraphNode(
+    # 1.9: retired zones are absent from the node table — their pixels keep
+    # their labels but produce no node and no edges.
+    sea_nodes = {
+        z + 1: GraphNode(
             id=ids[key],
             key=key,
             kind=KIND_SEA,
@@ -398,9 +408,10 @@ def build_graph(
             zone_index=z + 1,
         )
         for z, key in enumerate(sea.zone_keys)
-    ]
+        if key not in sea.retired
+    }
 
-    by_key = {n.key: n for n in land_nodes + sea_nodes}
+    by_key = {n.key: n for n in land_nodes + list(sea_nodes.values())}
     edges = _land_edges(
         land_nodes, cfg.geometry.border_epsilon, cfg.geometry.min_border_length
     )
@@ -411,7 +422,9 @@ def build_graph(
     if errors:
         raise PipelineFailure(errors)
 
-    graph_nodes = sorted(land_nodes + sea_nodes, key=lambda n: n.id)
+    graph_nodes = sorted(
+        land_nodes + list(sea_nodes.values()), key=lambda n: n.id
+    )
     connected_no_manual = _check_invariants(graph_nodes, edges)
     return Graph(
         nodes=graph_nodes,

@@ -35,7 +35,7 @@ import core.db as core_db
 from core.db import get_session
 from core.tick.orchestrator import TickOrchestrator
 from main import app
-from modules._00_core.models import GameClock
+from modules._00_core.models import GameClock, Province
 from modules._00_core.hooks import OwnershipChange
 from modules._01_map.loader import load_map_data
 from modules._01_map.schemas import (
@@ -591,6 +591,60 @@ class TestState:
         ).json()
         assert explicit == plain
 
+    async def test_retired_node_never_in_state(
+        self, client, map_db_session
+    ):
+        """
+        Spec 1.9: /map/state never returns owners of ids outside the
+        active manifest — neither a live provinces row (a retired node's
+        leftover) nor a journal entry for a withdrawn node. The owner's
+        real provinces and nation entry survive the filtering.
+        """
+        player = await seed_player(map_db_session)
+        nation = await _create_nation(
+            client, player, "Alpha", "#AA1100", [1001]
+        )
+        # An owned row on an id the manifest does not know — the shape
+        # a retired-but-owned leftover would have (startup normally
+        # refuses this; the read path must still be safe).
+        map_db_session.add(
+            Province(id=9999, kind="LAND", nation_id=nation["id"])
+        )
+        # A journal claim on the retired id back at turn 0 (a withdrawn
+        # node the journal legitimately remembers).
+        await record_changes(
+            map_db_session,
+            [
+                OwnershipChange(
+                    province_id=9999,
+                    prev_nation_id=None,
+                    new_nation_id="nation-old",
+                    new_name="Old Realm",
+                    new_color="#303030",
+                    turn=0,
+                ),
+            ],
+        )
+        await _set_turn(map_db_session, 1)
+        headers = bearer_headers(player.id)
+
+        current = MapStateDTO.model_validate(
+            (await client.get(STATE_URL, headers=headers)).json()
+        )
+        assert current.owners == [[1001, 0]]
+        assert [str(n.id) for n in current.nations] == [nation["id"]]
+
+        at_0 = (
+            await client.get(
+                STATE_URL, params={"turn": 0}, headers=headers
+            )
+        ).json()
+        # turn 0's snapshot holds 1001 (claimed at registration) and
+        # the withdrawn 9999 — only the active id is returned, and the
+        # retired node's journal nation disappears with it.
+        assert at_0["owners"] == [[1001, 0]]
+        assert [n["name"] for n in at_0["nations"]] == ["Alpha"]
+
     async def test_turn_out_of_range(self, client, map_db_session):
         player = await seed_player(map_db_session)
         await _set_turn(map_db_session, 2)
@@ -971,8 +1025,8 @@ class TestRealMap:
                     )
                     assert plain.status_code == 200
                     body = plain.json()
-                    assert len(body["nodes"]) == 1123
-                    assert len(body["edges"]) == 3229
+                    assert len(body["nodes"]) == 1065
+                    assert len(body["edges"]) == 3060
                     version = body["geometry_version"]
                     manifest_plain = len(plain.content)
 

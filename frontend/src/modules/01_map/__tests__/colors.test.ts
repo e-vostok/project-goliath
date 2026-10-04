@@ -10,7 +10,7 @@ const COLORS = {
   neutral_province: '#8C8C8C',
   sea: '#1E3547',
   outside: '#2A2A2A',
-  inland_water: '#3E6B84',
+  inland_water: '#1E3547',
   province_border: '#3A3A3A',
   hover: '#FFFFFF',
   selected: '#FFD24A',
@@ -67,5 +67,25 @@ describe('buildOwnerMap', () => {
     expect(buildOwnerMap(null).size).toBe(0);
     const broken: MapStateDTO = { ...state, owners: [[9, 99]] };
     expect(buildOwnerMap(broken).size).toBe(0);
+  });
+
+  it('drops owner entries for ids outside the manifest (retired nodes)', () => {
+    // Spec 1.9: a state payload can still mention a withdrawn node id;
+    // the valid-id set keeps it out of the painted map.
+    const validIds = new Set([1, 6]);
+    const owners = buildOwnerMap(state, validIds);
+    expect(owners.size).toBe(2);
+    expect(owners.has(5)).toBe(false);
+    expect(owners.get(1)?.name).toBe('Тестия');
+  });
+
+  it('accepts an id-keyed Map as the valid-id source', () => {
+    const nodesById = new Map<number, MapNodeDTO>([
+      [1, land],
+      [5, { ...land, id: 5, key: 'land5' }],
+    ]);
+    const owners = buildOwnerMap(state, nodesById);
+    expect(owners.size).toBe(2);
+    expect(owners.has(6)).toBe(false);
   });
 });
