@@ -122,6 +122,8 @@ A change under `.github/workflows/**` runs all four. Docs-only PRs (`docs/**`, `
 
 No secrets are used; the workflow token has `contents: read` only and jobs run under `pull_request`, never `pull_request_target`.
 
+Если джоба упала с ошибкой «The job was not acquired by Runner…» — это сбой на стороне раннеров GitHub, а не дефект кода: откройте PR → вкладка Checks → «Re-run failed jobs». CI на `main` можно запустить вручную: вкладка Actions → workflow CI → «Run workflow». Пуши в `main` никогда не отменяют друг друга — отменяются только старые прогоны внутри того же PR.
+
 ## 8. Как обновить зависимости бэкенда
 
 Версии всех Python-пакетов зафиксированы в `backend/requirements.lock` (боевые зависимости) и `backend/requirements-dev.lock` (боевые + инструменты разработки). Боевой Docker-образ и CI ставят ровно эти версии — обновление делается только осознанно.

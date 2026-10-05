@@ -7,13 +7,18 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# Pull requests keep the old behaviour: a newer push to the same PR
+# branch cancels the previous run. Every other event (push to `main`,
+# manual `workflow_dispatch`) gets a per-run group, so a `main` run is
+# never cancelled by another run and never cancels one.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # CI-1: figure out which areas a change can affect and let each of the
@@ -45,7 +50,7 @@ jobs:
             files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null || true)"
           fi
           if [ -z "$files" ] || echo "$files" | grep -qE '^\.github/workflows/'; then
-            echo "push event, empty/failed diff or workflow change: run everything"
+            echo "push/dispatch event, empty/failed diff or workflow change: run everything"
             for a in backend frontend map_pipeline docker; do
               echo "$a=true" >> "$GITHUB_OUTPUT"
             done
