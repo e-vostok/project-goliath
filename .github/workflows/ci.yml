@@ -16,8 +16,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # CI-1: figure out which areas a change can affect and let each of the
+  # four checks decide via `if:`. On `push` (main) or whenever the PR
+  # diff cannot be computed every output stays `true` — fail-safe.
+  # A required check skipped by `if:` counts as passing, so branch
+  # protection keeps working while docs-only PRs skip everything.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      map_pipeline: ${{ steps.filter.outputs.map_pipeline }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect affected areas
+        id: filter
+        shell: bash
+        run: |
+          files=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}" 2>/dev/null || true
+            files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null || true)"
+          fi
+          if [ -z "$files" ] || echo "$files" | grep -qE '^\.github/workflows/'; then
+            echo "push event, empty/failed diff or workflow change: run everything"
+            for a in backend frontend map_pipeline docker; do
+              echo "$a=true" >> "$GITHUB_OUTPUT"
+            done
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "$files"
+          echo "$files" | grep -qE '^(backend/|configs/|data/map/)' \
+            && echo "backend=true" >> "$GITHUB_OUTPUT" \
+            || echo "backend=false" >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(frontend/|data/map/)' \
+            && echo "frontend=true" >> "$GITHUB_OUTPUT" \
+            || echo "frontend=false" >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(tools/map_pipeline/|data/map/)' \
+            && echo "map_pipeline=true" >> "$GITHUB_OUTPUT" \
+            || echo "map_pipeline=false" >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(deploy/|data/map/|backend/alembic/|backend/pyproject\.toml$|backend/requirements[^/]*\.lock$|frontend/package(-lock)?\.json$)|(^|/)(\.env\.prod\.example|\.dockerignore|Dockerfile|docker-compose[^/]*\.yml)$' \
+            && echo "docker=true" >> "$GITHUB_OUTPUT" \
+            || echo "docker=false" >> "$GITHUB_OUTPUT"
+
   backend:
     name: backend
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -92,6 +144,8 @@ jobs:
 
   frontend:
     name: frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -113,6 +167,8 @@ jobs:
 
   map_pipeline:
     name: map_pipeline
+    needs: changes
+    if: needs.changes.outputs.map_pipeline == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -135,6 +191,8 @@ jobs:
 
   docker:
     name: docker
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
