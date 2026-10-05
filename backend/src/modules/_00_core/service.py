@@ -21,6 +21,7 @@ from modules._00_core.hooks import (
     STAGE_AFTER_FREE,
     OwnershipChange,
     notify_ownership_changed,
+    run_before_all_checks,
     run_registration_checks,
 )
 from modules._00_core.exceptions import (
@@ -402,12 +403,13 @@ class NationService:
         Enforces INV-1 (one nation per player), INV-7 (mandatory profile
         fields), INV-2 (unique name/color), INV-3 (atomic province
         assignment), and province count constraints — in exactly the
-        Spec order (00_core Part 2 extended by 01_map Part 5):
-        INV-1 -> profile fields (leader_name, leader_title,
-        history_url) -> INV-2 -> province existence -> province freedom
-        -> "after_free" satellite checks -> province count ->
-        "after_count" satellite checks -> create. Any failure persists
-        nothing.
+        Spec order (00_core Part 2 extended by 01_map Part 5 and
+        02_bot 3.10): "before_all" satellite checks (they see the
+        player, run before any write) -> INV-1 -> profile fields
+        (leader_name, leader_title, history_url) -> INV-2 -> province
+        existence -> province freedom -> "after_free" satellite checks
+        -> province count -> "after_count" satellite checks -> create.
+        Any failure persists nothing.
 
         Args:
             session: The async database session.
@@ -434,6 +436,10 @@ class NationService:
             ProvinceTakenError: If any province is already owned.
             ProvinceCountOutOfRangeError: If province count violates constraints.
         """
+        # Stage "before_all": satellite checks that see the player and
+        # run before any write — first in the Spec Part 5 order.
+        await run_before_all_checks(session, owner_player_id)
+
         # INV-1: Check if player already has a nation
         result = await session.execute(
             select(Nation).where(Nation.owner_player_id == owner_player_id)
