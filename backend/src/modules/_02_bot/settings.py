@@ -29,6 +29,7 @@ _TRUE_VALUES = frozenset({"1", "true", "yes"})
 _runtime_running = False
 _misconfigured_logged = False
 _app_id_warned = False
+_active_runtime: object | None = None
 
 
 class BotMode(str, Enum):
@@ -124,6 +125,17 @@ def set_runtime_running(running: bool) -> None:
     """Issue 3's runtime marks READY -> RUNNING once its tasks are up."""
     global _runtime_running
     _runtime_running = running
+
+
+def set_active_runtime(runtime: object | None) -> None:
+    """The live BotRuntime for the admin view, or None after stop()."""
+    global _active_runtime
+    _active_runtime = runtime
+
+
+def get_active_runtime() -> object | None:
+    """The live BotRuntime, or None while the sender is not started."""
+    return _active_runtime
 
 
 def is_bot_active() -> bool:

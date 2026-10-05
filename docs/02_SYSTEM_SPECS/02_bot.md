@@ -48,7 +48,7 @@
 | `event_key` | VARCHAR(120) | NOT NULL. Ключ события для защиты от дубля |
 | `priority` | VARCHAR(8) | NOT NULL, `CHECK (priority IN ('critical','normal'))` |
 | `counts_toward_cap` | BOOLEAN | NOT NULL. Копия правила типа на момент постановки |
-| `payload` | JSON | NOT NULL. Для `NOTIFICATION` — словарь переменных шаблона. Для `REPLY` — `{"template": "<имя из dialog.texts>", "vars": {…}, "keyboard": "MEMBER"|"GUEST"}` |
+| `payload` | JSON | NOT NULL. Для `NOTIFICATION` — словарь переменных шаблона. Для `REPLY` — `{"template": "<имя из dialog.texts>", "vars": {…}, "keyboard": "AUTO"|"HELP"}`: `AUTO` — постоянная клавиатура `MEMBER`/`GUEST` по состоянию игрока в момент отправки, `HELP` — инлайн-клавиатура ссылок «Помощи» (п. 5.5) |
 | `status` | VARCHAR(8) | NOT NULL, default `'PENDING'`, `CHECK (status IN ('PENDING','LEASED','SENT','EXPIRED','DROPPED','FAILED'))` |
 | `drop_reason` | VARCHAR(24) | NULL. Для `DROPPED`/`FAILED`: `NO_CONSENT`, `NO_NATION`, `BLOCKED`, `TEMPLATE_ERROR`, `BAD_REQUEST`, `TOO_LONG`, `ATTEMPTS_EXHAUSTED`, `RESET` |
 | `created_at` | TIMESTAMPTZ | NOT NULL |

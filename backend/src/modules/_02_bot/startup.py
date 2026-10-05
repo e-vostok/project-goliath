@@ -20,13 +20,22 @@ from __future__ import annotations
 
 import logging
 
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from modules._02_bot.admin_hooks import register_bot_admin_hooks
 from modules._02_bot.config_schema import BotConfig
 from modules._02_bot.registry import (
     register_builtin_types,
     validate_registry_against_config,
 )
-from modules._02_bot.settings import get_bot_mode
+from modules._02_bot.settings import (
+    BotMode,
+    get_bot_mode,
+    read_bot_env,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,3 +61,22 @@ def startup_bot() -> BotConfig:
     _bot_config = config
     logger.info("02_bot started: mode=%s", get_bot_mode().value)
     return config
+
+
+async def start_runtime_if_ready(
+    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
+):
+    """
+    Issue 3 wiring (Spec 2.5 step 3): a ``READY`` bot gets a BotRuntime
+    with its four tasks; ``OFF``/``MISCONFIGURED`` (and an already
+    ``RUNNING`` second lifespan) start nothing. Returns the runtime or
+    None — the caller stops it on shutdown.
+    """
+    from modules._02_bot.runtime import BotRuntime
+
+    env = read_bot_env()
+    if get_bot_mode(env) is not BotMode.READY:
+        return None
+    runtime = BotRuntime(get_bot_config(), env, session_factory)
+    await runtime.start()
+    return runtime

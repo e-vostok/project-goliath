@@ -11,7 +11,7 @@ collapses, ``[``/``]`` become ``(``/``)`` so VK mention markup
 
 Failures map to queue drop reasons: a missing variable raises
 ``TemplateError`` (``TEMPLATE_ERROR``), an oversize result raises
-``MessageTooLong`` (``TOO_LONG``). REPLY rendering arrives in Issue 4.
+``MessageTooLong`` (``TOO_LONG``).
 """
 
 from __future__ import annotations
@@ -98,9 +98,7 @@ def render_message(
     if mode == "SINGLE":
         row = rows_by_id[message.row_ids[0]]
         if row.kind == "REPLY":
-            raise NotImplementedError(
-                "REPLY rendering arrives with Issue 4 (dialog)"
-            )
+            return render_reply(row, config, {})
         text = render(
             config.types[message.type_key].text,
             _sanitized(row.payload, config),
@@ -127,6 +125,40 @@ def render_message(
     else:
         raise NotImplementedError(f"unknown render mode {mode!r}")
 
+    if len(text) > config.limits.message_max_chars:
+        raise MessageTooLong(len(text), config.limits.message_max_chars)
+    return text
+
+
+def render_reply(
+    row: RowView,
+    config: BotConfig,
+    extra_vars: Mapping[str, object],
+) -> str:
+    """
+    Render one ``REPLY`` row (Spec 3.9/5.5, Issue 3).
+
+    ``payload.template`` names a ``dialog.texts`` template — an
+    unknown name (or a ``payload.keyboard`` outside ``AUTO``/``HELP``)
+    is a producer bug and maps to ``TEMPLATE_ERROR``. Variables come
+    from ``payload.vars`` plus caller-supplied ``extra_vars`` and are
+    sanitized like notification values (INV-B12).
+    """
+    payload = row.payload or {}
+    template_name = payload.get("template")
+    template = (
+        getattr(config.dialog.texts, template_name, None)
+        if isinstance(template_name, str)
+        else None
+    )
+    if template is None:
+        raise TemplateError(str(template_name))
+    if payload.get("keyboard", "AUTO") not in ("AUTO", "HELP"):
+        raise TemplateError("keyboard")
+
+    variables: dict[str, object] = dict(payload.get("vars") or {})
+    variables.update(extra_vars)
+    text = render(template, _sanitized(variables, config))
     if len(text) > config.limits.message_max_chars:
         raise MessageTooLong(len(text), config.limits.message_max_chars)
     return text

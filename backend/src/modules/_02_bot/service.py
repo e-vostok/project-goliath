@@ -159,8 +159,11 @@ class BotService:
         # in autocommit would escape the caller's transaction (its
         # RELEASE commits). Force the transaction open with a no-op
         # DELETE so the savepoint below really nests inside the
-        # caller's transaction on every backend (INV-B1: no commits).
-        await session.execute(delete(BotOutbox).where(false()))
+        # caller's transaction (INV-B1: no commits). SQLite-only:
+        # PostgreSQL opens its transaction eagerly, and the extra
+        # statement would be a needless round trip there.
+        if session.bind.dialect.name == "sqlite":
+            await session.execute(delete(BotOutbox).where(false()))
         try:
             async with session.begin_nested():
                 session.add(row)

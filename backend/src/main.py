@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from starlette.middleware.gzip import GZipMiddleware
 
 from core.admin.router import router as admin_router
-from core.db import get_engine, init_engine
+from core.db import get_engine, get_session_context, init_engine
 from core.health.router import router as health_router
 from core.security import SecurityError
 from core.security.startup_guard import validate_production_environment
@@ -35,7 +35,7 @@ from modules._00_core.tick_handler import register_tick_handlers
 from modules._01_map.api_service import get_api_payloads
 from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
-from modules._02_bot.startup import startup_bot
+from modules._02_bot.startup import start_runtime_if_ready, startup_bot
 
 
 @asynccontextmanager
@@ -87,11 +87,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     heartbeat.touch()
     scheduler_task = asyncio.create_task(scheduler_loop(), name="tick-scheduler")
 
+    # Spec 02_bot 2.5 step 3: READY starts the BotRuntime right after
+    # the tick scheduler; OFF/MISCONFIGURED start nothing (INV-B10).
+    bot_runtime = await start_runtime_if_ready(get_session_context)
+
     yield
 
     scheduler_task.cancel()
     with suppress(asyncio.CancelledError):
         await scheduler_task
+    if bot_runtime is not None:
+        await bot_runtime.stop()
     await get_engine().dispose()
 
 
