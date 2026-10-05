@@ -313,6 +313,25 @@ class PlayerService:
         
         return player
 
+    @staticmethod
+    async def vk_user_ids(
+        session: AsyncSession, player_ids: Iterable[str]
+    ) -> dict[str, int]:
+        """
+        The ``player_id -> vk_user_id`` mapping for a set of players —
+        the public read path for satellites that address VK users by
+        their internal id (Spec 02_bot Part 1.3). Players absent from
+        the table simply have no key in the result. Read-only, never
+        commits.
+        """
+        ids = set(player_ids)
+        if not ids:
+            return {}
+        result = await session.execute(
+            select(Player.id, Player.vk_user_id).where(Player.id.in_(ids))
+        )
+        return {row[0]: row[1] for row in result.all()}
+
 
 async def _current_turn(session: AsyncSession) -> int:
     """
