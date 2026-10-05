@@ -328,7 +328,8 @@ class TestAdminState:
 
         assert response.status_code == 200
         modules = response.json()["modules"]
-        assert list(modules) == ["00_core"]
+        # 02_bot registers its state view in the lifespan since Issue 2.
+        assert list(modules) == ["00_core", "02_bot"]
         core = modules["00_core"]
         assert core["clock"]["current_turn"] == 0
         assert core["clock"]["next_tick_at"] is not None
@@ -673,9 +674,10 @@ class TestAdminStateReset:
         )
 
         assert response.status_code == 200
-        # 01_map's journal hook runs first (reverse registration order),
-        # then 00_core wipes the world.
-        assert response.json() == {"reset": ["01_map", "00_core"]}
+        # 02_bot's queue reset runs first (reverse registration order:
+        # 02_bot registered last in the lifespan), then 01_map's
+        # journal hook, then 00_core wipes the world.
+        assert response.json() == {"reset": ["02_bot", "01_map", "00_core"]}
 
         me = await live_client.get("/api/v1/nations/me", headers=headers)
         assert me.status_code == 404
@@ -736,11 +738,12 @@ class TestAdminStateReset:
         )
 
         assert response.status_code == 200
-        # Registration order: 00_core, 01_map (lifespan), mod_a, mod_b
-        # -> executed reversed.
+        # Registration order: 00_core, 01_map, 02_bot (lifespan),
+        # mod_a, mod_b -> executed reversed.
         assert response.json()["reset"] == [
             "mod_b",
             "mod_a",
+            "02_bot",
             "01_map",
             "00_core",
         ]

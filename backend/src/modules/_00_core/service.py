@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.config_schema import CoreConfig
@@ -101,6 +101,31 @@ class OwnedProvinceInfo:
     nation_id: str
     nation_name: str
     nation_color: str
+
+
+@dataclass(frozen=True)
+class PlayerNationSummary:
+    """
+    The player's nation as satellites need it (Spec 02_bot Part 1.3):
+    display fields plus the province count — enough for digests and
+    the "has nation" check. ``leader_name``/``leader_title`` may be
+    None for nations predating the profile migration.
+    """
+
+    nation_id: str
+    name: str
+    leader_name: str | None
+    leader_title: str | None
+    province_count: int
+
+
+@dataclass(frozen=True)
+class GameClockSnapshot:
+    """The whole ``game_clock`` row, detached, for satellites."""
+
+    current_turn: int
+    last_tick_at: datetime | None
+    next_tick_at: datetime | None
 
 
 class ProvinceService:
@@ -316,6 +341,26 @@ class GameClockService:
         """
         return await _current_turn(session)
 
+    @staticmethod
+    async def snapshot(session: AsyncSession) -> GameClockSnapshot | None:
+        """
+        The whole ``game_clock`` row as a detached snapshot — the
+        public read path for satellites that need ``last_tick_at`` /
+        ``next_tick_at`` (Spec 02_bot Part 1.3). Returns None when the
+        singleton row is absent (unmigrated schema). Never commits.
+        """
+        result = await session.execute(
+            select(GameClock).where(GameClock.id == 1)
+        )
+        clock = result.scalar_one_or_none()
+        if clock is None:
+            return None
+        return GameClockSnapshot(
+            current_turn=clock.current_turn,
+            last_tick_at=clock.last_tick_at,
+            next_tick_at=clock.next_tick_at,
+        )
+
 
 class NationService:
     """Service for Nation entity operations."""
@@ -469,6 +514,36 @@ class NationService:
         )
 
         return nation
+
+    @staticmethod
+    async def player_nation_summary(
+        session: AsyncSession, player_id: str
+    ) -> PlayerNationSummary | None:
+        """
+        The nation owned by ``player_id`` with its display fields and
+        live province count — the public read path for satellites
+        (Spec 02_bot Part 1.3; also serves the "has nation" check).
+        Returns None when the player owns no nation. Read-only, never
+        commits.
+        """
+        result = await session.execute(
+            select(Nation).where(Nation.owner_player_id == player_id)
+        )
+        nation = result.scalar_one_or_none()
+        if nation is None:
+            return None
+        count_result = await session.execute(
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id == nation.id)
+        )
+        return PlayerNationSummary(
+            nation_id=nation.id,
+            name=nation.name,
+            leader_name=nation.leader_name,
+            leader_title=nation.leader_title,
+            province_count=count_result.scalar_one(),
+        )
 
     @staticmethod
     async def existing_ids(
