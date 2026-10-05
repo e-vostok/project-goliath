@@ -35,6 +35,7 @@ from modules._00_core.tick_handler import register_tick_handlers
 from modules._01_map.api_service import get_api_payloads
 from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
+from modules._02_bot.startup import startup_bot
 
 
 @asynccontextmanager
@@ -71,6 +72,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # register hooks. Runs before the scheduler so no tick (and no
     # request) can fire while the extension points are half-wired.
     await startup_map()
+
+    # Spec 02_bot 2.5: config validation + registry/hook wiring only —
+    # no background tasks or routes yet (Issues 3–4). Runs even with
+    # BOT_ENABLED=false: a broken YAML must still stop the server.
+    startup_bot()
 
     # Spec Part 5: the manifest/geometry bodies and the manifest ETag
     # are built once here, never per request.
