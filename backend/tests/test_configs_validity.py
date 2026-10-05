@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from modules._00_core.config_schema import CoreConfig
 from modules._01_map.config_schema import MapConfig
+from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
 
 
 def _base_config() -> dict:
@@ -106,6 +107,19 @@ def test_map_config_loads():
     assert config.view.frame.width > 0
     assert config.view.frame.height > 0
     assert config.view.zoom_max > 1.0
+
+
+def test_02_bot_config_loads():
+    """configs/02_bot.yaml ↔ BotConfig (module 02_bot, Issue 1).
+
+    The full validation matrix lives in tests/test_02_bot_config.py;
+    this is the registration gate proving the real file loads."""
+    config = BotConfig.from_yaml(BotConfig.get_default_config_path())
+
+    assert set(BUILTIN_TYPE_VARIABLES) <= set(config.types)
+    assert config.types["DEADLINE_WARNING"].enabled is False
+    assert "{group_id}" in config.client.chat_url_template
+    assert config.consent.required_for_registration is True
 
 
 def test_invalid_tick_interval_too_high(tmp_path):

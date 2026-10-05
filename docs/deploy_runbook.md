@@ -170,6 +170,7 @@ nano .env
 | `ADMIN_VK_USER_IDS` | ваш числовой id ВКонтакте, например `123456789` |
 | `APP_ENV` | `production` (уже прописано) |
 | `ADMIN_ALLOW_RESET` | `false` (уже прописано; о `true` — раздел 5) |
+| `BOT_ENABLED`, `VK_GROUP_ID`, `VK_GROUP_TOKEN`, `VK_CALLBACK_SECRET`, `VK_CALLBACK_CONFIRMATION` | переменные VK-бота (модуль 02_bot): по умолчанию бот **выключен** — оставьте всё пустым/`false`; заполняются при включении бота из кабинета сообщества ВК |
 
 Правила безопасности:
 
