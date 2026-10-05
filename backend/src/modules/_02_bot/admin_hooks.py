@@ -3,8 +3,10 @@ Admin hooks of module 02_bot (Spec 5.4).
 
 - State view ``"02_bot"``: a JSON-able snapshot — mode, consent counts
   per state, outbox counts per status, age of the oldest ready row,
-  ``last_digest_turn`` and the sender status (``NOT_STARTED`` until
-  Issue 3). Never exposes env values or secrets (INV-B9).
+  ``last_digest_turn``, the live sender status (RUNNING /
+  BREAKER_OPEN / HALF_OPEN / HALTED_AUTH, ``NOT_STARTED`` without a
+  runtime) and each task's last successful pass. Never exposes env
+  values or secrets (INV-B9).
 - Reset ``"02_bot"``: wipes the whole ``bot_outbox`` queue and zeroes
   ``bot_state.last_digest_turn`` (INV-B14); consents and the
   ``bot_vk_events`` journal survive. The hook never commits — the admin
@@ -24,9 +26,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.registry import AdminRegistry
 from modules._02_bot.models import BotConsent, BotOutbox, BotState
-from modules._02_bot.settings import MODULE_SLUG, get_bot_mode
+from modules._02_bot.settings import (
+    MODULE_SLUG,
+    get_active_runtime,
+    get_bot_mode,
+)
 
 logger = logging.getLogger(__name__)
+
+_TASK_NAMES = ("sender", "digest_watcher", "consent_reconciler", "janitor")
 
 
 async def bot_state_view(session: AsyncSession) -> dict:
@@ -65,6 +73,15 @@ async def bot_state_view(session: AsyncSession) -> dict:
         )
     ).scalar_one_or_none()
 
+    # The live runtime's sender state and task heartbeats; no secrets.
+    runtime = get_active_runtime()
+    if runtime is not None:
+        sender = runtime.sender_state()
+        tasks = runtime.task_last_pass()
+    else:
+        sender = "NOT_STARTED"
+        tasks = {name: None for name in _TASK_NAMES}
+
     return {
         "bot_mode": get_bot_mode().value,
         "consents": dict(consent_rows.all()),
@@ -73,7 +90,8 @@ async def bot_state_view(session: AsyncSession) -> dict:
         "last_digest_turn": last_digest_turn
         if last_digest_turn is not None
         else 0,
-        "sender": "NOT_STARTED",
+        "sender": sender,
+        "tasks": tasks,
     }
 
 
