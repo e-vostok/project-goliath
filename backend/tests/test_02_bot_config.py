@@ -45,7 +45,7 @@ class TestRealConfig:
         assert set(BUILTIN_TYPE_VARIABLES) <= set(config.types)
         assert config.types["DEADLINE_WARNING"].enabled is False
         assert "{group_id}" in config.client.chat_url_template
-        assert config.consent.required_for_registration is False
+        assert config.consent.required_for_registration is True
         assert config.vk.api_version.startswith("5.")
 
     @pytest.mark.parametrize(
