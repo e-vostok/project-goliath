@@ -307,6 +307,21 @@ async def test_e1_allow_register_digest_sent(
     assert resp.status_code == 201
     assert fake.requests == []
 
+    # Issue 7 (T26): the creation already queued the «nation_created»
+    # reply; the first deliver sends it and the persistent keyboard
+    # resolves to MEMBER (the nation exists at send time).
+    await _deliver(test_db_engine, runtime)
+    (created_send,) = fake.send_requests()
+    created_form = _send_form(created_send)
+    assert created_form["peer_ids"] == str(vk_user)
+    assert created_form["message"] == (
+        "Государство «Государство Тестовое» создано. Кнопки внизу "
+        "обновлены: теперь доступны «Статус» и «Помощь»."
+    )
+    created_keyboard = form_keyboard(created_send)
+    assert created_keyboard["inline"] is False
+    assert _button_labels(created_keyboard) == ["Статус", "Помощь"]
+
     # (c)+(d) real tick, watcher enqueue, claim + send.
     await _tick(test_db_engine)
     await _watch(test_db_engine, config)
@@ -317,8 +332,10 @@ async def test_e1_allow_register_digest_sent(
 
     await _deliver(test_db_engine, runtime)
 
-    # (e) exactly one send, fully specified.
-    (send,) = fake.send_requests()
+    # (e) exactly one digest send after the creation message.
+    sends = fake.send_requests()
+    assert len(sends) == 2
+    send = sends[1]
     form = _send_form(send)
     assert form["peer_ids"] == str(vk_user)
     row = (await _digest_rows(test_db_engine))[0]
@@ -559,6 +576,16 @@ async def test_e4_vk_outage_tick_health_retry(
 
     health_before = await client.get(HEALTH_URL)
 
+    # Issue 7: the «nation_created» reply went out while VK was still
+    # up; only the digest below faces the outage.
+    await _deliver(test_db_engine, runtime)
+    (created_send,) = fake.send_requests()
+    assert _send_form(created_send)["message"] == _expected(
+        config.dialog.texts.nation_created,
+        {"nation_name": "Государство Тестовое"},
+        config,
+    )
+
     fake.fail_connect()
     await _tick(test_db_engine)
     assert await _clock_turn(test_db_engine) == 1
@@ -574,7 +601,7 @@ async def test_e4_vk_outage_tick_health_retry(
     assert row.attempts == 1
     assert row.last_error_code == 0  # TRANSPORT
     assert aware(row.next_attempt_at) > datetime.now(timezone.utc)
-    assert len(fake.send_requests()) == 1
+    assert len(fake.send_requests()) == 2
 
     # VK recovers; with the clock past the backoff the same row —
     # same random_id — goes out exactly once more.
@@ -583,12 +610,12 @@ async def test_e4_vk_outage_tick_health_retry(
     await _deliver(test_db_engine, runtime, now=later)
 
     sends = fake.send_requests()
-    assert len(sends) == 2
+    assert len(sends) == 3
     row = (await _digest_rows(test_db_engine))[0]
     assert row.status == "SENT"
     assert row.vk_message_id == 7777
-    assert _send_form(sends[1])["random_id"] == _send_form(
-        sends[0]
+    assert _send_form(sends[2])["random_id"] == _send_form(
+        sends[1]
     )["random_id"]
 
 
@@ -754,6 +781,16 @@ async def test_e6_dialog_round_trip(
         json=_nation_body(),
     )
     assert resp.status_code == 201
+
+    # Issue 7 (T26): the creation itself queued the «nation_created»
+    # reply — it goes out with the MEMBER keyboard right away.
+    await _deliver(test_db_engine, runtime)
+    send = fake.send_requests()[-1]
+    assert _send_form(send)["message"] == (
+        "Государство «Государство Тестовое» создано. Кнопки внизу "
+        "обновлены: теперь доступны «Статус» и «Помощь»."
+    )
+    assert _button_labels(form_keyboard(send)) == ["Статус", "Помощь"]
 
     # status -> the fully rendered member status, MEMBER keyboard.
     await client.post(
@@ -984,6 +1021,17 @@ async def test_e8_world_reset_preserves_consents(
     assert resp.status_code == 201
     assert fake.requests == []
 
+    # Issue 7: the kept ALLOWED consent queues the «nation_created»
+    # reply for the recreated nation too — it goes out first.
+    fake.respond_send_ok(message_id=3130, peer_id=vk_user)
+    await _deliver(test_db_engine, runtime)
+    (created_send,) = fake.send_requests()
+    assert _send_form(created_send)["message"] == _expected(
+        config.dialog.texts.nation_created,
+        {"nation_name": "Государство Тестовое"},
+        config,
+    )
+
     fake.respond_send_ok(message_id=3131, peer_id=vk_user)
     await _tick(test_db_engine)
     await _watch(test_db_engine, config)
@@ -991,8 +1039,9 @@ async def test_e8_world_reset_preserves_consents(
     assert row.event_key == "turn:1"
     assert row.status == "PENDING"
     await _deliver(test_db_engine, runtime)
-    (send,) = fake.send_requests()
-    assert _send_form(send)["peer_ids"] == str(vk_user)
+    sends = fake.send_requests()
+    assert len(sends) == 2
+    assert _send_form(sends[1])["peer_ids"] == str(vk_user)
     assert (await _digest_rows(test_db_engine))[0].status == "SENT"
 
 
@@ -1211,6 +1260,11 @@ class TestPgMirror:
         assert resp.status_code == 201
         assert fake.requests == []
 
+        # Issue 7: the «nation_created» reply is sent first.
+        await _deliver_pg(sf, runtime)
+        (created_send,) = fake.send_requests()
+        assert _send_form(created_send)["peer_ids"] == str(vk_user)
+
         async with sf() as session:
             outcome = await run_scheduled_tick(session)
         assert outcome is TickOutcome.EXECUTED
@@ -1218,7 +1272,9 @@ class TestPgMirror:
         await digest_watcher_step(sf, config)
         await _deliver_pg(sf, runtime)
 
-        (send,) = fake.send_requests()
+        sends = fake.send_requests()
+        assert len(sends) == 2
+        send = sends[1]
         assert _send_form(send)["peer_ids"] == str(vk_user)
         async with sf() as session:
             (row,) = (

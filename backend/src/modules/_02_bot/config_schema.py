@@ -71,6 +71,7 @@ DIALOG_TEXT_VARIABLES: dict[str, frozenset[str]] = {
     ),
     "help": frozenset(),
     "plate": frozenset(),
+    "nation_created": frozenset({"nation_name"}),
 }
 
 
@@ -384,6 +385,7 @@ class DialogTexts(_Strict):
     status: str = Field(min_length=1)
     help: str = Field(min_length=1)
     plate: str = Field(min_length=1)
+    nation_created: str = Field(min_length=1)
 
 
 class HelpLinks(_Strict):

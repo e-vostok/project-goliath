@@ -27,10 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.hooks import (
     STAGE_BEFORE_ALL,
+    register_nation_created_hook,
     register_registration_check,
 )
 from modules._02_bot.admin_hooks import register_bot_admin_hooks
 from modules._02_bot.config_schema import BotConfig
+from modules._02_bot.nation_hook import nation_created_hook
 from modules._02_bot.registration_check import check_registration_consent
 from modules._02_bot.registry import (
     register_builtin_types,
@@ -71,6 +73,13 @@ def startup_bot() -> BotConfig:
         STAGE_BEFORE_ALL,
         f"{MODULE_SLUG}.consent",
         check_registration_consent,
+    )
+    # Spec 3.11: the «nation created» message — always registered; the
+    # hook itself gates on the bot mode and the stored consent, so an
+    # OFF bot queues nothing.
+    register_nation_created_hook(
+        f"{MODULE_SLUG}.nation_created",
+        nation_created_hook,
     )
     _bot_config = config
     logger.info("02_bot started: mode=%s", get_bot_mode().value)
