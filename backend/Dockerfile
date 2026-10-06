@@ -24,9 +24,12 @@ WORKDIR /app/backend
 # image, transitive ones included, lands on the exact locked version.
 # The project and the `dev` extra are NOT installed — the app imports
 # via `uvicorn --app-dir src`. This layer is built before the source
-# copy so it stays cached across code changes.
-COPY backend/pyproject.toml ./pyproject.toml
-COPY backend/requirements.lock ./requirements.lock
+# copy so it stays cached across code changes. All COPY lines carry
+# --chmod=a+rX (DEPLOY-1): the container user is uid 10001, so files
+# must be world-readable in the image regardless of their mode in the
+# build context on the host.
+COPY --chmod=a+rX backend/pyproject.toml ./pyproject.toml
+COPY --chmod=a+rX backend/requirements.lock ./requirements.lock
 RUN python -c "import tomllib; open('/tmp/requirements.txt', 'w').write('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" \
  && pip install --no-cache-dir -r /tmp/requirements.txt -c requirements.lock
 
@@ -35,11 +38,11 @@ RUN python -c "import tomllib; open('/tmp/requirements.txt', 'w').write('\n'.joi
 #   data/map/        — whole directory; the map loader requires all six
 #                      input files and verifies their hashes
 #   backend/alembic* — `migrate` service runs `alembic upgrade head`
-COPY backend/src ./src
-COPY backend/alembic ./alembic
-COPY backend/alembic.ini ./alembic.ini
-COPY configs /app/configs
-COPY data/map /app/data/map
+COPY --chmod=a+rX backend/src ./src
+COPY --chmod=a+rX backend/alembic ./alembic
+COPY --chmod=a+rX backend/alembic.ini ./alembic.ini
+COPY --chmod=a+rX configs /app/configs
+COPY --chmod=a+rX data/map /app/data/map
 
 USER app
 
