@@ -75,7 +75,11 @@ def bot_started_off(bot_off_env, bot_isolation):
 
 
 class TestConsentGate:
-    """Spec 3.10 steps 2–4 over the real HTTP path."""
+    """Spec 3.10 steps 2–4 over the real HTTP path.
+
+    ``consent_required`` pins the registration flag on: the shipped
+    release default is False, so the gate's tests set it explicitly.
+    """
 
     async def test_allowed_creates_nation_no_vk(
         self,
@@ -83,6 +87,7 @@ class TestConsentGate:
         bot_started,
         test_db_session,
         fake_vk_runtime,
+        consent_required,
     ):
         fake, _runtime = fake_vk_runtime
         player = await seed_player(test_db_session, vk_user_id=880001)
@@ -106,6 +111,7 @@ class TestConsentGate:
         test_db_engine,
         test_db_session,
         fake_vk_runtime,
+        consent_required,
     ):
         fake, _runtime = fake_vk_runtime
         fake.respond_allowed(False)
@@ -146,6 +152,7 @@ class TestConsentGate:
         test_db_engine,
         test_db_session,
         fake_vk_runtime,
+        consent_required,
     ):
         fake, _runtime = fake_vk_runtime
         fake.respond_allowed(True)
@@ -179,6 +186,7 @@ class TestFailOpen:
         test_db_session,
         fake_vk_runtime,
         caplog,
+        consent_required,
         failure,
     ):
         fake, runtime = fake_vk_runtime

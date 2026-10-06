@@ -75,7 +75,12 @@ class TestActive:
     """READY bot: the DTO and the Spec 3.7 VK check rules."""
 
     async def test_status_fields_and_one_lazy_check(
-        self, client, bot_started, test_db_session, fake_vk_runtime
+        self,
+        client,
+        bot_started,
+        test_db_session,
+        fake_vk_runtime,
+        consent_required,
     ):
         fake, _runtime = fake_vk_runtime
         fake.respond_allowed(True)

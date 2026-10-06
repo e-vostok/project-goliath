@@ -47,7 +47,7 @@ limits:
 
 # --- Согласие на сообщения -----------------------------------------------------
 consent:
-  required_for_registration: true   # без разрешения на сообщения государство не создаётся (только при BOT_ENABLED=true; при недоступности ВК не блокирует)
+  required_for_registration: false  # при true без разрешения на сообщения государство не создаётся (только при BOT_ENABLED=true; при недоступности ВК не блокирует). При выпуске false: включается после приёмки (трек «А»)
   recheck_after_seconds: 3600
   refresh_min_interval_seconds: 5
   reconcile_sweep_interval_seconds: 900

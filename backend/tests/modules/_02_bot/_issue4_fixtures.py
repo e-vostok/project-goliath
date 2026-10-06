@@ -41,6 +41,28 @@ async def client(test_db_session):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def consent_required(bot_started, monkeypatch):
+    """
+    Pin ``consent.required_for_registration`` to True — the shipped
+    release default is False (Issue 6), so tests that exercise the
+    registration consent gate set the flag explicitly here instead of
+    relying on the repo default. ``get_bot_config`` reads the module
+    holder, so swapping ``_bot_config`` covers every consumer.
+    """
+    config = bot_started.model_copy(
+        update={
+            "consent": bot_started.consent.model_copy(
+                update={"required_for_registration": True}
+            )
+        }
+    )
+    monkeypatch.setattr(
+        "modules._02_bot.startup._bot_config", config
+    )
+    return config
+
+
 @pytest_asyncio.fixture
 async def fake_vk_runtime(bot_started, test_db_engine):
     """
