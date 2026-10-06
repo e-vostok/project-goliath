@@ -35,6 +35,7 @@ from modules._00_core.tick_handler import register_tick_handlers
 from modules._01_map.api_service import get_api_payloads
 from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
+from modules._02_bot.router import router as bot_router
 from modules._02_bot.startup import start_runtime_if_ready, startup_bot
 
 
@@ -116,6 +117,7 @@ app.include_router(core_router)
 app.include_router(admin_router)
 app.include_router(health_router)
 app.include_router(map_router)
+app.include_router(bot_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
 # UNAUTHORIZED and GAME_CLOCK_NOT_FOUND are additions to the spec's
@@ -127,8 +129,10 @@ _ERROR_CODE_STATUS = {
     "UNAUTHORIZED": 401,
     "ADMIN_REQUIRED": 403,
     "RESET_DISABLED": 403,
+    "CONSENT_REQUIRED": 403,
     "CONFIRM_REQUIRED": 400,
     "MODULE_NOT_FOUND": 404,
+    "BOT_DISABLED": 409,
     "TICK_IN_PROGRESS": 409,
     "NAME_TAKEN": 409,
     "COLOR_TAKEN": 409,

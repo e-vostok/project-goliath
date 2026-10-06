@@ -8,6 +8,12 @@ inapplicable case returns an :class:`EnqueueResult` value instead
 (INV-B1). A successful insert arms a one-shot ``after_commit`` listener
 that rings the sender's bell; a rollback never rings it.
 
+``BotService.enqueue_reply`` is the module-internal counterpart used
+only by the Callback dialog handler (Spec 3.9): it queues ``REPLY``
+rows under the same transaction and dedup rules but skips the
+notification registry and the nation/consent gates — replies owe
+nothing to INV-B3 and need no consent (V7).
+
 The registry functions of Spec 2.6 are re-exported here so producers
 have a single import surface.
 """
@@ -184,18 +190,94 @@ class BotService:
                 return EnqueueResult.DUPLICATE
             raise
 
-        # Arm the wake bell for THIS transaction only: the paired
-        # after_rollback hook disarms it if the caller's transaction is
-        # rolled back, so the bell never rings for a vanished row.
-        sync = session.sync_session
-
-        def _wake(_s) -> None:
-            sa_event.remove(sync, "after_rollback", _disarm)
-            request_wake()
-
-        def _disarm(_s) -> None:
-            sa_event.remove(sync, "after_commit", _wake)
-
-        sa_event.listen(sync, "after_commit", _wake, once=True)
-        sa_event.listen(sync, "after_rollback", _disarm, once=True)
+        _arm_wake(session)
         return EnqueueResult.QUEUED
+
+    @staticmethod
+    async def enqueue_reply(
+        session: AsyncSession,
+        *,
+        player_id: str,
+        template: str,
+        variables: Mapping[str, str | int],
+        keyboard: str,
+        event_key: str,
+        now: datetime | None = None,
+    ) -> EnqueueResult:
+        """
+        Queue one dialog ``REPLY`` row (Spec 3.9 step 5) — module
+        internal, called only by the callback's dialog handler.
+
+        Same transaction rules as :meth:`enqueue`: never commits, the
+        dedup ``UNIQUE`` violation is caught behind a SAVEPOINT, and a
+        queued row rings the same after-commit wake bell. The template
+        name, its variables and the ``AUTO``/``HELP`` keyboard marker
+        go into ``payload``; ``expires_at`` is
+        ``now + dialog.reply_ttl_minutes``. ``now`` only exists for
+        tests.
+        """
+        t = now if now is not None else datetime.now(timezone.utc)
+        row = BotOutbox(
+            player_id=player_id,
+            kind="REPLY",
+            type_key="DIALOG",
+            event_key=event_key,
+            priority="normal",
+            counts_toward_cap=False,
+            payload={
+                "template": template,
+                "vars": dict(variables),
+                "keyboard": keyboard,
+            },
+            status="PENDING",
+            attempts=0,
+            created_at=t,
+            not_before=t,
+            next_attempt_at=t,
+            expires_at=t
+            + timedelta(
+                minutes=get_bot_config().dialog.reply_ttl_minutes
+            ),
+        )
+        # Same SQLite-only transaction opener as enqueue (INV-B1).
+        if session.bind.dialect.name == "sqlite":
+            await session.execute(delete(BotOutbox).where(false()))
+        try:
+            async with session.begin_nested():
+                session.add(row)
+                await session.flush()
+        except IntegrityError:
+            existing = (
+                await session.execute(
+                    select(BotOutbox.id).where(
+                        BotOutbox.player_id == player_id,
+                        BotOutbox.type_key == "DIALOG",
+                        BotOutbox.event_key == event_key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return EnqueueResult.DUPLICATE
+            raise
+
+        _arm_wake(session)
+        return EnqueueResult.QUEUED
+
+
+def _arm_wake(session: AsyncSession) -> None:
+    """
+    Arm the wake bell for THIS transaction only: the paired
+    ``after_rollback`` hook disarms it if the caller's transaction is
+    rolled back, so the bell never rings for a vanished row.
+    """
+    sync = session.sync_session
+
+    def _wake(_s) -> None:
+        sa_event.remove(sync, "after_rollback", _disarm)
+        request_wake()
+
+    def _disarm(_s) -> None:
+        sa_event.remove(sync, "after_commit", _wake)
+
+    sa_event.listen(sync, "after_commit", _wake, once=True)
+    sa_event.listen(sync, "after_rollback", _disarm, once=True)
