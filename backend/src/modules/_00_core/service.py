@@ -22,6 +22,7 @@ from modules._00_core.hooks import (
     OwnershipChange,
     notify_ownership_changed,
     run_before_all_checks,
+    run_nation_created_hooks,
     run_registration_checks,
 )
 from modules._00_core.exceptions import (
@@ -404,12 +405,14 @@ class NationService:
         fields), INV-2 (unique name/color), INV-3 (atomic province
         assignment), and province count constraints — in exactly the
         Spec order (00_core Part 2 extended by 01_map Part 5 and
-        02_bot 3.10): "before_all" satellite checks (they see the
+        02_bot 3.10/3.11): "before_all" satellite checks (they see the
         player, run before any write) -> INV-1 -> profile fields
         (leader_name, leader_title, history_url) -> INV-2 -> province
         existence -> province freedom -> "after_free" satellite checks
-        -> province count -> "after_count" satellite checks -> create.
-        Any failure persists nothing.
+        -> province count -> "after_count" satellite checks -> create ->
+        "nation_created" satellite hooks (after all writes, each under
+        its own SAVEPOINT — a hook failure can never abort the
+        creation). Any check failure persists nothing.
 
         Args:
             session: The async database session.
@@ -537,6 +540,12 @@ class NationService:
                 for province in ordered
             ],
         )
+
+        # Spec 02_bot 3.11 / Appendix B10: "nation created" satellite
+        # hooks run after all creation writes, still inside the caller's
+        # transaction — each under its own SAVEPOINT so a failing hook
+        # keeps neither its writes nor blocks the registration.
+        await run_nation_created_hooks(session, owner_player_id, nation.id)
 
         return nation
 
