@@ -1,5 +1,5 @@
 """
-Startup wiring of module 02_bot (Spec 2.5, steps 1–2 — Issue 2).
+Startup wiring of module 02_bot (Spec 2.5, steps 1–2 — Issues 2–4).
 
 ``startup_bot()`` runs from the app lifespan right after
 ``startup_map()`` — synchronous (no database, no network, no
@@ -25,13 +25,19 @@ from contextlib import AbstractAsyncContextManager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core.hooks import (
+    STAGE_BEFORE_ALL,
+    register_registration_check,
+)
 from modules._02_bot.admin_hooks import register_bot_admin_hooks
 from modules._02_bot.config_schema import BotConfig
+from modules._02_bot.registration_check import check_registration_consent
 from modules._02_bot.registry import (
     register_builtin_types,
     validate_registry_against_config,
 )
 from modules._02_bot.settings import (
+    MODULE_SLUG,
     BotMode,
     get_bot_mode,
     read_bot_env,
@@ -58,6 +64,14 @@ def startup_bot() -> BotConfig:
     register_builtin_types()
     validate_registry_against_config(config)
     register_bot_admin_hooks()
+    # Spec 3.10: the consent gate on nation registration — always
+    # registered; the check itself gates on the bot mode and on
+    # consent.required_for_registration, so an OFF bot never sees it.
+    register_registration_check(
+        STAGE_BEFORE_ALL,
+        f"{MODULE_SLUG}.consent",
+        check_registration_consent,
+    )
     _bot_config = config
     logger.info("02_bot started: mode=%s", get_bot_mode().value)
     return config

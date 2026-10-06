@@ -42,6 +42,7 @@ from modules._02_bot.reconciler import reconcile_step
 from modules._02_bot.sender import Sender
 from modules._02_bot.settings import (
     BotEnv,
+    get_active_runtime,
     set_active_runtime,
     set_runtime_running,
 )
@@ -69,31 +70,87 @@ class BotRuntime:
         self._config = config
         self._env = env
         self._session_factory = session_factory
+        self._transport = transport
         self._wake = asyncio.Event()
-        self._vk = VkClient(
-            config, env.group_token or "", env.group_id or "0",
-            transport=transport,
-        )
-        self._limiter = TokenBucket(config.sender.max_requests_per_second)
-        self._breaker = CircuitBreaker(config.breaker)
-        self._sender = Sender(
-            config,
-            env,
-            session_factory,
-            self._vk,
-            self._limiter,
-            self._breaker,
-        )
+        self._vk: VkClient | None = None
+        self._limiter: TokenBucket | None = None
+        self._breaker: CircuitBreaker | None = None
+        self._sender: Sender | None = None
         self._tasks: dict[str, asyncio.Task] = {}
         self._last_pass: dict[str, datetime | None] = {
             name: None for name in TASK_NAMES
         }
+        self._prepared = False
         self._started = False
+
+    def prepare(self) -> None:
+        """
+        Build the VK client, limiter, breaker and sender — idempotent.
+
+        ``start()`` calls it; tests may call ``prepare()`` plus
+        ``install_runtime()`` to exercise the on-demand VK path
+        (:meth:`check_allowed`) without any background task.
+        """
+        if self._prepared:
+            return
+        self._vk = VkClient(
+            self._config,
+            self._env.group_token or "",
+            self._env.group_id or "0",
+            transport=self._transport,
+        )
+        self._limiter = TokenBucket(
+            self._config.sender.max_requests_per_second
+        )
+        self._breaker = CircuitBreaker(self._config.breaker)
+        self._sender = Sender(
+            self._config,
+            self._env,
+            self._session_factory,
+            self._vk,
+            self._limiter,
+            self._breaker,
+        )
+        self._prepared = True
+
+    async def check_allowed(self, vk_user_id: int) -> bool | None:
+        """
+        One ``isMessagesFromGroupAllowed`` through the shared VK gate
+        (Spec 3.7): ``None`` when the sender is HALTED_AUTH, the breaker
+        is open, the limiter wait times out or the VK call itself
+        fails — on-demand checks never set HALTED_AUTH (only the
+        sender does that).
+        """
+        if (
+            not self._prepared
+            or self._sender.state.halted_auth
+            or not self._breaker.allow()
+            or not (self._env.group_id or "").isdigit()
+        ):
+            return None
+        try:
+            await asyncio.wait_for(
+                self._limiter.acquire(),
+                self._config.vk.http_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            return None
+        result = await self._vk.is_messages_from_group_allowed(
+            int(self._env.group_id), vk_user_id
+        )
+        self._breaker.record(success=result is not None, counts=True)
+        return result
+
+    async def aclose(self) -> None:
+        """Close the VK client of a prepared runtime."""
+        if self._vk is not None:
+            await self._vk.aclose()
 
     async def start(self) -> None:
         """Install the bell and spawn the four supervised tasks."""
         if self._started:
             return
+        self.prepare()
         install_wake_event(self._wake)
         sender = self._config.sender
         self._tasks = {
@@ -125,7 +182,7 @@ class BotRuntime:
             ),
         }
         self._started = True
-        set_active_runtime(self)
+        install_runtime(self)
         set_runtime_running(True)
 
     async def stop(self) -> None:
@@ -137,6 +194,7 @@ class BotRuntime:
             task.cancel()
         await asyncio.gather(*self._tasks.values(), return_exceptions=True)
         self._tasks.clear()
+        self._prepared = False
         # Best effort: a clean stop frees rows this process leased;
         # a crash leaves them to lease expiry (Spec 2.5 step 4).
         try:
@@ -157,9 +215,9 @@ class BotRuntime:
                     )
         except Exception:
             logger.exception("bot runtime: returning LEASED rows failed")
-        await self._vk.aclose()
+        await self.aclose()
         install_wake_event(None)
-        set_active_runtime(None)
+        install_runtime(None)
         set_runtime_running(False)
 
     def _spawn(self, name: str, body) -> asyncio.Task:
@@ -239,3 +297,18 @@ class BotRuntime:
             name: stamp.isoformat() if stamp is not None else None
             for name, stamp in self._last_pass.items()
         }
+
+
+def install_runtime(runtime: BotRuntime | None) -> None:
+    """
+    Install the process runtime for on-demand VK checks (Spec 3.7,
+    3.10) — ``start()`` installs, ``stop()`` removes; tests may call it
+    with a prepared-but-not-started runtime.
+    """
+    set_active_runtime(runtime)
+
+
+def get_runtime() -> BotRuntime | None:
+    """The installed runtime, or None before start()/after stop()."""
+    runtime = get_active_runtime()
+    return runtime if isinstance(runtime, BotRuntime) else None
