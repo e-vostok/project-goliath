@@ -122,6 +122,22 @@ def test_02_bot_config_loads():
     assert config.consent.required_for_registration is True
 
 
+def test_02_bot_nation_created_rejects_unknown_placeholder():
+    """02_bot Issue 7: ``dialog.texts.nation_created`` allows only
+    ``{nation_name}`` — an unknown placeholder must fail config loading
+    (the same template check the other dialog texts pass)."""
+    with open(
+        BotConfig.get_default_config_path(), encoding="utf-8"
+    ) as f:
+        data = yaml.safe_load(f)
+    data["dialog"]["texts"]["nation_created"] += " {bogus_var}"
+
+    with pytest.raises(ValidationError) as exc_info:
+        BotConfig.model_validate(data)
+
+    assert "bogus_var" in str(exc_info.value)
+
+
 def test_invalid_tick_interval_too_high(tmp_path):
     """Test that tick_interval_hours > 168 raises ValidationError."""
     path = _write_config(tmp_path, {"tick": {"tick_interval_hours": 200}})
