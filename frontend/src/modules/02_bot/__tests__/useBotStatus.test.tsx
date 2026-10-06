@@ -4,19 +4,27 @@
  * must land on 'unavailable'/'disabled', never on a blocking state.
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse } from 'msw';
 
-import { useBotStatus } from '../hooks/useBotStatus';
+import {
+  BOT_STATUS_TIMEOUT_MS,
+  useBotStatus,
+} from '../hooks/useBotStatus';
 import {
   botHookWrapper,
   botStatusReady,
   CHAT_URL,
   mswBot,
   registerBotHandlers,
+  usePollingTimers,
 } from './helpers';
 
 beforeEach(registerBotHandlers);
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('useBotStatus', () => {
   it('enabled=false resolves to disabled', async () => {
@@ -77,6 +85,35 @@ describe('useBotStatus', () => {
     await waitFor(() =>
       expect(result.current.state.status).toBe('unavailable'),
     );
+  });
+
+  it('hard-caps a hung status request — unavailable after the cap, late answer ignored', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let release: (r: HttpResponse<any>) => void = () => {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pending = new Promise<HttpResponse<any>>((resolve) => {
+      release = resolve;
+    });
+    mswBot.status = () => pending;
+    usePollingTimers();
+    const { result } = renderHook(() => useBotStatus(), {
+      wrapper: botHookWrapper,
+    });
+    expect(result.current.state.status).toBe('loading');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BOT_STATUS_TIMEOUT_MS);
+    });
+    expect(result.current.state.status).toBe('unavailable');
+
+    // The response that lands after the cap must not flip the state back.
+    release(HttpResponse.json(botStatusReady()));
+    await act(async () => {
+      await new Promise((resolve) => {
+        setImmediate(resolve);
+      });
+    });
+    expect(result.current.state.status).toBe('unavailable');
   });
 
   it('fires exactly one GET per app start — no refetch on re-render', async () => {

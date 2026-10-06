@@ -37,6 +37,13 @@ export interface BotStatusStore {
   update: (dto: BotStatusDTO) => void;
 }
 
+/**
+ * Hard cap for the ONE app-start status request — apiFetch carries no
+ * timeout of its own, and a hung request must not block registration
+ * (fail-open, INV-B15). This is a request cap, not a poll interval.
+ */
+export const BOT_STATUS_TIMEOUT_MS = 8000;
+
 const BotStatusContext = createContext<BotStatusStore | null>(null);
 
 export function BotStatusProvider({ children }: { children: ReactNode }) {
@@ -45,18 +52,27 @@ export function BotStatusProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      settled = true;
+      setState({ status: 'unavailable' });
+    }, BOT_STATUS_TIMEOUT_MS);
     fetchBotStatus(token, controller.signal)
       .then((dto) => {
-        if (!controller.signal.aborted) {
+        if (!settled && !controller.signal.aborted) {
           setState(toBotStatus(dto));
         }
       })
       .catch(() => {
-        if (!controller.signal.aborted) {
+        if (!settled && !controller.signal.aborted) {
           setState({ status: 'unavailable' });
         }
-      });
-    return () => controller.abort();
+      })
+      .finally(() => window.clearTimeout(timeoutId));
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [token]);
 
   const update = useCallback(
