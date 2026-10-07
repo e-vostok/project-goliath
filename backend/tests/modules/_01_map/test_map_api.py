@@ -280,6 +280,8 @@ class TestManifest:
             config.starting_group.require_connected
         )
         assert rules["big_window_enabled"] == config.big_window.enabled
+        assert rules["hover_fill_opacity"] == config.hover.fill_opacity
+        assert rules["hover_stroke_enabled"] == config.hover.stroke_enabled
         assert rules["colors"]["sea"] == config.colors.sea
         assert rules["colors"]["selected"] == config.colors.selected
         refresh = rules["refresh"]

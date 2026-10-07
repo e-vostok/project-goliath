@@ -54,6 +54,7 @@ def _base_config() -> dict:
             "hover": "#FFFFFF",
             "selected": "#FFD24A",
         },
+        "hover": {"fill_opacity": 0.14, "stroke_enabled": False},
         "strait": {"default_crossing_multiplier": 0.5},
         "starting_group": {"require_connected": True},
         "big_window": {"enabled": True},
@@ -199,6 +200,24 @@ class TestFrame:
             MapConfig.from_yaml(path)
 
         assert field in str(exc_info.value)
+
+
+class TestHover:
+    def test_fill_opacity_range(self, tmp_path):
+        """map2_0: hover.fill_opacity stays inside [0.0, 0.6] — the fill
+        must never fully hide the owner colour nor vanish unnoticed."""
+        for bad in (-0.01, 0.61):
+            path = _write_config(
+                tmp_path, {"hover": {"fill_opacity": bad}}
+            )
+            with pytest.raises(ValidationError) as exc_info:
+                MapConfig.from_yaml(path)
+            assert "fill_opacity" in str(exc_info.value)
+        for edge in (0.0, 0.6):
+            path = _write_config(
+                tmp_path, {"hover": {"fill_opacity": edge}}
+            )
+            assert MapConfig.from_yaml(path).hover.fill_opacity == edge
 
 
 class TestCrossFieldRules:

@@ -133,6 +133,19 @@ class ColorSettings(_Strict):
         return self
 
 
+class HoverSettings(_Strict):
+    """Подсветка узла при наведении (map2_0): заливка ``colors.hover``."""
+
+    fill_opacity: float = Field(
+        ge=0.0,
+        le=0.6,
+        description="Прозрачность заливки цветом colors.hover при наведении; 0 — без заливки.",
+    )
+    stroke_enabled: bool = Field(
+        description="Обводить ли контур узла при наведении цветом colors.hover.",
+    )
+
+
 class StraitSettings(_Strict):
     default_crossing_multiplier: float = Field(
         ge=0.05,
@@ -174,6 +187,7 @@ class MapConfig(_Strict):
     view: ViewSettings
     refresh: RefreshSettings
     colors: ColorSettings
+    hover: HoverSettings
     strait: StraitSettings
     starting_group: StartingGroupSettings
     big_window: BigWindowSettings

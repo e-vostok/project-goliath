@@ -65,6 +65,8 @@ class MapViewRulesDTO(BaseModel):
     search_min_chars: int
     search_max_results: int
     colors: dict[str, str]
+    hover_fill_opacity: float
+    hover_stroke_enabled: bool
     require_connected_start: bool
     big_window_enabled: bool
     refresh: MapRefreshRulesDTO

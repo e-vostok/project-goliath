@@ -29,6 +29,8 @@ export const MINI_RULES: MapViewRulesDTO = {
     hover: '#FFFFFF',
     selected: '#FFD24A',
   },
+  hover_fill_opacity: 0.22,
+  hover_stroke_enabled: false,
   require_connected_start: true,
   big_window_enabled: true,
   refresh: {
