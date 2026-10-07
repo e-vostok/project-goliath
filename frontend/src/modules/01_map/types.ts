@@ -48,6 +48,10 @@ export interface MapViewRulesDTO {
   search_min_chars: number;
   search_max_results: number;
   colors: Record<string, string>;
+  /** Translucent `colors.hover` fill of the hovered node (map2_0). */
+  hover_fill_opacity: number;
+  /** Also stroke the hovered node when true (off by default). */
+  hover_stroke_enabled: boolean;
   require_connected_start: boolean;
   big_window_enabled: boolean;
   refresh: MapRefreshRulesDTO;

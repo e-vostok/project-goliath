@@ -100,6 +100,8 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             "hover": config.colors.hover,
             "selected": config.colors.selected,
         },
+        hover_fill_opacity=config.hover.fill_opacity,
+        hover_stroke_enabled=config.hover.stroke_enabled,
         require_connected_start=config.starting_group.require_connected,
         big_window_enabled=config.big_window.enabled,
         refresh=MapRefreshRulesDTO(

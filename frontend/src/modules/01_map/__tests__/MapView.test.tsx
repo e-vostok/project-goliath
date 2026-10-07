@@ -7,7 +7,11 @@
 import { render } from '@testing-library/react';
 
 import { MapView } from '../components/MapView';
-import { MINI_GEOMETRY, MINI_MANIFEST } from '../fixtures/miniMap';
+import {
+  MINI_GEOMETRY,
+  MINI_MANIFEST,
+  MINI_RULES,
+} from '../fixtures/miniMap';
 import type { MapGeometryDTO } from '../types';
 
 const WITH_BAY: MapGeometryDTO = {
@@ -59,5 +63,27 @@ describe('MapView — sea_water layer', () => {
     expect(
       background().nextElementSibling?.getAttribute('d'),
     ).toBe(MINI_GEOMETRY.outside);
+  });
+});
+
+describe('MapView — hover overlay (map2_0)', () => {
+  it('fills with colors.hover at the rule opacity, no stroke when disabled', () => {
+    render(<MapView manifest={MINI_MANIFEST} geometry={MINI_GEOMETRY} />);
+    const overlay = document.querySelector('path[data-layer="hover"]');
+    expect(overlay).not.toBeNull();
+    expect(overlay!.getAttribute('fill')).toBe(
+      MINI_MANIFEST.rules.colors.hover,
+    );
+    // The fixture opacity differs from the shipped config — a
+    // hardcoded constant would fail here.
+    expect(overlay!.getAttribute('fill-opacity')).toBe(
+      String(MINI_RULES.hover_fill_opacity),
+    );
+    expect(overlay!.getAttribute('stroke')).toBe('none');
+    // The overlay lives in the pointer-events:none group, so it can
+    // never swallow the delegated node hit-testing.
+    expect(
+      overlay!.parentElement?.getAttribute('pointer-events'),
+    ).toBe('none');
   });
 });

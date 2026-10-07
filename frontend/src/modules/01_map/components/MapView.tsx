@@ -561,8 +561,10 @@ export function MapView(props: MapViewProps) {
             ))}
             <path
               ref={hoverPathRef}
-              fill="none"
-              stroke={colors.hover}
+              data-layer="hover"
+              fill={colors.hover}
+              fillOpacity={rules.hover_fill_opacity}
+              stroke={rules.hover_stroke_enabled ? colors.hover : 'none'}
               strokeWidth={OVERLAY_STROKE_PX}
               vectorEffect="non-scaling-stroke"
               style={{ display: 'none' }}
