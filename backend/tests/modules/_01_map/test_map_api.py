@@ -65,6 +65,7 @@ from tests.modules._01_map.conftest import (
     load_manifest,
     map_config,
     map_config_disconnected,
+    save_manifest,
 )
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -405,6 +406,28 @@ class TestManifest:
         assert "content-encoding" not in plain.headers
         assert zipped.headers["content-encoding"] == "gzip"
         assert int(zipped.headers["content-length"]) < len(plain.content)
+
+
+def test_names_ru_reach_node_dto(mini_dir, config):
+    """map2_3: ``name_ru`` written by import_names into the manifest is
+    loaded and exposed in ``MapNodeDTO.name_ru`` (the search/picker read
+    it from the manifest payload — nothing else stores names)."""
+    names = {"mini_alpha": "Альфа-Земля", "mini_beta": "Бета Ёлка"}
+    doc = load_manifest(mini_dir)
+    for node in doc["nodes"]:
+        if node["key"] in names:
+            node["name_ru"] = names[node["key"]]
+    save_manifest(mini_dir, doc)
+
+    service = MapService(load_map_data(mini_dir, config), config)
+    body = api_service.build_api_payloads(service).manifest_body
+    dto = MapManifestDTO.model_validate_json(body)
+
+    got = {n.key: n.name_ru for n in dto.nodes}
+    assert got["mini_alpha"] == "Альфа-Земля"
+    assert got["mini_beta"] == "Бета Ёлка"
+    assert got["mini_gamma"] is None
+    assert service.map_data.nodes[1001].name_ru == "Альфа-Земля"
 
 
 class TestGeometry:
