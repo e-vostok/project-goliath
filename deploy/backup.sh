@@ -134,7 +134,10 @@ main() {
   FINAL="$BACKUP_DIR/$TAG/$FINAL_NAME.dump"
 
   echo "==> снимаем дамп базы '$pg_db' -> $FINAL"
-  if ! "${COMPOSE[@]}" exec -T db pg_dump -U "$pg_user" -d "$pg_db" --no-owner --format=custom > "$PARTIAL"; then
+  # The dump contains player data: it must be 600 from the moment it is
+  # created, not only after the final chmod — umask 077 in a subshell so
+  # the rest of the script keeps the shared default (see lib.sh).
+  if ! ( umask 077; "${COMPOSE[@]}" exec -T db pg_dump -U "$pg_user" -d "$pg_db" --no-owner --format=custom > "$PARTIAL" ); then
     bfail "pg_dump внутри контейнера db завершился с ошибкой — дамп не создан."
   fi
   if [ ! -s "$PARTIAL" ]; then

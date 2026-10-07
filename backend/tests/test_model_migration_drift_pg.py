@@ -24,6 +24,7 @@ from sqlalchemy.engine.url import make_url
 from core.db import Base
 import modules._00_core.models  # noqa: F401 — registers all ORM tables
 import modules._01_map.models  # noqa: F401 — registers all ORM tables
+import modules._02_bot.models  # noqa: F401 — registers all ORM tables
 from tests.fixtures.postgres import (
     pg_schema,  # noqa: F401 — session fixture: wipe + alembic upgrade
     pg_url,  # noqa: F401 — resolved through the fixture chain

@@ -7,17 +7,74 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# Pull requests keep the old behaviour: a newer push to the same PR
+# branch cancels the previous run. Every other event (push to `main`,
+# manual `workflow_dispatch`) gets a per-run group, so a `main` run is
+# never cancelled by another run and never cancels one.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # CI-1: figure out which areas a change can affect and let each of the
+  # four checks decide via `if:`. On `push` (main) or whenever the PR
+  # diff cannot be computed every output stays `true` — fail-safe.
+  # A required check skipped by `if:` counts as passing, so branch
+  # protection keeps working while docs-only PRs skip everything.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      map_pipeline: ${{ steps.filter.outputs.map_pipeline }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect affected areas
+        id: filter
+        shell: bash
+        run: |
+          files=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}" 2>/dev/null || true
+            files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null || true)"
+          fi
+          if [ -z "$files" ] || echo "$files" | grep -qE '^\.github/workflows/'; then
+            echo "push/dispatch event, empty/failed diff or workflow change: run everything"
+            for a in backend frontend map_pipeline docker; do
+              echo "$a=true" >> "$GITHUB_OUTPUT"
+            done
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "$files"
+          echo "$files" | grep -qE '^(backend/|configs/|data/map/)' \
+            && echo "backend=true" >> "$GITHUB_OUTPUT" \
+            || echo "backend=false" >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(frontend/|data/map/)' \
+            && echo "frontend=true" >> "$GITHUB_OUTPUT" \
+            || echo "frontend=false" >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(tools/map_pipeline/|data/map/)' \
+            && echo "map_pipeline=true" >> "$GITHUB_OUTPUT" \
+            || echo "map_pipeline=false" >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(deploy/|data/map/|backend/alembic/|backend/pyproject\.toml$|backend/requirements[^/]*\.lock$|frontend/package(-lock)?\.json$)|(^|/)(\.env\.prod\.example|\.dockerignore|Dockerfile|docker-compose[^/]*\.yml)$' \
+            && echo "docker=true" >> "$GITHUB_OUTPUT" \
+            || echo "docker=false" >> "$GITHUB_OUTPUT"
+
   backend:
     name: backend
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -92,6 +149,8 @@ jobs:
 
   frontend:
     name: frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -113,6 +172,8 @@ jobs:
 
   map_pipeline:
     name: map_pipeline
+    needs: changes
+    if: needs.changes.outputs.map_pipeline == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -135,6 +196,8 @@ jobs:
 
   docker:
     name: docker
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -200,3 +263,47 @@ jobs:
       # The script itself prints every service's log tail on failure.
       - name: Stack smoke test (deploy/smoke_local.sh)
         run: bash deploy/smoke_local.sh
+
+      # DEP-7b: the retired-nodes pre-deploy check must work in exactly
+      # the form the runbook hands to the owner — `compose run` inside
+      # the built backend image (WORKDIR /app/backend, no PYTHONPATH).
+      # smoke_local.sh tears its stack down, so this step boots a
+      # throwaway db, applies migrations and runs the report against
+      # it. A freshly migrated schema has no retired rows, so the
+      # expected verdict is exit 0 and "ГОТОВО ... удалено 0 строк":
+      # the guard proves the command form, it does not reproduce
+      # production data. `-T` replaces the interactive TTY the
+      # production command gets over SSH.
+      - name: Retired nodes pre-deploy check (retired_report)
+        run: |
+          set -euo pipefail
+          ENV_FILE_PATH="$(mktemp)"
+          PG_PW="$(openssl rand -hex 24)"
+          cat > "$ENV_FILE_PATH" <<EOF
+          POSTGRES_USER=goliath
+          POSTGRES_DB=goliath
+          POSTGRES_PASSWORD=$PG_PW
+          DATABASE_URL=postgresql+asyncpg://goliath:$PG_PW@db:5432/goliath
+          JWT_SECRET_KEY=$(openssl rand -hex 32)
+          VK_APP_SECRET=ci_throwaway_vk_secret_0123456789
+          ADMIN_VK_USER_IDS=
+          DOMAIN=localhost
+          ACME_EMAIL=smoke@example.invalid
+          APP_ENV=production
+          ADMIN_ALLOW_RESET=false
+          EOF
+          export ENV_FILE="$ENV_FILE_PATH"
+          cleanup() {
+            docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+              down -v --remove-orphans >/dev/null 2>&1 || true
+            rm -f "$ENV_FILE_PATH"
+          }
+          trap cleanup EXIT
+          docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+            up -d --wait db
+          docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+            run --rm --no-deps -T migrate
+          docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE_PATH" \
+            run --rm --no-deps -T backend \
+            python -m src.modules._01_map.retired_report | tee /tmp/retired-report.txt
+          grep -q "ГОТОВО" /tmp/retired-report.txt

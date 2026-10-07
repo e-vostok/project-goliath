@@ -29,6 +29,7 @@ from core.settings import (
 # autogenerate).
 import modules._00_core.models  # noqa: F401,E402
 import modules._01_map.models  # noqa: F401,E402
+import modules._02_bot.models  # noqa: F401,E402
 
 # this is the Alembic Config object
 config = context.config

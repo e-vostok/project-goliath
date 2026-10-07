@@ -1,6 +1,6 @@
 [project]
 name = "project-goliath-backend"
-version = "0.5.0"
+version = "0.5.4"
 description = "Backend for Project Goliath - Turn-based strategy game"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,6 +16,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyjwt>=2.8.0",
     "tzdata>=2024.1",
+    "httpx>=0.25.0",
 ]
 
 [project.optional-dependencies]
@@ -23,7 +24,6 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "polyfactory>=2.0.0",
-    "httpx>=0.25.0",
     "asgi-lifespan>=2.1.0",
 ]
 

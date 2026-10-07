@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from starlette.middleware.gzip import GZipMiddleware
 
 from core.admin.router import router as admin_router
-from core.db import get_engine, init_engine
+from core.db import get_engine, get_session_context, init_engine
 from core.health.router import router as health_router
 from core.security import SecurityError
 from core.security.startup_guard import validate_production_environment
@@ -35,6 +35,8 @@ from modules._00_core.tick_handler import register_tick_handlers
 from modules._01_map.api_service import get_api_payloads
 from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
+from modules._02_bot.router import router as bot_router
+from modules._02_bot.startup import start_runtime_if_ready, startup_bot
 
 
 @asynccontextmanager
@@ -72,6 +74,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # request) can fire while the extension points are half-wired.
     await startup_map()
 
+    # Spec 02_bot 2.5: config validation + registry/hook wiring only —
+    # no background tasks or routes yet (Issues 3–4). Runs even with
+    # BOT_ENABLED=false: a broken YAML must still stop the server.
+    startup_bot()
+
     # Spec Part 5: the manifest/geometry bodies and the manifest ETag
     # are built once here, never per request.
     get_api_payloads()
@@ -81,18 +88,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     heartbeat.touch()
     scheduler_task = asyncio.create_task(scheduler_loop(), name="tick-scheduler")
 
+    # Spec 02_bot 2.5 step 3: READY starts the BotRuntime right after
+    # the tick scheduler; OFF/MISCONFIGURED start nothing (INV-B10).
+    bot_runtime = await start_runtime_if_ready(get_session_context)
+
     yield
 
     scheduler_task.cancel()
     with suppress(asyncio.CancelledError):
         await scheduler_task
+    if bot_runtime is not None:
+        await bot_runtime.stop()
     await get_engine().dispose()
 
 
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.5.0",
+    version="0.5.4",
     lifespan=lifespan,
 )
 
@@ -104,6 +117,7 @@ app.include_router(core_router)
 app.include_router(admin_router)
 app.include_router(health_router)
 app.include_router(map_router)
+app.include_router(bot_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
 # UNAUTHORIZED and GAME_CLOCK_NOT_FOUND are additions to the spec's
@@ -115,8 +129,10 @@ _ERROR_CODE_STATUS = {
     "UNAUTHORIZED": 401,
     "ADMIN_REQUIRED": 403,
     "RESET_DISABLED": 403,
+    "CONSENT_REQUIRED": 403,
     "CONFIRM_REQUIRED": 400,
     "MODULE_NOT_FOUND": 404,
+    "BOT_DISABLED": 409,
     "TICK_IN_PROGRESS": 409,
     "NAME_TAKEN": 409,
     "COLOR_TAKEN": 409,
