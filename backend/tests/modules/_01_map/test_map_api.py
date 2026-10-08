@@ -1050,8 +1050,8 @@ class TestRealMap:
                     )
                     assert plain.status_code == 200
                     body = plain.json()
-                    assert len(body["nodes"]) == 1065
-                    assert len(body["edges"]) == 3060
+                    assert len(body["nodes"]) == 1066
+                    assert len(body["edges"]) == 3062
                     version = body["geometry_version"]
                     manifest_plain = len(plain.content)
 
