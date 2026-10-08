@@ -317,8 +317,12 @@ def _prepare(data_dir: Path) -> _Prep:
     # Step 3a (Spec 1.9): manual geometry patches act on the cleaned source
     # geometry before the boundary filter — the donated side may be an
     # excluded province (e.g. Buhayra's coastal notch -> Alexandria).
-    geoms, patch_info = apply_geometry_patches(geoms, overrides)
+    geoms, patch_info, additions = apply_geometry_patches(geoms, overrides)
     info.extend(patch_info)
+    # A ``split`` patch adds a node that has no boundary.yaml entry: the new
+    # province exists only in patched ``geoms`` under its source-style name.
+    for key, name in additions:
+        nodes[key] = _Node(key=key, source_name=name)
     for node in nodes.values():
         node.parts = geoms[node.source_name]
 

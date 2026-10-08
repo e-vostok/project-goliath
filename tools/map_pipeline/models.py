@@ -116,10 +116,42 @@ class TransferPatch(_Strict):
     polygon: list[SvgPoint] = Field(min_length=3)
 
 
-class GeometryPatch(_Strict):
-    """One ``geometry_patches`` entry; only ``transfer`` exists so far."""
+class SplitPatch(_Strict):
+    """``geometry_patches[].split`` — a polyline cuts one included province
+    into two nodes (map2_2). The part containing ``keep_point`` keeps the
+    old key and id; the other becomes a new node ``new_key``/``new_name``.
+    """
 
-    transfer: TransferPatch
+    key: _KeyStr
+    line: list[SvgPoint] = Field(min_length=2)
+    keep_point: SvgPoint
+    new_key: _KeyStr
+    new_name: _NameStr
+
+    @model_validator(mode="after")
+    def _key_matches_name(self) -> Self:
+        if self.new_key != self.new_name.lower():
+            raise ValueError(
+                "split.new_key must equal new_name.lower() "
+                f"({self.new_key!r} != {self.new_name.lower()!r})"
+            )
+        return self
+
+
+class GeometryPatch(_Strict):
+    """One ``geometry_patches`` entry: exactly one of ``transfer``/``split``."""
+
+    transfer: TransferPatch | None = None
+    split: SplitPatch | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> Self:
+        if (self.transfer is None) == (self.split is None):
+            raise ValueError(
+                "a geometry_patches entry needs exactly one of "
+                "'transfer' or 'split'"
+            )
+        return self
 
 
 class EdgeAdd(_Strict):
@@ -313,24 +345,56 @@ def collect_reference_errors(
     for i, e in enumerate(overrides.edges_remove):
         endpoint(e.a, f"edges_remove[{i}].a")
         endpoint(e.b, f"edges_remove[{i}].b")
+    seen_new_keys: set[str] = set()
     for i, patch in enumerate(overrides.geometry_patches):
         t = patch.transfer
-        for key, side in ((t.from_key, "from"), (t.to_key, "to")):
-            if key not in patch_names:
-                errors.append(
-                    PipelineError(
-                        DATA_INVALID,
-                        f"geometry_patches[{i}].transfer.{side}: key "
-                        f"{key!r} is not a slug of a boundary name",
+        if t is not None:
+            for key, side in ((t.from_key, "from"), (t.to_key, "to")):
+                if key not in patch_names:
+                    errors.append(
+                        PipelineError(
+                            DATA_INVALID,
+                            f"geometry_patches[{i}].transfer.{side}: key "
+                            f"{key!r} is not a slug of a boundary name",
+                        )
                     )
-                )
-            elif side == "to" and key not in land_keys:
-                errors.append(
-                    PipelineError(
-                        DATA_INVALID,
-                        f"geometry_patches[{i}].transfer.to: key {key!r} "
-                        "names an excluded province — the receiving side "
-                        "must stay in the game",
+                elif side == "to" and key not in land_keys:
+                    errors.append(
+                        PipelineError(
+                            DATA_INVALID,
+                            f"geometry_patches[{i}].transfer.to: key {key!r} "
+                            "names an excluded province — the receiving side "
+                            "must stay in the game",
+                        )
                     )
+            continue
+        s = patch.split
+        if s.key not in land_keys:
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"geometry_patches[{i}].split.key: key {s.key!r} is not "
+                    "a slug of a boundary include name — a split target "
+                    "must be in the game",
                 )
+            )
+        if re.match(_SEA_KEY_RE, s.new_key):
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"geometry_patches[{i}].split.new_key: {s.new_key!r} "
+                    "looks like a sea-zone key; new land keys must not "
+                    "start with 'sea_'",
+                )
+            )
+        if s.new_key in patch_names or s.new_key in seen_new_keys:
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"geometry_patches[{i}].split.new_key: key "
+                    f"{s.new_key!r} collides with an existing province or "
+                    "an earlier split",
+                )
+            )
+        seen_new_keys.add(s.new_key)
     return errors

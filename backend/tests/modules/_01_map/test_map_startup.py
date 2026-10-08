@@ -8,6 +8,7 @@ map directory exactly like production.
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,7 +39,8 @@ from modules._00_core.hooks import (
     snapshot_extension_points,
 )
 from modules._00_core.models import Province
-from modules._01_map.loader import MapDataError
+from modules._01_map.config_schema import MapConfig
+from modules._01_map.loader import MapDataError, load_map_data
 from modules._01_map.models import MapOwnershipLog
 from modules._01_map.startup import resolve_data_dir, startup_map
 from tests.fixtures.provinces import MAP_MINI_DIR
@@ -382,11 +384,11 @@ class TestMapDataFailure:
 
 class TestRealMap:
     @pytest.mark.asyncio
-    async def test_real_map_syncs_1065_nodes(
+    async def test_real_map_syncs_1066_nodes(
         self, tmp_path, monkeypatch, extension_snapshot
     ):
         """The production map loads and syncs into an empty test DB
-        (boundary v2: 1065 active nodes, 58 retired lock ids)."""
+        (map2_2 split: 1066 active nodes, 58 retired lock ids)."""
         db_file = tmp_path / "real_map.db"
         monkeypatch.setenv(
             "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
@@ -402,13 +404,81 @@ class TestRealMap:
             elapsed = time.monotonic() - started
         print(f"\n[real-map startup] {elapsed:.2f}s")
 
-        assert len(service.all_nodes()) == 1065
+        assert len(service.all_nodes()) == 1066
         assert len(service.map_data.retired_ids) == 58
         async with get_session_context() as session:
             count = await session.execute(
                 sa.select(sa.func.count()).select_from(Province)
             )
-            assert count.scalar_one() == 1065
+            assert count.scalar_one() == 1066
+        await core_db.get_engine().dispose()
+        core_db._engine = None
+        core_db._async_session_maker = None
+
+    @pytest.mark.asyncio
+    async def test_real_map_pre_split_db_gains_one_row(
+        self, tmp_path, monkeypatch, extension_snapshot
+    ):
+        """map2_2 rehearsal: a database synced to the pre-split manifest
+        (every current id except the newly appended one — ids are never
+        reused, so the old 1065-node set is exactly manifest minus the
+        max id) gains exactly that one row, and no retired row is
+        removed."""
+        db_file = tmp_path / "real_map_pre_split.db"
+        monkeypatch.setenv(
+            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
+        )
+        command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
+        init_engine(f"sqlite+aiosqlite:///{db_file.as_posix()}")
+        monkeypatch.delenv("MAP_DATA_DIR", raising=False)
+
+        config = MapConfig.from_yaml(MapConfig.get_default_config_path())
+        map_data = load_map_data(REAL_MAP_DIR, config)
+        new_id = max(n.id for n in map_data.nodes.values())
+        kinds = {n.id: n.kind for n in map_data.nodes.values()}
+        async with get_session_context() as session:
+            await session.execute(
+                sa.insert(Province),
+                [
+                    {"id": i, "kind": kinds[i]}
+                    for i in sorted(kinds)
+                    if i != new_id
+                ],
+            )
+            await session.commit()
+
+        log_records = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                log_records.append(record)
+
+        capture = _Capture()
+        startup_logger = logging.getLogger("modules._01_map.startup")
+        old_level = startup_logger.level
+        startup_logger.addHandler(capture)
+        startup_logger.setLevel(logging.INFO)
+        try:
+            service = await startup_map()
+        finally:
+            startup_logger.removeHandler(capture)
+            startup_logger.setLevel(old_level)
+
+        assert len(service.all_nodes()) == 1066
+        async with get_session_context() as session:
+            count = await session.execute(
+                sa.select(sa.func.count()).select_from(Province)
+            )
+            assert count.scalar_one() == 1066
+            kind = await session.execute(
+                sa.select(Province.kind).where(Province.id == new_id)
+            )
+            assert kind.scalar_one() == "LAND"
+        assert any(
+            "1 added to provinces" in r.getMessage()
+            and "0 retired removed" in r.getMessage()
+            for r in log_records
+        )
         await core_db.get_engine().dispose()
         core_db._engine = None
         core_db._async_session_maker = None

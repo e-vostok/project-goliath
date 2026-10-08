@@ -34,7 +34,7 @@ def test_committed_boundary_and_overrides_validate():
         "sea_atl_africa",
         "sea_iceland",
     }
-    assert len(overrides.geometry_patches) == 1
+    assert len(overrides.geometry_patches) == 2
     assert collect_reference_errors(overrides, boundary) == []
 
 

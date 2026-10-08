@@ -70,10 +70,11 @@ def test_real_nodes(real_data_dir, tmp_path):
     print(f"\nreal-data nodes run: {time.time() - t0:.1f}s")
 
     nodes = json.loads((out_dir / "land_nodes.json").read_text())
-    assert len(nodes) == 1030
+    assert len(nodes) == 1031
     land_ids = [n["id"] for n in nodes]
     assert land_ids == sorted(land_ids)
-    assert land_ids[0] == 1001 and land_ids[-1] == 2086
+    # map2_2: matruh (2124) is appended past the sea range.
+    assert land_ids[0] == 1001 and land_ids[-1] == 2124
     assert all(n["parts"] >= 1 for n in nodes)
 
     # boundary v2: 56 land provinces were withdrawn; their ids stay in
@@ -82,11 +83,12 @@ def test_real_nodes(real_data_dir, tmp_path):
     retired = set(lock["ids"][k] for k in RETIRED_LAND_KEYS)
     assert len(retired) == 56
     assert retired.isdisjoint(land_ids)
-    assert set(land_ids) | retired == set(range(1001, 2087))
+    assert set(land_ids) | retired == set(range(1001, 2087)) | {2124}
 
     # the lock also holds the 37 sea zone ids (2087..2123), including
-    # the two retired zones sea_atl_africa / sea_iceland.
-    assert len(lock["ids"]) == 1086 + 37
+    # the two retired zones sea_atl_africa / sea_iceland, plus the
+    # appended map2_2 id 2124 (matruh).
+    assert len(lock["ids"]) == 1086 + 37 + 1
     sea_ids = sorted(v for k, v in lock["ids"].items() if k.startswith("sea_"))
     assert sea_ids == list(range(2087, 2124))
     assert lock["ids"]["sea_adriatic"] == 2087
@@ -161,14 +163,16 @@ def test_real_graph(real_data_dir, tmp_path, capsys):
     )
     land = [n for n in graph["nodes"] if n["kind"] == "LAND"]
     seas = [n for n in graph["nodes"] if n["kind"] == "SEA"]
-    assert len(land) == 1030
+    assert len(land) == 1031
     assert len(seas) == 35
     # boundary v2: the 56 retired land ids leave gaps in 1001..2086.
     lock = json.loads(
         (real_data_dir / "ids.lock.json").read_text(encoding="utf-8")
     )
     retired = {lock["ids"][k] for k in RETIRED_LAND_KEYS}
-    assert {n["id"] for n in land} == set(range(1001, 2087)) - retired
+    assert {n["id"] for n in land} == (
+        set(range(1001, 2087)) - retired
+    ) | {2124}
     assert RETIRED_LAND_KEYS.isdisjoint(n["key"] for n in land)
     assert [n["id"] for n in seas] == sorted(
         set(range(2087, 2124)) - RETIRED_SEA_IDS
@@ -297,12 +301,13 @@ def test_real_build(real_data_dir, tmp_path):
     # scale / identity
     land = [n for n in mani["nodes"] if n["kind"] == "LAND"]
     seas = [n for n in mani["nodes"] if n["kind"] == "SEA"]
-    # boundary v2: 1065 active nodes (1030 land + 35 sea); the 58
-    # retired ids stay in the lock but not in the manifest/geometry.
-    assert len(mani["nodes"]) == 1065
-    assert len(land) == 1030
+    # boundary v2 + map2_2: 1066 active nodes (1031 land + 35 sea);
+    # the 58 retired ids stay in the lock but not in the
+    # manifest/geometry.
+    assert len(mani["nodes"]) == 1066
+    assert len(land) == 1031
     assert len(seas) == 35
-    assert len(mani["edges"]) == 3060
+    assert len(mani["edges"]) == 3062
     assert set(geom["paths"]) == {str(n["id"]) for n in mani["nodes"]}
     lock = json.loads(
         (real_data_dir / "ids.lock.json").read_text(encoding="utf-8")
@@ -310,7 +315,7 @@ def test_real_build(real_data_dir, tmp_path):
     retired = {lock["ids"][k] for k in RETIRED_LAND_KEYS} | RETIRED_SEA_IDS
     assert len(retired) == 58
     assert {n["id"] for n in mani["nodes"]} | retired == set(
-        range(1001, 2124)
+        range(1001, 2125)
     )
     assert mani["geometry_version"] == geom["version"]
     g = {

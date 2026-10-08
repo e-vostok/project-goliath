@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "geometry_version": "3072cc9fd0b4",
+ "geometry_version": "48cbfcd11623",
  "view_box": [
   0,
   0,
@@ -23,8 +23,8 @@
  "inputs_sha256": {
   "source": "918bc3fc078331c9ab2204433e35767908ff66e83978b988d389a5c70c2b6f13",
   "boundary": "8a63766a5d616a7fa6af8c075b59b52b215a3335c7285d6c14871fc4c00c4d68",
-  "overrides": "40f19ddc9d3f7119273e3dcca52094a3d949b5de2fbbc3539e23ba01b16c8a5c",
-  "ids_lock": "31c5a5d58599d63bf809688a0b282424407753545b3b0496fc67c74959a9dd6c"
+  "overrides": "75051cdadfadae8a3821c4ed85b31acb2233b7aa9ec9fdc904790f7adaf1c954",
+  "ids_lock": "9a34a948678f669a3b9c0c62db131d0c42048bb517cd3936748f2b0939c101d4"
  },
  "nodes": [
   {
@@ -488,19 +488,19 @@
    "key": "alexandria",
    "kind": "LAND",
    "name": "Alexandria",
-   "name_ru": null,
+   "name_ru": "Александрия",
    "source_name": "Alexandria",
    "anchor": [
     664.09,
-    225.67
+    225.66
    ],
    "bbox": [
-    644.72,
-    221.56,
+    659.31,
+    224.05,
     665.48,
-    227.8
+    227.33
    ],
-   "area": 23.89
+   "area": 7.12
   },
   {
    "id": 1026,
@@ -20070,7 +20070,7 @@
     683.65,
     226.75
    ],
-   "area": 559.8
+   "area": 559.79
   },
   {
    "id": 2114,
@@ -20261,6 +20261,25 @@
     67.11
    ],
    "area": 208.21
+  },
+  {
+   "id": 2124,
+   "key": "matruh",
+   "kind": "LAND",
+   "name": "Matruh",
+   "name_ru": "Мерса-Матрух",
+   "source_name": "Matruh",
+   "anchor": [
+    650.61,
+    224.51
+   ],
+   "bbox": [
+    644.72,
+    221.56,
+    659.52,
+    227.8
+   ],
+   "area": 16.76
   }
  ],
  "edges": [
@@ -20633,12 +20652,6 @@
   },
   {
    "a": 1014,
-   "b": 1025,
-   "type": "land",
-   "len": 2.124
-  },
-  {
-   "a": 1014,
    "b": 1086,
    "type": "land",
    "len": 1.357
@@ -20648,6 +20661,12 @@
    "b": 2114,
    "type": "coast",
    "len": 16.25
+  },
+  {
+   "a": 1014,
+   "b": 2124,
+   "type": "land",
+   "len": 2.124
   },
   {
    "a": 1015,
@@ -20987,21 +21006,15 @@
   },
   {
    "a": 1025,
-   "b": 2106,
-   "type": "coast",
-   "len": 8.0
-  },
-  {
-   "a": 1025,
    "b": 2113,
    "type": "coast",
-   "len": 15.25
+   "len": 7.5
   },
   {
    "a": 1025,
-   "b": 2114,
-   "type": "coast",
-   "len": 5.25
+   "b": 2124,
+   "type": "land",
+   "len": 0.385
   },
   {
    "a": 1026,
@@ -38569,6 +38582,12 @@
    "len": 35.75
   },
   {
+   "a": 2106,
+   "b": 2124,
+   "type": "coast",
+   "len": 8.0
+  },
+  {
    "a": 2107,
    "b": 2121,
    "type": "sea",
@@ -38605,10 +38624,22 @@
    "len": 12.75
   },
   {
+   "a": 2113,
+   "b": 2124,
+   "type": "coast",
+   "len": 7.75
+  },
+  {
    "a": 2114,
    "b": 2120,
    "type": "sea",
    "len": 14.25
+  },
+  {
+   "a": 2114,
+   "b": 2124,
+   "type": "coast",
+   "len": 5.25
   },
   {
    "a": 2115,
