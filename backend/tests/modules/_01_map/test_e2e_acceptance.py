@@ -181,8 +181,8 @@ async def _full_scenario(client: AsyncClient) -> None:
     assert manifest.status_code == 200
     assert "etag" in manifest.headers
     body = manifest.json()
-    assert len(body["nodes"]) == 1066
-    assert len(body["edges"]) == 3094  # map2_10: +3 land links, +30 -1 straits
+    assert len(body["nodes"]) == 1067
+    assert len(body["edges"]) == 3091  # map2_11: transfers/detach recompute
     etag = manifest.headers["etag"]
 
     geometry = await client.get(
@@ -191,7 +191,7 @@ async def _full_scenario(client: AsyncClient) -> None:
     )
     assert geometry.status_code == 200
     geo_body = geometry.json()
-    assert len(geo_body["paths"]) == 1066
+    assert len(geo_body["paths"]) == 1067
     # ~1.9 MB of SVG path data — a sane floor proves it is the real file.
     assert len(geometry.content) > 1_000_000
 
@@ -419,7 +419,7 @@ class TestStartupFailure:
                 print(f"\n[real-map lifespan boot] {elapsed:.2f}s")
                 assert (
                     len(map_service_module.get_map_service().all_nodes())
-                    == 1066
+                    == 1067
                 )
                 transport = ASGITransport(app=manager.app)
                 async with AsyncClient(

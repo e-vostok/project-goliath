@@ -40,7 +40,7 @@ from .seas import (
     SeaRaster,
     mask_from_geometry,
 )
-from .svgpath import polygons_of
+from .svgpath import dumps, parse_path, polygons_of
 from .svg_source import safe_union
 
 # ``outside`` parts smaller than this are the "small isolated fragments"
@@ -263,20 +263,128 @@ def _finalize_land(
     return _union_polygons(parts)
 
 
+# Seam repair (map2_11): rings of one node whose boundaries coincide or run
+# parallel within ``_SEAM_EPS`` along at least ``_SEAM_MIN_LEN`` are fused
+# into ONE outer ring — the map2_9 seam-scan definition. Plain union first
+# (covers exactly coincident edges); when a sliver gap or a needle hole
+# remains, morphological closing with the smallest step that yields a
+# single hole-free polygon is applied. Runs only on the node keys listed
+# in ``overrides.seam_repair`` and only on the final (simplified) geometry.
+_SEAM_EPS = 0.03
+_SEAM_MIN_LEN = 0.05
+_SEAM_CLOSING_STEPS = (0.02, 0.03, 0.045)
+_SEAM_MAX_DRIFT = 0.005  # repaired group may change node area by <= 0.5 %
+
+
+def _seam_length(a: Polygon, b: Polygon) -> float:
+    """Length of ``b``'s boundary within ``_SEAM_EPS`` of ``a``'s."""
+    return b.boundary.intersection(a.boundary.buffer(_SEAM_EPS)).length
+
+
+def _seam_groups(parts: list[Polygon]) -> list[list[int]]:
+    """Index groups of parts connected by seam runs (transitive closure)."""
+    parent = list(range(len(parts)))
+
+    def _find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(parts)):
+        for j in range(i + 1, len(parts)):
+            if (
+                _seam_length(parts[i], parts[j]) >= _SEAM_MIN_LEN
+                or _seam_length(parts[j], parts[i]) >= _SEAM_MIN_LEN
+            ):
+                pi, pj = _find(i), _find(j)
+                if pi != pj:
+                    parent[pi] = pj
+    groups: dict[int, list[int]] = {}
+    for i in range(len(parts)):
+        groups.setdefault(_find(i), []).append(i)
+    return [g for g in groups.values() if len(g) > 1]
+
+
+def _fuse_seam_group(group: list[Polygon], where: str) -> Polygon:
+    """One outer ring for a seam group: union, else the smallest closing."""
+    merged = safe_union(group)
+    polys = _polygon_list(merged)
+    if len(polys) == 1 and not polys[0].interiors:
+        return polys[0]
+    for step in _SEAM_CLOSING_STEPS:
+        closed = _polygon_list(merged.buffer(step).buffer(-step))
+        if len(closed) == 1 and not closed[0].interiors:
+            return closed[0]
+    raise PipelineError(
+        GEOMETRY_INVALID,
+        f"seam_repair {where}: the seam group cannot be fused into a "
+        "single hole-free ring",
+    )
+
+
+def repair_seams(
+    geom, key: str
+) -> tuple[Polygon | MultiPolygon, list[str]] | None:
+    """Fuse seam-joined rings of one node's final geometry.
+
+    ``geom`` is the canonical (serialised-roundtrip) shape: stray interior
+    rings that serialise as separate parts — the western_upper_swabia case —
+    are real parts here, which is what the map2_9 seam scan measures.
+    Returns ``(repaired_geometry, notes)`` or ``None`` when nothing was
+    merged. Notes are report lines (parts fused, area drift).
+    """
+    parts = _polygon_list(geom)
+    groups = _seam_groups(parts)
+    if not groups:
+        return None
+    replaced: set[int] = set()
+    fused: list[Polygon] = []
+    notes: list[str] = []
+    for group in groups:
+        merged = _fuse_seam_group([parts[i] for i in group], key)
+        drift = abs(
+            merged.area - sum(parts[i].area for i in group)
+        ) / max(geom.area, 1e-9)
+        notes.append(
+            f"{key}: fused {len(group)} rings "
+            f"(area drift {drift * 100:.3f}%)"
+        )
+        fused.append(merged)
+        replaced.update(group)
+    kept = [p for i, p in enumerate(parts) if i not in replaced]
+    out = _polygon_list(safe_union([*fused, *kept]))
+    return (
+        out[0] if len(out) == 1 else MultiPolygon(out),
+        notes,
+    )
+
+
 def build_land_geometries(
-    nodes: dict, cfg: PipelineConfig
-) -> tuple[dict[str, Polygon | MultiPolygon], dict[str, float], list[str]]:
+    nodes: dict, cfg: PipelineConfig, seam_keys: frozenset[str] = frozenset()
+) -> tuple[
+    dict[str, Polygon | MultiPolygon],
+    dict[str, float],
+    list[str],
+    list[str],
+]:
     """Union, simplify and snap each land node (interior rings preserved).
 
     Source provinces can carry interior rings — lakes enclosed by a single
     province. They are water, not land (Spec 1.4), so the rings are kept;
     on the map they show the ``inland_water`` background through the hole.
 
-    Returns ``(geometries, deviation, repairs)`` keyed by node key; the
-    deviation maps the effective input (after needle cleanup, if it ran) to
-    the final geometry and is bounded by ``simplify.tolerance +
+    ``seam_keys`` lists the nodes of ``overrides.seam_repair`` (map2_11):
+    after the simplify/snap guard passes, seam-joined rings of the final
+    geometry are fused into one outer ring and re-checked against the same
+    deviation and area guard.
+
+    Returns ``(geometries, deviation, repairs, seam_notes)`` keyed by node
+    key; the deviation maps the effective input (after needle cleanup, if
+    it ran) to the final geometry and is bounded by ``simplify.tolerance +
     output.grid``. ``repairs`` lists node keys whose source contour needed
-    degenerate-needle cleanup before the guard could pass.
+    degenerate-needle cleanup before the guard could pass; ``seam_notes``
+    holds one report line per fused seam group.
     """
     tol = cfg.simplify.tolerance
     grid = cfg.output.grid
@@ -284,6 +392,7 @@ def build_land_geometries(
     geoms: dict[str, Polygon | MultiPolygon] = {}
     deviations: dict[str, float] = {}
     repairs: list[str] = []
+    seam_notes: list[str] = []
     errors: list[PipelineError] = []
     for key in sorted(nodes):
         node = nodes[key]
@@ -334,11 +443,48 @@ def build_land_geometries(
                     )
                 )
                 continue
+        if key in seam_keys:
+            canon_parts = parse_path(dumps(final))
+            canon = (
+                canon_parts[0]
+                if len(canon_parts) == 1
+                else MultiPolygon(canon_parts)
+            )
+            res = repair_seams(canon, key)
+            if res is not None:
+                repaired, notes = res
+                rep_dev = deviation(cleaned, repaired)
+                drift = abs(repaired.area - final.area) / max(
+                    final.area, 1e-9
+                )
+                if drift > _SEAM_MAX_DRIFT:
+                    errors.append(
+                        PipelineError(
+                            GEOMETRY_INVALID,
+                            f"seam_repair {key!r}: area drift "
+                            f"{drift * 100:.3f}% exceeds 0.5%",
+                        )
+                    )
+                    continue
+                if not _ok(repaired, rep_dev):
+                    errors.append(
+                        PipelineError(
+                            GEOMETRY_INVALID,
+                            f"seam_repair {key!r}: repaired geometry "
+                            f"fails the guard (deviation {rep_dev:.4f}, "
+                            f"limit {bound}; area drift "
+                            f"{abs(repaired.area - cleaned.area):.4f}, "
+                            f"limit {area_limit})",
+                        )
+                    )
+                    continue
+                final, dev = repaired, rep_dev
+                seam_notes.extend(notes)
         geoms[key] = final
         deviations[key] = float(dev)
     if errors:
         raise PipelineFailure(errors)
-    return geoms, deviations, repairs
+    return geoms, deviations, repairs, seam_notes
 
 
 def build_land_mask(

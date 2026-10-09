@@ -511,6 +511,7 @@ names_ru:
   estremadura: "Лиссабон"
   euboea: "Эвбея"
   evros: "Александруполис"
+  faroe_islands: "Фареры"
   feher: "Алба-Юлия"
   fejer: "Секешфехервар"
   ferrara: "Феррара"
@@ -1275,3 +1276,29 @@ geometry_patches:
       keep_point: [664.09, 225.67]
       new_key: matruh
       new_name: "Matruh"
+  # map2_11 (решение Project Owner, лист «Куски» map_fixes_table.xlsx): кластер — связные через зазоры <0.5 ед.
+  # части провинции, содержащие точку; переносится к «to» целиком. Без allow_detached кластер обязан касаться
+  # приёмника; с allow_detached остаётся отдельной островной частью. Ключи — текущие (после renames).
+  - transfer_part: {from: lancashire, cluster_point: [555.44, 111.36], to: teviotdale, allow_detached: false}   # кусок Ланкашира к Хоику
+  - transfer_part: {from: lancashire, cluster_point: [554.37, 113.70], to: northumberland, allow_detached: false}   # кусок Ланкашира к Ньюкасл-апон-Тайну
+  - transfer_part: {from: shetland_islands, cluster_point: [552.10, 92.78], to: sutherland, allow_detached: true}   # Оркнейские острова к Турсо
+  - transfer_part: {from: inner_hebrides, cluster_point: [547.74, 117.75], to: galloway, allow_detached: true}   # остров Мэн к Дамфрису
+  - transfer_part: {from: zealand, cluster_point: [612.65, 113.18], to: gonge, allow_detached: true}   # Борнхольм к Кристианстаду
+  - transfer_part: {from: mazara, cluster_point: [602.90, 200.57], to: tunis, allow_detached: true}   # острова к югу от Сицилии к Тунису
+  - transfer_part: {from: lemnos, cluster_point: [644.71, 191.25], to: euboea, allow_detached: true}   # два мелких эгейских острова к Эвбее
+  # Фарерские острова — отдельная провинция (оба кластера листа «Куски»: архипелаг и зона «Море у Фарер»).
+  # Проливов к Фарерам нет — намеренно; Шетланд остаётся только Шетландом, пролив Шетланд–Турсо сохраняется.
+  - detach: {from: shetland_islands, cluster_points: [[539.39, 76.08], [539.97, 79.49]], new_key: faroe_islands, new_name: "Faroe_Islands"}
+
+# Ремонт «швов» (map2_11): кольца одного узла, чьи границы совпадают или идут параллельно ближе ~0.03 ед.
+# на длине от 0.05 ед., сливаются в ОДНО внешнее кольцо (union, иначе наименьшее морфологическое замыкание).
+# Применяется к финальной геометрии узла; только перечисленные ключи.
+seam_repair:
+  - berkshire            # Рединг
+  - bergenhus            # Берген
+  - norra_osterbotten    # Оулу
+  - chalkidiki           # Халкидики
+  - white_karelia        # Кемь
+  - astrakhan            # Астрахань
+  - ostergotland         # Линчёпинг
+  - western_upper_swabia # Равенсбург

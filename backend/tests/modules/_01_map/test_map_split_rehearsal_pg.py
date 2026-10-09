@@ -1,13 +1,13 @@
 """
-map2_2 PostgreSQL rehearsal: a production-like database synced to the
-pre-split manifest gains exactly one provinces row at startup.
+map2_11 PostgreSQL rehearsal: a production-like database synced to the
+pre-detach manifest gains exactly one provinces row at startup.
 
-Ids are append-only and never reused, so the old 1065-node database is
+Ids are append-only and never reused, so the old 1066-node database is
 exactly the current manifest minus the newly appended (max) id. The
 test seeds that set into the throwaway *_test database, points
 DATABASE_URL at it, runs the real ``startup_map()`` and asserts the
 log line reports ``1 added`` / ``0 retired removed``, the row count is
-1066, and the appended id is a LAND row.
+1067, and the appended id is a LAND row.
 
 Requires DATABASE_URL_TEST; skips like the rest of the postgres suite.
 """
@@ -51,7 +51,7 @@ class _Capture(logging.Handler):
 
 
 @pytest.mark.asyncio
-async def test_map2_2_old_manifest_db_gains_one_row(
+async def test_map2_11_old_manifest_db_gains_one_row(
     pg_url, pg_clean, monkeypatch, extension_snapshot
 ):
     config = MapConfig.from_yaml(MapConfig.get_default_config_path())
@@ -85,12 +85,12 @@ async def test_map2_2_old_manifest_db_gains_one_row(
             startup_logger.removeHandler(capture)
             startup_logger.setLevel(old_level)
 
-        assert len(service.all_nodes()) == 1066
+        assert len(service.all_nodes()) == 1067
         async with get_session_context() as session:
             count = await session.execute(
                 sa.select(sa.func.count()).select_from(Province)
             )
-            assert count.scalar_one() == 1066
+            assert count.scalar_one() == 1067
             kind = await session.execute(
                 sa.select(Province.kind).where(Province.id == new_id)
             )

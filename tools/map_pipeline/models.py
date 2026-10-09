@@ -138,18 +138,61 @@ class SplitPatch(_Strict):
         return self
 
 
+class TransferPartPatch(_Strict):
+    """``geometry_patches[].transfer_part`` — the cluster of ``from``
+    containing ``cluster_point`` moves to ``to`` (map2_11).
+
+    A cluster is the set of ``from`` parts connected through gaps smaller
+    than ``patches._PART_GAP`` units. A cluster touching ``to`` must merge
+    into a single polygon; a detached one requires ``allow_detached``.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_key: _KeyStr = Field(alias="from")
+    cluster_point: SvgPoint
+    to_key: _KeyStr = Field(alias="to")
+    allow_detached: bool
+
+
+class DetachPatch(_Strict):
+    """``geometry_patches[].detach`` — the clusters holding
+    ``cluster_points`` leave ``from`` and form one new node
+    ``new_key``/``new_name`` (map2_11)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_key: _KeyStr = Field(alias="from")
+    cluster_points: list[SvgPoint] = Field(min_length=1)
+    new_key: _KeyStr
+    new_name: _NameStr
+
+    @model_validator(mode="after")
+    def _key_matches_name(self) -> Self:
+        if self.new_key != self.new_name.lower():
+            raise ValueError(
+                "detach.new_key must equal new_name.lower() "
+                f"({self.new_key!r} != {self.new_name.lower()!r})"
+            )
+        return self
+
+
 class GeometryPatch(_Strict):
-    """One ``geometry_patches`` entry: exactly one of ``transfer``/``split``."""
+    """One ``geometry_patches`` entry: exactly one of
+    ``transfer``/``split``/``transfer_part``/``detach``."""
 
     transfer: TransferPatch | None = None
     split: SplitPatch | None = None
+    transfer_part: TransferPartPatch | None = None
+    detach: DetachPatch | None = None
 
     @model_validator(mode="after")
     def _exactly_one(self) -> Self:
-        if (self.transfer is None) == (self.split is None):
+        kinds = (self.transfer, self.split, self.transfer_part, self.detach)
+        if sum(p is not None for p in kinds) != 1:
             raise ValueError(
                 "a geometry_patches entry needs exactly one of "
-                "'transfer' or 'split'"
+                "'transfer', 'split', 'transfer_part' or 'detach'"
             )
         return self
 
@@ -240,6 +283,10 @@ class Overrides(_Strict):
     technical_exclude: list[_KeyStr]
     names_ru: dict[str, str]
     geometry_patches: list[GeometryPatch] = Field(default_factory=list)
+    # map2_11: land nodes whose seam-split rings (boundaries within
+    # ~0.03 u along >=0.05 u) are merged into one outer ring during the
+    # land-geometry step.
+    seam_repair: list[_KeyStr] = Field(default_factory=list)
     # 1.9 (step 5a): small water bodies within ``sea_link_gap`` of zone or
     # unexplored-sea water are bays (sea colour); ``sea_like_water`` points
     # force the bay class, ``lake_force`` points force the lake class.
@@ -364,10 +411,15 @@ def collect_reference_errors(
     # filter, so a ``from`` key may name an excluded province.
     patch_names = land_keys | excluded_keys
     sea_keys = {z.key for z in overrides.sea_zones}
-    split_new_keys = {
+    # map2_11: keys created by split/detach patches are node keys too.
+    patch_new_keys = {
         p.split.new_key
         for p in overrides.geometry_patches
         if p.split is not None
+    } | {
+        p.detach.new_key
+        for p in overrides.geometry_patches
+        if p.detach is not None
     }
     seen: set[tuple[str, str]] = set()
 
@@ -414,7 +466,7 @@ def collect_reference_errors(
         elif (
             r.to_key in patch_names
             or r.to_key in sea_keys
-            or r.to_key in split_new_keys
+            or r.to_key in patch_new_keys
             or r.to_key in seen_to
         ):
             errors.append(
@@ -426,8 +478,12 @@ def collect_reference_errors(
             )
         seen_to.add(r.to_key)
     node_keys = (
-        (land_keys - set(renamed)) | set(renamed.values()) | split_new_keys
+        (land_keys - set(renamed)) | set(renamed.values()) | patch_new_keys
     )
+    # map2_11: transfer_part/detach address nodes by their CURRENT key
+    # (post-rename) — a rename target resolves back to its source geometry;
+    # a plain source slug still works.
+    patch_resolvable = patch_names | set(renamed.values()) | patch_new_keys
 
     def land_ref(key: str, where: str) -> None:
         if key in renamed and (where, key) not in seen:
@@ -502,7 +558,35 @@ def collect_reference_errors(
         seen_links.add(pair)
     for key in overrides.names_ru:
         land_ref(key, "names_ru")
+    for i, key in enumerate(overrides.seam_repair):
+        land_ref(key, f"seam_repair[{i}]")
     seen_new_keys: set[str] = set()
+
+    def _new_key_check(kind: str, i: int, new_key: str) -> None:
+        if re.match(_SEA_KEY_RE, new_key):
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"geometry_patches[{i}].{kind}.new_key: {new_key!r} "
+                    "looks like a sea-zone key; new land keys must not "
+                    "start with 'sea_'",
+                )
+            )
+        if (
+            new_key in patch_names
+            or new_key in set(renamed.values())
+            or new_key in seen_new_keys
+        ):
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"geometry_patches[{i}].{kind}.new_key: key "
+                    f"{new_key!r} collides with an existing node or "
+                    "an earlier patch",
+                )
+            )
+        seen_new_keys.add(new_key)
+
     for i, patch in enumerate(overrides.geometry_patches):
         t = patch.transfer
         if t is not None:
@@ -525,6 +609,41 @@ def collect_reference_errors(
                         )
                     )
             continue
+        tp = patch.transfer_part
+        if tp is not None:
+            for key, side in ((tp.from_key, "from"), (tp.to_key, "to")):
+                if key not in patch_resolvable:
+                    errors.append(
+                        PipelineError(
+                            DATA_INVALID,
+                            f"geometry_patches[{i}].transfer_part.{side}: "
+                            f"key {key!r} is not a node key or a slug of "
+                            "a boundary name",
+                        )
+                    )
+                elif side == "to" and key not in node_keys:
+                    errors.append(
+                        PipelineError(
+                            DATA_INVALID,
+                            f"geometry_patches[{i}].transfer_part.to: key "
+                            f"{key!r} is not a live node — the receiving "
+                            "side must stay in the game",
+                        )
+                    )
+            continue
+        d = patch.detach
+        if d is not None:
+            if d.from_key not in patch_resolvable:
+                errors.append(
+                    PipelineError(
+                        DATA_INVALID,
+                        f"geometry_patches[{i}].detach.from: key "
+                        f"{d.from_key!r} is not a node key or a slug of "
+                        "a boundary name",
+                    )
+                )
+            _new_key_check("detach", i, d.new_key)
+            continue
         s = patch.split
         if s.key not in land_keys:
             errors.append(
@@ -535,23 +654,5 @@ def collect_reference_errors(
                     "must be in the game",
                 )
             )
-        if re.match(_SEA_KEY_RE, s.new_key):
-            errors.append(
-                PipelineError(
-                    DATA_INVALID,
-                    f"geometry_patches[{i}].split.new_key: {s.new_key!r} "
-                    "looks like a sea-zone key; new land keys must not "
-                    "start with 'sea_'",
-                )
-            )
-        if s.new_key in patch_names or s.new_key in seen_new_keys:
-            errors.append(
-                PipelineError(
-                    DATA_INVALID,
-                    f"geometry_patches[{i}].split.new_key: key "
-                    f"{s.new_key!r} collides with an existing province or "
-                    "an earlier split",
-                )
-            )
-        seen_new_keys.add(s.new_key)
+        _new_key_check("split", i, s.new_key)
     return errors
