@@ -804,6 +804,7 @@ def _build_report(
     metrics: dict,
     land_dev: dict,
     repairs: list,
+    seam_notes: list,
     paths: dict,
     outside_d: str,
     geom_bytes: int,
@@ -887,6 +888,8 @@ def _build_report(
         f"(`{worst_key}`), mean {round(mean_dev, 4)}",
         "- Land needle-cleanup repairs: "
         + (", ".join(f"`{k}`" for k in repairs) if repairs else "none"),
+        "- Seam repairs (map2_11): "
+        + ("; ".join(seam_notes) if seam_notes else "none"),
         f"- Sea faces: {sea_build.face_count} "
         f"(labelled {sea_build.labelled_faces}), vertices before the cut "
         f"{sea_build.vertices_before_cut}, after the cut "
@@ -969,8 +972,8 @@ def run_build(
         prep.nodes, sea, ids, prep.overrides, cfg, land_labels
     )
 
-    land_geoms, land_dev, land_repairs = build_land_geometries(
-        prep.nodes, cfg
+    land_geoms, land_dev, land_repairs, seam_notes = build_land_geometries(
+        prep.nodes, cfg, frozenset(prep.overrides.seam_repair)
     )
     land_mask = build_land_mask(land_geoms, prep, sea, cfg)
     playable = playable_bbox(land_geoms, prep.overrides, cfg)
@@ -1083,7 +1086,7 @@ def run_build(
 
     report_text = _build_report(
         prep, sea, graph, land_geoms, sea_build, outside_build, metrics,
-        land_dev, land_repairs, paths, outside_d, geom_bytes,
+        land_dev, land_repairs, seam_notes, paths, outside_d, geom_bytes,
         manifest_bytes, geom_doc["version"], inputs, playable,
     )
 
