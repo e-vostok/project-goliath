@@ -96,7 +96,10 @@ def build_manifest(
                     "id": gn.id,
                     "key": gn.key,
                     "kind": "LAND",
-                    "name": node.source_name.replace("_", " "),
+                    "name": (
+                        node.display_name
+                        or node.source_name.replace("_", " ")
+                    ),
                     "name_ru": overrides.names_ru.get(gn.key) or None,
                     "source_name": node.source_name,
                     "anchor": [mt.anchor[0], mt.anchor[1]],

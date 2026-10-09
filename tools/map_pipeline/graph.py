@@ -21,6 +21,7 @@ from .errors import (
     EDGE_UNKNOWN_NODE,
     GRAPH_DISCONNECTED,
     GRAPH_INVARIANT,
+    LAND_LINK_ALREADY_CONNECTED,
     STRAIT_ALREADY_CONNECTED,
     PipelineError,
     PipelineFailure,
@@ -288,6 +289,49 @@ def _apply_overrides(
             name=s.name,
             multiplier=s.multiplier,
         )
+
+    # map2_10: forced land edges apply last — an existing strait for the
+    # pair is removed in favour of the land link, an existing land edge
+    # (automatic or manual) is an error.
+    for i, ll in enumerate(overrides.land_links):
+        na, nb = by_key.get(ll.a), by_key.get(ll.b)
+        if na is None or nb is None:
+            unknown = ll.a if na is None else ll.b
+            errors.append(
+                PipelineError(
+                    EDGE_UNKNOWN_NODE,
+                    f"land_links[{i}]: unknown node key {unknown!r}",
+                )
+            )
+            continue
+        if na.kind != KIND_LAND or nb.kind != KIND_LAND:
+            errors.append(
+                PipelineError(
+                    EDGE_TYPE_MISMATCH,
+                    f"land_links[{i}]: land link endpoints must be "
+                    f"LAND, got {na.kind} {ll.a!r} and {nb.kind} {ll.b!r}",
+                )
+            )
+            continue
+        pair = (min(na.id, nb.id), max(na.id, nb.id))
+        existing = edges.get(pair)
+        if existing is not None and existing.type != "strait":
+            errors.append(
+                PipelineError(
+                    LAND_LINK_ALREADY_CONNECTED,
+                    f"land_links[{i}]: {ll.a!r} and {ll.b!r} already "
+                    f"share a {existing.type} edge",
+                )
+            )
+            continue
+        if existing is not None:
+            info.append(
+                f"land_links {ll.a}-{ll.b}: {existing.type} edge "
+                "removed in favour of the land link"
+            )
+        edges[pair] = Edge(
+            a=pair[0], b=pair[1], type="land", len=None, manual=True
+        )
     return info, errors
 
 
@@ -387,7 +431,10 @@ def build_graph(
             id=ids[key],
             key=key,
             kind=KIND_LAND,
-            name=land[key].source_name.replace("_", " "),
+            name=(
+                land[key].display_name
+                or land[key].source_name.replace("_", " ")
+            ),
             name_ru=overrides.names_ru.get(key) or None,
             area=sum(p.area for p in land[key].parts),
             geom=_node_union(land[key]),

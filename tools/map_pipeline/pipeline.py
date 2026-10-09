@@ -81,6 +81,9 @@ class _Node:
     key: str
     source_name: str
     parts: list[Polygon] = field(default_factory=list)
+    # map2_10: renames give a display ``name`` other than the slugged
+    # source name; ``source_name`` itself never changes.
+    display_name: str | None = None
 
 
 @dataclass
@@ -161,6 +164,17 @@ def _select_nodes(
         key: _Node(key=key, source_name=names[0])
         for key, names in by_key.items()
     }
+    # map2_10: declared renames rewrite key and display name; the id
+    # follows through ``assign_ids`` (previous_keys in the lock).
+    for r in overrides.renames:
+        node = nodes.get(r.from_key)
+        if node is None:
+            continue  # already reported by collect_reference_errors
+        del nodes[r.from_key]
+        node.key = r.to_key
+        node.display_name = r.name
+        nodes[r.to_key] = node
+        info.append(f"renames: {r.from_key} -> {r.to_key} ({r.name})")
     return nodes, info
 
 
@@ -335,6 +349,10 @@ def _sea_keys(overrides: Overrides) -> list[str]:
     return [z.key for z in overrides.sea_zones]
 
 
+def _renames_map(overrides: Overrides) -> dict[str, str]:
+    return {r.from_key: r.to_key for r in overrides.renames}
+
+
 def _lock_keep_extra(boundary: Boundary) -> set[str]:
     """Keys that may stay in ``ids.lock.json`` without producing a node.
 
@@ -422,6 +440,7 @@ def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
     ids, new_ids, lock_text, lock_changed = assign_ids(
         data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
         _lock_keep_extra(prep.boundary),
+        renames=_renames_map(prep.overrides),
     )
     if check:
         return 1 if lock_changed else 0
@@ -680,6 +699,7 @@ def run_graph(
     ids, new_ids, lock_text, lock_changed = assign_ids(
         data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
         _lock_keep_extra(prep.boundary),
+        renames=_renames_map(prep.overrides),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(
@@ -939,6 +959,7 @@ def run_build(
     ids, new_ids, lock_text, lock_changed = assign_ids(
         data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
         _lock_keep_extra(prep.boundary),
+        renames=_renames_map(prep.overrides),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(
