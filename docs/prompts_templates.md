@@ -140,60 +140,43 @@
 ПРОЕКТ: Goliath.
 
 ЗАДАЧА:
-Изучить актуальное состояние в подключенном GitHub-репозитории и сгенерировать токеноэффективное, исчерпывающее техническое задание на английском языке для IDE Agent под указанный Issue.
+Изучить актуальное состояние в подключенном GitHub-репозитории и сгенерировать короткое ТЗ на английском языке для IDE Agent под указанный Issue.
 
 ВХОДНЫЕ ДАННЫЕ:
 - Модуль: `[module_slug]`
 - Целевой Issue: `[Номер и точное название задачи из 03_ROADMAP/[module_slug].md]`
 
 ПРАВИЛА ПРОЕКТИРОВАНИЯ ТЗ:
-1. Анализ репозитория: Укажите точные пути к существующим файлам, базовым классам и фабрикам тестовых фикстур.
-2. Границы изменений:
-   - ALLOWLIST: строгий список файлов, разрешенных к созданию и изменению.
-   - DENYLIST: чужие модули и таблицы, прямая правка которых категорически запрещена.
-3. Межмодульные контракты: Напомните о запрете прямых SQL-мутаций чужих таблиц (только через публичный сервис) и внешних ключей к модулям-сателлитам.
-4. Config-Safe: Динамическая загрузка конфига строго через `config_schema.py`. Никакого хардкода баланса.
-5. Anti-Mock Guard: Тестирование логики и тика строго на реальной тестовой БД (SQLite in-memory / asyncpg test container) с использованием фабрик фикстур из `backend/tests/fixtures/`.
-6. Выдайте строго готовое ТЗ в формате Markdown на английском языке.
+1. Постоянные правила (git и PR, тесты по затронутым областям, версии, аудит, класс слияния, формат отчёта, инварианты) лежат в `docs/devin_rules.md`. В ТЗ их НЕ повторять — только ссылка и явные исключения.
+2. ТЗ описывает только конкретику задачи: цель, точные пути существующих файлов, классов и фабрик, шаги работы, решения вместо вариантов. Объём — не более одной страницы. Без таблиц.
+3. Границы изменений: ALLOWLIST (что создавать/менять) и DENYLIST (что нельзя трогать) — по одной строке каждая.
+4. Раздел тестов: какой ОДИН новый тест нужен и какие наборы запускать (по правилам из `docs/devin_rules.md`); без матриц и без целевого покрытия.
+5. Если задача меняет данные карты, строки в базе, авторизацию или движок тика — прямо написать «ожидаемый класс: NEEDS LEAD AI REVIEW» и указать, что именно показать в отчёте (репетиция запуска, счётчики).
+6. Выдать строго готовое ТЗ в формате Markdown на английском языке.
 
 ВЫХОДНЫЕ ДАННЫЕ (Англоязычное ТЗ для IDE Agent):
 ```markdown
-# TASK: [module_slug] — Issue [X]: [Issue Description]
+# TASK: [module_slug] — [Issue number]: [short title]
 
-## 0. Process
-All git operations are Devin's responsibility (commits, branches, merge prep) — Project
-Owner only clicks "Merge" after PR is created by Devin on GitHub, after Lead AI review of the diff.
+Rules: follow `docs/devin_rules.md`. Branch `[prefix]/[n]-[slug]`. [Explicit overrides of the rules, if any.]
 
-## 1. Scope & Blast Radius
-- ALLOWLIST: [Strict list of files permitted to create/edit]
-- DENYLIST: [Strictly untouched modules, configs, and foreign migrations]
-- Reference Spec: `docs/02_SYSTEM_SPECS/[module_slug].md`
-- Runtime Config & Schema: `configs/[module_slug].yaml` & `backend/src/modules/[module_slug]/config_schema.py`
+## Goal
+[2–3 sentences: what the player or the system gets after this task.]
 
-## 2. Architecture & Domain Contracts
-- Foreign Key Policy: FKs permitted ONLY to `00_core` tables. Cross-satellite direct FKs are PROHIBITED.
-- Inter-Module Mutation: Zero direct SQL mutations on foreign tables. Call public service methods if interacting with dependencies.
-- Tick DAG Registration: Handler must be attached strictly to `TickPhase.[PHASE_NAME]` (if applicable).
-- Dynamic Balance: All numerical values must be injected via `config_schema.py`. No domain logic hardcoding.
-- Authentication: Secure endpoints using Bearer JWT session auth from `00_core`.
+## Work
+1. [Concrete step with exact file paths and names.]
+2. [...]
 
-## 3. Technical Implementation Details
-- Backend (SQLAlchemy / Pydantic / FastAPI / Tick Engine) requirements.
-- Frontend (VKUI / React / Vite / VK Bridge) requirements (if within scope of this Issue).
-- Error Handling: Specific domain exceptions mapped to clear HTTP status codes.
+## Scope
+ALLOWLIST: [files and folders that may change]
+DENYLIST: [what must not change]
+Spec: `docs/02_SYSTEM_SPECS/[module_slug].md` (list the passages to touch, do not edit it, unless this task is the Spec task). Config and schema: `configs/[module_slug].yaml`, `backend/src/modules/[module_slug]/config_schema.py`.
 
-## 4. Verification & Test Plan (Anti-Mock Guard)
-- Test Suite Path: [Exact target path, e.g., `backend/tests/modules/[module_slug]/test_...py`]
-- Mandatory Test Scenarios: Happy path, domain invariant violations, edge cases (zero/max values).
-- Anti-Mock Guard: State transitions, DB queries, and tick execution must run against a real in-memory test database using factories from `backend/tests/fixtures/`. Shallow mocking of repositories or DB sessions is strictly prohibited.
-- Coverage Target: 0 failures, line coverage >= 85%.
+## Tests
+New test (one): [what it proves, path]. Suites to run: per the rules, for the touched areas.
 
-## 5. Definition of Done (DoD)
-- [ ] Code strictly adheres to ALLOWLIST and Spec contracts.
-- [ ] Configuration parsed and validated via Pydantic model.
-- [ ] All automated tests pass against a real test database (0 mocks on core state).
-- [ ] VKUI components compile without TypeScript errors and conform to responsive design.
-- [ ] Commit: `feat([module_slug]): [issue description]`.
+## Report extras
+[Only what is specific to this task; otherwise delete this section. Expected merge class if not ROUTINE.]
 ```
 
 ### ПРОМПТ 5: Стратегический аудит и обзор проекта (Для Мастер-чата)
