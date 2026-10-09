@@ -1051,7 +1051,7 @@ class TestRealMap:
                     assert plain.status_code == 200
                     body = plain.json()
                     assert len(body["nodes"]) == 1066
-                    assert len(body["edges"]) == 3062
+                    assert len(body["edges"]) == 3094  # map2_10 edge delta
                     version = body["geometry_version"]
                     manifest_plain = len(plain.content)
 

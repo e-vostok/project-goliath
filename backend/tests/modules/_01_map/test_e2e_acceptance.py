@@ -182,7 +182,7 @@ async def _full_scenario(client: AsyncClient) -> None:
     assert "etag" in manifest.headers
     body = manifest.json()
     assert len(body["nodes"]) == 1066
-    assert len(body["edges"]) == 3062
+    assert len(body["edges"]) == 3094  # map2_10: +3 land links, +30 -1 straits
     etag = manifest.headers["etag"]
 
     geometry = await client.get(

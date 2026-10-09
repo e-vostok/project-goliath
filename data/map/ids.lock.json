@@ -526,7 +526,7 @@
     "malaga": 1523,
     "malatya": 1524,
     "malazgirt": 1525,
-    "mallorca": 1526,
+    "balearic_islands": 1526,
     "malmohus": 1527,
     "mangistau": 1528,
     "mangyshlak": 1529,
@@ -587,7 +587,7 @@
     "nantais": 1584,
     "narbonnais": 1585,
     "navarre": 1586,
-    "naxos": 1587,
+    "cyclades": 1587,
     "neckar": 1588,
     "nema": 1589,
     "neopatras": 1590,
@@ -622,7 +622,7 @@
     "north_pskov": 1619,
     "north_riding": 1620,
     "northamptonshire": 1621,
-    "northern_isles": 1622,
+    "shetland_islands": 1622,
     "northumberland": 1623,
     "noto": 1624,
     "nottinghamshire": 1625,
@@ -753,7 +753,7 @@
     "ribatejo": 1750,
     "ries": 1751,
     "rivne": 1752,
-    "rodos": 1753,
+    "dodecanese": 1753,
     "rogaland": 1754,
     "romagna": 1755,
     "roman_flanders": 1756,
@@ -1125,5 +1125,19 @@
     "sea_tyrrhenian": 2122,
     "sea_white": 2123,
     "matruh": 2124
+  },
+  "previous_keys": {
+    "balearic_islands": [
+      "mallorca"
+    ],
+    "cyclades": [
+      "naxos"
+    ],
+    "shetland_islands": [
+      "northern_isles"
+    ],
+    "dodecanese": [
+      "rodos"
+    ]
   }
 }
