@@ -1,12 +1,7 @@
+# Manual-only since process v2 (2026-10-09): run from the Actions tab when needed.
 name: CI
 
-# Public repo: no secrets are used anywhere in this workflow, and the
-# trigger is deliberately `pull_request` (never `pull_request_target`),
-# so a fork PR cannot run with elevated permissions or leaked context.
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
