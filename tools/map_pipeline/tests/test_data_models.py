@@ -37,7 +37,11 @@ def test_committed_boundary_and_overrides_validate():
         "sea_atl_africa",
         "sea_iceland",
     }
-    assert len(overrides.geometry_patches) == 2
+    # map2_11: alexandria split + seam seam_repair + 7 transfer_part
+    # + 1 detach.
+    assert len(overrides.geometry_patches) == 10
+    assert len(overrides.seam_repair) == 8
+    assert overrides.names_ru.get("faroe_islands") == "Фареры"
     assert collect_reference_errors(overrides, boundary) == []
 
 
