@@ -384,11 +384,11 @@ class TestMapDataFailure:
 
 class TestRealMap:
     @pytest.mark.asyncio
-    async def test_real_map_syncs_1066_nodes(
+    async def test_real_map_syncs_1067_nodes(
         self, tmp_path, monkeypatch, extension_snapshot
     ):
         """The production map loads and syncs into an empty test DB
-        (map2_2 split: 1066 active nodes, 58 retired lock ids)."""
+        (map2_11 detach: 1067 active nodes, 58 retired lock ids)."""
         db_file = tmp_path / "real_map.db"
         monkeypatch.setenv(
             "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
@@ -404,13 +404,13 @@ class TestRealMap:
             elapsed = time.monotonic() - started
         print(f"\n[real-map startup] {elapsed:.2f}s")
 
-        assert len(service.all_nodes()) == 1066
+        assert len(service.all_nodes()) == 1067
         assert len(service.map_data.retired_ids) == 58
         async with get_session_context() as session:
             count = await session.execute(
                 sa.select(sa.func.count()).select_from(Province)
             )
-            assert count.scalar_one() == 1066
+            assert count.scalar_one() == 1067
         await core_db.get_engine().dispose()
         core_db._engine = None
         core_db._async_session_maker = None
@@ -419,9 +419,9 @@ class TestRealMap:
     async def test_real_map_pre_split_db_gains_one_row(
         self, tmp_path, monkeypatch, extension_snapshot
     ):
-        """map2_2 rehearsal: a database synced to the pre-split manifest
+        """map2_11 rehearsal: a database synced to the pre-detach manifest
         (every current id except the newly appended one — ids are never
-        reused, so the old 1065-node set is exactly manifest minus the
+        reused, so the old 1066-node set is exactly manifest minus the
         max id) gains exactly that one row, and no retired row is
         removed."""
         db_file = tmp_path / "real_map_pre_split.db"
@@ -464,12 +464,12 @@ class TestRealMap:
             startup_logger.removeHandler(capture)
             startup_logger.setLevel(old_level)
 
-        assert len(service.all_nodes()) == 1066
+        assert len(service.all_nodes()) == 1067
         async with get_session_context() as session:
             count = await session.execute(
                 sa.select(sa.func.count()).select_from(Province)
             )
-            assert count.scalar_one() == 1066
+            assert count.scalar_one() == 1067
             kind = await session.execute(
                 sa.select(Province.kind).where(Province.id == new_id)
             )

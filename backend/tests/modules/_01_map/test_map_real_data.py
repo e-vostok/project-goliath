@@ -52,13 +52,13 @@ def test_real_map_sanity(real_service):
     data = real_service.map_data
     manifest = data.manifest
 
-    # map2_2 split: 1066 active nodes; the 58 retired ids stay in the lock.
-    assert len(data.nodes) == len(manifest.nodes) == 1066
+    # map2_11 detach: 1067 active nodes; the 58 retired ids stay in the lock.
+    assert len(data.nodes) == len(manifest.nodes) == 1067
     assert len(data.retired_ids) == 58
     kinds = {n.kind for n in data.nodes.values()}
     assert kinds == {"LAND", "SEA"}
-    # map2_10: 3062 - 1 removed strait + 3 land links + 30 new straits.
-    assert len(data.edges) == len(manifest.edges) == 3094
+    # map2_11: 3094 -> 3091 after transfer/detach recompute.
+    assert len(data.edges) == len(manifest.edges) == 3091
 
     # graph connectivity is already enforced by the loader (INV-M3);
     # degrees stay under the config limit (checked at load time too)
