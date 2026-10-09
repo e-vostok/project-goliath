@@ -1,6 +1,20 @@
 Все изменения проекта фиксируются в этом файле.
 Формат версий: [MAJOR.MINOR.PATCH]
 
+## [0.5.6] — 01_map
+
+- map2_10: проливы, сухопутные связи и переименования (только данные,
+  геометрия не менялась). В `overrides.yaml` добавлены секции `renames`
+  (ключ узла меняется, `id` и геометрия — нет; прежние ключи пишутся в
+  `previous_keys` в `ids.lock.json`) и `land_links` (принудительное
+  ребро `land` для касающихся контуров короче `min_border_length`).
+  Переименованы 4 острова (mallorca→balearic_islands, naxos→cyclades,
+  rodos→dodecanese, northern_isles→shetland_islands, id сохранены),
+  обновлены `name`/`name_ru` ещё у 21 провинции. Снят Дуврский пролив
+  (ponthieu–kent), добавлено 3 land_links и 30 проливов из таблицы
+  `map_fixes_table.xlsx` (cyprus–icel отклонён Project Owner); рёбер
+  3062 → 3094. Репетиция на PostgreSQL: `0 added, 0 retired removed`.
+
 ## [0.5.5] — 01_map
 
 - map2_3: русские названия 1030 провинций. Заполненная таблица

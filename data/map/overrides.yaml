@@ -129,6 +129,23 @@ sea_zones:
     name_ru: "Южный Каспий"
     seeds: [[732.88, 184.12]]   # 51E 40.5N
 
+# Переименования узлов (map2_10): «from» — slug имени источника из boundary.yaml, «to» — новый ключ
+# узла. id не меняется никогда (INV-M1): старый ключ переносится в previous_keys в ids.lock.json.
+# Все секции ниже (straits, land_links, names_ru, edges_add/edges_remove) используют НОВЫЕ ключи.
+renames:
+  - {from: mallorca, to: balearic_islands, name: "Balearic Islands"}
+  - {from: naxos, to: cyclades, name: "Cyclades"}
+  - {from: rodos, to: dodecanese, name: "Dodecanese"}
+  - {from: northern_isles, to: shetland_islands, name: "Shetland Islands"}
+
+# Принудительные сухопутные связи (map2_10): контуры касаются, но общая граница короче
+# geometry.min_border_length (0.3), поэтому автосвязь не возникла. Ошибка, если ребро уже есть;
+# пролив на ту же пару снимается. Геометрию не трогаем.
+land_links:
+  - [deheubarth, powys]
+  - [ponthieu, west_flanders]
+  - [danzig, lower_prussia]
+
 # Моря, которые растр воды не соединил (узкие проливы): связь типа sea добавляется вручную.
 edges_add:
   - {a: sea_atl_iberia, b: sea_alboran, type: sea}   # Гибралтар
@@ -137,12 +154,12 @@ edges_add:
   - {a: sea_azov, b: sea_black_east, type: sea}   # Керченский пролив
 
 # Узкие проливы между провинциями суши: переправа напрямую со штрафом (strait.default_crossing_multiplier из configs/01_map.yaml).
+# map2_10: пролив kent–ponthieu (Дуврский) убран по решению Project Owner — пара получила сухопутную land_link рядом (ponthieu–west_flanders).
 straits:
-  - {a: kent, b: ponthieu, name: "Дуврский пролив", multiplier: null}   # П1
   - {a: antrim, b: argyll, name: "Северный пролив", multiplier: null}   # П2
   - {a: argyll, b: inner_hebrides, name: "Пролив Внутренних Гебрид", multiplier: null}   # П3
   - {a: ross, b: outer_hebrides, name: "Пролив Минч", multiplier: null}   # П4
-  - {a: sutherland, b: northern_isles, name: "Пентленд-Ферт", multiplier: null}   # П5
+  - {a: sutherland, b: shetland_islands, name: "Пентленд-Ферт", multiplier: null}   # П5
   - {a: zealand, b: funen, name: "Большой Бельт", multiplier: null}   # П6
   - {a: funen, b: eastern_jutland, name: "Малый Бельт", multiplier: null}   # П7
   - {a: zealand, b: malmohus, name: "Эресунн", multiplier: null}   # П8
@@ -153,7 +170,39 @@ straits:
   - {a: ionian_islands, b: north_epirus, name: "Корфуский пролив", multiplier: null}   # П13
   - {a: ionian_islands, b: aetolia, name: "Пролив Лефкады", multiplier: null}   # П14
   - {a: chios, b: smyrna, name: "Хиосский пролив", multiplier: null}   # П15
-  - {a: rodos, b: mugla, name: "Родосский пролив", multiplier: null}   # П16
+  - {a: dodecanese, b: mugla, name: "Родосский пролив", multiplier: null}   # П16
+  # map2_10, по таблице map_fixes_table.xlsx (лист «Проливы», колонка «добавить» = да;
+  # симметричные дубли слиты, cyprus–icel отклонён Project Owner):
+  - {a: achaea, b: aetolia, name: "Рионский пролив", multiplier: null}   # П17
+  - {a: essex, b: kent, name: "Эстуарий Темзы", multiplier: null}   # П18
+  - {a: biga, b: dardanelles, name: "Дарданеллы", multiplier: null}   # П19
+  - {a: aydin, b: chios, name: "Чесменский пролив", multiplier: null}   # П20
+  - {a: constantinople, b: kocaeli, name: "Босфор", multiplier: null}   # П21
+  - {a: deheubarth, b: gwynedd, name: "Кардиганский залив", multiplier: null}   # П22
+  - {a: buskerud, b: ostfold, name: "Осло-фьорд", multiplier: null}   # П23
+  - {a: vendsyssel_thy, b: western_jutland, name: "Лим-фьорд (западный)", multiplier: null}   # П24
+  - {a: east_flanders, b: south_holland, name: "Эстуарий Шельды", multiplier: null}   # П25
+  - {a: lemnos, b: thessaly, name: "Лемносский пролив", multiplier: null}   # П26
+  - {a: angus, b: fife, name: "Ферт-оф-Тей", multiplier: null}   # П27
+  - {a: cadiz, b: huelva, name: "Кадисский залив", multiplier: null}   # П28
+  - {a: biga, b: lemnos, name: "Лемносский пролив (восточный)", multiplier: null}   # П29
+  - {a: argyll, b: outer_hebrides, name: "Гебридское море", multiplier: null}   # П30
+  - {a: euboea, b: thessaly, name: "Пагасейский залив", multiplier: null}   # П31
+  - {a: south_holland, b: west_flanders, name: "Пролив Влиссинген", multiplier: null}   # П32
+  - {a: funen, b: sonderjylland, name: "Малый Бельт (южный)", multiplier: null}   # П33
+  - {a: friesland, b: north_holland, name: "Вадденское море", multiplier: null}   # П34
+  - {a: ionian_islands, b: south_epirus, name: "Корфуский пролив (южный)", multiplier: null}   # П35
+  - {a: argyll, b: galloway, name: "Ферт-оф-Клайд", multiplier: null}   # П36
+  - {a: euboea, b: cyclades, name: "Кафиревский пролив", multiplier: null}   # П37
+  - {a: cafa, b: taman, name: "Керченский пролив", multiplier: null}   # П38
+  - {a: euboea, b: lemnos, name: "Пролив Скирос", multiplier: null}   # П39
+  - {a: karasi, b: lemnos, name: "Лемносский пролив (юго-восточный)", multiplier: null}   # П40
+  - {a: attica, b: cyclades, name: "Сунионский пролив", multiplier: null}   # П41
+  - {a: dardanelles, b: lemnos, name: "Лемносский пролив (северный)", multiplier: null}   # П42
+  - {a: aydin, b: dodecanese, name: "Косский пролив", multiplier: null}   # П43
+  - {a: cadiz, b: habat, name: "Гибралтарский пролив", multiplier: null}   # П44
+  - {a: ilia, b: ionian_islands, name: "Кефалонийский пролив", multiplier: null}   # П45
+  - {a: chios, b: dodecanese, name: "Икарийский пролив", multiplier: null}   # П46
 
 # Крупные водоёмы, которые сознательно не становятся морскими зонами (за краем поля): остаются частью «неизведанного» фона. Точка задаёт водоём целиком.
 water_outside:
@@ -201,7 +250,7 @@ names_ru:
   alessandria: "Алессандрия"
   alexandria: "Александрия"
   alexeyevka: "Алексеевка"
-  algarve: "Фару"
+  algarve: "Алгарве"
   aller: "Целле"
   allgau: "Кемптен"
   almeria: "Альмерия"
@@ -256,6 +305,7 @@ names_ru:
   baixo_alentejo: "Бежа"
   bakhmut: "Донецк"
   baku: "Баку"
+  balearic_islands: "Балеарские острова"
   balti_moldova: "Бельцы"
   baranya: "Печ"
   barbastro: "Барбастро"
@@ -355,7 +405,7 @@ names_ru:
   castres: "Кастр"
   caux: "Гавр"
   central_macedonia: "Салоники"
-  chalkidiki: "Полигирос"
+  chalkidiki: "Халкидики"
   champagne: "Труа"
   chartrain: "Шартр"
   cheboksary: "Чебоксары"
@@ -384,23 +434,24 @@ names_ru:
   corinthia: "Коринф"
   cork: "Корк"
   cornouaille: "Кемпер"
-  cornwall: "Труро"
+  cornwall: "Корнуолл"
   corum: "Чорум"
   coruna: "Ла-Корунья"
   cotentin: "Шербур"
   courland: "Лиепая"
   cremona: "Кремона"
-  crete: "Ираклион"
+  crete: "Крит"
   csanad: "Бекешчаба"
   csongrad: "Сегед"
   cuenca: "Таранкон"
   cumberland: "Карлайл"
-  cyprus: "Никосия"
+  cyclades: "Киклады"
+  cyprus: "Кипр"
   czersk: "Гура-Кальвария"
   czestochowa: "Ченстохова"
   dahra: "Мостаганем"
   dakahliyya: "Мансура"
-  dalarna: "Фалун"
+  dalarna: "Даларна"
   dalsland: "Омоль"
   danzig: "Гданьск"
   dardanelles: "Гелиболу"
@@ -418,6 +469,7 @@ names_ru:
   djafara: "Мединин"
   doboka: "Бистрица"
   dobrzyn: "Рыпин"
+  dodecanese: "Додеканес"
   donau_moos: "Ингольштадт"
   donegal: "Леттеркенни"
   donetsk: "Харьков"
@@ -454,10 +506,10 @@ names_ru:
   errif: "Эль-Хосейма"
   erzgebirge: "Карл-Маркс-Штадт"
   erzurum: "Эрзурум"
-  essex: "Челмсфорд"
+  essex: "Эссекс"
   estonia: "Таллин"
   estremadura: "Лиссабон"
-  euboea: "Халкида"
+  euboea: "Эвбея"
   evros: "Александруполис"
   feher: "Алба-Юлия"
   fejer: "Секешфехервар"
@@ -497,9 +549,9 @@ names_ru:
   gorizia: "Гориция"
   gorodets: "Городец"
   gothia: "Севастополь"
-  gotland: "Висбю"
+  gotland: "Готланд"
   granada: "Гранада"
-  graubunden: "Кур"
+  graubunden: "Граубюнден"
   gresivaudan: "Гренобль"
   grodno: "Гродно"
   grosseto: "Гроссето"
@@ -544,11 +596,11 @@ names_ru:
   illyria: "Шкодер"
   imereti: "Кутаиси"
   inner_aunus_karelia: "Медвежьегорск"
-  inner_hebrides: "Портри"
+  inner_hebrides: "Внутренние Гебриды"
   inner_livonia: "Валмиера"
   inner_white_karelia: "Костомукша"
-  ionian_islands: "Корфу"
-  istria: "Пула"
+  ionian_islands: "Ионические острова"
+  istria: "Истрия"
   izium: "Изюм"
   jaen: "Хаэн"
   jamtland: "Эстерсунд"
@@ -577,7 +629,7 @@ names_ru:
   kazan: "Казань"
   kemi_lappmark: "Рованиеми"
   kempenland: "Эйндховен"
-  kent: "Дувр"
+  kent: "Кент"
   kert: "Надор"
   khadjibey: "Одесса"
   khoy: "Хой"
@@ -678,7 +730,6 @@ names_ru:
   malaga: "Малага"
   malatya: "Малатья"
   malazgirt: "Муш"
-  mallorca: "Пальма"
   malmohus: "Мальмё"
   mantua: "Мантуя"
   maramaros: "Бая-Маре"
@@ -736,7 +787,6 @@ names_ru:
   nantais: "Нант"
   narbonnais: "Нарбонна"
   navarre: "Памплона"
-  naxos: "Наксос"
   neckar: "Штутгарт"
   neopatras: "Ламия"
   nerike: "Эребру"
@@ -753,7 +803,7 @@ names_ru:
   nizhny_novgorod: "Горький"
   nizhyn: "Нежин"
   nograd: "Салготарьян"
-  norfolk: "Норидж"
+  norfolk: "Норфолк"
   norra_osterbotten: "Оулу"
   norrejylland: "Ольборг"
   north_caucasus: "Черкесск"
@@ -768,7 +818,6 @@ names_ru:
   north_pskov: "Псков"
   north_riding: "Мидлсбро"
   northamptonshire: "Нортгемптон"
-  northern_isles: "Леруик"
   northumberland: "Ньюкасл-апон-Тайн"
   noto: "Катания"
   nottinghamshire: "Ноттингем"
@@ -813,7 +862,7 @@ names_ru:
   ouarsenis: "Тиарет"
   oujda: "Уджда"
   ourense: "Оренсе"
-  outer_hebrides: "Сторновей"
+  outer_hebrides: "Внешние Гебриды"
   overijssel: "Зволле"
   ovruch: "Овруч"
   oxfordshire: "Оксфорд"
@@ -895,7 +944,6 @@ names_ru:
   ribatejo: "Сантарен"
   ries: "Ансбах"
   rivne: "Ровно"
-  rodos: "Родос"
   rogaland: "Ставангер"
   romagna: "Равенна"
   roman_flanders: "Лилль"
@@ -948,6 +996,7 @@ names_ru:
   shaki: "Шеки"
   sharat: "Маан"
   sharqiyya: "Загазиг"
+  shetland_islands: "Шетландские острова"
   shirvan: "Сумгаит"
   shropshire: "Шрусбери"
   shuya: "Иваново"
@@ -985,7 +1034,7 @@ names_ru:
   south_muntenia: "Бухарест"
   south_oltenia: "Крайова"
   south_pskov: "Опочка"
-  south_tirol: "Больцано"
+  south_tirol: "Южный Тироль"
   spessart: "Ашаффенбург"
   spoleto: "Сполето"
   sredets: "София"
@@ -997,11 +1046,11 @@ names_ru:
   stolp: "Слупск"
   strathclyde: "Глазго"
   suceava: "Сучава"
-  suffolk: "Ипсвич"
+  suffolk: "Суффолк"
   sultanonu: "Эскишехир"
   sumadija: "Крагуевац"
   sumy: "Сумы"
-  surrey: "Гилфорд"
+  surrey: "Суррей"
   sussex: "Брайтон"
   sutherland: "Турсо"
   suwalki: "Сувалки"
@@ -1042,7 +1091,7 @@ names_ru:
   thurgau: "Цюрих"
   thuringer_becken: "Эрфурт"
   thuringer_wald: "Зуль"
-  ticino: "Беллинцона"
+  ticino: "Тичино"
   tioharad: "Векшё"
   tipperary: "Типперэри"
   tlemcen: "Тлемсен"
@@ -1144,7 +1193,7 @@ names_ru:
   volkhovskaya: "Волхов"
   volodymyr: "Владимир-Волынский"
   vologda: "Вологда"
-  vorarlberg: "Брегенц"
+  vorarlberg: "Форарльберг"
   voronezh: "Воронеж"
   vorpommern: "Грайфсвальд"
   vosges: "Эпиналь"

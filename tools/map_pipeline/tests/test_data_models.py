@@ -28,7 +28,10 @@ def test_committed_boundary_and_overrides_validate():
     assert len(boundary.include) == 1030
     assert len(boundary.exclude_explicit) == 194
     assert len(overrides.sea_zones) == 37
-    assert len(overrides.straits) == 16
+    # map2_10: 15 legacy straits + 30 workbook-approved crossings.
+    assert len(overrides.straits) == 45
+    assert len(overrides.land_links) == 3
+    assert len(overrides.renames) == 4
     assert len(overrides.drop_parts) == 1
     assert {z.key for z in overrides.sea_zones if z.retired} == {
         "sea_atl_africa",

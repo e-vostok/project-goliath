@@ -210,7 +210,9 @@ def test_real_graph(real_data_dir, tmp_path, capsys):
     # (4 manual edges), or a residual contact < 1.5 remains automatic plus an
     # INFO line (3 manual edges).
     assert len(manual_sea) in (3, 4)
-    assert by_type["strait"] == 16
+    # map2_10: 15 legacy straits + 30 workbook-approved crossings
+    # (ponthieu-kent removed, cyprus-icel declined).
+    assert by_type["strait"] == 45
     by_id = {n["id"]: n["key"] for n in graph["nodes"]}
     pairs = {(by_id[e["a"]], by_id[e["b"]]): e for e in edges}
     for a, b in (
@@ -303,11 +305,12 @@ def test_real_build(real_data_dir, tmp_path):
     seas = [n for n in mani["nodes"] if n["kind"] == "SEA"]
     # boundary v2 + map2_2: 1066 active nodes (1031 land + 35 sea);
     # the 58 retired ids stay in the lock but not in the
-    # manifest/geometry.
+    # manifest/geometry. map2_10: +3 forced land links, +30 straits,
+    # -1 removed strait = 3062 + 32 edges.
     assert len(mani["nodes"]) == 1066
     assert len(land) == 1031
     assert len(seas) == 35
-    assert len(mani["edges"]) == 3062
+    assert len(mani["edges"]) == 3094
     assert set(geom["paths"]) == {str(n["id"]) for n in mani["nodes"]}
     lock = json.loads(
         (real_data_dir / "ids.lock.json").read_text(encoding="utf-8")

@@ -23,8 +23,8 @@
  "inputs_sha256": {
   "source": "918bc3fc078331c9ab2204433e35767908ff66e83978b988d389a5c70c2b6f13",
   "boundary": "8a63766a5d616a7fa6af8c075b59b52b215a3335c7285d6c14871fc4c00c4d68",
-  "overrides": "5671b486c21f2c7bc0d1ce4ef645ed4bf5f272ebc89b3e1f2a924b72ea1880b7",
-  "ids_lock": "9a34a948678f669a3b9c0c62db131d0c42048bb517cd3936748f2b0939c101d4"
+  "overrides": "072470d1f514646fbb80124bd178088955b7034364838dad96347345dde11ac3",
+  "ids_lock": "2ffa209d50f741675b3b1c6fff06659483a773e7795b5069cb5ce73c112a2a0e"
  },
  "nodes": [
   {
@@ -526,7 +526,7 @@
    "key": "algarve",
    "kind": "LAND",
    "name": "Algarve",
-   "name_ru": "Фару",
+   "name_ru": "Алгарве",
    "source_name": "Algarve",
    "anchor": [
     536.69,
@@ -3452,7 +3452,7 @@
    "key": "chalkidiki",
    "kind": "LAND",
    "name": "Chalkidiki",
-   "name_ru": "Полигирос",
+   "name_ru": "Халкидики",
    "source_name": "Chalkidiki",
    "anchor": [
     640.54,
@@ -4003,7 +4003,7 @@
    "key": "cornwall",
    "kind": "LAND",
    "name": "Cornwall",
-   "name_ru": "Труро",
+   "name_ru": "Корнуолл",
    "source_name": "Cornwall",
    "anchor": [
     547.56,
@@ -4117,7 +4117,7 @@
    "key": "crete",
    "kind": "LAND",
    "name": "Crete",
-   "name_ru": "Ираклион",
+   "name_ru": "Крит",
    "source_name": "Crete",
    "anchor": [
     646.24,
@@ -4212,7 +4212,7 @@
    "key": "cyprus",
    "kind": "LAND",
    "name": "Cyprus",
-   "name_ru": "Никосия",
+   "name_ru": "Кипр",
    "source_name": "Cyprus",
    "anchor": [
     673.72,
@@ -4307,7 +4307,7 @@
    "key": "dalarna",
    "kind": "LAND",
    "name": "Dalarna",
-   "name_ru": "Фалун",
+   "name_ru": "Даларна",
    "source_name": "Dalarna",
    "anchor": [
     611.42,
@@ -5333,7 +5333,7 @@
    "key": "essex",
    "kind": "LAND",
    "name": "Essex",
-   "name_ru": "Челмсфорд",
+   "name_ru": "Эссекс",
    "source_name": "Essex",
    "anchor": [
     564.49,
@@ -5390,7 +5390,7 @@
    "key": "euboea",
    "kind": "LAND",
    "name": "Euboea",
-   "name_ru": "Халкида",
+   "name_ru": "Эвбея",
    "source_name": "Euboea",
    "anchor": [
     642.72,
@@ -6150,7 +6150,7 @@
    "key": "gotland",
    "kind": "LAND",
    "name": "Gotland",
-   "name_ru": "Висбю",
+   "name_ru": "Готланд",
    "source_name": "Gotland",
    "anchor": [
     624.41,
@@ -6188,7 +6188,7 @@
    "key": "graubunden",
    "kind": "LAND",
    "name": "Graubunden",
-   "name_ru": "Кур",
+   "name_ru": "Граубюнден",
    "source_name": "Graubunden",
    "anchor": [
     594.91,
@@ -7043,7 +7043,7 @@
    "key": "inner_hebrides",
    "kind": "LAND",
    "name": "Inner Hebrides",
-   "name_ru": "Портри",
+   "name_ru": "Внутренние Гебриды",
    "source_name": "Inner_Hebrides",
    "anchor": [
     543.06,
@@ -7100,7 +7100,7 @@
    "key": "ionian_islands",
    "kind": "LAND",
    "name": "Ionian Islands",
-   "name_ru": "Корфу",
+   "name_ru": "Ионические острова",
    "source_name": "Ionian_Islands",
    "anchor": [
     631.68,
@@ -7119,7 +7119,7 @@
    "key": "istria",
    "kind": "LAND",
    "name": "Istria",
-   "name_ru": "Пула",
+   "name_ru": "Истрия",
    "source_name": "Istria",
    "anchor": [
     609.24,
@@ -7670,7 +7670,7 @@
    "key": "kent",
    "kind": "LAND",
    "name": "Kent",
-   "name_ru": "Дувр",
+   "name_ru": "Кент",
    "source_name": "Kent",
    "anchor": [
     564.87,
@@ -9586,10 +9586,10 @@
   },
   {
    "id": 1526,
-   "key": "mallorca",
+   "key": "balearic_islands",
    "kind": "LAND",
-   "name": "Mallorca",
-   "name_ru": "Пальма",
+   "name": "Balearic Islands",
+   "name_ru": "Балеарские острова",
    "source_name": "Mallorca",
    "anchor": [
     572.9,
@@ -10669,10 +10669,10 @@
   },
   {
    "id": 1587,
-   "key": "naxos",
+   "key": "cyclades",
    "kind": "LAND",
-   "name": "Naxos",
-   "name_ru": "Наксос",
+   "name": "Cyclades",
+   "name_ru": "Киклады",
    "source_name": "Naxos",
    "anchor": [
     647.81,
@@ -10995,7 +10995,7 @@
    "key": "norfolk",
    "kind": "LAND",
    "name": "Norfolk",
-   "name_ru": "Норидж",
+   "name_ru": "Норфолк",
    "source_name": "Norfolk",
    "anchor": [
     566.14,
@@ -11277,10 +11277,10 @@
   },
   {
    "id": 1622,
-   "key": "northern_isles",
+   "key": "shetland_islands",
    "kind": "LAND",
-   "name": "Northern Isles",
-   "name_ru": "Леруик",
+   "name": "Shetland Islands",
+   "name_ru": "Шетландские острова",
    "source_name": "Northern_Isles",
    "anchor": [
     558.41,
@@ -12135,7 +12135,7 @@
    "key": "outer_hebrides",
    "kind": "LAND",
    "name": "Outer Hebrides",
-   "name_ru": "Сторновей",
+   "name_ru": "Внешние Гебриды",
    "source_name": "Outer_Hebrides",
    "anchor": [
     540.71,
@@ -13690,10 +13690,10 @@
   },
   {
    "id": 1753,
-   "key": "rodos",
+   "key": "dodecanese",
    "kind": "LAND",
-   "name": "Rodos",
-   "name_ru": "Родос",
+   "name": "Dodecanese",
+   "name_ru": "Додеканес",
    "source_name": "Rodos",
    "anchor": [
     655.98,
@@ -15403,7 +15403,7 @@
    "key": "south_tirol",
    "kind": "LAND",
    "name": "South Tirol",
-   "name_ru": "Больцано",
+   "name_ru": "Южный Тироль",
    "source_name": "South_Tirol",
    "anchor": [
     601.13,
@@ -15631,7 +15631,7 @@
    "key": "suffolk",
    "kind": "LAND",
    "name": "Suffolk",
-   "name_ru": "Ипсвич",
+   "name_ru": "Суффолк",
    "source_name": "Suffolk",
    "anchor": [
     566.22,
@@ -15707,7 +15707,7 @@
    "key": "surrey",
    "kind": "LAND",
    "name": "Surrey",
-   "name_ru": "Гилфорд",
+   "name_ru": "Суррей",
    "source_name": "Surrey",
    "anchor": [
     561.07,
@@ -16486,7 +16486,7 @@
    "key": "ticino",
    "kind": "LAND",
    "name": "Ticino",
-   "name_ru": "Беллинцона",
+   "name_ru": "Тичино",
    "source_name": "Ticino",
    "anchor": [
     592.15,
@@ -18424,7 +18424,7 @@
    "key": "vorarlberg",
    "kind": "LAND",
    "name": "Vorarlberg",
-   "name_ru": "Брегенц",
+   "name_ru": "Форарльберг",
    "source_name": "Vorarlberg",
    "anchor": [
     595.85,
@@ -20423,6 +20423,13 @@
   },
   {
    "a": 1006,
+   "b": 1008,
+   "type": "strait",
+   "name": "Рионский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1006,
    "b": 1051,
    "type": "land",
    "len": 1.438
@@ -21408,6 +21415,13 @@
   },
   {
    "a": 1039,
+   "b": 1298,
+   "type": "strait",
+   "name": "Ферт-оф-Тей",
+   "multiplier": null
+  },
+  {
+   "a": 1039,
    "b": 1569,
    "type": "land",
    "len": 2.808
@@ -21865,6 +21879,13 @@
   },
   {
    "a": 1055,
+   "b": 1311,
+   "type": "strait",
+   "name": "Ферт-оф-Клайд",
+   "multiplier": null
+  },
+  {
+   "a": 1055,
    "b": 1382,
    "type": "strait",
    "name": "Пролив Внутренних Гебрид",
@@ -21875,6 +21896,13 @@
    "b": 1569,
    "type": "land",
    "len": 4.369
+  },
+  {
+   "a": 1055,
+   "b": 1670,
+   "type": "strait",
+   "name": "Гебридское море",
+   "multiplier": null
   },
   {
    "a": 1055,
@@ -22142,6 +22170,13 @@
   },
   {
    "a": 1063,
+   "b": 1587,
+   "type": "strait",
+   "name": "Сунионский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1063,
    "b": 1590,
    "type": "land",
    "len": 3.066
@@ -22376,9 +22411,23 @@
   },
   {
    "a": 1071,
+   "b": 1199,
+   "type": "strait",
+   "name": "Чесменский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1071,
    "b": 1574,
    "type": "land",
    "len": 8.962
+  },
+  {
+   "a": 1071,
+   "b": 1753,
+   "type": "strait",
+   "name": "Косский пролив",
+   "multiplier": null
   },
   {
    "a": 1071,
@@ -23918,6 +23967,13 @@
   },
   {
    "a": 1127,
+   "b": 1236,
+   "type": "strait",
+   "name": "Дарданеллы",
+   "multiplier": null
+  },
+  {
+   "a": 1127,
    "b": 1369,
    "type": "land",
    "len": 0.798
@@ -23927,6 +23983,13 @@
    "b": 1404,
    "type": "land",
    "len": 8.784
+  },
+  {
+   "a": 1127,
+   "b": 1472,
+   "type": "strait",
+   "name": "Лемносский пролив (восточный)",
+   "multiplier": null
   },
   {
    "a": 1127,
@@ -25052,6 +25115,13 @@
   },
   {
    "a": 1165,
+   "b": 1663,
+   "type": "strait",
+   "name": "Осло-фьорд",
+   "multiplier": null
+  },
+  {
+   "a": 1165,
    "b": 1831,
    "type": "land",
    "len": 14.512
@@ -25118,6 +25188,20 @@
   },
   {
    "a": 1168,
+   "b": 1342,
+   "type": "strait",
+   "name": "Гибралтарский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1168,
+   "b": 1370,
+   "type": "strait",
+   "name": "Кадисский залив",
+   "multiplier": null
+  },
+  {
+   "a": 1168,
    "b": 1523,
    "type": "land",
    "len": 3.587
@@ -25181,6 +25265,13 @@
    "b": 1653,
    "type": "land",
    "len": 2.905
+  },
+  {
+   "a": 1170,
+   "b": 1885,
+   "type": "strait",
+   "name": "Керченский пролив",
+   "multiplier": null
   },
   {
    "a": 1170,
@@ -25947,6 +26038,13 @@
   },
   {
    "a": 1199,
+   "b": 1753,
+   "type": "strait",
+   "name": "Икарийский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1199,
    "b": 1828,
    "type": "strait",
    "name": "Хиосский пролив",
@@ -26191,6 +26289,13 @@
    "b": 1280,
    "type": "land",
    "len": 4.939
+  },
+  {
+   "a": 1211,
+   "b": 1432,
+   "type": "strait",
+   "name": "Босфор",
+   "multiplier": null
   },
   {
    "a": 1211,
@@ -26740,6 +26845,12 @@
   },
   {
    "a": 1235,
+   "b": 1503,
+   "type": "land",
+   "len": null
+  },
+  {
+   "a": 1235,
    "b": 1858,
    "type": "land",
    "len": 6.335
@@ -26773,6 +26884,13 @@
    "b": 1292,
    "type": "land",
    "len": 4.258
+  },
+  {
+   "a": 1236,
+   "b": 1472,
+   "type": "strait",
+   "name": "Лемносский пролив (северный)",
+   "multiplier": null
   },
   {
    "a": 1236,
@@ -26821,6 +26939,19 @@
    "b": 1324,
    "type": "land",
    "len": 1.128
+  },
+  {
+   "a": 1239,
+   "b": 1341,
+   "type": "strait",
+   "name": "Кардиганский залив",
+   "multiplier": null
+  },
+  {
+   "a": 1239,
+   "b": 1716,
+   "type": "land",
+   "len": null
   },
   {
    "a": 1239,
@@ -27568,6 +27699,13 @@
   },
   {
    "a": 1269,
+   "b": 1843,
+   "type": "strait",
+   "name": "Эстуарий Шельды",
+   "multiplier": null
+  },
+  {
+   "a": 1269,
    "b": 2037,
    "type": "land",
    "len": 5.768
@@ -28133,6 +28271,13 @@
   },
   {
    "a": 1288,
+   "b": 1419,
+   "type": "strait",
+   "name": "Эстуарий Темзы",
+   "multiplier": null
+  },
+  {
+   "a": 1288,
    "b": 1551,
    "type": "land",
    "len": 1.183
@@ -28190,6 +28335,27 @@
    "b": 2091,
    "type": "coast",
    "len": 11.25
+  },
+  {
+   "a": 1291,
+   "b": 1472,
+   "type": "strait",
+   "name": "Пролив Скирос",
+   "multiplier": null
+  },
+  {
+   "a": 1291,
+   "b": 1587,
+   "type": "strait",
+   "name": "Кафиревский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1291,
+   "b": 1904,
+   "type": "strait",
+   "name": "Пагасейский залив",
+   "multiplier": null
   },
   {
    "a": 1291,
@@ -28589,6 +28755,13 @@
   },
   {
    "a": 1307,
+   "b": 1614,
+   "type": "strait",
+   "name": "Вадденское море",
+   "multiplier": null
+  },
+  {
+   "a": 1307,
    "b": 1647,
    "type": "land",
    "len": 1.764
@@ -28628,6 +28801,13 @@
    "b": 2087,
    "type": "coast",
    "len": 3.0
+  },
+  {
+   "a": 1309,
+   "b": 1835,
+   "type": "strait",
+   "name": "Малый Бельт (южный)",
+   "multiplier": null
   },
   {
    "a": 1309,
@@ -30092,6 +30272,13 @@
   },
   {
    "a": 1378,
+   "b": 1385,
+   "type": "strait",
+   "name": "Кефалонийский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1378,
    "b": 1548,
    "type": "land",
    "len": 1.119
@@ -30257,6 +30444,13 @@
    "b": 1613,
    "type": "strait",
    "name": "Корфуский пролив",
+   "multiplier": null
+  },
+  {
+   "a": 1385,
+   "b": 1842,
+   "type": "strait",
+   "name": "Корфуский пролив (южный)",
    "multiplier": null
   },
   {
@@ -30567,6 +30761,13 @@
   },
   {
    "a": 1404,
+   "b": 1472,
+   "type": "strait",
+   "name": "Лемносский пролив (юго-восточный)",
+   "multiplier": null
+  },
+  {
+   "a": 1404,
    "b": 1790,
    "type": "land",
    "len": 7.802
@@ -30864,13 +31065,6 @@
    "b": 1551,
    "type": "land",
    "len": 0.866
-  },
-  {
-   "a": 1419,
-   "b": 1714,
-   "type": "strait",
-   "name": "Дуврский пролив",
-   "multiplier": null
   },
   {
    "a": 1419,
@@ -31921,6 +32115,13 @@
    "b": 2017,
    "type": "land",
    "len": 1.447
+  },
+  {
+   "a": 1472,
+   "b": 1904,
+   "type": "strait",
+   "name": "Лемносский пролив",
+   "multiplier": null
   },
   {
    "a": 1472,
@@ -35811,6 +36012,12 @@
   },
   {
    "a": 1714,
+   "b": 2037,
+   "type": "land",
+   "len": null
+  },
+  {
+   "a": 1714,
    "b": 2105,
    "type": "coast",
    "len": 4.75
@@ -37155,6 +37362,13 @@
   },
   {
    "a": 1843,
+   "b": 2037,
+   "type": "strait",
+   "name": "Пролив Влиссинген",
+   "multiplier": null
+  },
+  {
+   "a": 1843,
    "b": 2117,
    "type": "coast",
    "len": 10.0
@@ -38142,6 +38356,13 @@
    "b": 2121,
    "type": "coast",
    "len": 0.5
+  },
+  {
+   "a": 1998,
+   "b": 2042,
+   "type": "strait",
+   "name": "Лим-фьорд (западный)",
+   "multiplier": null
   },
   {
    "a": 1998,

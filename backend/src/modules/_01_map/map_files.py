@@ -173,10 +173,15 @@ class IdsLock(_Strict):
     Uniqueness of the id values and manifest correspondence are INV-M1
     checks in the loader; entries absent from the manifest are legal
     (the lock only grows) and surface as ``MapData.warnings``.
+
+    ``previous_keys`` (map2_10) records key renames — the superseded
+    slugs of each current key, oldest first; the ids themselves never
+    change, so the server only validates the shape.
     """
 
     version: Literal[1]
     ids: Mapping[str, int]
+    previous_keys: Mapping[str, tuple[str, ...]] = {}
 
     @field_validator("ids")
     @classmethod
@@ -189,4 +194,26 @@ class IdsLock(_Strict):
                 raise ValueError(f"ids.lock key {key!r} is not a key slug")
             if not isinstance(value, int) or isinstance(value, bool) or value < 1:
                 raise ValueError(f"ids.lock id for {key!r} must be a positive int")
+        return MappingProxyType(out)
+
+    @field_validator("previous_keys")
+    @classmethod
+    def _previous_keys_strict(
+        cls, previous_keys: Mapping[str, tuple[str, ...]]
+    ) -> Mapping[str, tuple[str, ...]]:
+        out = dict(previous_keys)
+        for key, chain in out.items():
+            if not re.fullmatch(_KEY_RE, key):
+                raise ValueError(
+                    f"previous_keys key {key!r} is not a key slug"
+                )
+            if not chain:
+                raise ValueError(
+                    f"previous_keys chain for {key!r} is empty"
+                )
+            for old in chain:
+                if not re.fullmatch(_KEY_RE, old):
+                    raise ValueError(
+                        f"previous key {old!r} of {key!r} is not a key slug"
+                    )
         return MappingProxyType(out)

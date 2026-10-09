@@ -165,6 +165,42 @@ class EdgeRemove(_Strict):
     b: str
 
 
+class LandLink(_Strict):
+    """``land_links[]`` — a forced ``land`` edge between two LAND nodes
+    whose contours touch below ``min_border_length`` (map2_10). Written
+    as a plain ``[a, b]`` pair in the YAML."""
+
+    a: _KeyStr
+    b: _KeyStr
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_seq(cls, value):
+        if isinstance(value, (list, tuple)):
+            if len(value) != 2:
+                raise ValueError("land_links entries are [a, b] pairs")
+            return {"a": value[0], "b": value[1]}
+        return value
+
+    @model_validator(mode="after")
+    def _distinct_ends(self) -> Self:
+        if self.a == self.b:
+            raise ValueError("land_link endpoints must differ")
+        return self
+
+
+class Rename(_Strict):
+    """``renames[]`` — the node keeps its id and geometry while its key
+    and display ``name`` change (map2_10). ``from`` is the slug of the
+    source province id (never changes); ``to`` is the new node key."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_key: _KeyStr = Field(alias="from")
+    to_key: _KeyStr = Field(alias="to")
+    name: str = Field(min_length=1)
+
+
 class Strait(_Strict):
     a: _KeyStr
     b: _KeyStr
@@ -196,6 +232,10 @@ class Overrides(_Strict):
     edges_add: list[EdgeAdd]
     edges_remove: list[EdgeRemove]
     straits: list[Strait]
+    # map2_10: forced land edges for touching contours below
+    # ``geometry.min_border_length``, and key renames that keep the id.
+    land_links: list[LandLink] = Field(default_factory=list)
+    renames: list[Rename] = Field(default_factory=list)
     water_outside: list[WaterOutside]
     technical_exclude: list[_KeyStr]
     names_ru: dict[str, str]
@@ -216,10 +256,19 @@ class Overrides(_Strict):
 
 
 class IdsLock(_Strict):
-    """``ids.lock.json``: append-only ``key -> id`` mapping (INV-M1)."""
+    """``ids.lock.json``: append-only ``key -> id`` mapping (INV-M1).
+
+    ``previous_keys`` records key renames (map2_10): for every current
+    key that replaced an earlier slug, the ordered list of its former
+    keys — the id never changes, the history is kept so the lock stays
+    append-only in spirit.
+    """
 
     version: Literal[1]
     ids: dict[_KeyStr, int]
+    previous_keys: dict[_KeyStr, list[_KeyStr]] = Field(
+        default_factory=dict
+    )
 
     @field_validator("ids")
     @classmethod
@@ -231,6 +280,28 @@ class IdsLock(_Strict):
         if len(set(values)) != len(values):
             raise ValueError("ids must be unique")
         return ids
+
+    @model_validator(mode="after")
+    def _check_previous_keys(self) -> Self:
+        for key, chain in self.previous_keys.items():
+            if key not in self.ids:
+                raise ValueError(
+                    f"previous_keys entry {key!r} is not an ids.lock key"
+                )
+            if not chain:
+                raise ValueError(
+                    f"previous_keys entry {key!r} has an empty chain"
+                )
+            if len(set(chain)) != len(chain):
+                raise ValueError(
+                    f"previous_keys entry {key!r} repeats a key"
+                )
+            dead = [k for k in chain if k in self.ids]
+            if dead:
+                raise ValueError(
+                    f"previous_keys entry {key!r} lists live keys: {dead}"
+                )
+        return self
 
 
 def _load_yaml(path: Path, model: type[BaseModel], code: str = DATA_INVALID):
@@ -288,22 +359,92 @@ def collect_reference_errors(
     """
     errors: list[PipelineError] = []
     land_keys = {name.lower() for name in boundary.include}
+    excluded_keys = {name.lower() for name in boundary.exclude_explicit}
     # geometry_patches apply to the source geometry before the boundary
     # filter, so a ``from`` key may name an excluded province.
-    patch_names = land_keys | {
-        name.lower() for name in boundary.exclude_explicit
-    }
+    patch_names = land_keys | excluded_keys
     sea_keys = {z.key for z in overrides.sea_zones}
+    split_new_keys = {
+        p.split.new_key
+        for p in overrides.geometry_patches
+        if p.split is not None
+    }
     seen: set[tuple[str, str]] = set()
 
+    # map2_10: ``renames`` rewrite the key AFTER selection, so every
+    # downstream section (straits, edges, names_ru, land_links,
+    # drop_parts/keep_parts) addresses nodes by their NEW key, while
+    # ``geometry_patches`` keep working on source keys.
+    renamed: dict[str, str] = {}
+    seen_to: set[str] = set()
+    for i, r in enumerate(overrides.renames):
+        if r.from_key in renamed:
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"renames[{i}].from: key {r.from_key!r} is renamed "
+                    "twice",
+                )
+            )
+        renamed[r.from_key] = r.to_key
+        if r.from_key not in land_keys:
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"renames[{i}].from: key {r.from_key!r} is not a "
+                    "slug of a boundary include name",
+                )
+            )
+        elif r.from_key in set(overrides.technical_exclude):
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"renames[{i}].from: key {r.from_key!r} is "
+                    "technically excluded — there is no node to rename",
+                )
+            )
+        if re.match(_SEA_KEY_RE, r.to_key):
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"renames[{i}].to: {r.to_key!r} looks like a "
+                    "sea-zone key; land keys must not start with 'sea_'",
+                )
+            )
+        elif (
+            r.to_key in patch_names
+            or r.to_key in sea_keys
+            or r.to_key in split_new_keys
+            or r.to_key in seen_to
+        ):
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"renames[{i}].to: key {r.to_key!r} collides with "
+                    "an existing node or an earlier rename",
+                )
+            )
+        seen_to.add(r.to_key)
+    node_keys = (
+        (land_keys - set(renamed)) | set(renamed.values()) | split_new_keys
+    )
+
     def land_ref(key: str, where: str) -> None:
-        if key not in land_keys and (where, key) not in seen:
+        if key in renamed and (where, key) not in seen:
             seen.add((where, key))
             errors.append(
                 PipelineError(
                     DATA_INVALID,
-                    f"{where}: key {key!r} is not a slug of a boundary "
-                    "include name",
+                    f"{where}: key {key!r} was renamed to "
+                    f"{renamed[key]!r} — use the new key",
+                )
+            )
+        elif key not in node_keys and (where, key) not in seen:
+            seen.add((where, key))
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"{where}: key {key!r} is not a node key",
                 )
             )
 
@@ -345,6 +486,22 @@ def collect_reference_errors(
     for i, e in enumerate(overrides.edges_remove):
         endpoint(e.a, f"edges_remove[{i}].a")
         endpoint(e.b, f"edges_remove[{i}].b")
+    seen_links: set[tuple[str, str]] = set()
+    for i, e in enumerate(overrides.land_links):
+        endpoint(e.a, f"land_links[{i}].a")
+        endpoint(e.b, f"land_links[{i}].b")
+        pair = tuple(sorted((e.a, e.b)))
+        if pair in seen_links:
+            errors.append(
+                PipelineError(
+                    DATA_INVALID,
+                    f"land_links[{i}]: pair {e.a!r}-{e.b!r} is listed "
+                    "twice",
+                )
+            )
+        seen_links.add(pair)
+    for key in overrides.names_ru:
+        land_ref(key, "names_ru")
     seen_new_keys: set[str] = set()
     for i, patch in enumerate(overrides.geometry_patches):
         t = patch.transfer
