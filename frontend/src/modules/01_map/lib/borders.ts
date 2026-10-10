@@ -2,18 +2,22 @@
  * Border-layer classification, spatial chunking and LOD (map2_4,
  * map2_13, map2_14), pure.
  *
- * `borders.json` gives one canonical polyline per adjacent land pair
+ * `borders.json` gives one canonical polyline per adjacent pair
  * (`pairs`, keyed "a-b") and one coastline per node (`coasts`, keyed by
  * node id — covers sea, excluded land and the map edge). The client
  * does not know which pair is a state border until ownership arrives
  * in the state payload, so the paths are classified here, not in the
- * pipeline:
+ * pipeline. Only LAND nodes get lines (map2_15): a pair touching a
+ * SEA node is dropped — the LAND side is already drawn as that node's
+ * coast — and a SEA node's own coast is dropped too; the sea must
+ * look like plain sea.
  *
  * - pair → STATE when the two owners differ, counting a free province
  *   as «no owner»: owned-vs-free is a state border, free-vs-free and
  *   same-nation are INTERNAL;
- * - every coast entry → COAST, owned or free (there is no thick state
- *   line along the sea; island parts of a node are pure coast).
+ * - every coast entry of a LAND node → COAST, owned or free (there is
+ *   no thick state line along the sea; island parts of a node are
+ *   pure coast).
  *
  * Why chunks (map2_14): as three ~915 KB compound paths the browser
  * re-strokes ALL border geometry on every transform change — including
@@ -259,11 +263,14 @@ function joinCells(
 /**
  * Full build: parse every piece once, assign cells, classify pairs
  * under `owners` and join the three classes per LOD and cell.
+ * `land` is the set of LAND node ids — pairs touching a non-land
+ * node and coasts of non-land nodes are skipped (map2_15).
  */
 export function buildBorderLayer(
   borders: MapBordersDTO,
   owners: ReadonlyMap<number, MapNationDTO>,
   bounds: BBox,
+  land: ReadonlySet<number>,
   grid: number = BORDER_GRID,
 ): BorderLayer {
   const cellCount = grid * grid;
@@ -281,11 +288,14 @@ export function buildBorderLayer(
     };
 
   for (const [key, d] of Object.entries(borders.pairs)) {
+    const [a, b] = key.split('-').map(Number);
+    if (!land.has(a) || !land.has(b)) {
+      continue; // LAND–SEA and SEA–SEA: the LAND node's coast covers it
+    }
     const piece = makePiece(d, bounds, grid);
     ctx.pairs.set(key, piece);
     ctx.pairsByCell[piece.cell].push(key);
 
-    const [a, b] = key.split('-').map(Number);
     const cls = owners.get(a) === owners.get(b) ? 'internal' : 'state';
     ctx.pairClass.set(key, cls);
     for (const lod of BORDER_LODS) {
@@ -299,7 +309,10 @@ export function buildBorderLayer(
     mid: [],
     high: [],
   };
-  for (const d of Object.values(borders.coasts)) {
+  for (const [id, d] of Object.entries(borders.coasts)) {
+    if (!land.has(Number(id))) {
+      continue; // a SEA node's boundary is not drawn (map2_15)
+    }
     const piece = makePiece(d, bounds, grid);
     for (const lod of BORDER_LODS) {
       (coastAcc[lod][piece.cell] ??= []).push(piece.d[LOD_INDEX[lod]]);

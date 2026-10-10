@@ -13,7 +13,7 @@ import {
   type BorderLayer,
 } from '../lib/borders';
 import { MINI_BORDERS, MINI_MANIFEST } from '../fixtures/miniMap';
-import type { MapNationDTO } from '../types';
+import type { MapBordersDTO, MapNationDTO } from '../types';
 
 const NATION_A: MapNationDTO = {
   id: 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d',
@@ -27,6 +27,11 @@ const NATION_B: MapNationDTO = {
 };
 
 const BOUNDS = MINI_MANIFEST.view_box;
+
+/** LAND ids only — sea zones get no border lines (map2_15). */
+const LAND = new Set(
+  MINI_MANIFEST.nodes.filter((n) => n.kind === 'LAND').map((n) => n.id),
+);
 
 function ownersOf(entries: [number, MapNationDTO][]) {
   return new Map<number, MapNationDTO>(entries);
@@ -45,7 +50,12 @@ function occursOnce(joined: string, d: string) {
 
 describe('buildBorderLayer — classification', () => {
   it('both-free pairs are internal; every coast is coast', () => {
-    const layer = buildBorderLayer(MINI_BORDERS, ownersOf([]), BOUNDS);
+    const layer = buildBorderLayer(
+      MINI_BORDERS,
+      ownersOf([]),
+      BOUNDS,
+      LAND,
+    );
 
     expect(classGeometry(layer, 'state')).toBe('');
     const internal = classGeometry(layer, 'internal');
@@ -67,6 +77,7 @@ describe('buildBorderLayer — classification', () => {
         // 1004 free → owned-vs-free is a state border
       ]),
       BOUNDS,
+      LAND,
     );
 
     const internal = classGeometry(layer, 'internal');
@@ -87,6 +98,7 @@ describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
       MINI_BORDERS,
       ownersOf([[1003, NATION_A]]),
       BOUNDS,
+      LAND,
       4,
     );
 
@@ -113,6 +125,7 @@ describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
         [1004, NATION_B],
       ]),
       BOUNDS,
+      LAND,
       grid,
     );
 
@@ -159,5 +172,64 @@ describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
       [1003, NATION_A],
       [1004, NATION_A],
     ]))).toBe(after);
+  });
+});
+
+describe('buildBorderLayer — sea zones get no lines (map2_15)', () => {
+  const SEA_BORDERS: MapBordersDTO = {
+    ...MINI_BORDERS,
+    pairs: {
+      ...MINI_BORDERS.pairs,
+      '1004-2001': 'M 40 20 45 10 40 6', // LAND–SEA pair
+      '2001-2002': 'M 46 14 60 30 82 36', // SEA–SEA pair
+    },
+    coasts: {
+      ...MINI_BORDERS.coasts,
+      '2001': 'M 28 0 46 0 46 14 28 14 Z', // a SEA node's coast
+      '2002': 'M 46 36 82 36 82 72 46 72 Z',
+    },
+  };
+  const SEA_D = [
+    SEA_BORDERS.pairs['1004-2001'],
+    SEA_BORDERS.pairs['2001-2002'],
+    SEA_BORDERS.coasts['2001'],
+    SEA_BORDERS.coasts['2002'],
+  ];
+
+  it('drops every pair/coast touching a SEA node, keeps all LAND lines', () => {
+    const layer = buildBorderLayer(
+      SEA_BORDERS,
+      ownersOf([[1003, NATION_A]]),
+      BOUNDS,
+      LAND,
+      4,
+    );
+
+    // No sea geometry in any chunk of any LOD and class.
+    for (const lod of ['low', 'mid', 'high'] as const) {
+      for (const cls of ['internal', 'state', 'coast'] as const) {
+        for (const d of layer.chunks[lod][cls]) {
+          for (const sea of SEA_D) {
+            expect(d ?? '').not.toContain(sea);
+          }
+        }
+      }
+    }
+    // The sea pairs never entered the layer bookkeeping either.
+    expect(layer._ctx.pairs.has('1004-2001')).toBe(false);
+    expect(layer._ctx.pairs.has('2001-2002')).toBe(false);
+
+    // Every LAND–LAND pair lands exactly once (internal or state);
+    // every LAND coast lands exactly once in coast.
+    const internal = classGeometry(layer, 'internal');
+    const state = classGeometry(layer, 'state');
+    for (const d of Object.values(MINI_BORDERS.pairs)) {
+      const hits =
+        internal.split(d).length + state.split(d).length - 2;
+      expect(hits).toBe(1);
+    }
+    for (const d of Object.values(MINI_BORDERS.coasts)) {
+      occursOnce(classGeometry(layer, 'coast'), d);
+    }
   });
 });

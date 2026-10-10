@@ -26,11 +26,14 @@
  * - The wheel handler is registered non-passive and is the only zoom.
  * - Geometry is parsed once per version (paths memoised by version).
  *
- * Border layer (map2_4, map2_13, map2_14): the shared borders from
- * `borders.json` sit between the fills and the labels — thin solid
- * INTERNAL inside one owner (or both free), solid STATE on land
- * borders between owners, thin COAST everywhere a node meets the
- * sea/excluded land/map edge — split into an 8×8 spatial chunk grid
+ * Border layer (map2_4, map2_13, map2_14, map2_15): the shared
+ * borders from `borders.json` sit between the fills and the labels —
+ * thin solid INTERNAL inside one owner (or both free), solid STATE on
+ * land borders between owners, thin COAST everywhere a LAND node
+ * meets the sea/excluded land/map edge. Only LAND nodes get lines:
+ * pairs touching a SEA node and SEA nodes' own coasts are dropped at
+ * build time so the sea stays plain (map2_15) — split into an 8×8
+ * spatial chunk grid
  * so the browser can cull off-screen cells instead of re-stroking the
  * whole map every frame. Each class×cell exists in three LOD copies
  * (two Douglas–Peucker simplifications under half a screen pixel at
@@ -226,7 +229,9 @@ export function MapView(props: MapViewProps) {
             : '0',
       );
       if (band === 'nss' || prev === 'nss') {
-        for (const p of g.querySelectorAll('path[data-id]')) {
+        // Only paths that inherit the group stroke (LAND fills); a
+        // stroke="none" path never carries the seam cover (map2_15).
+        for (const p of g.querySelectorAll('path[data-id]:not([stroke="none"])')) {
           if (band === 'nss') {
             p.setAttribute('vector-effect', 'non-scaling-stroke');
           } else {
@@ -584,6 +589,16 @@ export function MapView(props: MapViewProps) {
   // reclassified incrementally on every owners change — only the
   // cells whose pairs flipped class get new strings, every other
   // cell keeps its reference and React writes no `d` for it (map2_14).
+  // LAND ids for the border build — sea zones get no lines (map2_15).
+  const landIds = useMemo(
+    () =>
+      new Set(
+        manifest.nodes
+          .filter((n) => n.kind === 'LAND')
+          .map((n) => n.id),
+      ),
+    [manifest.nodes],
+  );
   const layerRef = useRef<BorderLayer | null>(null);
   const borderLayer = useMemo(() => {
     let next: BorderLayer | null = null;
@@ -592,22 +607,30 @@ export function MapView(props: MapViewProps) {
         layerRef.current !== null &&
         layerRef.current.borders === props.borders
           ? reclassifyBorderLayer(layerRef.current, owners)
-          : buildBorderLayer(props.borders, owners, manifest.view_box);
+          : buildBorderLayer(
+              props.borders,
+              owners,
+              manifest.view_box,
+              landIds,
+            );
     }
     layerRef.current = next;
     return next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.borders, owners, manifest.view_box]);
+  }, [props.borders, owners, manifest.view_box, landIds]);
   // Legacy per-node strokes survive only as the borders-failed fallback.
   const legacyStrokes =
     borderLayer === null && props.bordersFailed === true;
 
-  // Seam cover (map2_13) as a per-node stroke (map2_14): every fill
-  // carries a hairline of `land_underlay` in world units, so a crack
-  // between neighbours shows land colour — the same pixels the old
-  // under-stroke covered, but rasterised inside each node's own
+  // Seam cover (map2_13) as a per-node stroke (map2_14): every LAND
+  // fill carries a hairline of `land_underlay` in world units, so a
+  // crack between neighbours shows land colour — the same pixels the
+  // old under-stroke covered, but rasterised inside each node's own
   // bounding box, which the browser culls far better than the old
-  // compound seam paths.
+  // compound seam paths. SEA fills opt out (map2_15): the sea must
+  // look like plain sea — no grey rim between sea zones or along the
+  // excluded zone — and a crack between sea fills shows the
+  // sea-coloured background anyway.
   const seamStrokes = borderLayer !== null;
   const seamColor = colors.land_underlay ?? colors.neutral_province;
 
@@ -621,10 +644,14 @@ export function MapView(props: MapViewProps) {
           fill={nodeFill(node, ownerOf(node.id), colors)}
           // Seam-cover stroke inherits colour and width from the nodes
           // <g> — writeView gates the width to zero at zoom levels
-          // where every covered crack would be subpixel anyway.
+          // where every covered crack would be subpixel anyway. SEA
+          // nodes opt out (map2_15): a grey rim between sea zones or
+          // along the excluded zone must not appear.
           stroke={
             seamStrokes
-              ? undefined
+              ? node.kind === 'LAND'
+                ? undefined
+                : 'none'
               : legacyStrokes
                 ? colors.province_border
                 : 'none'
