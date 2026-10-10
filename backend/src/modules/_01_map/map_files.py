@@ -37,6 +37,7 @@ _HEX64 = r"^[0-9a-f]{64}$"
 _HEX12 = r"^[0-9a-f]{12}$"
 _KEY_RE = r"^[a-z0-9_]+$"
 _PATH_KEY_RE = r"^[0-9]+$"
+_PAIR_KEY_RE = r"^[0-9]+-[0-9]+$"
 
 # Conservative SVG path charset: the strings are later inserted into the
 # page, so anything outside commands/numbers/separators is refused.
@@ -126,6 +127,7 @@ class Manifest(_Strict):
 
     schema_version: Literal[1]
     geometry_version: str = Field(pattern=_HEX12)
+    borders_version: str = Field(pattern=_HEX12)
     view_box: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
     playable_bbox: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
     georef: Georef
@@ -164,6 +166,49 @@ class Geometry(_Strict):
     @classmethod
     def _sea_water_charset(cls, value: str) -> str:
         return _svg_path(value) if value else value
+
+
+class Borders(_Strict):
+    """``borders.json`` (map2_1B) — the canonical shared lines.
+
+    ``pairs``: ``"<idA>-<idB>"`` -> SVG path, one per ``land`` edge
+    (``idA < idB`` and the edge correspondence are INV-M6 territory in
+    the loader). ``coasts``: ``"<id>"`` -> SVG path per LAND node;
+    a fully landlocked node legitimately carries ``""``.
+    """
+
+    version: str = Field(pattern=_HEX12)
+    pairs: Mapping[str, str]
+    coasts: Mapping[str, str]
+
+    @field_validator("pairs")
+    @classmethod
+    def _pairs_strict(cls, pairs: Mapping[str, str]) -> Mapping[str, str]:
+        out = dict(pairs)
+        for key, value in out.items():
+            if not re.fullmatch(_PAIR_KEY_RE, key):
+                raise ValueError(
+                    f"borders pair key {key!r} is not an ordered id pair"
+                )
+            if not value:
+                raise ValueError(f"borders pair {key!r} is empty")
+            _svg_path(value)
+        return MappingProxyType(out)
+
+    @field_validator("coasts")
+    @classmethod
+    def _coasts_strict(
+        cls, coasts: Mapping[str, str]
+    ) -> Mapping[str, str]:
+        out = dict(coasts)
+        for key, value in out.items():
+            if not re.fullmatch(_PATH_KEY_RE, key):
+                raise ValueError(
+                    f"coasts key {key!r} is not a node id"
+                )
+            if value:
+                _svg_path(value)
+        return MappingProxyType(out)
 
 
 class IdsLock(_Strict):

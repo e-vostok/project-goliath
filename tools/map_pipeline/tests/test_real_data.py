@@ -329,6 +329,21 @@ def test_real_build(real_data_dir, tmp_path):
     }
     assert geometry_version(g) == geom["version"]
 
+    # map2_1B: one canonical pair line per land edge (incl. the three
+    # forced land_links), one coast path per land node; versions agree
+    # with the manifest.
+    borders = json.loads(
+        (real_data_dir / "borders.json").read_text(encoding="utf-8")
+    )
+    assert mani["borders_version"] == borders["version"]
+    land_pairs = {
+        f"{min(e['a'], e['b'])}-{max(e['a'], e['b'])}"
+        for e in mani["edges"]
+        if e["type"] == "land"
+    }
+    assert set(borders["pairs"]) == land_pairs
+    assert set(borders["coasts"]) == {str(n["id"]) for n in land}
+
     # sizes
     geom_bytes = (real_data_dir / "geometry.json").stat().st_size
     mani_bytes = (real_data_dir / "manifest.json").stat().st_size
@@ -491,7 +506,10 @@ def test_real_build(real_data_dir, tmp_path):
     # second run byte-identical; --check exits 0
     finals = {
         name: (real_data_dir / name).read_bytes()
-        for name in ("manifest.json", "geometry.json", "ids.lock.json")
+        for name in (
+            "manifest.json", "geometry.json", "ids.lock.json",
+            "borders.json",
+        )
     }
     report_b = (out_dir / "build_report.md").read_bytes()
     assert run_build(real_data_dir, out_dir, preview=False) == 0

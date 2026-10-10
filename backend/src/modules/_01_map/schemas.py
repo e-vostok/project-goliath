@@ -77,6 +77,7 @@ class MapManifestDTO(BaseModel):
 
     schema_version: int
     geometry_version: str
+    borders_version: str
     view_box: list[float]
     playable_bbox: list[float]
     nodes: list[MapNodeDTO]
@@ -92,6 +93,14 @@ class MapGeometryDTO(BaseModel):
     paths: dict[int, str]
     outside: str
     sea_water: str
+
+
+class MapBordersDTO(BaseModel):
+    """Response for GET /api/v1/map/borders/{version} (map2_1B)."""
+
+    version: str
+    pairs: dict[str, str]
+    coasts: dict[str, str]
 
 
 class MapNationDTO(BaseModel):
@@ -112,6 +121,7 @@ class MapStateDTO(BaseModel):
     """Response for GET /api/v1/map/state."""
 
     geometry_version: str
+    borders_version: str
     turn: int
     nations: list[MapNationDTO]
     # [province_id, index into nations]; free provinces and SEA nodes

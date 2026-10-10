@@ -39,6 +39,7 @@ from modules._00_core.models import GameClock, Province
 from modules._00_core.hooks import OwnershipChange
 from modules._01_map.loader import load_map_data
 from modules._01_map.schemas import (
+    MapBordersDTO,
     MapGeometryDTO,
     MapManifestDTO,
     MapStateDTO,
@@ -61,6 +62,7 @@ from tests.modules._00_core.test_router import (
 )
 from tests.modules._01_map.conftest import (
     FIXTURE_DIR,
+    load_borders,
     load_geometry,
     load_manifest,
     map_config,
@@ -482,6 +484,54 @@ class TestGeometry:
         assert resp.status_code == 200
 
 
+class TestBorders:
+    """GET /api/v1/map/borders/{version} (map2_1B: immutable body)."""
+
+    async def test_current_version_semantics(
+        self, client, map_db_session, map_installed
+    ):
+        player = await seed_player(map_db_session)
+        version = map_installed.borders_version
+        resp = await client.get(
+            f"/api/v1/map/borders/{version}",
+            headers=bearer_headers(player.id),
+        )
+
+        assert resp.status_code == 200
+        dto = MapBordersDTO.model_validate(resp.json())
+        assert dto.version == version
+        on_disk = load_borders(FIXTURE_DIR)
+        assert resp.json()["pairs"] == on_disk["pairs"]
+        assert resp.json()["coasts"] == on_disk["coasts"]
+        assert resp.headers["cache-control"] == (
+            "public, max-age=31536000, immutable"
+        )
+        assert resp.headers["etag"] == f'"{version}"'
+
+    async def test_unknown_version_404(self, client, map_db_session):
+        player = await seed_player(map_db_session)
+        resp = await client.get(
+            "/api/v1/map/borders/ffffffffffff",
+            headers=bearer_headers(player.id),
+        )
+        assert resp.status_code == 404
+        assert resp.json()["code"] == "MAP_VERSION_UNKNOWN"
+
+    async def test_version_from_manifest_works_end_to_end(
+        self, client, map_db_session
+    ):
+        player = await seed_player(map_db_session)
+        headers = bearer_headers(player.id)
+        manifest = (
+            await client.get(MANIFEST_URL, headers=headers)
+        ).json()
+        resp = await client.get(
+            f"/api/v1/map/borders/{manifest['borders_version']}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+
 class TestState:
     """GET /api/v1/map/state — current and journal turns."""
 
@@ -839,6 +889,7 @@ class TestContract:
         assert map_paths == {
             "/api/v1/map/manifest",
             "/api/v1/map/geometry/{version}",
+            "/api/v1/map/borders/{version}",
             "/api/v1/map/state",
             "/api/v1/map/starting-group/check",
         }
@@ -864,6 +915,7 @@ class TestContract:
         [
             ("GET", MANIFEST_URL, None),
             ("GET", "/api/v1/map/geometry/dd7d785f4355", None),
+            ("GET", "/api/v1/map/borders/dd7d785f4355", None),
             ("GET", STATE_URL, None),
             ("POST", CHECK_URL, {"province_ids": [1001]}),
         ],

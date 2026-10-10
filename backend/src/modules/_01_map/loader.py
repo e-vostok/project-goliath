@@ -8,12 +8,14 @@ will call :func:`load_map_data` in Issue 3.
 
 Check order (the first failure wins):
 
-1. All six input files exist — ``FILE_MISSING``.
-2. ``manifest.json`` <= ``limits.max_manifest_bytes`` and
-   ``geometry.json`` <= ``limits.max_geometry_bytes``, checked on the
+1. All seven input files exist — ``FILE_MISSING``.
+2. ``manifest.json`` <= ``limits.max_manifest_bytes``,
+   ``geometry.json`` <= ``limits.max_geometry_bytes`` and
+   ``borders.json`` <= ``limits.max_borders_bytes``, checked on the
    file size BEFORE reading and parsing — ``LIMIT_EXCEEDED``.
 3. JSON parse + strict schema validation of ``manifest.json``,
-   ``geometry.json`` and ``ids.lock.json`` — ``SCHEMA_INVALID``.
+   ``geometry.json``, ``borders.json`` and ``ids.lock.json`` —
+   ``SCHEMA_INVALID``.
    ``boundary.yaml``/``overrides.yaml`` are never parsed by the server;
    ``source/map.svg`` is only hashed. Cross-rule (1.9): ``view.frame``
    must lie entirely inside ``manifest.view_box`` — ``SCHEMA_INVALID``.
@@ -26,8 +28,10 @@ Check order (the first failure wins):
 7. INV-M3: BFS from the smallest id over all edges reaches every node —
    ``INV_M3``.
 8. INV-M6: recomputed geometry hash equals ``manifest.geometry_version``
-   and ``geometry.version``; ``paths`` keys equal the node-id set —
-   ``INV_M6``.
+   and ``geometry.version``; ``paths`` keys equal the node-id set;
+   recomputed borders hash equals ``manifest.borders_version`` and
+   ``borders.version``; ``pairs`` keys equal the ``land``-edge set and
+   ``coasts`` keys the LAND-node set — ``INV_M6``.
 9. INV-M10: per-file input hashes equal ``manifest.inputs_sha256``
    (rules from ``hashing.INPUT_HASH_RULES``) — ``INV_M10``.
 
@@ -47,17 +51,19 @@ from pydantic import ValidationError
 from .config_schema import MapConfig
 from .hashing import (
     INPUT_HASH_RULES,
+    borders_version,
     geometry_version,
     input_sha256,
     normalized_sha256,
 )
 from .map_data import (
+    KIND_LAND,
     KIND_SEA,
     MapData,
     MapEdge,
     MapNode,
 )
-from .map_files import Geometry, IdsLock, Manifest
+from .map_files import Borders, Geometry, IdsLock, Manifest
 
 # Stable machine codes for MapDataError.code.
 FILE_MISSING = "FILE_MISSING"
@@ -72,6 +78,7 @@ INV_M10 = "INV_M10"
 
 _MANIFEST = "manifest.json"
 _GEOMETRY = "geometry.json"
+_BORDERS = "borders.json"
 _IDS_LOCK = "ids.lock.json"
 _BOUNDARY = "boundary.yaml"
 _OVERRIDES = "overrides.yaml"
@@ -81,6 +88,7 @@ _SOURCE = "source/map.svg"
 _REQUIRED_FILES = (
     _MANIFEST,
     _GEOMETRY,
+    _BORDERS,
     _IDS_LOCK,
     _BOUNDARY,
     _OVERRIDES,
@@ -374,7 +382,9 @@ def _check_inv_m3(manifest: Manifest) -> None:
         )
 
 
-def _check_inv_m6(manifest: Manifest, geometry: Geometry) -> None:
+def _check_inv_m6(
+    manifest: Manifest, geometry: Geometry, borders: Borders
+) -> None:
     computed = geometry_version(
         geometry.outside, geometry.paths, geometry.sea_water
     )
@@ -406,6 +416,61 @@ def _check_inv_m6(manifest: Manifest, geometry: Geometry) -> None:
             + "; ".join(parts),
         )
 
+    # map2_1B: the borders file pins the same canonical-hash rule with
+    # the geometry version as an input; its entries must correspond
+    # exactly to the ``land`` edges and the LAND nodes.
+    computed_borders = borders_version(
+        manifest.geometry_version, borders.pairs, borders.coasts
+    )
+    if (
+        computed_borders != manifest.borders_version
+        or computed_borders != borders.version
+    ):
+        _fail(
+            INV_M6,
+            f"borders.json recomputed version {computed_borders} "
+            f"differs from borders.version {borders.version} or "
+            f"manifest.borders_version {manifest.borders_version}",
+        )
+    pair_keys = set(borders.pairs)
+    land_pairs = {
+        f"{e.a}-{e.b}" for e in manifest.edges if e.type == "land"
+    }
+    if pair_keys != land_pairs:
+        missing = sorted(land_pairs - pair_keys)
+        extra = sorted(pair_keys - land_pairs)
+        parts = []
+        if missing:
+            parts.append(
+                f"missing pairs for land edges {missing[:_MAX_LISTED]}"
+            )
+        if extra:
+            parts.append(
+                f"extra pairs without a land edge {extra[:_MAX_LISTED]}"
+            )
+        _fail(
+            INV_M6,
+            "borders.json pairs and manifest land edges differ: "
+            + "; ".join(parts),
+        )
+    coast_ids = {int(k) for k in borders.coasts}
+    land_ids = {n.id for n in manifest.nodes if n.kind == KIND_LAND}
+    if coast_ids != land_ids:
+        missing = sorted(land_ids - coast_ids)
+        extra = sorted(coast_ids - land_ids)
+        parts = []
+        if missing:
+            parts.append(
+                f"missing coasts for nodes {missing[:_MAX_LISTED]}"
+            )
+        if extra:
+            parts.append(f"extra coasts for ids {extra[:_MAX_LISTED]}")
+        _fail(
+            INV_M6,
+            "borders.json coasts and manifest LAND nodes differ: "
+            + "; ".join(parts),
+        )
+
 
 def _check_inv_m10(data_dir: Path, manifest: Manifest) -> None:
     expected = manifest.inputs_sha256
@@ -427,6 +492,7 @@ def _build_map_data(
     data_dir: Path,
     manifest: Manifest,
     geometry: Geometry,
+    borders: Borders,
     warnings: tuple[str, ...],
     retired_ids: tuple[int, ...],
 ) -> MapData:
@@ -471,9 +537,11 @@ def _build_map_data(
         edges=MappingProxyType(edges),
         adjacency=MappingProxyType(adjacency_t),
         geometry_version=manifest.geometry_version,
+        borders_version=manifest.borders_version,
         manifest_sha256=normalized_sha256(data_dir / _MANIFEST),
         manifest=manifest,
         geometry=geometry,
+        borders=borders,
         warnings=warnings,
         retired_ids=retired_ids,
     )
@@ -492,9 +560,11 @@ def load_map_data(data_dir: Path, config: MapConfig) -> MapData:
     # Size limits are enforced on file size BEFORE any file is read.
     _check_size(data_dir, _MANIFEST, config.limits.max_manifest_bytes)
     _check_size(data_dir, _GEOMETRY, config.limits.max_geometry_bytes)
+    _check_size(data_dir, _BORDERS, config.limits.max_borders_bytes)
 
     manifest = _load_json_model(data_dir, _MANIFEST, Manifest)
     geometry = _load_json_model(data_dir, _GEOMETRY, Geometry)
+    borders = _load_json_model(data_dir, _BORDERS, Borders)
     lock = _load_json_model(data_dir, _IDS_LOCK, IdsLock)
     _check_view_frame(manifest, config)
 
@@ -502,9 +572,9 @@ def load_map_data(data_dir: Path, config: MapConfig) -> MapData:
     warnings, retired_ids = _check_inv_m1(manifest, lock)
     _check_inv_m2(manifest)
     _check_inv_m3(manifest)
-    _check_inv_m6(manifest, geometry)
+    _check_inv_m6(manifest, geometry, borders)
     _check_inv_m10(data_dir, manifest)
 
     return _build_map_data(
-        data_dir, manifest, geometry, warnings, retired_ids
+        data_dir, manifest, geometry, borders, warnings, retired_ids
     )

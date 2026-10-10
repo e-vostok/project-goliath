@@ -79,10 +79,13 @@ def test_mini_map_loads(mini_dir, config):
     assert list(data.nodes) == sorted(data.nodes)  # ascending id order
     assert data.warnings == ()
     assert data.geometry_version == data.geometry.version
+    assert data.borders_version == data.borders.version
     assert len(data.manifest_sha256) == 64
     # validated file models are kept for Issue 4 DTOs
     assert len(data.manifest.nodes) == 10
     assert set(data.geometry.paths) == {str(n.id) for n in data.nodes.values()}
+    assert set(data.borders.pairs) == {"1001-1002", "1002-1003", "1003-1004"}
+    assert set(data.borders.coasts) == {str(i) for i in range(1001, 1009)}
     # adjacency is sorted by the neighbour id
     assert [e.b if e.a == 2001 else e.a for e in data.adjacency[2001]] == [
         1004,
@@ -111,6 +114,7 @@ def test_lock_extra_entries_become_warnings(mini_dir, config):
     [
         "manifest.json",
         "geometry.json",
+        "borders.json",
         "ids.lock.json",
         "boundary.yaml",
         "overrides.yaml",
@@ -136,6 +140,11 @@ def test_oversized_manifest_is_not_parsed(mini_dir):
 def test_oversized_geometry_is_not_parsed(mini_dir):
     (mini_dir / "geometry.json").write_bytes(b"{ not json " + b"x" * 20000)
     _expect(mini_dir, LIMIT_EXCEEDED, map_config(max_geometry_bytes=1000))
+
+
+def test_oversized_borders_is_not_parsed(mini_dir):
+    (mini_dir / "borders.json").write_bytes(b"{ not json " + b"x" * 20000)
+    _expect(mini_dir, LIMIT_EXCEEDED, map_config(max_borders_bytes=1000))
 
 
 def test_max_nodes_limit(mini_dir):

@@ -99,3 +99,25 @@ def geometry_version(
         ensure_ascii=False,
     )
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:12]
+
+
+def borders_version(
+    geometry_ver: str, pairs: Mapping[str, str], coasts: Mapping[str, str]
+) -> str:
+    """
+    Spec 3.6 with the geometry version as an extra input (map2_1B):
+    ``sha256(canon(B))[:12]`` where ``canon`` is the JSON of the
+    ``borders.json`` body without ``version`` plus ``geometry_version``
+    — the borders version changes whenever the geometry version does.
+    """
+    canon = json.dumps(
+        {
+            "coasts": dict(coasts),
+            "geometry_version": geometry_ver,
+            "pairs": dict(pairs),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:12]

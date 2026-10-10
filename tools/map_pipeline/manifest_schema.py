@@ -106,6 +106,7 @@ class ManifestEdge(_Strict):
 class Manifest(_Strict):
     schema_version: Literal[1]
     geometry_version: str = Field(pattern=r"^[0-9a-f]{12}$")
+    borders_version: str = Field(pattern=r"^[0-9a-f]{12}$")
     view_box: list[float] = Field(min_length=4, max_length=4)
     playable_bbox: list[float] = Field(min_length=4, max_length=4)
     georef: Georef

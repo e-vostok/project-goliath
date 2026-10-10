@@ -17,6 +17,11 @@ from lxml import etree
 from shapely import STRtree
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
+from .borders import (
+    build_borders,
+    land_nodes_from,
+    write_coverage_tsv,
+)
 from .errors import (
     BOUNDARY_UNKNOWN_ID,
     DATA_INVALID,
@@ -736,6 +741,7 @@ def run_graph(
 
 _MANIFEST_FILE = "manifest.json"
 _GEOMETRY_FILE = "geometry.json"
+_BORDERS_FILE = "borders.json"
 _CROP_RE = re.compile(r"^([A-Za-z0-9_-]+)=(-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)$")
 
 
@@ -812,6 +818,7 @@ def _build_report(
     geometry_version: str,
     inputs: dict,
     playable: list,
+    borders,
 ) -> str:
     """Deterministic ``build_report.md`` — no timestamps."""
     clip = box(*playable)
@@ -880,7 +887,23 @@ def _build_report(
         f"- manifest.json: {manifest_bytes} bytes "
         f"({round(100 * manifest_bytes / cfg.limits.max_manifest_bytes, 1)}% "
         f"of the {cfg.limits.max_manifest_bytes} limit)",
+        f"- borders.json: {len(borders.text.encode('utf-8'))} bytes "
+        f"({round(100 * len(borders.text.encode('utf-8')) / cfg.limits.max_borders_bytes, 1)}% "
+        f"of the {cfg.limits.max_borders_bytes} limit)",
         f"- geometry_version: {geometry_version}",
+        "",
+        "## Borders (map2_1B)",
+        "",
+        f"- borders_version: {borders.doc['version']}",
+        f"- Pair entries (land edges): {borders.pair_count}",
+        f"- Coast entries (land nodes): {borders.coast_count}",
+        f"- Junction endpoints snapped: {borders.snapped_endpoints}",
+        f"- Junction residual gap max: "
+        f"{round(borders.junction_gap_max, 3)} units",
+        f"- Coverage worst: `{borders.coverage_worst[0]}` "
+        f"{round(borders.coverage_worst[1] * 100, 2)}%",
+        f"- Nodes outside +-{cfg.borders.coverage_warn * 100}% coverage "
+        f"(see reference/borders_coverage.tsv): {len(borders.outliers)}",
         "",
         "## Simplification",
         "",
@@ -1069,6 +1092,12 @@ def run_build(
         data_dir / _OVERRIDES_FILE,
         lock_text,
     )
+    # map2_1B: canonical shared borders/coasts from the serialised
+    # geometry (never touches the fills); fails on coverage/size.
+    border_nodes, border_pairs = land_nodes_from(graph, canon)
+    borders = build_borders(
+        border_nodes, border_pairs, geom_doc["version"], cfg
+    )
     manifest = build_manifest(
         graph,
         prep.nodes,
@@ -1076,6 +1105,7 @@ def run_build(
         metrics,
         inputs,
         geom_doc["version"],
+        borders.doc["version"],
         [0, 0, cfg.view.width, cfg.view.height],
         playable,
         cfg,
@@ -1087,7 +1117,7 @@ def run_build(
     report_text = _build_report(
         prep, sea, graph, land_geoms, sea_build, outside_build, metrics,
         land_dev, land_repairs, seam_notes, paths, outside_d, geom_bytes,
-        manifest_bytes, geom_doc["version"], inputs, playable,
+        manifest_bytes, geom_doc["version"], inputs, playable, borders,
     )
 
     if check:
@@ -1095,6 +1125,7 @@ def run_build(
         for name, text in (
             (_MANIFEST_FILE, manifest_text),
             (_GEOMETRY_FILE, geom_text),
+            (_BORDERS_FILE, borders.text),
         ):
             target = data_dir / name
             if (
@@ -1136,6 +1167,8 @@ def run_build(
     )
     _write_text(data_dir / _MANIFEST_FILE, manifest_text)
     _write_text(data_dir / _GEOMETRY_FILE, geom_text)
+    _write_text(data_dir / _BORDERS_FILE, borders.text)
+    write_coverage_tsv(borders.outliers)
     _write_text(out_dir / "graph.json", _graph_json(graph))
     np.save(out_dir / "sea_labels.npy", sea.labels)
     np.save(out_dir / "sea_kinds.npy", sea.kinds)

@@ -42,6 +42,7 @@ from modules._01_map.errors import (
     TurnOutOfRangeError,
 )
 from modules._01_map.schemas import (
+    MapBordersDTO,
     MapEdgeDTO,
     MapManifestDTO,
     MapNationDTO,
@@ -73,6 +74,8 @@ class MapApiPayloads:
     manifest_body: bytes
     geometry_version: str
     geometry_body: bytes
+    borders_version: str
+    borders_body: bytes
     node_count: int
 
 
@@ -177,6 +180,7 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
     dto = MapManifestDTO(
         schema_version=manifest.schema_version,
         geometry_version=data.geometry_version,
+        borders_version=data.borders_version,
         view_box=list(manifest.view_box),
         playable_bbox=list(manifest.playable_bbox),
         nodes=nodes,
@@ -194,6 +198,15 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
         },
         ensure_ascii=False,
     ).encode("utf-8")
+    borders = data.borders
+    borders_body = json.dumps(
+        {
+            "version": borders.version,
+            "pairs": dict(borders.pairs),
+            "coasts": dict(borders.coasts),
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
     return MapApiPayloads(
         manifest_etag=_manifest_etag(
             data.geometry_version, data.manifest_sha256, rules
@@ -201,6 +214,8 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
         manifest_body=dto.model_dump_json().encode("utf-8"),
         geometry_version=data.geometry_version,
         geometry_body=geometry_body,
+        borders_version=data.borders_version,
+        borders_body=borders_body,
         node_count=len(data.nodes),
     )
 
@@ -324,6 +339,7 @@ async def build_state(
 
     return MapStateDTO(
         geometry_version=service.geometry_version,
+        borders_version=service.borders_version,
         turn=described,
         nations=nations,
         owners=owners,

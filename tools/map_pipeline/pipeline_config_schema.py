@@ -128,6 +128,15 @@ class OutsideConfig(_Strict):
     lake_near_land: float = Field(ge=0.0, le=2.0)
 
 
+class BordersConfig(_Strict):
+    """Canonical shared borders (map2_1B, reuses borders_proto method)."""
+
+    eps: float = Field(ge=0.02, le=0.5)
+    junction_snap: float = Field(ge=0.0, le=1.0)
+    coverage_warn: float = Field(ge=0.001, le=0.1)
+    coverage_fail: float = Field(ge=0.005, le=0.2)
+
+
 class LimitsConfig(_Strict):
     """Server-side size limits mirrored for the tool (Spec Part 4)."""
 
@@ -135,6 +144,7 @@ class LimitsConfig(_Strict):
     max_edges_per_node: int = Field(ge=4, le=100)
     max_geometry_bytes: int = Field(ge=100_000, le=20_000_000)
     max_manifest_bytes: int = Field(ge=100_000, le=20_000_000)
+    max_borders_bytes: int = Field(ge=100_000, le=5_000_000)
 
 
 class PipelineConfig(_Strict):
@@ -153,6 +163,7 @@ class PipelineConfig(_Strict):
     output: OutputConfig
     sea_cut: SeaCutConfig
     outside: OutsideConfig
+    borders: BordersConfig
     limits: LimitsConfig
 
 
