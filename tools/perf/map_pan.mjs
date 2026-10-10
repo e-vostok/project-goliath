@@ -10,7 +10,7 @@
  *
  * Usage:
  *   node tools/perf/map_pan.mjs --dist frontend/dist [--tag main]
- *     [--variant base|no-borders|no-internal|no-ustroke|wstroke|no-nss|no-pulse|all-off]
+ *     [--variant base|no-borders|no-internal|no-labels|no-seam|no-nss|no-pulse|all-off]
  *     [--runs 2] [--throttle 4] [--headed] [--json out.json]
  *
  * Requires the playwright package (not a repo dependency): either
@@ -299,56 +299,45 @@ const RECORDER = () => {
 
 const APPLY_VARIANT = (variant) => {
   const v = variant.split(',');
-  const borders = document.querySelector('[data-layer="borders"]');
-  const internal = document.querySelector('[data-border="internal"]');
-  if ((v.includes('no-borders') || v.includes('all-off')) && borders) {
-    borders.style.display = 'none';
+  const hide = (sel) =>
+    document
+      .querySelectorAll(sel)
+      .forEach((el) => (el.style.display = 'none'));
+  if (v.includes('no-borders') || v.includes('all-off')) {
+    hide('[data-layer="borders"]');
   }
-  if (v.includes('no-internal') && internal) {
-    internal.style.display = 'none';
+  if (v.includes('no-internal')) {
+    hide('[data-border="internal"]');
   }
-  if (v.includes('no-ustroke')) {
-    const underlay = document.querySelector('[data-layer="land-underlay"]');
-    if (underlay) {
-      underlay.removeAttribute('stroke');
-      underlay.removeAttribute('stroke-width');
-      underlay.removeAttribute('vector-effect');
-    }
+  if (v.includes('no-labels')) {
+    hide('[data-layer="labels"]');
   }
-  if (v.includes('upair')) {
-    const underlay = document.querySelector('[data-layer="land-underlay"]');
-    const intl = document.querySelector('[data-border="internal"]');
-    const state = document.querySelector('[data-border="state"]');
-    if (underlay && intl) {
-      underlay.setAttribute('fill', 'none');
-      underlay.removeAttribute('vector-effect');
-      underlay.setAttribute(
-        'd',
-        `${intl.getAttribute('d') ?? ''} ${state?.getAttribute('d') ?? ''}`,
-      );
-      underlay.setAttribute('stroke-width', '0.05');
-      underlay.setAttribute('stroke-linejoin', 'round');
-      underlay.setAttribute('stroke-linecap', 'round');
-    }
-  }
-  const wArg = v.find((x) => x.startsWith('wstroke'));
-  if (wArg) {
-    const underlay = document.querySelector('[data-layer="land-underlay"]');
-    if (underlay) {
-      underlay.removeAttribute('vector-effect');
-      underlay.setAttribute('stroke-width', wArg.split(':')[1] ?? '0.05');
-    }
+  if (v.includes('no-seam')) {
+    // map2_14: the seam cover is the land-coloured stroke on the
+    // nodes <g>, inherited by every fill — zero the group width
+    // (diagnostic only, leaves cracks between provinces).
+    document
+      .querySelector('g[data-layer="nodes"]')
+      ?.setAttribute('stroke-width', '0');
   }
   if (v.includes('no-nss')) {
-    const world = document.querySelector('svg > g');
+    const world = document.querySelector('[data-testid="map-view"] svg > g');
     const m = /scale\(([\d.eE+-]+)\)/.exec(
       world?.getAttribute('transform') ?? '',
     );
     const s = m ? parseFloat(m[1]) : 1;
-    document.querySelectorAll('[data-border]').forEach((p) => {
-      p.removeAttribute('vector-effect');
-      const w = parseFloat(p.getAttribute('stroke-width') ?? '1');
-      p.setAttribute('stroke-width', String(w / s));
+    // map2_14: the stroke style lives on the [data-border] groups,
+    // vector-effect on the chunk paths inside them.
+    document.querySelectorAll('[data-border]').forEach((g) => {
+      const w = parseFloat(g.getAttribute('stroke-width') ?? '1');
+      g.querySelectorAll('path').forEach((p) => {
+        p.removeAttribute('vector-effect');
+        p.setAttribute('stroke-width', String(w / s));
+      });
+      if (g.tagName.toLowerCase() === 'path') {
+        g.removeAttribute('vector-effect');
+        g.setAttribute('stroke-width', String(w / s));
+      }
     });
   }
   if (v.includes('no-pulse') || v.includes('all-off')) {
@@ -388,7 +377,7 @@ const SELECT_NODE = () => {
 async function recordDuring(page, fn) {
   await page.evaluate(() => window.__pgRec.start());
   await fn();
-  await page.waitForTimeout(250); // settle tail (bake + labels on)
+  await page.waitForTimeout(250); // settle tail (final React commit)
   return page.evaluate(() => window.__pgRec.stop());
 }
 

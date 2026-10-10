@@ -1,11 +1,18 @@
 /**
- * buildBorderPaths (map2_4): pair classification — same owner or both
- * free → internal; different owners or owned-vs-free → state; every
- * coast → coast, owned or not — and the rebuild when ownership moves.
+ * Border layer (map2_4, map2_14): pair classification — same owner or
+ * both free → internal; different owners or owned-vs-free → state;
+ * every coast → coast, owned or not — spatial chunking (every piece in
+ * exactly one cell, the union of cells is the full set) and the
+ * incremental rebuild when ownership moves.
  */
 
-import { buildBorderPaths } from '../lib/borders';
-import { MINI_BORDERS } from '../fixtures/miniMap';
+import {
+  buildBorderLayer,
+  reclassifyBorderLayer,
+  type BorderClass,
+  type BorderLayer,
+} from '../lib/borders';
+import { MINI_BORDERS, MINI_MANIFEST } from '../fixtures/miniMap';
 import type { MapNationDTO } from '../types';
 
 const NATION_A: MapNationDTO = {
@@ -19,25 +26,39 @@ const NATION_B: MapNationDTO = {
   color_hex: '#00ff00',
 };
 
-const ALL_COAST = Object.values(MINI_BORDERS.coasts).join(' ');
+const BOUNDS = MINI_MANIFEST.view_box;
 
 function ownersOf(entries: [number, MapNationDTO][]) {
   return new Map<number, MapNationDTO>(entries);
 }
 
-describe('buildBorderPaths', () => {
-  it('both-free pairs are internal; every coast is coast', () => {
-    const paths = buildBorderPaths(MINI_BORDERS, ownersOf([]));
+/** Every full-geometry `d` of one class, joined across all cells —
+ *  cell order, not payload order: membership is what matters. */
+function classGeometry(layer: BorderLayer, cls: BorderClass): string {
+  return layer.chunks.high[cls].filter((d) => d !== null).join(' ');
+}
 
-    expect(paths.state).toBe('');
-    expect(paths.internal).toBe(
-      Object.values(MINI_BORDERS.pairs).join(' '),
-    );
-    expect(paths.coast).toBe(ALL_COAST);
+/** `d` occurs exactly once in `joined`. */
+function occursOnce(joined: string, d: string) {
+  expect(joined.split(d)).toHaveLength(2);
+}
+
+describe('buildBorderLayer — classification', () => {
+  it('both-free pairs are internal; every coast is coast', () => {
+    const layer = buildBorderLayer(MINI_BORDERS, ownersOf([]), BOUNDS);
+
+    expect(classGeometry(layer, 'state')).toBe('');
+    const internal = classGeometry(layer, 'internal');
+    for (const d of Object.values(MINI_BORDERS.pairs)) {
+      occursOnce(internal, d);
+    }
+    for (const d of Object.values(MINI_BORDERS.coasts)) {
+      occursOnce(classGeometry(layer, 'coast'), d);
+    }
   });
 
   it('same-owner → internal, different owners and owned-vs-free → state', () => {
-    const paths = buildBorderPaths(
+    const layer = buildBorderLayer(
       MINI_BORDERS,
       ownersOf([
         [1001, NATION_A],
@@ -45,39 +66,98 @@ describe('buildBorderPaths', () => {
         [1003, NATION_B], // different nation → state
         // 1004 free → owned-vs-free is a state border
       ]),
+      BOUNDS,
     );
 
-    expect(paths.internal).toBe(MINI_BORDERS.pairs['1001-1002']);
-    expect(paths.state).toBe(
-      [MINI_BORDERS.pairs['1002-1003'], MINI_BORDERS.pairs['1003-1004']].join(
-        ' ',
-      ),
-    );
+    const internal = classGeometry(layer, 'internal');
+    const state = classGeometry(layer, 'state');
+    occursOnce(internal, MINI_BORDERS.pairs['1001-1002']);
+    occursOnce(state, MINI_BORDERS.pairs['1002-1003']);
+    occursOnce(state, MINI_BORDERS.pairs['1003-1004']);
     // Coasts never split by ownership — all eight nodes, owned or free.
-    expect(paths.coast).toBe(ALL_COAST);
+    for (const d of Object.values(MINI_BORDERS.coasts)) {
+      occursOnce(classGeometry(layer, 'coast'), d);
+    }
+  });
+});
+
+describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
+  it('every piece lands in exactly one cell and the union is the full set', () => {
+    const layer = buildBorderLayer(
+      MINI_BORDERS,
+      ownersOf([[1003, NATION_A]]),
+      BOUNDS,
+      4,
+    );
+
+    // Each pair's original `d` appears exactly once across internal +
+    // state cells; each coast `d` exactly once across coast cells.
+    const internal = classGeometry(layer, 'internal');
+    const state = classGeometry(layer, 'state');
+    for (const d of Object.values(MINI_BORDERS.pairs)) {
+      const hits =
+        internal.split(d).length + state.split(d).length - 2;
+      expect(hits).toBe(1);
+    }
+    for (const d of Object.values(MINI_BORDERS.coasts)) {
+      occursOnce(classGeometry(layer, 'coast'), d);
+    }
   });
 
-  it('a pair flips between internal and state when ownership changes', () => {
-    const before = buildBorderPaths(
+  it('an ownership change rebuilds only the cells whose pairs flipped', () => {
+    const grid = 4;
+    const before = buildBorderLayer(
       MINI_BORDERS,
       ownersOf([
         [1003, NATION_A],
         [1004, NATION_B],
       ]),
+      BOUNDS,
+      grid,
     );
-    expect(before.state).toContain(MINI_BORDERS.pairs['1003-1004']);
-    expect(before.internal).not.toContain(MINI_BORDERS.pairs['1003-1004']);
 
-    // Nation A takes 1004 — the same payload re-classifies.
-    const after = buildBorderPaths(
-      MINI_BORDERS,
+    // Nation A takes 1004 — the 1003-1004 pair flips state → internal.
+    const after = reclassifyBorderLayer(
+      before,
       ownersOf([
         [1003, NATION_A],
         [1004, NATION_A],
       ]),
     );
-    expect(after.internal).toContain(MINI_BORDERS.pairs['1003-1004']);
-    expect(after.state).not.toContain(MINI_BORDERS.pairs['1003-1004']);
-    expect(after.coast).toBe(ALL_COAST);
+
+    const flippedCell = before.chunks.high.state.findIndex((d) =>
+      d?.includes(MINI_BORDERS.pairs['1003-1004']),
+    );
+    expect(flippedCell).toBeGreaterThanOrEqual(0);
+
+    for (let cell = 0; cell < grid * grid; cell += 1) {
+      for (const lod of ['low', 'mid', 'high'] as const) {
+        for (const cls of ['internal', 'state'] as const) {
+          if (cell === flippedCell) {
+            expect(after.chunks[lod][cls][cell]).not.toBe(
+              before.chunks[lod][cls][cell],
+            );
+          } else {
+            // Untouched cells keep their string reference — React
+            // writes no `d` attribute for them.
+            expect(after.chunks[lod][cls][cell]).toBe(
+              before.chunks[lod][cls][cell],
+            );
+          }
+        }
+      }
+    }
+    expect(classGeometry(after, 'internal')).toContain(
+      MINI_BORDERS.pairs['1003-1004'],
+    );
+    expect(classGeometry(after, 'state')).not.toContain(
+      MINI_BORDERS.pairs['1003-1004'],
+    );
+
+    // No ownership change → the same layer object, zero rebuilds.
+    expect(reclassifyBorderLayer(after, ownersOf([
+      [1003, NATION_A],
+      [1004, NATION_A],
+    ]))).toBe(after);
   });
 });

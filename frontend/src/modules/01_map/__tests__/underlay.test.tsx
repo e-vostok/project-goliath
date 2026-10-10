@@ -1,16 +1,18 @@
 /**
- * Seam-cover underlay (map2_13): one compound path stroked with
- * `colors.land_underlay` along every shared edge, under the fills, so
+ * Seam cover (map2_13, per-node in map2_14): the nodes <g> carries a
+ * thin land-coloured world-scaled stroke inherited by every fill, so
  * anti-aliasing hairlines between neighbours show land colour, never
- * the sea. It must cover LAND–LAND pair edges only — no coast
- * polyline contributes — and must never be rebuilt on ownership
- * changes (the path depends on `borders.json` alone).
+ * the sea. Compared to the old under-fill seam layer, each stroke is
+ * rasterised inside its node's own bounding box, which the browser
+ * culls far better; an ownership change never rebuilds the stroke —
+ * only the fill colour of the affected nodes changes (the DOM nodes
+ * keep identity).
  */
 
 import { render } from '@testing-library/react';
 
 import { MapView } from '../components/MapView';
-import { buildSeamCover } from '../lib/underlay';
+import { SEAM_STROKE_W } from '../constants';
 import {
   MINI_BORDERS,
   MINI_GEOMETRY,
@@ -20,22 +22,33 @@ import {
 } from '../fixtures/miniMap';
 import type { MapStateDTO } from '../types';
 
-vi.mock('../lib/underlay', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('../lib/underlay')>();
-  return { ...mod, buildSeamCover: vi.fn(mod.buildSeamCover) };
-});
-
-const EXPECTED_D = Object.values(MINI_BORDERS.pairs).join(' ');
-
 const OTHER_STATE: MapStateDTO = {
   ...MINI_STATE,
-  owners: [[1003, 0], [1004, 0], [1005, 0]],
+  owners: [
+    [1003, 0],
+    [1004, 0],
+    [1005, 0],
+  ],
 };
 
-describe('MapView — seam cover underlay (map2_13)', () => {
-  it('covers LAND–LAND edges only, never coasts, and is built once', () => {
-    vi.mocked(buildSeamCover).mockClear();
+function nodesGroup(): SVGGElement {
+  const el = document.querySelector<SVGGElement>(
+    'g[data-layer="nodes"]',
+  );
+  expect(el).not.toBeNull();
+  return el!;
+}
 
+function nodePaths(): SVGPathElement[] {
+  const els = [
+    ...document.querySelectorAll<SVGPathElement>('path[data-id]'),
+  ];
+  expect(els.length).toBeGreaterThan(0);
+  return els;
+}
+
+describe('MapView — seam cover via node strokes (map2_13, map2_14)', () => {
+  it('strokes every fill with the land colour in world units', () => {
     const { rerender } = render(
       <MapView
         manifest={MINI_MANIFEST}
@@ -45,35 +58,28 @@ describe('MapView — seam cover underlay (map2_13)', () => {
       />,
     );
 
-    const underlay = document.querySelector(
-      'path[data-layer="land-underlay"]',
-    ) as SVGPathElement;
-    expect(underlay).not.toBeNull();
-    // Exactly the shared-edge polylines, joined — no coast polyline
-    // and no node geometry contributes.
-    expect(underlay.getAttribute('d')).toBe(EXPECTED_D);
-    for (const coast of Object.values(MINI_BORDERS.coasts)) {
-      expect(underlay.getAttribute('d')).not.toContain(coast);
-    }
-    for (const nodePath of Object.values(MINI_GEOMETRY.paths)) {
-      expect(underlay.getAttribute('d')).not.toContain(nodePath);
-    }
-    expect(underlay.getAttribute('fill')).toBe('none');
-    expect(underlay.getAttribute('stroke')).toBe(
+    expect(
+      document.querySelector('g[data-layer="land-underlay"]'),
+    ).toBeNull();
+    const g = nodesGroup();
+    expect(g.getAttribute('stroke')).toBe(
       MINI_RULES.colors.land_underlay,
     );
+    expect(g.getAttribute('stroke-width')).toBe(String(SEAM_STROKE_W));
     // No non-scaling-stroke: the world-scaled width is what keeps the
-    // settle re-raster inside the frame budget.
-    expect(underlay.getAttribute('vector-effect')).toBeNull();
-    expect(underlay.getAttribute('pointer-events')).toBe('none');
-    // It sits under the fills so only hairline gaps can expose it.
-    expect(underlay.nextElementSibling?.firstElementChild?.tagName).toBe(
-      'path',
-    );
-    expect(buildSeamCover).toHaveBeenCalledTimes(1);
+    // per-frame re-raster inside the frame budget.
+    expect(g.getAttribute('vector-effect')).toBeNull();
+    const paths = nodePaths();
+    for (const p of paths) {
+      // Colour and width are inherited from the group — no per-path
+      // stroke attributes (writeView owns the group width).
+      expect(p.getAttribute('stroke')).toBeNull();
+      expect(p.getAttribute('stroke-width')).toBeNull();
+      expect(p.getAttribute('vector-effect')).toBeNull();
+    }
 
-    // An ownership refresh must not rebuild the cover: same path,
-    // same DOM node, no second call.
+    // An ownership refresh keeps the group stroke identical and the
+    // DOM nodes themselves — only fills may change colour.
     rerender(
       <MapView
         manifest={MINI_MANIFEST}
@@ -82,11 +88,13 @@ describe('MapView — seam cover underlay (map2_13)', () => {
         state={OTHER_STATE}
       />,
     );
-    const underlayAfter = document.querySelector(
-      'path[data-layer="land-underlay"]',
-    ) as SVGPathElement;
-    expect(underlayAfter).toBe(underlay);
-    expect(underlayAfter.getAttribute('d')).toBe(EXPECTED_D);
-    expect(buildSeamCover).toHaveBeenCalledTimes(1);
+    const after = nodePaths();
+    expect(after).toHaveLength(paths.length);
+    after.forEach((p, i) => {
+      expect(p).toBe(paths[i]);
+    });
+    expect(nodesGroup().getAttribute('stroke')).toBe(
+      MINI_RULES.colors.land_underlay,
+    );
   });
 });
