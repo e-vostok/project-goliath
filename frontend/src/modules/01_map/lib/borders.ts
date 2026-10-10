@@ -21,7 +21,7 @@
 import type { MapBordersDTO, MapNationDTO } from '../types';
 
 export interface BorderPaths {
-  /** Dashed line between provinces of one owner (or both free). */
+  /** Thin solid line between provinces of one owner (or both free). */
   internal: string;
   /** Solid thick line along land borders between different owners. */
   state: string;

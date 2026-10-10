@@ -42,7 +42,6 @@ export interface MapRefreshRulesDTO {
 /** `rules.borders` — style of the shared-border layer (map2_4). */
 export interface MapBordersRulesDTO {
   internal_width: number;
-  internal_dash: string;
   internal_opacity: number;
   internal_color: string;
   state_width: number;

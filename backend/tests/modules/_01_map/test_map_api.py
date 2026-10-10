@@ -286,10 +286,10 @@ class TestManifest:
         assert rules["hover_fill_opacity"] == config.hover.fill_opacity
         assert rules["hover_stroke_enabled"] == config.hover.stroke_enabled
         assert rules["colors"]["sea"] == config.colors.sea
+        assert rules["colors"]["land_underlay"] == config.colors.land_underlay
         borders = rules["borders"]
         for key in (
             "internal_width",
-            "internal_dash",
             "internal_opacity",
             "internal_color",
             "state_width",

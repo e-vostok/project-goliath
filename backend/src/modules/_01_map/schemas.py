@@ -58,7 +58,6 @@ class MapBordersRulesDTO(BaseModel):
     """``MapViewRulesDTO.borders`` — client border-layer style (map2_4)."""
 
     internal_width: float
-    internal_dash: str
     internal_opacity: float
     internal_color: str
     state_width: float

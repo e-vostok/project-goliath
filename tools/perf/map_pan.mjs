@@ -10,7 +10,7 @@
  *
  * Usage:
  *   node tools/perf/map_pan.mjs --dist frontend/dist [--tag main]
- *     [--variant base|no-borders|no-dash|no-nss|no-pulse|all-off]
+ *     [--variant base|no-borders|no-internal|no-ustroke|wstroke|no-nss|no-pulse|all-off]
  *     [--runs 2] [--throttle 4] [--headed] [--json out.json]
  *
  * Requires the playwright package (not a repo dependency): either
@@ -72,15 +72,15 @@ const RULES = {
     outside: '#2A2A2A',
     inland_water: '#1E3547',
     province_border: '#3A3A3A',
+    land_underlay: '#8C8C8C',
     hover: '#FFFFFF',
   },
   hover_fill_opacity: 0.14,
   hover_stroke_enabled: false,
   borders: {
-    internal_width: 0.7,
-    internal_dash: '5 3',
-    internal_opacity: 0.55,
-    internal_color: '#3A3A3A',
+    internal_width: 0.8,
+    internal_opacity: 0.45,
+    internal_color: '#4A4A4A',
     state_width: 1.8,
     state_color: '#101014',
     coast_width: 0.9,
@@ -304,8 +304,40 @@ const APPLY_VARIANT = (variant) => {
   if ((v.includes('no-borders') || v.includes('all-off')) && borders) {
     borders.style.display = 'none';
   }
-  if (v.includes('no-dash') && internal) {
-    internal.removeAttribute('stroke-dasharray');
+  if (v.includes('no-internal') && internal) {
+    internal.style.display = 'none';
+  }
+  if (v.includes('no-ustroke')) {
+    const underlay = document.querySelector('[data-layer="land-underlay"]');
+    if (underlay) {
+      underlay.removeAttribute('stroke');
+      underlay.removeAttribute('stroke-width');
+      underlay.removeAttribute('vector-effect');
+    }
+  }
+  if (v.includes('upair')) {
+    const underlay = document.querySelector('[data-layer="land-underlay"]');
+    const intl = document.querySelector('[data-border="internal"]');
+    const state = document.querySelector('[data-border="state"]');
+    if (underlay && intl) {
+      underlay.setAttribute('fill', 'none');
+      underlay.removeAttribute('vector-effect');
+      underlay.setAttribute(
+        'd',
+        `${intl.getAttribute('d') ?? ''} ${state?.getAttribute('d') ?? ''}`,
+      );
+      underlay.setAttribute('stroke-width', '0.05');
+      underlay.setAttribute('stroke-linejoin', 'round');
+      underlay.setAttribute('stroke-linecap', 'round');
+    }
+  }
+  const wArg = v.find((x) => x.startsWith('wstroke'));
+  if (wArg) {
+    const underlay = document.querySelector('[data-layer="land-underlay"]');
+    if (underlay) {
+      underlay.removeAttribute('vector-effect');
+      underlay.setAttribute('stroke-width', wArg.split(':')[1] ?? '0.05');
+    }
   }
   if (v.includes('no-nss')) {
     const world = document.querySelector('svg > g');

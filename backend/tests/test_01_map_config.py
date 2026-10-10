@@ -51,12 +51,12 @@ def _base_config() -> dict:
             "outside": "#2A2A2A",
             "inland_water": "#1E3547",
             "province_border": "#3A3A3A",
+            "land_underlay": "#8C8C8C",
             "hover": "#FFFFFF",
         },
         "hover": {"fill_opacity": 0.14, "stroke_enabled": False},
         "borders": {
             "internal_width": 0.7,
-            "internal_dash": "5 3",
             "internal_opacity": 0.55,
             "internal_color": "#3A3A3A",
             "state_width": 1.8,

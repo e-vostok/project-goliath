@@ -21,10 +21,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # Цвет вида #RRGGBB (регистр не важен).
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-# Пунктир SVG stroke-dasharray: до 4 чисел 0..20 через пробел
-# («5 3», «1 0 2 0»). Нулевая сумма запрещена отдельной проверкой.
-_DASH_RE = re.compile(r"^\d+(?:\.\d+)?(?: \d+(?:\.\d+)?){0,3}$")
-
 
 class _Strict(BaseModel):
     """Базовый класс секций: неизвестные ключи запрещены."""
@@ -118,6 +114,10 @@ class ColorSettings(_Strict):
     outside: str = Field(pattern=_HEX_COLOR_RE.pattern)
     inland_water: str = Field(pattern=_HEX_COLOR_RE.pattern)
     province_border: str = Field(pattern=_HEX_COLOR_RE.pattern)
+    land_underlay: str = Field(
+        pattern=_HEX_COLOR_RE.pattern,
+        description="Подложка под заливки суши (map2_13): волосяные швы между соседними провинциями показывают цвет суши, а не моря.",
+    )
     hover: str = Field(pattern=_HEX_COLOR_RE.pattern)
 
     @model_validator(mode="after")
@@ -150,23 +150,20 @@ class HoverSettings(_Strict):
 
 
 class BordersSettings(_Strict):
-    """Слой границ (map2_4): три собранных пути из ``borders.json`` —
-    пунктир внутри государства, сплошная граница государства по суше и
-    тонкая линия берега. Ширины — экранные px (non-scaling-stroke)."""
+    """Слой границ (map2_4, map2_13): три собранных пути из
+    ``borders.json`` — тонкая сплошная линия внутри государства,
+    сплошная граница государства по суше и тонкая линия берега.
+    Ширины — экранные px (non-scaling-stroke)."""
 
     internal_width: float = Field(
         ge=0.1,
         le=6.0,
-        description="Толщина пунктира внутренних границ, px.",
-    )
-    internal_dash: str = Field(
-        pattern=_DASH_RE.pattern,
-        description="Пунктир внутренних границ (SVG stroke-dasharray): до 4 чисел 0..20 через пробел.",
+        description="Толщина сплошной линии внутренних границ, px.",
     )
     internal_opacity: float = Field(
         ge=0.0,
         le=1.0,
-        description="Прозрачность пунктира внутренних границ.",
+        description="Прозрачность внутренних границ.",
     )
     internal_color: str = Field(pattern=_HEX_COLOR_RE.pattern)
     state_width: float = Field(
@@ -181,19 +178,6 @@ class BordersSettings(_Strict):
         description="Толщина тонкой линии берега, px.",
     )
     coast_color: str = Field(pattern=_HEX_COLOR_RE.pattern)
-
-    @model_validator(mode="after")
-    def check_dash(self) -> Self:
-        numbers = [float(part) for part in self.internal_dash.split(" ")]
-        if len(numbers) > 4 or any(n < 0 or n > 20 for n in numbers):
-            raise ValueError(
-                "borders.internal_dash: up to 4 numbers in range 0..20"
-            )
-        if sum(numbers) == 0:
-            raise ValueError(
-                "borders.internal_dash must not be all zeros (invisible line)"
-            )
-        return self
 
 
 class SelectionSettings(_Strict):
