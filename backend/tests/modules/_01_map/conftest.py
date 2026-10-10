@@ -27,6 +27,7 @@ from modules._00_core.service import NodeSpec, ProvinceService
 from modules._01_map.config_schema import FrameConfig, MapConfig
 from modules._01_map.hashing import (
     INPUT_HASH_RULES,
+    borders_version,
     geometry_version,
     input_sha256,
 )
@@ -109,6 +110,20 @@ def save_geometry(data_dir: Path, doc: dict) -> None:
     )
 
 
+def load_borders(data_dir: Path) -> dict:
+    return json.loads(
+        (data_dir / "borders.json").read_text(encoding="utf-8")
+    )
+
+
+def save_borders(data_dir: Path, doc: dict) -> None:
+    (data_dir / "borders.json").write_text(
+        json.dumps(doc, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def load_lock(data_dir: Path) -> dict:
     return json.loads(
         (data_dir / "ids.lock.json").read_text(encoding="utf-8")
@@ -133,6 +148,23 @@ def fix_input_hashes(data_dir: Path) -> None:
     save_manifest(data_dir, doc)
 
 
+def fix_borders_pin(data_dir: Path) -> None:
+    """Re-pin ``borders.version`` and ``manifest.borders_version``.
+
+    The borders version takes ``geometry_version`` as an input, so it
+    must be re-pinned after ANY geometry re-pin as well as after direct
+    borders edits.
+    """
+    borders = load_borders(data_dir)
+    doc = load_manifest(data_dir)
+    borders["version"] = borders_version(
+        doc["geometry_version"], borders["pairs"], borders["coasts"]
+    )
+    save_borders(data_dir, borders)
+    doc["borders_version"] = borders["version"]
+    save_manifest(data_dir, doc)
+
+
 def fix_geometry_pin(data_dir: Path) -> None:
     """Re-pin ``geometry.version`` and ``manifest.geometry_version``."""
     geom = load_geometry(data_dir)
@@ -143,6 +175,7 @@ def fix_geometry_pin(data_dir: Path) -> None:
     doc = load_manifest(data_dir)
     doc["geometry_version"] = geom["version"]
     save_manifest(data_dir, doc)
+    fix_borders_pin(data_dir)
 
 
 @pytest.fixture
