@@ -81,6 +81,7 @@ def build_manifest(
     metrics: dict[str, NodeMetrics],
     inputs: dict,
     geometry_version: str,
+    borders_version: str,
     view_box: list[float],
     playable: list[float],
     cfg: PipelineConfig,
@@ -145,6 +146,7 @@ def build_manifest(
     return {
         "schema_version": 1,
         "geometry_version": geometry_version,
+        "borders_version": borders_version,
         "view_box": view_box,
         "playable_bbox": playable,
         "georef": {

@@ -114,6 +114,23 @@ def geometry_version(g: dict) -> str:
     return hashlib.sha256(canonical_json(g).encode("utf-8")).hexdigest()[:12]
 
 
+def borders_version(
+    geometry_ver: str, pairs: dict[str, str], coasts: dict[str, str]
+) -> str:
+    """Spec 3.6 rule with the geometry version as an extra input:
+    ``sha256(canon(B))[:12]`` where ``B`` is the ``borders.json`` body
+    without ``version`` plus ``geometry_version`` — the borders version
+    changes whenever the geometry version does."""
+    body = {
+        "coasts": dict(coasts),
+        "geometry_version": geometry_ver,
+        "pairs": dict(pairs),
+    }
+    return hashlib.sha256(
+        canonical_json(body).encode("utf-8")
+    ).hexdigest()[:12]
+
+
 def build_geometry_doc(
     paths: dict[str, str], outside_d: str, sea_water_d: str
 ) -> tuple[dict, str]:
