@@ -67,7 +67,7 @@ describe('MapView — sea_water layer', () => {
   });
 });
 
-describe('MapView — gesture simplification (map2_12)', () => {
+describe('MapView — live-pan gestures (map2_14)', () => {
   // The container reports a real size so the view transform initialises
   // (jsdom rects are 0×0 otherwise).
   beforeEach(() => {
@@ -85,7 +85,7 @@ describe('MapView — gesture simplification (map2_12)', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('drag switches the map to gesture mode and back on settle', async () => {
+  it('drag repaints the live transform every frame; nothing hides', async () => {
     render(
       <MapView
         manifest={MINI_MANIFEST}
@@ -99,36 +99,50 @@ describe('MapView — gesture simplification (map2_12)', () => {
     ) as HTMLElement;
     const svg = container.querySelector('svg') as SVGSVGElement;
     const world = svg.querySelector('g') as SVGGElement;
-    const internal = document.querySelector(
-      '[data-border="internal"]',
-    ) as SVGPathElement;
-    expect(internal).not.toBeNull();
-    // Settled transform is baked into the world attribute.
     expect(world.getAttribute('transform')).toBe(
       'translate(-80 -120) scale(12)',
     );
+    // The border layer exists as three LOD groups; only the matching
+    // one is displayed (s = 12 → full geometry).
+    const lodGroups = [
+      ...document.querySelectorAll('[data-border-lod]'),
+    ] as SVGGElement[];
+    expect(lodGroups).toHaveLength(3);
+    const shown = lodGroups.filter((g) => g.style.display !== 'none');
+    expect(shown).toHaveLength(1);
+    expect(shown[0].getAttribute('data-border-lod')).toBe('high');
+    expect(
+      shown[0].querySelector('[data-border="internal"] path'),
+    ).not.toBeNull();
 
     fireEvent.mouseDown(container, { button: 0, clientX: 400, clientY: 300 });
     window.dispatchEvent(
       new MouseEvent('mousemove', { clientX: 440, clientY: 310 }),
     );
 
-    // Gesture mode: switch attribute set, the CSS delta lives on the
-    // <svg> (baked attribute untouched). The solid internal border
-    // stays visible mid-drag (map2_13) — the gesture state hides
-    // nothing but the labels while the pulse pauses via CSS.
     await waitFor(() => {
       expect(container).toHaveAttribute('data-gesture');
     });
-    expect(internal.style.display).toBe('');
-    // The labels group is the only layer still hidden mid-gesture.
+    // The live transform is repainted into the world attribute — no
+    // CSS delta on the <svg>, no snapshot raster (x is clamp-locked,
+    // y already moved by +10).
+    await waitFor(() => {
+      expect(world.getAttribute('transform')).toBe(
+        'translate(-80 -110) scale(12)',
+      );
+    });
+    expect(svg.style.transform).toBe('');
+    // Nothing hides mid-gesture: labels keep drawing and no layer
+    // group is switched off (inactive LOD copies are not layers).
     const labelsG = document.querySelector(
       '[data-layer="labels"]',
     ) as SVGGElement;
-    expect(labelsG.style.display).toBe('none');
+    expect(labelsG.style.display).not.toBe('none');
     expect(
       [...svg.querySelectorAll('g')].filter(
-        (g) => g.style.display === 'none' && g !== labelsG,
+        (g) =>
+          g.style.display === 'none' &&
+          !g.hasAttribute('data-border-lod'),
       ),
     ).toHaveLength(0);
     // The pulse pause lives in the injected CSS, keyed by data-gesture.
@@ -137,12 +151,6 @@ describe('MapView — gesture simplification (map2_12)', () => {
         s.textContent?.includes('[data-gesture] .pg-map-selected-pulse'),
       ),
     ).toBe(true);
-    await waitFor(() => {
-      expect(svg.style.transform).not.toBe('');
-    });
-    expect(world.getAttribute('transform')).toBe(
-      'translate(-80 -120) scale(12)',
-    );
 
     window.dispatchEvent(new MouseEvent('mouseup'));
     await waitFor(
@@ -151,10 +159,10 @@ describe('MapView — gesture simplification (map2_12)', () => {
       },
       { timeout: 1000 },
     );
-    // Idle again: labels restored, delta cleared, the pan baked into
-    // the world attribute (x is locked, y moved by +10).
-    expect(internal.style.display).toBe('');
+    // Idle again: the same live transform — nothing re-baked, nothing
+    // swapped, labels never left.
     expect(svg.style.transform).toBe('');
+    expect(labelsG.style.display).not.toBe('none');
     expect(world.getAttribute('transform')).toBe(
       'translate(-80 -110) scale(12)',
     );

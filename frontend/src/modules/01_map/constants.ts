@@ -34,5 +34,35 @@ export const LABEL_HALO_COLOR = 'rgba(0,0,0,0.75)';
 /** Stroke width of the hover overlay outline, px (screen-constant). */
 export const OVERLAY_STROKE_PX = 2;
 
+/** Width of the per-node seam-cover stroke, in map units (map2_13). */
+export const SEAM_STROKE_W = 0.05;
+
+/**
+ * Width of the seam-cover stroke in the non-scaling band, in device
+ * pixels (map2_14): below SEAM_NSS_MAX_S a hairline device-space
+ * stroke rasterises far faster per frame than a subpixel world-space
+ * one, and ~1 px still covers every crack — they are world-space
+ * voids of at most ~0.05 u, which render well under a pixel there.
+ */
+export const SEAM_STROKE_PX = 1.2;
+
+/**
+ * Scale below which the seam-cover stroke is switched off entirely
+ * (map2_14): the widest crack it can cover is SEAM_STROKE_W map units,
+ * which renders under a third of a pixel below this zoom — invisible
+ * even if uncovered. Gating the stroke off there removes a subpixel
+ * anti-aliased re-stroke of every visible fill each frame.
+ */
+export const SEAM_MIN_S = 6;
+
+/**
+ * Scale above which the seam cover switches from the non-scaling
+ * hairline back to the world-space SEAM_STROKE_W (map2_14): at high
+ * zoom the world width already renders ~a pixel, and the per-frame
+ * device-space re-stroke of ~1000 paths during a zoom costs more
+ * than it saves.
+ */
+export const SEAM_NSS_MAX_S = 12;
+
 /** Node card width, px (Spec Part 5: «около 280 px»). */
 export const NODECARD_WIDTH_PX = 280;
