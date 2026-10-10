@@ -286,7 +286,26 @@ class TestManifest:
         assert rules["hover_fill_opacity"] == config.hover.fill_opacity
         assert rules["hover_stroke_enabled"] == config.hover.stroke_enabled
         assert rules["colors"]["sea"] == config.colors.sea
-        assert rules["colors"]["selected"] == config.colors.selected
+        borders = rules["borders"]
+        for key in (
+            "internal_width",
+            "internal_dash",
+            "internal_opacity",
+            "internal_color",
+            "state_width",
+            "state_color",
+            "coast_width",
+            "coast_color",
+        ):
+            assert borders[key] == getattr(config.borders, key)
+        selection = rules["selection"]
+        for key in (
+            "pulse_min_opacity",
+            "pulse_max_opacity",
+            "pulse_period_s",
+            "picked_opacity",
+        ):
+            assert selection[key] == getattr(config.selection, key)
         refresh = rules["refresh"]
         for key in (
             "tick_refresh_delay_seconds",
