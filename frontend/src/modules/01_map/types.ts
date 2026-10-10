@@ -39,6 +39,26 @@ export interface MapRefreshRulesDTO {
   stale_after_seconds: number;
 }
 
+/** `rules.borders` — style of the shared-border layer (map2_4). */
+export interface MapBordersRulesDTO {
+  internal_width: number;
+  internal_dash: string;
+  internal_opacity: number;
+  internal_color: string;
+  state_width: number;
+  state_color: string;
+  coast_width: number;
+  coast_color: string;
+}
+
+/** `rules.selection` — white selection overlay style (map2_4). */
+export interface MapSelectionRulesDTO {
+  pulse_min_opacity: number;
+  pulse_max_opacity: number;
+  pulse_period_s: number;
+  picked_opacity: number;
+}
+
 export interface MapViewRulesDTO {
   /** [x, y, width, height] in view_box units — Spec 3.8 zoom-out frame. */
   frame: [number, number, number, number];
@@ -52,6 +72,8 @@ export interface MapViewRulesDTO {
   hover_fill_opacity: number;
   /** Also stroke the hovered node when true (off by default). */
   hover_stroke_enabled: boolean;
+  borders: MapBordersRulesDTO;
+  selection: MapSelectionRulesDTO;
   require_connected_start: boolean;
   big_window_enabled: boolean;
   refresh: MapRefreshRulesDTO;
@@ -60,6 +82,8 @@ export interface MapViewRulesDTO {
 export interface MapManifestDTO {
   schema_version: number;
   geometry_version: string;
+  /** Version of GET /map/borders/{version} (map2_1B). */
+  borders_version: string;
   view_box: [number, number, number, number];
   playable_bbox: [number, number, number, number];
   nodes: MapNodeDTO[];
@@ -76,6 +100,18 @@ export interface MapGeometryDTO {
   sea_water: string;
 }
 
+/**
+ * Shared borders of one version (map2_1B): `pairs` keyed `"a-b"` holds
+ * the land border between two adjacent nodes, `coasts` keyed by node id
+ * holds that node's coastline (sea, excluded land, map edge). Path
+ * values are open polylines, not closed fills.
+ */
+export interface MapBordersDTO {
+  version: string;
+  pairs: Record<string, string>;
+  coasts: Record<string, string>;
+}
+
 export interface MapNationDTO {
   id: string | null;
   name: string;
@@ -84,6 +120,7 @@ export interface MapNationDTO {
 
 export interface MapStateDTO {
   geometry_version: string;
+  borders_version: string;
   turn: number;
   nations: MapNationDTO[];
   /** [province_id, index into nations]; free provinces and SEA are absent. */

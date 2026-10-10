@@ -17,11 +17,22 @@
  * - The wheel handler is registered non-passive and is the only zoom.
  * - Geometry is parsed once per version (paths memoised by version).
  *
+ * Border layer (map2_4): three compound paths from `borders.json` sit
+ * between the fills and the labels — dashed INTERNAL inside one owner,
+ * solid STATE on land borders between owners, thin COAST everywhere a
+ * node meets the sea/excluded land/map edge. The per-node fill stroke
+ * is kept only as the fallback when the borders payload failed to load
+ * (the hook logs one warning then).
+ *
  * `mode="select"` (Issue 6): a settled click reports the node id via
- * `onNodeClick` (the picker decides what it means), the selection draws
- * as a translucent `colors.selected` overlay, the cursor is pointer /
- * not-allowed over selectable / disabled nodes, and the tooltip line is
- * «Название — свободна | занята: … | морская зона, выбрать нельзя».
+ * `onNodeClick` (the picker decides what it means), picked provinces
+ * draw a constant white `colors.hover` fill at
+ * `selection.picked_opacity`, the cursor is pointer / not-allowed over
+ * selectable / disabled nodes, and the tooltip line is «Название —
+ * свободна | занята: … | морская зона, выбрать нельзя». In `view` mode
+ * the single inspected province carries the same white fill pulsing
+ * between `selection.pulse_min_opacity` and `pulse_max_opacity` (CSS
+ * animation; `prefers-reduced-motion` freezes it at the midpoint).
  */
 
 import {
@@ -41,9 +52,9 @@ import {
   LABEL_HALO_PX,
   LABEL_TEXT_COLOR,
   OVERLAY_STROKE_PX,
-  SELECTED_FILL_OPACITY,
   TOOLTIP_OFFSET_PX,
 } from '../constants';
+import { buildBorderPaths } from '../lib/borders';
 import { buildOwnerMap, nodeFill } from '../lib/colors';
 import { displayName } from '../lib/search';
 import { selectTooltipStatus } from '../lib/selection';
@@ -64,6 +75,7 @@ import {
   type ViewTransform,
 } from '../lib/view';
 import type {
+  MapBordersDTO,
   MapGeometryDTO,
   MapManifestDTO,
   MapNationDTO,
@@ -86,6 +98,10 @@ export interface MapViewProps {
   geometry: MapGeometryDTO;
   /** Latest good state payload (colours); null until first load. */
   state?: MapStateDTO | null;
+  /** Shared borders of `manifest.borders_version`; null until loaded. */
+  borders?: MapBordersDTO | null;
+  /** Borders load failed — draw the legacy per-node strokes instead. */
+  bordersFailed?: boolean;
   selectedIds?: number[];
   disabledIds?: number[];
   onNodeClick?: (id: number | null) => void;
@@ -437,6 +453,17 @@ export function MapView(props: MapViewProps) {
 
   const ownerOf = (id: number): MapNationDTO | undefined => owners.get(id);
 
+  // The combined border paths are static between ownership changes —
+  // a state created/changed/deleted flips the owners map and the
+  // classification re-runs without reloading the map (map2_4).
+  const borderPaths = useMemo(
+    () =>
+      props.borders ? buildBorderPaths(props.borders, owners) : null,
+    [props.borders, owners],
+  );
+  // Legacy per-node strokes survive only as the borders-failed fallback.
+  const legacyStrokes = borderPaths === null && props.bordersFailed === true;
+
   const nodePaths = useMemo(
     () =>
       manifest.nodes.map((node) => (
@@ -445,13 +472,13 @@ export function MapView(props: MapViewProps) {
           data-id={node.id}
           d={geometry.paths[node.id] ?? ''}
           fill={nodeFill(node, ownerOf(node.id), colors)}
-          stroke={colors.province_border}
-          strokeWidth={1}
+          stroke={legacyStrokes ? colors.province_border : 'none'}
+          strokeWidth={legacyStrokes ? 1 : undefined}
           vectorEffect="non-scaling-stroke"
         />
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [manifest.nodes, geometry.version, owners, colors],
+    [manifest.nodes, geometry.version, owners, colors, legacyStrokes],
   );
 
   const labeled = useMemo(
@@ -503,6 +530,23 @@ export function MapView(props: MapViewProps) {
         background: colors.outside,
       }}
     >
+      {/* Selection pulse (map2_4): opacity swings min→max→min on one
+          overlay element; prefers-reduced-motion freezes it halfway. */}
+      <style>{`
+        @keyframes pg-map-selected-pulse {
+          0%, 100% { opacity: ${rules.selection.pulse_min_opacity}; }
+          50% { opacity: ${rules.selection.pulse_max_opacity}; }
+        }
+        .pg-map-selected-pulse {
+          animation: pg-map-selected-pulse ${rules.selection.pulse_period_s}s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .pg-map-selected-pulse {
+            animation: none;
+            opacity: ${(rules.selection.pulse_min_opacity + rules.selection.pulse_max_opacity) / 2};
+          }
+        }
+      `}</style>
       <svg width={viewport.width} height={viewport.height}>
         <g ref={worldRef}>
           {/* background — inland water shows through the holes (lakes)
@@ -526,6 +570,44 @@ export function MapView(props: MapViewProps) {
           )}
           <path d={geometry.outside} fill={colors.outside} />
           <g>{nodePaths}</g>
+          {/* border layer: above the fills, below selection/hover and
+              labels — three compound paths, inert (map2_4). */}
+          {borderPaths !== null && (
+            <g data-layer="borders" pointerEvents="none">
+              {borderPaths.internal !== '' && (
+                <path
+                  data-border="internal"
+                  d={borderPaths.internal}
+                  fill="none"
+                  stroke={rules.borders.internal_color}
+                  strokeWidth={rules.borders.internal_width}
+                  strokeOpacity={rules.borders.internal_opacity}
+                  strokeDasharray={rules.borders.internal_dash}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              {borderPaths.coast !== '' && (
+                <path
+                  data-border="coast"
+                  d={borderPaths.coast}
+                  fill="none"
+                  stroke={rules.borders.coast_color}
+                  strokeWidth={rules.borders.coast_width}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              {borderPaths.state !== '' && (
+                <path
+                  data-border="state"
+                  d={borderPaths.state}
+                  fill="none"
+                  stroke={rules.borders.state_color}
+                  strokeWidth={rules.borders.state_width}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+            </g>
+          )}
           <g ref={labelsGRef} pointerEvents="none">
             {labeled.map((node) => (
               <text
@@ -549,13 +631,16 @@ export function MapView(props: MapViewProps) {
               <path
                 key={id}
                 data-selected={id}
-                d={geometry.paths[id] ?? ''}
-                fill={mode === 'select' ? colors.selected : 'none'}
-                fillOpacity={
-                  mode === 'select' ? SELECTED_FILL_OPACITY : undefined
+                className={
+                  mode === 'view' ? 'pg-map-selected-pulse' : undefined
                 }
-                stroke={colors.selected}
-                strokeWidth={OVERLAY_STROKE_PX}
+                d={geometry.paths[id] ?? ''}
+                fill={colors.hover}
+                fillOpacity={
+                  mode === 'select'
+                    ? rules.selection.picked_opacity
+                    : undefined
+                }
                 vectorEffect="non-scaling-stroke"
               />
             ))}

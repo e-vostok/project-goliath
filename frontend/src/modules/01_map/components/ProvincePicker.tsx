@@ -47,6 +47,7 @@ import {
   type SelectionLimits,
 } from '../lib/selection';
 import type { MapNodeDTO } from '../types';
+import { useMapBorders } from '../hooks/useMapBorders';
 import { useMapGeometry } from '../hooks/useMapGeometry';
 import { useMapManifest } from '../hooks/useMapManifest';
 import { useMapSearch } from '../hooks/useMapSearch';
@@ -83,6 +84,10 @@ export function ProvincePicker({
     manifestState.status === 'ready' ? manifestState.manifest : null;
   const geometryState = useMapGeometry(
     manifest?.geometry_version ?? null,
+    manifestState.reload,
+  );
+  const bordersState = useMapBorders(
+    manifest?.borders_version ?? null,
     manifestState.reload,
   );
   const mapState = useMapState(manifest?.rules.refresh ?? null);
@@ -486,6 +491,8 @@ export function ProvincePicker({
               mode="select"
               manifest={manifest}
               geometry={geometryState.geometry}
+              borders={bordersState.borders}
+              bordersFailed={bordersState.status === 'error'}
               state={mapState.state}
               selectedIds={selection}
               disabledIds={disabledIds}
