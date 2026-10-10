@@ -6,12 +6,20 @@
  *   bays path (sea fill, Spec 1.9 step 5a) · `outside` path ·
  *   ONE <g> with all node paths (single delegated mouse handling,
  *   resolved via `data-id`, no per-path listeners) · labels · overlays.
- * - Pan/zoom live in refs, never in React state; the transform is
- *   applied to ONE container <g> inside requestAnimationFrame. React
- *   state is committed only when a gesture settles (that is what the
- *   zoom-dependent label set re-evaluates on).
+ * - Pan/zoom live in refs, never in React state. The SETTLED transform
+ *   is baked into the `transform` attribute of ONE container <g>. While
+ *   a gesture is active, the in-flight delta is applied as a CSS
+ *   transform on the <svg> ELEMENT instead (map2_12): the compositor
+ *   moves the already-painted raster and the ~2.8 MB of path geometry
+ *   is NOT re-painted per frame. On settle the CSS delta is removed
+ *   and the attribute re-baked in the same task, so the swap is
+ *   invisible. React state is committed only when a gesture settles
+ *   (that is what the zoom-dependent label set re-evaluates on).
  * - Labels are hidden while a gesture is active (3.9 must not cost
- *   frames) and re-evaluated once it settles.
+ *   frames) and re-evaluated once it settles. The dashed internal
+ *   border path and the selection pulse are also switched off for the
+ *   gesture + the settle window — the boundary re-paints are the only
+ *   ones left, and the ~700 KB dash re-stroke is their dominant cost.
  * - Hover and selection are drawn as overlay copies of the node `d`,
  *   never by restyling the node paths.
  * - The wheel handler is registered non-passive and is the only zoom.
@@ -130,10 +138,14 @@ export function MapView(props: MapViewProps) {
   const colors = rules.colors;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const worldRef = useRef<SVGGElement>(null);
   const labelsGRef = useRef<SVGGElement>(null);
+  const internalPathRef = useRef<SVGPathElement>(null);
   const hoverPathRef = useRef<SVGPathElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  /** Transform currently baked into `worldRef`'s attribute. */
+  const bakedRef = useRef<ViewTransform | null>(null);
 
   const viewRef = useRef<ViewTransform | null>(null);
   const frame = useRef(0);
@@ -165,6 +177,28 @@ export function MapView(props: MapViewProps) {
 
   /* ------------------------------------------------ transform plumbing */
 
+  // Write `v` into the world <g> attribute and clear any in-flight CSS
+  // delta on the <svg>. Called on every non-gesture commit and once
+  // when a gesture settles — the raster then sharpens again.
+  const bakeTransform = useCallback((v: ViewTransform) => {
+    if (worldRef.current) {
+      worldRef.current.setAttribute(
+        'transform',
+        `translate(${v.tx} ${v.ty}) scale(${v.s})`,
+      );
+    }
+    bakedRef.current = v;
+    const svg = svgRef.current;
+    if (svg) {
+      svg.style.transform = '';
+      svg.style.willChange = '';
+    }
+  }, []);
+
+  // In-flight gesture transform: delta of `viewRef` over the baked
+  // transform, applied as a CSS transform on the <svg> element so the
+  // compositor moves the painted raster instead of re-painting every
+  // frame. screen′ = k·screen + (tx′ − k·tx, ty′ − k·ty) with k = s′/s.
   const applyTransform = useCallback(() => {
     if (frame.current !== 0) {
       return;
@@ -172,20 +206,32 @@ export function MapView(props: MapViewProps) {
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
       const v = viewRef.current;
-      if (v && worldRef.current) {
-        worldRef.current.setAttribute(
-          'transform',
-          `translate(${v.tx} ${v.ty}) scale(${v.s})`,
-        );
+      const svg = svgRef.current;
+      if (!v || !svg) {
+        return;
       }
+      const b = bakedRef.current;
+      if (b === null) {
+        bakeTransform(v);
+        return;
+      }
+      const k = b.s === 0 ? 1 : v.s / b.s;
+      const dx = v.tx - k * b.tx;
+      const dy = v.ty - k * b.ty;
+      svg.style.transformOrigin = '0 0';
+      svg.style.transform = `translate(${dx}px, ${dy}px) scale(${k})`;
+      svg.style.willChange = 'transform';
     });
-  }, []);
+  }, [bakeTransform]);
 
-  const commitView = useCallback((v: ViewTransform) => {
-    viewRef.current = v;
-    setView(v);
-    applyTransform();
-  }, [applyTransform]);
+  const commitView = useCallback(
+    (v: ViewTransform) => {
+      viewRef.current = v;
+      bakeTransform(v);
+      setView(v);
+    },
+    [bakeTransform],
+  );
 
   const bounds = useCallback((): [number, number] => {
     const sMin = minScale(rules.frame, viewport);
@@ -265,12 +311,25 @@ export function MapView(props: MapViewProps) {
 
   /* ----------------------------------------------------------- gestures */
 
+  // While a gesture (or the settle window) is active the map is drawn
+  // simplified: labels hidden, the dashed internal border path off and
+  // the selection pulse paused — the boundary re-paints then skip the
+  // ~700 KB dash re-stroke, the dominant raster cost (map2_12). The
+  // `data-gesture` attribute also lets CSS pause the pulse.
+  const setGestureSimplify = useCallback((active: boolean) => {
+    containerRef.current?.toggleAttribute('data-gesture', active);
+    if (internalPathRef.current) {
+      internalPathRef.current.style.display = active ? 'none' : '';
+    }
+    setLabelsVisible(!active);
+  }, [setLabelsVisible]);
+
   const beginGesture = useCallback(() => {
-    setLabelsVisible(false);
+    setGestureSimplify(true);
     if (settleTimer.current) {
       clearTimeout(settleTimer.current);
     }
-  }, [setLabelsVisible]);
+  }, [setGestureSimplify]);
 
   const endGestureSoon = useCallback(() => {
     if (settleTimer.current) {
@@ -278,12 +337,13 @@ export function MapView(props: MapViewProps) {
     }
     settleTimer.current = setTimeout(() => {
       settleTimer.current = null;
-      setLabelsVisible(true);
+      setGestureSimplify(false);
       if (viewRef.current) {
+        bakeTransform(viewRef.current);
         setView({ ...viewRef.current });
       }
     }, GESTURE_SETTLE_MS);
-  }, [setLabelsVisible]);
+  }, [setGestureSimplify, bakeTransform]);
 
   // Wheel zoom — non-passive, the only zoom path (Spec 3.8).
   useEffect(() => {
@@ -540,6 +600,9 @@ export function MapView(props: MapViewProps) {
         .pg-map-selected-pulse {
           animation: pg-map-selected-pulse ${rules.selection.pulse_period_s}s ease-in-out infinite;
         }
+        [data-gesture] .pg-map-selected-pulse {
+          animation-play-state: paused;
+        }
         @media (prefers-reduced-motion: reduce) {
           .pg-map-selected-pulse {
             animation: none;
@@ -547,7 +610,7 @@ export function MapView(props: MapViewProps) {
           }
         }
       `}</style>
-      <svg width={viewport.width} height={viewport.height}>
+      <svg ref={svgRef} width={viewport.width} height={viewport.height}>
         <g ref={worldRef}>
           {/* background — inland water shows through the holes (lakes)
               of `outside`; confined to view_box in MAP coordinates so
@@ -576,6 +639,7 @@ export function MapView(props: MapViewProps) {
             <g data-layer="borders" pointerEvents="none">
               {borderPaths.internal !== '' && (
                 <path
+                  ref={internalPathRef}
                   data-border="internal"
                   d={borderPaths.internal}
                   fill="none"
