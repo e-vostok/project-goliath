@@ -110,6 +110,15 @@ const RULES = {
     pulse_period_s: 2.4,
     picked_opacity: 0.28,
   },
+  // Mirrors the `relief` block of configs/01_map.yaml (map2_5).
+  relief: {
+    enabled: true,
+    margin_units: 12,
+    strength_playable: 0.55,
+    inactive_opacity: 0.45,
+    inactive_tint: '#3D4A58',
+    edge_fade_units: 6,
+  },
   require_connected_start: true,
   big_window_enabled: true,
   refresh: {
@@ -135,6 +144,7 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
 };

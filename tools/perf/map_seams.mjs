@@ -68,7 +68,7 @@ async function loadRules() {
   }
   const [, fx, fy, fw, fh] = frameBlock.map(Number);
   const sec = (name) => {
-    const m = new RegExp(`^${name}:\\s*\\n((?:[ \\t]+[^\\n]*\\n)+)`, 'm').exec(text);
+    const m = new RegExp(`^${name}:[^\\n]*\\n((?:[ \\t]+[^\\n]*\\n)+)`, 'm').exec(text);
     if (!m) return {};
     const out = {};
     for (const l of m[1].split('\n')) {
@@ -91,6 +91,7 @@ async function loadRules() {
   const bigWindow = sec('big_window');
   const view = sec('view');
   const starting = sec('starting_group');
+  const relief = sec('relief');
   return {
     frame: [fx, fy, fw, fh],
     zoom_max: view.zoom_max,
@@ -103,6 +104,7 @@ async function loadRules() {
     hover_stroke_enabled: hover.stroke_enabled,
     borders,
     selection,
+    relief, // map2_5 — straight pass-through of the yaml block
     require_connected_start: starting.require_connected,
     big_window_enabled: bigWindow.enabled,
     refresh: {
@@ -135,6 +137,7 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
 };
