@@ -89,6 +89,7 @@ import {
   type BorderLayer,
 } from '../lib/borders';
 import { buildOwnerMap, nodeFill } from '../lib/colors';
+import { useRelief } from '../lib/relief';
 import { displayName } from '../lib/search';
 import { selectTooltipStatus } from '../lib/selection';
 import { visibleLabelNodes } from '../lib/labels';
@@ -208,6 +209,11 @@ export function MapView(props: MapViewProps) {
     () => buildOwnerMap(props.state ?? null, nodesById),
     [props.state, nodesById],
   );
+
+  // Relief underlay (map2_5): null until the image arrives — every
+  // layer below renders exactly as before while it loads and forever
+  // when disabled or failed.
+  const relief = useRelief(rules.relief);
 
   /* ------------------------------------------------ transform plumbing */
 
@@ -663,6 +669,20 @@ export function MapView(props: MapViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [manifest.nodes, geometry.version, owners, colors, legacyStrokes, seamStrokes, seamColor],
   );
+  // The fills split by kind so the relief multiply blend (map2_5) can
+  // apply to land only — SEA fills keep the plain sea colour.
+  const landPaths = useMemo(
+    () =>
+      nodePaths.filter(
+        (_, i) => manifest.nodes[i].kind === 'LAND',
+      ),
+    [nodePaths, manifest.nodes],
+  );
+  const seaPaths = useMemo(
+    () =>
+      nodePaths.filter((_, i) => manifest.nodes[i].kind === 'SEA'),
+    [nodePaths, manifest.nodes],
+  );
 
   const labeled = useMemo(
     () =>
@@ -791,8 +811,9 @@ export function MapView(props: MapViewProps) {
         cursor: cursorStyle,
         userSelect: 'none',
         // Anything beyond view_box (pan margin, oversized window) is
-        // land/unknown sea outside the playable field.
-        background: colors.outside,
+        // land/unknown sea outside the playable field — or plain sea
+        // outside the relief picture when the relief is on (map2_5).
+        background: relief ? colors.sea : colors.outside,
       }}
     >
       {/* Selection pulse (map2_4): opacity swings min→max→min on one
@@ -812,6 +833,20 @@ export function MapView(props: MapViewProps) {
           .pg-map-selected-pulse {
             animation: none;
             opacity: ${(rules.selection.pulse_min_opacity + rules.selection.pulse_max_opacity) / 2};
+          }
+        }
+        /* relief fade-in (map2_5): the raster mounts only after it is
+           decoded; a short opacity ramp avoids a hard pop. */
+        @keyframes pg-relief-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .pg-relief-in {
+          animation: pg-relief-in 400ms ease-out;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .pg-relief-in {
+            animation: none;
           }
         }
       `}</style>
@@ -836,11 +871,73 @@ export function MapView(props: MapViewProps) {
               pointerEvents="none"
             />
           )}
-          <path d={geometry.outside} fill={colors.outside} />
-          {/* fills — each inherits the land-coloured seam-cover stroke
-              from this <g> (map2_13/map2_14): cracks between neighbours
-              show land, never the sea underneath; writeView zeroes the
-              group width below SEAM_MIN_S where no crack can be seen. */}
+          {/* The outside path carries the inactive zone: classic
+              `colors.outside` while the relief is off/absent, and the
+              plain sea colour once it is on — the relief picture then
+              supplies the land (its own sea is transparent). */}
+          <path
+            d={geometry.outside}
+            fill={relief ? colors.sea : colors.outside}
+          />
+          {/* relief (map2_5): one static raster under the fills, lazy —
+              mounts only once the image is decoded, so the map never
+              blocks or flickers waiting for it; moves with the same
+              world transform as every other layer (map2_14). */}
+          {relief !== null && (
+            <image
+              data-layer="relief"
+              href={relief.url}
+              x={relief.rect[0]}
+              y={relief.rect[1]}
+              width={relief.rect[2]}
+              height={relief.rect[3]}
+              preserveAspectRatio="none"
+              pointerEvents="none"
+              className="pg-relief-in"
+            />
+          )}
+          {/* inactive-zone dimming (map2_5): a tint over the `outside`
+              shape clipped by the relief's own land alpha, so real land
+              that is not a province is dimmed while sea and lakes under
+              `outside` keep the plain sea colour. */}
+          {relief !== null && (
+            <g pointerEvents="none">
+              <mask
+                id="pg-relief-land"
+                maskUnits="userSpaceOnUse"
+                x={relief.rect[0]}
+                y={relief.rect[1]}
+                width={relief.rect[2]}
+                height={relief.rect[3]}
+                style={{ maskType: 'alpha' }}
+              >
+                <image
+                  href={relief.url}
+                  x={relief.rect[0]}
+                  y={relief.rect[1]}
+                  width={relief.rect[2]}
+                  height={relief.rect[3]}
+                  preserveAspectRatio="none"
+                />
+              </mask>
+              <path
+                data-layer="relief-dim"
+                d={geometry.outside}
+                fill={rules.relief.inactive_tint}
+                fillOpacity={rules.relief.inactive_opacity}
+                mask="url(#pg-relief-land)"
+              />
+            </g>
+          )}
+          {/* fills — SEA first (plain sea colour, never shaded), then
+              LAND; when the relief is on a masked copy of the raster in
+              `multiply` sits right above them so its shading shows
+              through the palette (map2_5). Each land fill
+              inherits the land-coloured seam-cover stroke from this <g>
+              (map2_13/map2_14): cracks between neighbours show land,
+              never the sea underneath; writeView zeroes the group width
+              below SEAM_MIN_S where no crack can be seen. */}
+          <g data-layer="sea-nodes">{seaPaths}</g>
           <g
             ref={nodesGRef}
             data-layer="nodes"
@@ -851,8 +948,50 @@ export function MapView(props: MapViewProps) {
                anyway, so the lighter AA is invisible. */
             shapeRendering="optimizeSpeed"
           >
-            {nodePaths}
+            {landPaths}
           </g>
+          {/* playable multiply (map2_5): a second copy of the same
+              relief raster above the land fills — multiply commutes, so
+              the fills get the shading while the element being blended
+              stays a single cached texture (a <g> of fills would have
+              to re-rasterise ~800 paths every gesture frame). Masked to
+              the complement of `outside` so inactive land is not
+              darkened twice. */}
+          {relief !== null && (
+            <g pointerEvents="none">
+              <mask
+                id="pg-relief-playable"
+                maskUnits="userSpaceOnUse"
+                x={relief.rect[0]}
+                y={relief.rect[1]}
+                width={relief.rect[2]}
+                height={relief.rect[3]}
+              >
+                <rect
+                  x={relief.rect[0]}
+                  y={relief.rect[1]}
+                  width={relief.rect[2]}
+                  height={relief.rect[3]}
+                  fill="white"
+                />
+                <path d={geometry.outside} fill="black" />
+              </mask>
+              <image
+                data-layer="relief-mult"
+                href={relief.url}
+                x={relief.rect[0]}
+                y={relief.rect[1]}
+                width={relief.rect[2]}
+                height={relief.rect[3]}
+                preserveAspectRatio="none"
+                mask="url(#pg-relief-playable)"
+                style={{
+                  mixBlendMode: 'multiply',
+                  opacity: rules.relief.strength_playable,
+                }}
+              />
+            </g>
+          )}
           {/* border layer: above the fills, below selection/hover and
               labels — chunked + LOD copies, inert (map2_4, map2_14). */}
           {borderEls}
