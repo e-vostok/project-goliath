@@ -113,12 +113,30 @@ describe('MapView — gesture simplification (map2_12)', () => {
       new MouseEvent('mousemove', { clientX: 440, clientY: 310 }),
     );
 
-    // Gesture mode: switch attribute set, dashed layer hidden, the CSS
-    // delta lives on the <svg> (baked attribute untouched).
+    // Gesture mode: switch attribute set, the CSS delta lives on the
+    // <svg> (baked attribute untouched). The solid internal border
+    // stays visible mid-drag (map2_13) — the gesture state hides
+    // nothing but the labels while the pulse pauses via CSS.
     await waitFor(() => {
       expect(container).toHaveAttribute('data-gesture');
     });
-    expect(internal.style.display).toBe('none');
+    expect(internal.style.display).toBe('');
+    // The labels group is the only layer still hidden mid-gesture.
+    const labelsG = document.querySelector(
+      '[data-layer="labels"]',
+    ) as SVGGElement;
+    expect(labelsG.style.display).toBe('none');
+    expect(
+      [...svg.querySelectorAll('g')].filter(
+        (g) => g.style.display === 'none' && g !== labelsG,
+      ),
+    ).toHaveLength(0);
+    // The pulse pause lives in the injected CSS, keyed by data-gesture.
+    expect(
+      [...document.querySelectorAll('style')].some((s) =>
+        s.textContent?.includes('[data-gesture] .pg-map-selected-pulse'),
+      ),
+    ).toBe(true);
     await waitFor(() => {
       expect(svg.style.transform).not.toBe('');
     });
@@ -133,8 +151,8 @@ describe('MapView — gesture simplification (map2_12)', () => {
       },
       { timeout: 1000 },
     );
-    // Idle again: dashed layer restored, delta cleared, the pan baked
-    // into the world attribute (x is locked, y moved by +10).
+    // Idle again: labels restored, delta cleared, the pan baked into
+    // the world attribute (x is locked, y moved by +10).
     expect(internal.style.display).toBe('');
     expect(svg.style.transform).toBe('');
     expect(world.getAttribute('transform')).toBe(

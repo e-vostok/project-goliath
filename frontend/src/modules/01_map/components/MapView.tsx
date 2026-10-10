@@ -16,20 +16,24 @@
  *   invisible. React state is committed only when a gesture settles
  *   (that is what the zoom-dependent label set re-evaluates on).
  * - Labels are hidden while a gesture is active (3.9 must not cost
- *   frames) and re-evaluated once it settles. The dashed internal
- *   border path and the selection pulse are also switched off for the
- *   gesture + the settle window — the boundary re-paints are the only
- *   ones left, and the ~700 KB dash re-stroke is their dominant cost.
+ *   frames) and re-evaluated once it settles. The selection pulse is
+ *   also paused for the gesture + the settle window. Every border —
+ *   the solid internal line included — stays visible during gestures
+ *   (map2_13): the player must never lose province outlines mid-drag.
  * - Hover and selection are drawn as overlay copies of the node `d`,
  *   never by restyling the node paths.
  * - The wheel handler is registered non-passive and is the only zoom.
  * - Geometry is parsed once per version (paths memoised by version).
  *
- * Border layer (map2_4): three compound paths from `borders.json` sit
- * between the fills and the labels — dashed INTERNAL inside one owner,
- * solid STATE on land borders between owners, thin COAST everywhere a
- * node meets the sea/excluded land/map edge. The per-node fill stroke
- * is kept only as the fallback when the borders payload failed to load
+ * Border layer (map2_4, map2_13): three compound paths from
+ * `borders.json` sit between the fills and the labels — a thin solid
+ * INTERNAL line inside one owner (or both free), solid STATE on land
+ * borders between owners, thin COAST everywhere a node meets the
+ * sea/excluded land/map edge. Under the fills one static seam-cover
+ * path strokes every shared edge with `colors.land_underlay`, so the
+ * anti-aliasing hairlines the neighbouring fills leave along those
+ * edges show land colour, never the sea. The per-node fill stroke is
+ * kept only as the fallback when the borders payload failed to load
  * (the hook logs one warning then).
  *
  * `mode="select"` (Issue 6): a settled click reports the node id via
@@ -63,6 +67,7 @@ import {
   TOOLTIP_OFFSET_PX,
 } from '../constants';
 import { buildBorderPaths } from '../lib/borders';
+import { buildSeamCover } from '../lib/underlay';
 import { buildOwnerMap, nodeFill } from '../lib/colors';
 import { displayName } from '../lib/search';
 import { selectTooltipStatus } from '../lib/selection';
@@ -141,7 +146,6 @@ export function MapView(props: MapViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const worldRef = useRef<SVGGElement>(null);
   const labelsGRef = useRef<SVGGElement>(null);
-  const internalPathRef = useRef<SVGPathElement>(null);
   const hoverPathRef = useRef<SVGPathElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   /** Transform currently baked into `worldRef`'s attribute. */
@@ -312,15 +316,13 @@ export function MapView(props: MapViewProps) {
   /* ----------------------------------------------------------- gestures */
 
   // While a gesture (or the settle window) is active the map is drawn
-  // simplified: labels hidden, the dashed internal border path off and
-  // the selection pulse paused — the boundary re-paints then skip the
-  // ~700 KB dash re-stroke, the dominant raster cost (map2_12). The
-  // `data-gesture` attribute also lets CSS pause the pulse.
+  // simplified: labels hidden and the selection pulse paused. The
+  // border layer is NOT part of the simplification since map2_13 —
+  // the solid internal line costs far less than the old dash re-stroke
+  // and must stay visible mid-drag. The `data-gesture` attribute also
+  // lets CSS pause the pulse.
   const setGestureSimplify = useCallback((active: boolean) => {
     containerRef.current?.toggleAttribute('data-gesture', active);
-    if (internalPathRef.current) {
-      internalPathRef.current.style.display = active ? 'none' : '';
-    }
     setLabelsVisible(!active);
   }, [setLabelsVisible]);
 
@@ -524,6 +526,15 @@ export function MapView(props: MapViewProps) {
   // Legacy per-node strokes survive only as the borders-failed fallback.
   const legacyStrokes = borderPaths === null && props.bordersFailed === true;
 
+  // The seam cover is static for the life of this borders payload: it
+  // depends on the shared edges only, never on ownership, so it is
+  // never rebuilt on state refreshes (map2_13).
+  const seamCover = useMemo(
+    () => buildSeamCover(props.borders ?? null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.borders?.version],
+  );
+
   const nodePaths = useMemo(
     () =>
       manifest.nodes.map((node) => (
@@ -632,6 +643,23 @@ export function MapView(props: MapViewProps) {
             />
           )}
           <path d={geometry.outside} fill={colors.outside} />
+          {/* seam cover (map2_13): a land-coloured stroke along every
+              shared edge, under the fills — hairline cracks between
+              provinces show land colour, never the sea. World-scaled
+              (no non-scaling-stroke) and viewport-clipped: ~7 ms
+              re-raster where a stroked land union measured ~250 ms. */}
+          {seamCover !== '' && (
+            <path
+              data-layer="land-underlay"
+              d={seamCover}
+              fill="none"
+              stroke={colors.land_underlay ?? colors.neutral_province}
+              strokeWidth={0.05}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              pointerEvents="none"
+            />
+          )}
           <g>{nodePaths}</g>
           {/* border layer: above the fills, below selection/hover and
               labels — three compound paths, inert (map2_4). */}
@@ -639,14 +667,12 @@ export function MapView(props: MapViewProps) {
             <g data-layer="borders" pointerEvents="none">
               {borderPaths.internal !== '' && (
                 <path
-                  ref={internalPathRef}
                   data-border="internal"
                   d={borderPaths.internal}
                   fill="none"
                   stroke={rules.borders.internal_color}
                   strokeWidth={rules.borders.internal_width}
                   strokeOpacity={rules.borders.internal_opacity}
-                  strokeDasharray={rules.borders.internal_dash}
                   vectorEffect="non-scaling-stroke"
                 />
               )}
@@ -672,7 +698,7 @@ export function MapView(props: MapViewProps) {
               )}
             </g>
           )}
-          <g ref={labelsGRef} pointerEvents="none">
+          <g ref={labelsGRef} data-layer="labels" pointerEvents="none">
             {labeled.map((node) => (
               <text
                 key={node.id}
