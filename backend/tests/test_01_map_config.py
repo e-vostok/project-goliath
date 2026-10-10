@@ -71,6 +71,14 @@ def _base_config() -> dict:
             "picked_opacity": 0.28,
         },
         "strait": {"default_crossing_multiplier": 0.5},
+        "relief": {
+            "enabled": True,
+            "margin_units": 12,
+            "strength_playable": 0.55,
+            "inactive_opacity": 0.45,
+            "inactive_tint": "#3D4A58",
+            "edge_fade_units": 6,
+        },
         "starting_group": {"require_connected": True},
         "big_window": {"enabled": True},
         "limits": {
@@ -234,6 +242,37 @@ class TestHover:
                 tmp_path, {"hover": {"fill_opacity": edge}}
             )
             assert MapConfig.from_yaml(path).hover.fill_opacity == edge
+
+
+class TestRelief:
+    """map2_5: the relief block keeps its strict ranges so a bad value
+    cannot silently reach the client rules DTO."""
+
+    @pytest.mark.parametrize(
+        "key,value",
+        [
+            ("margin_units", 0.9),
+            ("margin_units", 40.01),
+            ("strength_playable", -0.01),
+            ("strength_playable", 1.01),
+            ("inactive_opacity", -0.01),
+            ("inactive_opacity", 1.01),
+            ("edge_fade_units", -0.01),
+            ("edge_fade_units", 20.01),
+            ("inactive_tint", "not-a-colour"),
+        ],
+    )
+    def test_out_of_range_rejected(self, tmp_path, key, value):
+        path = _write_config(tmp_path, {"relief": {key: value}})
+
+        with pytest.raises(ValidationError) as exc_info:
+            MapConfig.from_yaml(path)
+
+        assert key in str(exc_info.value)
+
+    def test_disabled_is_valid(self, tmp_path):
+        path = _write_config(tmp_path, {"relief": {"enabled": False}})
+        assert MapConfig.from_yaml(path).relief.enabled is False
 
 
 class TestCrossFieldRules:

@@ -75,6 +75,17 @@ class MapSelectionRulesDTO(BaseModel):
     picked_opacity: float
 
 
+class MapReliefRulesDTO(BaseModel):
+    """``MapViewRulesDTO.relief`` — client relief-underlay style (map2_5)."""
+
+    enabled: bool
+    margin_units: float
+    strength_playable: float
+    inactive_opacity: float
+    inactive_tint: str
+    edge_fade_units: float
+
+
 class MapViewRulesDTO(BaseModel):
     """``MapManifestDTO.rules`` — client-side view rules from the config."""
 
@@ -90,6 +101,7 @@ class MapViewRulesDTO(BaseModel):
     hover_stroke_enabled: bool
     borders: MapBordersRulesDTO
     selection: MapSelectionRulesDTO
+    relief: MapReliefRulesDTO
     require_connected_start: bool
     big_window_enabled: bool
     refresh: MapRefreshRulesDTO
