@@ -13,7 +13,6 @@ const COLORS = {
   inland_water: '#1E3547',
   province_border: '#3A3A3A',
   hover: '#FFFFFF',
-  selected: '#FFD24A',
 };
 
 const land: MapNodeDTO = {
@@ -46,6 +45,7 @@ describe('nodeFill', () => {
 describe('buildOwnerMap', () => {
   const state: MapStateDTO = {
     geometry_version: 'v1',
+    borders_version: 'b1',
     turn: 3,
     nations: [NATION, { id: 'n2', name: 'Другия', color_hex: '#00ff00' }],
     owners: [

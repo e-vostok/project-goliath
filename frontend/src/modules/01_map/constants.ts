@@ -31,12 +31,8 @@ export const LABEL_TEXT_COLOR = '#F2F3F5';
 /** Label halo colour — fixed UI chrome. */
 export const LABEL_HALO_COLOR = 'rgba(0,0,0,0.75)';
 
-/** Stroke width of hover/selection overlay outlines, px (screen-constant). */
+/** Stroke width of the hover overlay outline, px (screen-constant). */
 export const OVERLAY_STROKE_PX = 2;
-
-/** Fill opacity of the selection overlay in `select` mode — the owner
- *  colour stays readable underneath (Spec Part 5). */
-export const SELECTED_FILL_OPACITY = 0.35;
 
 /** Node card width, px (Spec Part 5: «около 280 px»). */
 export const NODECARD_WIDTH_PX = 280;

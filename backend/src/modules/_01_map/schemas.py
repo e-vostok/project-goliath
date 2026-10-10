@@ -54,6 +54,28 @@ class MapRefreshRulesDTO(BaseModel):
     stale_after_seconds: int
 
 
+class MapBordersRulesDTO(BaseModel):
+    """``MapViewRulesDTO.borders`` — client border-layer style (map2_4)."""
+
+    internal_width: float
+    internal_dash: str
+    internal_opacity: float
+    internal_color: str
+    state_width: float
+    state_color: str
+    coast_width: float
+    coast_color: str
+
+
+class MapSelectionRulesDTO(BaseModel):
+    """``MapViewRulesDTO.selection`` — client selection style (map2_4)."""
+
+    pulse_min_opacity: float
+    pulse_max_opacity: float
+    pulse_period_s: float
+    picked_opacity: float
+
+
 class MapViewRulesDTO(BaseModel):
     """``MapManifestDTO.rules`` — client-side view rules from the config."""
 
@@ -67,6 +89,8 @@ class MapViewRulesDTO(BaseModel):
     colors: dict[str, str]
     hover_fill_opacity: float
     hover_stroke_enabled: bool
+    borders: MapBordersRulesDTO
+    selection: MapSelectionRulesDTO
     require_connected_start: bool
     big_window_enabled: bool
     refresh: MapRefreshRulesDTO

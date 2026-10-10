@@ -52,9 +52,24 @@ def _base_config() -> dict:
             "inland_water": "#1E3547",
             "province_border": "#3A3A3A",
             "hover": "#FFFFFF",
-            "selected": "#FFD24A",
         },
         "hover": {"fill_opacity": 0.14, "stroke_enabled": False},
+        "borders": {
+            "internal_width": 0.7,
+            "internal_dash": "5 3",
+            "internal_opacity": 0.55,
+            "internal_color": "#3A3A3A",
+            "state_width": 1.8,
+            "state_color": "#101014",
+            "coast_width": 0.9,
+            "coast_color": "#24262B",
+        },
+        "selection": {
+            "pulse_min_opacity": 0.10,
+            "pulse_max_opacity": 0.32,
+            "pulse_period_s": 2.4,
+            "picked_opacity": 0.28,
+        },
         "strait": {"default_crossing_multiplier": 0.5},
         "starting_group": {"require_connected": True},
         "big_window": {"enabled": True},
@@ -63,6 +78,7 @@ def _base_config() -> dict:
             "max_edges_per_node": 60,
             "max_geometry_bytes": 5_000_000,
             "max_manifest_bytes": 3_000_000,
+            "max_borders_bytes": 2_000_000,
         },
         "attribution": {"text": "Карта: MapChart.net, лицензия CC BY-SA 4.0"},
     }
@@ -244,7 +260,7 @@ class TestCrossFieldRules:
             ("colors", "sea", "1E3547"),       # missing '#'
             ("colors", "hover", "#FFF"),       # too short
             ("colors", "outside", "#GGGGGG"),  # not hex
-            ("colors", "selected", "#FF00000"),  # too long
+            ("borders", "state_color", "#FF00000"),  # too long
         ],
     )
     def test_invalid_hex_color_rejected(self, tmp_path, section, key, bad):
