@@ -47,6 +47,14 @@ export const MINI_RULES: MapViewRulesDTO = {
     pulse_period_s: 2.0,
     picked_opacity: 0.25,
   },
+  relief: {
+    enabled: false,
+    margin_units: 4,
+    strength_playable: 0.55,
+    inactive_opacity: 0.45,
+    inactive_tint: '#3D4A58',
+    edge_fade_units: 2,
+  },
   require_connected_start: true,
   big_window_enabled: true,
   refresh: {

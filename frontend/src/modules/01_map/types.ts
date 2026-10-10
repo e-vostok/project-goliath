@@ -58,6 +58,24 @@ export interface MapSelectionRulesDTO {
   picked_opacity: number;
 }
 
+/**
+ * `rules.relief` — grayscale relief underlay (map2_5). The image
+ * itself lives under `/assets/map/` (name from `relief/manifest.json`,
+ * content-hashed, cacheable immutable); these fields only steer how it
+ * is blended, dimmed and faded. `margin_units`/`edge_fade_units` are
+ * bake-time inputs, carried for transparency.
+ */
+export interface MapReliefRulesDTO {
+  enabled: boolean;
+  margin_units: number;
+  /** Strength of the relief showing through the playable fills (0..1). */
+  strength_playable: number;
+  /** Opacity of the dimming tint over non-province land (0..1). */
+  inactive_opacity: number;
+  inactive_tint: string;
+  edge_fade_units: number;
+}
+
 export interface MapViewRulesDTO {
   /** [x, y, width, height] in view_box units — Spec 3.8 zoom-out frame. */
   frame: [number, number, number, number];
@@ -73,6 +91,7 @@ export interface MapViewRulesDTO {
   hover_stroke_enabled: boolean;
   borders: MapBordersRulesDTO;
   selection: MapSelectionRulesDTO;
+  relief: MapReliefRulesDTO;
   require_connected_start: boolean;
   big_window_enabled: boolean;
   refresh: MapRefreshRulesDTO;
