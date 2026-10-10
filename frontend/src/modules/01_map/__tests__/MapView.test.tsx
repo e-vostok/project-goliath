@@ -4,10 +4,11 @@
  * colors.sea, never interactive; an empty `sea_water` renders nothing.
  */
 
-import { render } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 
 import { MapView } from '../components/MapView';
 import {
+  MINI_BORDERS,
   MINI_GEOMETRY,
   MINI_MANIFEST,
   MINI_RULES,
@@ -63,6 +64,82 @@ describe('MapView — sea_water layer', () => {
     expect(
       background().nextElementSibling?.getAttribute('d'),
     ).toBe(MINI_GEOMETRY.outside);
+  });
+});
+
+describe('MapView — gesture simplification (map2_12)', () => {
+  // The container reports a real size so the view transform initialises
+  // (jsdom rects are 0×0 otherwise).
+  beforeEach(() => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 800,
+      height: 600,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      toJSON: () => ({}),
+    } as DOMRect);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('drag switches the map to gesture mode and back on settle', async () => {
+    render(
+      <MapView
+        manifest={MINI_MANIFEST}
+        geometry={MINI_GEOMETRY}
+        borders={MINI_BORDERS}
+        selectedIds={[1001]}
+      />,
+    );
+    const container = document.querySelector(
+      '[data-testid="map-view"]',
+    ) as HTMLElement;
+    const svg = container.querySelector('svg') as SVGSVGElement;
+    const world = svg.querySelector('g') as SVGGElement;
+    const internal = document.querySelector(
+      '[data-border="internal"]',
+    ) as SVGPathElement;
+    expect(internal).not.toBeNull();
+    // Settled transform is baked into the world attribute.
+    expect(world.getAttribute('transform')).toBe(
+      'translate(-80 -120) scale(12)',
+    );
+
+    fireEvent.mouseDown(container, { button: 0, clientX: 400, clientY: 300 });
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: 440, clientY: 310 }),
+    );
+
+    // Gesture mode: switch attribute set, dashed layer hidden, the CSS
+    // delta lives on the <svg> (baked attribute untouched).
+    await waitFor(() => {
+      expect(container).toHaveAttribute('data-gesture');
+    });
+    expect(internal.style.display).toBe('none');
+    await waitFor(() => {
+      expect(svg.style.transform).not.toBe('');
+    });
+    expect(world.getAttribute('transform')).toBe(
+      'translate(-80 -120) scale(12)',
+    );
+
+    window.dispatchEvent(new MouseEvent('mouseup'));
+    await waitFor(
+      () => {
+        expect(container).not.toHaveAttribute('data-gesture');
+      },
+      { timeout: 1000 },
+    );
+    // Idle again: dashed layer restored, delta cleared, the pan baked
+    // into the world attribute (x is locked, y moved by +10).
+    expect(internal.style.display).toBe('');
+    expect(svg.style.transform).toBe('');
+    expect(world.getAttribute('transform')).toBe(
+      'translate(-80 -110) scale(12)',
+    );
   });
 });
 
