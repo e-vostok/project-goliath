@@ -70,10 +70,18 @@ describe('MapView — seam cover via node strokes (map2_13, map2_14)', () => {
     // per-frame re-raster inside the frame budget.
     expect(g.getAttribute('vector-effect')).toBeNull();
     const paths = nodePaths();
+    const landIds = new Set(
+      MINI_MANIFEST.nodes
+        .filter((n) => n.kind === 'LAND')
+        .map((n) => String(n.id)),
+    );
     for (const p of paths) {
-      // Colour and width are inherited from the group — no per-path
-      // stroke attributes (writeView owns the group width).
-      expect(p.getAttribute('stroke')).toBeNull();
+      // LAND fills inherit colour and width from the group — no
+      // per-path stroke attributes (writeView owns the group width).
+      // SEA fills opt out of the cover with stroke="none" (map2_15).
+      expect(p.getAttribute('stroke')).toBe(
+        landIds.has(p.getAttribute('data-id') ?? '') ? null : 'none',
+      );
       expect(p.getAttribute('stroke-width')).toBeNull();
       expect(p.getAttribute('vector-effect')).toBeNull();
     }
