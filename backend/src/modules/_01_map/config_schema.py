@@ -171,6 +171,7 @@ class LimitsSettings(_Strict):
     max_edges_per_node: int = Field(ge=4, le=100)
     max_geometry_bytes: int = Field(ge=100_000, le=20_000_000)
     max_manifest_bytes: int = Field(ge=100_000, le=20_000_000)
+    max_borders_bytes: int = Field(ge=100_000, le=5_000_000)
 
 
 class AttributionSettings(_Strict):

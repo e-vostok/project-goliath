@@ -83,6 +83,10 @@ class MapService:
     def geometry_version(self) -> str:
         return self._data.geometry_version
 
+    @property
+    def borders_version(self) -> str:
+        return self._data.borders_version
+
     # ----------------------------------------------------------- lookups
 
     def get_node(self, node_id: int) -> MapNode:
