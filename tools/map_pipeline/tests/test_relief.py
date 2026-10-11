@@ -104,6 +104,10 @@ def test_off_raster_registration_fails_with_clear_message():
 #
 # (lon, lat) pairs the Project Owner named; the transform converts them
 # to base units, the manifest rect converts those to image pixels.
+# map2_17: every non-province water body inside the playable frame —
+# gulfs, fjords, lakes, slivers — must read alpha 0 in the world image,
+# not only at the middle but near the shore, because map2_16 passed the
+# middle-of-lake checks while whole gulfs stayed black.
 
 PLAYABLE_ZERO = {
     "north_sea": (3.5, 56.0),
@@ -119,15 +123,34 @@ PLAYABLE_OPAQUE = {
 }
 INACTIVE_OPAQUE = {
     "iceland": (-18.5, 64.9),
-    "w_kazakhstan": (55.0, 50.0),
+    "w_kazakhstan": (60.0, 48.5),
     "sahara": (10.0, 23.0),
-    "greenland": (-40.0, 73.0),
-    "ohio": (-82.8, 40.2),
+    "greenland": (-42.0, 72.0),
+    "ohio": (-83.0, 40.0),
+    # The excluded zone («За краем игрового поля») stays inactive land.
+    "excluded_east": (60.0, 55.0),
 }
+# Middle AND a near-shore point for every named water body. Several of
+# these are holes of the node union — invisible to per-polygon filling,
+# which is exactly what made them black on production.
 INACTIVE_ZERO = {
-    "atlantic": (-30.0, 35.0),
-    "black_sea": (34.7, 43.4),
-    "lake_vanern": (13.2, 58.9),
+    "gulf_of_corinth_mid": (22.95, 38.25),
+    "gulf_of_corinth_shore": (23.10, 38.18),
+    "euboean_gulf_mid": (23.28, 38.55),
+    "euboean_gulf_shore": (23.05, 38.50),
+    "lake_vattern_mid": (14.55, 58.40),
+    "lake_vattern_shore": (14.62, 58.55),
+    "lake_malaren_mid": (17.25, 59.42),
+    "lake_vanern_mid": (13.30, 58.90),
+    "lake_ohrid_mid": (20.72, 41.08),
+    "lake_ohrid_shore": (20.74, 41.02),
+    "limfjord_mid": (9.70, 56.95),
+    "limfjord_shore": (9.15, 56.95),
+    "hardangerfjord": (6.15, 60.25),
+    "izmir_bay": (27.05, 38.42),
+    "black_sea": (34.5, 43.5),
+    "atlantic_w_ireland": (-15.0, 52.0),
+    "atlantic_open": (-25.0, 45.0),
 }
 
 
@@ -184,3 +207,38 @@ def test_baked_alpha_at_sample_points():
         assert _alpha_at(
             inactive, rect_w, lon, lat, transform, world=True
         ) == 0, f"inactive alpha must be 0 at {name}"
+
+
+def test_no_black_water_inside_the_frame():
+    """No dark pixel survives inside the playable frame.
+
+    map2_16 left gulfs, fjords and lake rings black because the
+    subtraction was per polygon, not per union. The regression guard is
+    the whole-picture invariant the Project Owner asked for: inside the
+    PLAYABLE FRAME (all nodes united, union holes filled, grown) but
+    OUTSIDE the excluded-zone polygons, the world image must carry no
+    opaque pixel at all — zero connected components.
+    """
+    from scipy.ndimage import label
+
+    from tools.map_pipeline.svgpath import parse_path
+
+    geometry = br.load_geometry()
+    manifest = br.load_manifest()
+    inactive, rect_w = _load_baked("inactive")
+    alpha = inactive[..., 3]
+    x0, y0, w, h = rect_w
+    rect = (x0, y0, x0 + w, y0 + h)
+    ppu = alpha.shape[1] / w
+
+    frame = br.playable_frame(rect, ppu, geometry, manifest)
+    outside = (
+        br.poly_alpha(list(parse_path(geometry["outside"])), rect, ppu)
+        >= 128
+    )
+    black = (alpha > 0) & frame & ~outside
+    _lbl, n = label(black)
+    assert n == 0, (
+        f"{n} dark components ({black.sum()} px) inside the playable "
+        "frame — non-province water is being painted as inactive land"
+    )

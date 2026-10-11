@@ -13,7 +13,7 @@
     "sha256": "ad3beffde7ad86dc878cb07fa8a088c287add867743dbde9258c01ca103726b8"
   },
   "inactive": {
-    "file": "/assets/map/relief.inactive.4aea8db1ee30.webp",
+    "file": "/assets/map/relief.inactive.f4047228afbb.webp",
     "rect": [
       -37.42610777921584,
       -109.6630683876279,
@@ -21,7 +21,7 @@
       926.5113800187708
     ],
     "px_per_unit": 5.0,
-    "bytes": 165570,
-    "sha256": "4aea8db1ee3049092fe1c40871cd9020e9b5d5a1aa9e776547a13bf7c9430d5d"
+    "bytes": 376528,
+    "sha256": "f4047228afbbeaf68cce6c10547d20ad53ef901d84846970d91701b82f1f694a"
   }
 }

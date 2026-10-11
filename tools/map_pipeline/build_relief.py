@@ -1,8 +1,9 @@
-"""map2_16: bake the two relief rasters for the 01_map client.
+"""map2_17: bake the two relief rasters for the 01_map client.
 
 Input : a Natural Earth raster («Gray Earth with Shaded Relief and
         Hypsography», plate carrée) as the downloaded .zip or the .tif
-        inside it — fetched manually, NEVER committed.
+        inside it, plus the ``ne_10m_land`` and ``ne_10m_lakes`` vector
+        zips — all fetched manually, NEVER committed.
         Registration (lon/lat -> base units) is the fitted transform in
         ``tools/map_pipeline/relief/registration.json`` — the same for
         every Natural Earth plate-carrée raster; its Gall model maps
@@ -20,15 +21,19 @@ a) PLAYABLE — up to ``MAX_PPU`` px/unit over the LAND-node bbox.
 
 b) INACTIVE — ``WORLD_PPU`` px/unit over the whole world rect.
    Luma is the relief dimmed by ``relief.inactive_brightness``.
-   Alpha = raster land mask MINUS the playable union (all node
-   polygons with holes filled, eroded by ``SUBTRACT_ERODE_UNITS`` so
-   the dark land laps a little under the opaque fills — the visible
-   edge stays exactly the province shape); plus the land parts of
-   ``outside`` (the excluded zone) — which the formula already
-   covers. Everywhere else alpha 0: ocean stays plain sea colour.
+   Alpha = the land mask rasterised from the ``ne_10m_land`` polygons
+   MINUS ``ne_10m_lakes`` (vector coverage, NE_SS x supersampling —
+   a smooth 8-bit edge, never a raster threshold) TIMES the keep
+   mask: 1 outside the PLAYABLE FRAME, the ``outside`` (excluded)
+   polygons inside it. The frame is the union of ALL node polygons
+   (LAND and SEA) with ALL union holes filled, grown by
+   ``FRAME_GROW_UNITS`` — so every gulf, fjord, lake, bay and sliver
+   between provinces inside the frame is alpha 0 (plain sea colour),
+   while the excluded zone stays inactive land.
 
 Run (from repo root):
     python -m tools.map_pipeline.build_relief --raster <GRAY_HR_SR.zip>
+        --ne-land <ne_10m_land.zip> --ne-lakes <ne_10m_lakes.zip>
         [--check-coast] [--dry-run]
 """
 from __future__ import annotations
@@ -45,7 +50,9 @@ import numpy as np
 import yaml
 from PIL import Image, ImageDraw
 from scipy.ndimage import (
+    binary_dilation,
     binary_erosion,
+    binary_fill_holes,
     distance_transform_edt,
     label,
     map_coordinates,
@@ -81,10 +88,12 @@ SEA_MAX_STD = 1.2        # local 5x5 std — the raster sea is texture-free
 MIN_SEA_UNITS2 = 2.5     # smaller flat components are land texture
 RELIEF_CONTRAST = 0.6    # keep this share of deviation from the local mean
 CONTRAST_SIGMA_UNITS = 0.9
-SUBTRACT_ERODE_UNITS = 1.0  # inactive land laps this far under the fills
-POLE_LAT_CUT = 88.0         # |lat| above this is forced sea (pole artifact)
 RECT_PAD_UNITS = 1.0        # output rect padding around tight bounds
 AA_SCALE = 2                # supersampling for polygon-alpha edges
+FRAME_GROW_UNITS = 0.15     # union growth closing inter-polygon slivers
+FRAME_WORK_SCALE = 2        # internal oversampling of the frame mask
+NE_SS = 4                   # supersampling for the vector land coverage
+COVERAGE_BAND = 64          # output rows per rasterisation band
 
 # Coast agreement control points (lon, lat) — checked by --check-coast.
 CONTROL_POINTS = {
@@ -188,11 +197,11 @@ def rasterize(polys, rect, ppu: float, fill: int = 255,
 
 def poly_alpha(polys, rect, ppu: float) -> np.ndarray:
     """Anti-aliased 0..255 alpha: polygons with holes, 2x supersample."""
+    x0, y0, x1, y1 = rect
+    out_w = max(1, int(round((x1 - x0) * ppu)))
+    out_h = max(1, int(round((y1 - y0) * ppu)))
     hi = rasterize(polys, rect, ppu * AA_SCALE)
-    h, w = hi.shape
-    img = Image.fromarray(hi, "L").resize(
-        (w // AA_SCALE, h // AA_SCALE), Image.BOX
-    )
+    img = Image.fromarray(hi, "L").resize((out_w, out_h), Image.BOX)
     return np.asarray(img)
 
 
@@ -275,6 +284,148 @@ def grade(gray: np.ndarray, ppu: float) -> np.ndarray:
     g = gray.astype(np.float32)
     mean = uniform_filter(g, size=max(3, int(CONTRAST_SIGMA_UNITS * ppu)))
     return np.clip(mean + (g - mean) * RELIEF_CONTRAST, 0, 255)
+
+
+# ------------------------------------------ Natural Earth vector land mask
+
+
+def load_ne_rings(zip_path: Path, transform: Transform):
+    """NE shapefile zip -> [(exterior_xy, [hole_xy, ...])] in base units.
+
+    Every ring vertex is pushed through the fitted registration, so the
+    vector coast lands exactly where the warped raster lands.
+    """
+    import shapefile  # pyshp — reads .shp straight from memory
+    from shapely.geometry import box as shp_box
+    from shapely.geometry import shape as shp_shape
+
+    sphere = shp_box(-180.0, -90.0, 180.0, 90.0)
+    polys = []
+    with zipfile.ZipFile(zip_path) as z:
+        names = z.namelist()
+
+        def member(suffix: str) -> str:
+            return next(
+                n for n in names if n.lower().endswith(suffix)
+            )
+
+        reader = shapefile.Reader(
+            shp=io.BytesIO(z.read(member(".shp"))),
+            shx=io.BytesIO(z.read(member(".shx"))),
+            dbf=io.BytesIO(z.read(member(".dbf"))),
+        )
+        for sr in reader.iterShapes():
+            # Clipping to the sphere splits antimeridian-crossing rings
+            # (Russia's Far East, Antarctica) into per-side parts; the
+            # transform cannot wrap a 360-degree jump.
+            geom = shp_shape(sr.__geo_interface__).intersection(sphere)
+            if geom.is_empty:
+                continue
+            if geom.geom_type == "Polygon":
+                parts = [geom]
+            elif geom.geom_type == "MultiPolygon":
+                parts = list(geom.geoms)
+            else:  # GeometryCollection — keep its polygons only
+                parts = [
+                    g for g in geom.geoms
+                    if g.geom_type == "Polygon"
+                ]
+            for p in parts:
+                ext = np.asarray(p.exterior.coords, dtype=float)
+                bx, by = transform.fwd(ext[:, 0], ext[:, 1])
+                ext_u = np.column_stack([bx, by])
+                ints = []
+                for ring in p.interiors:
+                    ixy = np.asarray(ring.coords, dtype=float)
+                    ibx, iby = transform.fwd(ixy[:, 0], ixy[:, 1])
+                    ints.append(np.column_stack([ibx, iby]))
+                polys.append((ext_u, ints))
+    return polys
+
+
+def coverage_aa(fill_polys, erase_polys, rect, ppu: float,
+                ss: int = NE_SS) -> np.ndarray:
+    """8-bit land coverage over ``rect`` at ``ppu``, ``ss``x supersampled.
+
+    Draws ``fill_polys`` (exteriors 255, interiors 0) then ``erase_polys``
+    (exteriors 0 — the lakes carve land, their islands redraw at 255)
+    in row bands so the 4x canvas never lives whole in memory.
+    """
+    x0, y0, x1, y1 = rect
+    w = max(1, int(round((x1 - x0) * ppu)))
+    h = max(1, int(round((y1 - y0) * ppu)))
+
+    def items(polys):
+        out = []
+        for ext, ints in polys:
+            ys = [ext[:, 1]] + [i[:, 1] for i in ints]
+            out.append((min(y.min() for y in ys),
+                        max(y.max() for y in ys), ext, ints))
+        return out
+
+    fill_items = items(fill_polys)
+    erase_items = items(erase_polys)
+    out = np.zeros((h, w), dtype=np.uint8)
+    for r0 in range(0, h, COVERAGE_BAND):
+        r1 = min(h, r0 + COVERAGE_BAND)
+        y_lo = y0 + r0 / ppu
+        y_hi = y0 + r1 / ppu
+        img = Image.new("L", (w * ss, (r1 - r0) * ss), 0)
+        draw = ImageDraw.Draw(img)
+
+        def to_px(coords):
+            return [
+                ((x - x0) * ppu * ss, (y - y_lo) * ppu * ss)
+                for x, y in coords
+            ]
+
+        for lo, hi, ext, ints in fill_items:
+            if hi < y_lo or lo > y_hi:
+                continue
+            draw.polygon(to_px(ext), fill=255)
+            for hole in ints:
+                draw.polygon(to_px(hole), fill=0)
+        for lo, hi, ext, ints in erase_items:
+            if hi < y_lo or lo > y_hi:
+                continue
+            draw.polygon(to_px(ext), fill=0)
+            for hole in ints:
+                draw.polygon(to_px(hole), fill=255)
+        band = np.asarray(img)
+        band = (
+            band.reshape(r1 - r0, ss, w * ss).mean(axis=1)
+            .reshape(r1 - r0, w, ss).mean(axis=2)
+        )
+        out[r0:r1] = band.astype(np.uint8)
+    return out
+
+
+def playable_frame(rect, ppu: float, geometry, manifest) -> np.ndarray:
+    """The PLAYABLE FRAME as a bool grid over ``rect`` at ``ppu``.
+
+    Union of ALL node polygons (LAND and SEA) with the holes of the
+    UNION filled — so gulfs and lakes enclosed by several provinces are
+    inside the frame — then grown by ``FRAME_GROW_UNITS`` to close the
+    slivers between separately simplified contours (the Vänern ring).
+    Built at ``FRAME_WORK_SCALE``x so sub-pixel cracks cannot leak.
+    """
+    x0, y0, x1, y1 = rect
+    out_w = max(1, int(round((x1 - x0) * ppu)))
+    out_h = max(1, int(round((y1 - y0) * ppu)))
+    ws = FRAME_WORK_SCALE
+    mask = (
+        rasterize(
+            node_polys(geometry, manifest), rect, ppu * ws, filled=True
+        )
+        > 0
+    )
+    mask = binary_fill_holes(mask)
+    grow = max(1, int(round(FRAME_GROW_UNITS * ppu * ws)))
+    mask = binary_dilation(mask, iterations=grow)
+    small = np.asarray(
+        Image.fromarray(mask).resize((out_w, out_h), Image.BOX)
+    )
+    return small > 0
 
 
 # ------------------------------------------------------------------ bake
@@ -371,32 +522,43 @@ def bake_playable(rect, ppu, transform, raster, to_px,
 
 
 def bake_inactive(rect, ppu, transform, raster, to_px,
-                  geometry, manifest, brightness: float):
-    """LA array: dimmed relief luma + world-land-minus-playable alpha."""
-    gray, valid, lats = warp(rect, ppu, transform, raster, to_px,
-                             strict_share=None)
+                  geometry, manifest, ne_land, ne_lakes,
+                  brightness: float):
+    """LA array: dimmed relief luma + (vector land & keep-mask) alpha.
+
+    ``keep`` is 1 outside the PLAYABLE FRAME and the ``outside``
+    excluded-zone coverage inside it — everything else inside the
+    frame (gulfs, fjords, lakes, slivers, SEA nodes) is alpha 0.
+    """
+    gray, _valid, _lats = warp(rect, ppu, transform, raster, to_px,
+                               strict_share=None)
     gray = grade(gray, ppu)
 
-    land_r = raster_land_mask(gray, ppu) & valid
-    # The extreme pole caps of the source raster (|lat| > ~88) are a
-    # flat sea sliver disconnected from the ocean — it fails the
-    # component-size test and would bake as a fake dark line along the
-    # world edge. No real land exists there (northernmost land ~83.6N;
-    # the Antarctic pole tip squashes to ~1 unit in this projection),
-    # so force it to sea.
-    land_r &= np.abs(lats) <= POLE_LAT_CUT
-    playable_filled = (
-        rasterize(node_polys(geometry, manifest), rect, ppu,
-                  filled=True) > 0
+    land = (
+        coverage_aa(ne_land, ne_lakes, rect, ppu).astype(np.float32)
+        / 255.0
     )
-    erode_px = max(1, int(round(SUBTRACT_ERODE_UNITS * ppu)))
-    playable_filled = binary_erosion(playable_filled, iterations=erode_px)
-    alpha = land_r & ~playable_filled
+    frame = playable_frame(rect, ppu, geometry, manifest)
+    outside = (
+        poly_alpha(list(parse_path(geometry["outside"])), rect, ppu)
+        .astype(np.float32) / 255.0
+    )
+    if frame.shape != land.shape or outside.shape != land.shape:
+        raise ReliefBuildError(
+            f"mask shape mismatch: land {land.shape}, frame "
+            f"{frame.shape}, outside {outside.shape}"
+        )
+    keep = np.maximum(1.0 - frame.astype(np.float32), outside)
+    alpha = np.rint(land * keep * 255).astype(np.uint8)
+    # Inside the frame only genuinely excluded land may stay dark —
+    # sub-half coverage at the excluded coast is just the raster and
+    # the geometry disagreeing by a sliver; painting it leaves phantom
+    # specks in water holes, so cut it. The visible outside edge keeps
+    # its smooth coverage at >=50%.
+    alpha[frame & (outside < 0.5)] = 0
 
     dim = np.clip(gray.astype(np.float32) * brightness, 0, 255)
-    return np.dstack(
-        [dim.astype(np.uint8), (alpha * 255).astype(np.uint8)]
-    )
+    return np.dstack([dim.astype(np.uint8), alpha])
 
 
 def encode_webp(la: np.ndarray, quality: int) -> bytes:
@@ -511,6 +673,10 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--raster", type=Path, required=True,
                         help="Natural Earth .zip or .tif (never committed)")
+    parser.add_argument("--ne-land", type=Path, required=True,
+                        help="ne_10m_land.zip (never committed)")
+    parser.add_argument("--ne-lakes", type=Path, required=True,
+                        help="ne_10m_lakes.zip (never committed)")
     parser.add_argument("--registration", type=Path, default=REGISTRATION)
     parser.add_argument("--check-coast", action="store_true",
                         help="report coastline shift at the control points")
@@ -527,6 +693,12 @@ def main(argv=None) -> int:
     print(f"loading {args.raster.name}…", flush=True)
     raster, to_px = load_raster(args.raster)
     print(f"  {raster.shape[1]}x{raster.shape[0]} {raster.dtype}",
+          flush=True)
+    print(f"loading {args.ne_land.name} + {args.ne_lakes.name}…",
+          flush=True)
+    ne_land = load_ne_rings(args.ne_land, transform)
+    ne_lakes = load_ne_rings(args.ne_lakes, transform)
+    print(f"  land {len(ne_land)} polys, lakes {len(ne_lakes)} polys",
           flush=True)
 
     if args.check_coast:
@@ -546,7 +718,8 @@ def main(argv=None) -> int:
         )
         la_w = bake_inactive(
             inactive_rect, ppu_w, transform, raster, to_px,
-            geometry, manifest, relief_cfg["inactive_brightness"],
+            geometry, manifest, ne_land, ne_lakes,
+            relief_cfg["inactive_brightness"],
         )
         return (
             (*encode_best(la_p, WEBP_QUALITY), la_p.shape),
