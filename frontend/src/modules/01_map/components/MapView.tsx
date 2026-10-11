@@ -4,6 +4,7 @@
  * Performance contract (1 123 paths, ~1.9 MB geometry):
  * - Layers bottom→top: background rect (inland_water) · `sea_water`
  *   bays path (sea fill, Spec 1.9 step 5a) · `outside` path ·
+ *   inactive-world + playable relief images (map2_16, lazy) ·
  *   ONE <g> with all node paths (single delegated mouse handling,
  *   resolved via `data-id`, no per-path listeners) · border chunks ·
  *   labels · overlays.
@@ -210,9 +211,9 @@ export function MapView(props: MapViewProps) {
     [props.state, nodesById],
   );
 
-  // Relief underlay (map2_5): null until the image arrives — every
-  // layer below renders exactly as before while it loads and forever
-  // when disabled or failed.
+  // Relief underlay (map2_16): {inactive, playable} nulls until the
+  // images arrive — every other layer renders exactly as before while
+  // they load and forever when disabled or failed.
   const relief = useRelief(rules.relief);
 
   /* ------------------------------------------------ transform plumbing */
@@ -812,8 +813,9 @@ export function MapView(props: MapViewProps) {
         userSelect: 'none',
         // Anything beyond view_box (pan margin, oversized window) is
         // land/unknown sea outside the playable field — or plain sea
-        // outside the relief picture when the relief is on (map2_5).
-        background: relief ? colors.sea : colors.outside,
+        // once the world relief is on: it supplies every land pixel
+        // the camera can reach (map2_16).
+        background: relief.inactive ? colors.sea : colors.outside,
       }}
     >
       {/* Selection pulse (map2_4): opacity swings min→max→min on one
@@ -872,125 +874,87 @@ export function MapView(props: MapViewProps) {
             />
           )}
           {/* The outside path carries the inactive zone: classic
-              `colors.outside` while the relief is off/absent, and the
-              plain sea colour once it is on — the relief picture then
-              supplies the land (its own sea is transparent). */}
+              `colors.outside` while the world relief is off/absent, and
+              the plain sea colour once it is on — the dark world image
+              then supplies every land pixel (its own water stays
+              transparent); it is never a flat grey over the relief. */}
           <path
             d={geometry.outside}
-            fill={relief ? colors.sea : colors.outside}
+            fill={relief.inactive ? colors.sea : colors.outside}
           />
-          {/* relief (map2_5): one static raster under the fills, lazy —
-              mounts only once the image is decoded, so the map never
-              blocks or flickers waiting for it; moves with the same
-              world transform as every other layer (map2_14). */}
-          {relief !== null && (
+          {/* relief (map2_16): two baked rasters, lazy — they mount
+              only once decoded, so the map never blocks or flickers
+              waiting for them; both move with the same world transform
+              as every other layer (map2_14). Alpha is baked into the
+              images: no runtime clip/mask, no fade or feather — the
+              visible relief edge IS the province / world-land shape. */}
+          {relief.inactive && (
             <image
-              data-layer="relief"
-              href={relief.url}
-              x={relief.rect[0]}
-              y={relief.rect[1]}
-              width={relief.rect[2]}
-              height={relief.rect[3]}
+              data-layer="relief-inactive"
+              href={relief.inactive.file}
+              x={relief.inactive.rect[0]}
+              y={relief.inactive.rect[1]}
+              width={relief.inactive.rect[2]}
+              height={relief.inactive.rect[3]}
               preserveAspectRatio="none"
               pointerEvents="none"
               className="pg-relief-in"
             />
           )}
-          {/* inactive-zone dimming (map2_5): a tint over the `outside`
-              shape clipped by the relief's own land alpha, so real land
-              that is not a province is dimmed while sea and lakes under
-              `outside` keep the plain sea colour. */}
-          {relief !== null && (
-            <g pointerEvents="none">
-              <mask
-                id="pg-relief-land"
-                maskUnits="userSpaceOnUse"
-                x={relief.rect[0]}
-                y={relief.rect[1]}
-                width={relief.rect[2]}
-                height={relief.rect[3]}
-                style={{ maskType: 'alpha' }}
-              >
-                <image
-                  href={relief.url}
-                  x={relief.rect[0]}
-                  y={relief.rect[1]}
-                  width={relief.rect[2]}
-                  height={relief.rect[3]}
-                  preserveAspectRatio="none"
-                />
-              </mask>
-              <path
-                data-layer="relief-dim"
-                d={geometry.outside}
-                fill={rules.relief.inactive_tint}
-                fillOpacity={rules.relief.inactive_opacity}
-                mask="url(#pg-relief-land)"
-              />
-            </g>
+          {relief.playable && (
+            <image
+              data-layer="relief-playable"
+              href={relief.playable.file}
+              x={relief.playable.rect[0]}
+              y={relief.playable.rect[1]}
+              width={relief.playable.rect[2]}
+              height={relief.playable.rect[3]}
+              preserveAspectRatio="none"
+              pointerEvents="none"
+              className="pg-relief-in"
+            />
           )}
           {/* fills — SEA first (plain sea colour, never shaded), then
-              LAND; when the relief is on a masked copy of the raster in
-              `multiply` sits right above them so its shading shows
-              through the palette (map2_5). Each land fill
+              LAND; when the relief is on a copy of the playable raster
+              in `multiply` sits right above them so its shading shows
+              through the palette (map2_16). Each land fill
               inherits the land-coloured seam-cover stroke from this <g>
               (map2_13/map2_14): cracks between neighbours show land,
               never the sea underneath; writeView zeroes the group width
-              below SEAM_MIN_S where no crack can be seen. */}
+              below SEAM_MIN_S where no crack can be seen. Default
+              anti-aliased rendering (map2_16): the seam cover exists
+              for the cracks it would reveal. */}
           <g data-layer="sea-nodes">{seaPaths}</g>
           <g
             ref={nodesGRef}
             data-layer="nodes"
             stroke={seamStrokes ? seamColor : undefined}
             strokeWidth={SEAM_STROKE_W}
-            /* Faster raster path for the fills (map2_14): their edges
-               are re-drawn under the border strokes and the seam cover
-               anyway, so the lighter AA is invisible. */
-            shapeRendering="optimizeSpeed"
           >
             {landPaths}
           </g>
-          {/* playable multiply (map2_5): a second copy of the same
-              relief raster above the land fills — multiply commutes, so
-              the fills get the shading while the element being blended
-              stays a single cached texture (a <g> of fills would have
-              to re-rasterise ~800 paths every gesture frame). Masked to
-              the complement of `outside` so inactive land is not
-              darkened twice. */}
-          {relief !== null && (
-            <g pointerEvents="none">
-              <mask
-                id="pg-relief-playable"
-                maskUnits="userSpaceOnUse"
-                x={relief.rect[0]}
-                y={relief.rect[1]}
-                width={relief.rect[2]}
-                height={relief.rect[3]}
-              >
-                <rect
-                  x={relief.rect[0]}
-                  y={relief.rect[1]}
-                  width={relief.rect[2]}
-                  height={relief.rect[3]}
-                  fill="white"
-                />
-                <path d={geometry.outside} fill="black" />
-              </mask>
-              <image
-                data-layer="relief-mult"
-                href={relief.url}
-                x={relief.rect[0]}
-                y={relief.rect[1]}
-                width={relief.rect[2]}
-                height={relief.rect[3]}
-                preserveAspectRatio="none"
-                mask="url(#pg-relief-playable)"
-                style={{
-                  mixBlendMode: 'multiply',
-                  opacity: rules.relief.strength_playable,
-                }}
-              />
-            </g>
+          {/* playable multiply (map2_16): a second copy of the playable
+              raster above the fills — multiply commutes, so the fills
+              get the shading while the element being blended stays a
+              single cached texture (a <g> of fills would re-rasterise
+              ~800 paths every gesture frame). Its baked alpha already
+              limits shading to LAND provinces — no runtime mask. */}
+          {relief.playable && (
+            <image
+              data-layer="relief-mult"
+              href={relief.playable.file}
+              x={relief.playable.rect[0]}
+              y={relief.playable.rect[1]}
+              width={relief.playable.rect[2]}
+              height={relief.playable.rect[3]}
+              preserveAspectRatio="none"
+              pointerEvents="none"
+              className="pg-relief-in"
+              style={{
+                mixBlendMode: 'multiply',
+                opacity: rules.relief.strength_playable,
+              }}
+            />
           )}
           {/* border layer: above the fills, below selection/hover and
               labels — chunked + LOD copies, inert (map2_4, map2_14). */}

@@ -1,59 +1,85 @@
-/**
- * Relief underlay (map2_5): lazy loader for the baked Natural Earth
- * image. The map never waits for it — the hook starts the fetch after
- * mount and flips to `active` when the pixels actually arrived, so the
- * layer fades in on a usable map and a 404/network failure simply
- * leaves the classic look (one console warning, no retry storm).
- *
- * The file name and the world-space rect come from the generated
- * `relief/manifest.json` (written by tools/map_pipeline/build_relief.py);
- * the hash in the name makes it safe to cache as immutable.
- */
-
 import { useEffect, useState } from 'react';
 
-import reliefAsset from '../relief/manifest.json';
+import manifest from '../relief/manifest.json';
 import type { MapReliefRulesDTO } from '../types';
 
+/**
+ * One baked relief layer from `tools/map_pipeline/build_relief.py`:
+ * a WebP/PNG with alpha, content-hashed, its extent in base units.
+ */
 export interface ReliefLayer {
-  url: string;
-  /** [x, y, width, height] in world (view_box) units. */
+  file: string;
   rect: [number, number, number, number];
 }
 
+export interface ReliefState {
+  /** Dark world-land image, above the sea colour, below provinces. */
+  inactive: ReliefLayer | null;
+  /** Bright land-relief image covering the playable area. */
+  playable: ReliefLayer | null;
+}
+
+interface ManifestEntry {
+  file: string;
+  rect: number[]; // [x, y, w, h] in base units
+}
+
+function layerEntry(raw: ManifestEntry): ReliefLayer {
+  return { file: raw.file, rect: raw.rect as [number, number, number, number] };
+}
+
 /**
- * The loaded relief layer, or null while loading / when disabled /
- * after a load failure.
+ * Loads the two baked relief images lazily after the map has rendered —
+ * nothing else waits on them and they move with the map through the
+ * ordinary world `<g>` transform. The manifest pointer is bundled and
+ * content-hashed, so an unchanged name is immutable-cacheable while a
+ * new bake always arrives under a new URL.
  */
-export function useRelief(
-  rules: MapReliefRulesDTO | undefined,
-): ReliefLayer | null {
-  const enabled = rules?.enabled === true;
-  const [loaded, setLoaded] = useState(false);
+export function useRelief(rules: MapReliefRulesDTO | undefined): ReliefState {
+  const [state, setState] = useState<ReliefState>({
+    inactive: null,
+    playable: null,
+  });
+
   useEffect(() => {
-    if (!enabled) {
+    if (!rules?.enabled) {
+      setState({ inactive: null, playable: null });
       return;
     }
     let cancelled = false;
-    const img = new Image();
-    img.onload = () => {
-      if (!cancelled) {
-        setLoaded(true);
-      }
+    const raw = manifest as unknown as {
+      inactive?: ManifestEntry;
+      playable?: ManifestEntry;
     };
-    img.onerror = () => {
-      console.warn('01_map: relief image failed to load:', reliefAsset.file);
-    };
-    img.src = reliefAsset.file;
+    if (!raw.inactive?.file || !raw.playable?.file) {
+      console.warn('[relief] manifest has no usable entries');
+      return;
+    }
+
+    const load = (entry: ManifestEntry): Promise<ReliefLayer | null> =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(layerEntry(entry));
+        img.onerror = () => resolve(null);
+        img.src = entry.file;
+      });
+
+    Promise.all([load(raw.inactive), load(raw.playable)]).then(
+      ([inactive, playable]) => {
+        if (cancelled) return;
+        if (!inactive && !playable) {
+          console.warn('[relief] failed to load relief images', {
+            files: [raw.inactive?.file, raw.playable?.file],
+          });
+        }
+        setState({ inactive, playable });
+      },
+    );
+
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
-  if (!enabled || !loaded) {
-    return null;
-  }
-  return {
-    url: reliefAsset.file,
-    rect: reliefAsset.rect as ReliefLayer['rect'],
-  };
+  }, [rules?.enabled]);
+
+  return state;
 }

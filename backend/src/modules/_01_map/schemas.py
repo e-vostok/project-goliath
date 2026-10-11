@@ -76,14 +76,11 @@ class MapSelectionRulesDTO(BaseModel):
 
 
 class MapReliefRulesDTO(BaseModel):
-    """``MapViewRulesDTO.relief`` — client relief-underlay style (map2_5)."""
+    """``MapViewRulesDTO.relief`` — client relief-underlay style (map2_16)."""
 
     enabled: bool
-    margin_units: float
     strength_playable: float
-    inactive_opacity: float
-    inactive_tint: str
-    edge_fade_units: float
+    inactive_brightness: float
 
 
 class MapViewRulesDTO(BaseModel):

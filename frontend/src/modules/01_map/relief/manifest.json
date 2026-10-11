@@ -1,13 +1,27 @@
 {
-  "file": "/assets/map/relief.241aa68e7cbd.webp",
-  "rect": [
-    507.1,
-    8.899999999999999,
-    245.30000000000007,
-    241.3
-  ],
-  "px_per_unit": 17.97,
-  "bytes": 534594,
-  "sha256": "241aa68e7cbdd670d941d75d745ba7cecfbeb6d704813ac3acfb9f8312f64bc3",
-  "source": "GRAY_HR_SR.zip"
+  "source": "GRAY_HR_SR.zip",
+  "playable": {
+    "file": "/assets/map/relief.playable.ad3beffde7ad.webp",
+    "rect": [
+      526.85,
+      29.2,
+      212.79999999999995,
+      205.81
+    ],
+    "px_per_unit": 17.97,
+    "bytes": 438010,
+    "sha256": "ad3beffde7ad86dc878cb07fa8a088c287add867743dbde9258c01ca103726b8"
+  },
+  "inactive": {
+    "file": "/assets/map/relief.inactive.4aea8db1ee30.webp",
+    "rect": [
+      -37.42610777921584,
+      -109.6630683876279,
+      1200.7948039547518,
+      926.5113800187708
+    ],
+    "px_per_unit": 5.0,
+    "bytes": 165570,
+    "sha256": "4aea8db1ee3049092fe1c40871cd9020e9b5d5a1aa9e776547a13bf7c9430d5d"
+  }
 }

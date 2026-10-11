@@ -59,21 +59,18 @@ export interface MapSelectionRulesDTO {
 }
 
 /**
- * `rules.relief` — grayscale relief underlay (map2_5). The image
- * itself lives under `/assets/map/` (name from `relief/manifest.json`,
- * content-hashed, cacheable immutable); these fields only steer how it
- * is blended, dimmed and faded. `margin_units`/`edge_fade_units` are
- * bake-time inputs, carried for transparency.
+ * `rules.relief` — grayscale relief underlay (map2_16). Two images
+ * live under `/assets/map/` (names from `relief/manifest.json`,
+ * content-hashed, cacheable immutable): the bright playable relief and
+ * the near-black inactive world; these fields only steer how the
+ * playable image is blended and how dark the world was baked.
  */
 export interface MapReliefRulesDTO {
   enabled: boolean;
-  margin_units: number;
   /** Strength of the relief showing through the playable fills (0..1). */
   strength_playable: number;
-  /** Opacity of the dimming tint over non-province land (0..1). */
-  inactive_opacity: number;
-  inactive_tint: string;
-  edge_fade_units: number;
+  /** Brightness the inactive world relief was baked at (0.02..1). */
+  inactive_brightness: number;
 }
 
 export interface MapViewRulesDTO {
