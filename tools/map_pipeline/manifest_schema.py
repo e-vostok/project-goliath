@@ -54,6 +54,16 @@ class InputsSha256(_Strict):
     ids_lock: str = Field(pattern=_HEX64)
 
 
+class ManifestLabel(_Strict):
+    """``label`` box of a node (map2_6): anchor ``(x, y)`` plus the free
+    width ``w`` and height ``h`` the client fits the name into."""
+
+    x: float
+    y: float
+    w: float = Field(gt=0.0)
+    h: float = Field(gt=0.0)
+
+
 class ManifestNode(_Strict):
     id: int = Field(ge=MIN_NODE_ID)
     key: str = Field(pattern=_KEY_RE)
@@ -64,6 +74,7 @@ class ManifestNode(_Strict):
     anchor: list[float] = Field(min_length=2, max_length=2)
     bbox: list[float] = Field(min_length=4, max_length=4)
     area: float = Field(ge=0.0)
+    label: ManifestLabel
 
     @model_validator(mode="after")
     def _kinds(self):

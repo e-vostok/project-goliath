@@ -62,6 +62,7 @@ from .map_data import (
     MapData,
     MapEdge,
     MapNode,
+    NodeLabel,
 )
 from .map_files import Borders, Geometry, IdsLock, Manifest
 
@@ -507,6 +508,7 @@ def _build_map_data(
             anchor=(n.anchor[0], n.anchor[1]),
             bbox=(n.bbox[0], n.bbox[1], n.bbox[2], n.bbox[3]),
             area=n.area,
+            label=NodeLabel(x=n.label.x, y=n.label.y, w=n.label.w, h=n.label.h),
         )
         for n in sorted(manifest.nodes, key=lambda n: n.id)
     }

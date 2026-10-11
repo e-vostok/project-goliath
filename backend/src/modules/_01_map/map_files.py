@@ -76,6 +76,16 @@ class InputsSha256(_Strict):
     ids_lock: str = Field(pattern=_HEX64)
 
 
+class ManifestNodeLabel(_Strict):
+    """``manifest.nodes[].label`` (map2_6): the label anchor ``(x, y)``
+    and the free ``w``/``h`` box the client fits the name into."""
+
+    x: FiniteFloat
+    y: FiniteFloat
+    w: FiniteFloat = Field(gt=0.0)
+    h: FiniteFloat = Field(gt=0.0)
+
+
 class ManifestNode(_Strict):
     """One node of ``manifest.nodes`` (a land province or a sea zone)."""
 
@@ -88,6 +98,7 @@ class ManifestNode(_Strict):
     anchor: tuple[FiniteFloat, FiniteFloat]
     bbox: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
     area: FiniteFloat = Field(ge=0.0)
+    label: ManifestNodeLabel
 
     @model_validator(mode="after")
     def _kind_fields(self) -> Self:

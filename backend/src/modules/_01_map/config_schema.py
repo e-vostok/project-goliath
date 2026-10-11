@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Self
+from typing import Literal, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -215,6 +215,73 @@ class SelectionSettings(_Strict):
         return self
 
 
+class LabelsSettings(_Strict):
+    """Подписи узлов (map2_6): название рисуется, только если помещается
+    в свой ``label``-бокс на текущем масштабе; столкновения снимаются по
+    приоритету площади. Шрифт — один из встроенных файлов клиента."""
+
+    font: Literal[
+        "fira_sans_condensed", "pt_sans_narrow", "roboto_condensed"
+    ] = Field(
+        description="Один из трёх встроенных шрифтов (SIL OFL, WOFF2 в клиенте).",
+    )
+    land_min_px: int = Field(
+        ge=6,
+        le=14,
+        description="Подпись суши скрывается ниже этого размера шрифта, px.",
+    )
+    land_max_px: int = Field(
+        ge=9,
+        le=30,
+        description="Максимальный размер подписи суши, px.",
+    )
+    sea_min_px: int = Field(
+        ge=6,
+        le=14,
+        description="Подпись морской зоны скрывается ниже этого размера, px.",
+    )
+    sea_max_px: int = Field(
+        ge=9,
+        le=30,
+        description="Максимальный размер подписи морской зоны, px.",
+    )
+    fit_ratio: float = Field(
+        ge=0.5,
+        le=1.0,
+        description="Текст должен быть не шире и не выше этой доли label-бокса на экране.",
+    )
+    collision_padding_px: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Прозрачный отступ вокруг подписи при проверке столкновений, px.",
+    )
+    halo_width_px: float = Field(
+        ge=0.0,
+        le=8.0,
+        description="Толщина тёмного обвода (halo) вокруг букв, px.",
+    )
+    halo_color: str = Field(pattern=_HEX_COLOR_RE.pattern)
+    land_color: str = Field(pattern=_HEX_COLOR_RE.pattern)
+    sea_color: str = Field(pattern=_HEX_COLOR_RE.pattern)
+    sea_letter_spacing_em: float = Field(
+        ge=0.0,
+        le=0.3,
+        description="Разрежение букв морских подписей, em.",
+    )
+
+    @model_validator(mode="after")
+    def check_min_max(self) -> Self:
+        if self.land_min_px > self.land_max_px:
+            raise ValueError(
+                "labels.land_min_px must not exceed labels.land_max_px"
+            )
+        if self.sea_min_px > self.sea_max_px:
+            raise ValueError(
+                "labels.sea_min_px must not exceed labels.sea_max_px"
+            )
+        return self
+
+
 class StraitSettings(_Strict):
     default_crossing_multiplier: float = Field(
         ge=0.05,
@@ -282,6 +349,7 @@ class MapConfig(_Strict):
     selection: SelectionSettings
     strait: StraitSettings
     relief: ReliefSettings
+    labels: LabelsSettings
     starting_group: StartingGroupSettings
     big_window: BigWindowSettings
     limits: LimitsSettings

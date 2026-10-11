@@ -45,9 +45,11 @@ from modules._01_map.schemas import (
     MapBordersDTO,
     MapBordersRulesDTO,
     MapEdgeDTO,
+    MapLabelsRulesDTO,
     MapManifestDTO,
     MapNationDTO,
     MapNodeDTO,
+    MapNodeLabelDTO,
     MapRefreshRulesDTO,
     MapReliefRulesDTO,
     MapSelectionRulesDTO,
@@ -128,6 +130,20 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             strength_playable=config.relief.strength_playable,
             inactive_brightness=config.relief.inactive_brightness,
         ),
+        labels=MapLabelsRulesDTO(
+            font=config.labels.font,
+            land_min_px=config.labels.land_min_px,
+            land_max_px=config.labels.land_max_px,
+            sea_min_px=config.labels.sea_min_px,
+            sea_max_px=config.labels.sea_max_px,
+            fit_ratio=config.labels.fit_ratio,
+            collision_padding_px=config.labels.collision_padding_px,
+            halo_width_px=config.labels.halo_width_px,
+            halo_color=config.labels.halo_color,
+            land_color=config.labels.land_color,
+            sea_color=config.labels.sea_color,
+            sea_letter_spacing_em=config.labels.sea_letter_spacing_em,
+        ),
         require_connected_start=config.starting_group.require_connected,
         big_window_enabled=config.big_window.enabled,
         refresh=MapRefreshRulesDTO(
@@ -185,6 +201,12 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
             anchor=list(node.anchor),
             bbox=list(node.bbox),
             area=node.area,
+            label=MapNodeLabelDTO(
+                x=node.label.x,
+                y=node.label.y,
+                w=node.label.w,
+                h=node.label.h,
+            ),
         )
         for node in data.nodes.values()  # already ascending id order
     ]

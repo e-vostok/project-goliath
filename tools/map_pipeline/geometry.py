@@ -23,8 +23,14 @@ from shapely import (
     points as _points,
     set_precision,
 )
-from shapely.geometry import MultiPolygon, Point, Polygon, box
-from shapely.ops import polygonize, unary_union
+from shapely.geometry import (
+    LineString,
+    MultiPolygon,
+    Point,
+    Polygon,
+    box,
+)
+from shapely.ops import polygonize, polylabel, unary_union
 
 from .errors import (
     GEOMETRY_EMPTY,
@@ -50,11 +56,14 @@ _FRAGMENT_MAX_AREA = 5.0
 
 @dataclass
 class NodeMetrics:
-    """Per-node ``anchor``, ``bbox`` and ``area`` for the manifest."""
+    """Per-node ``anchor``, ``bbox``, ``area`` and ``label`` for the manifest."""
 
     anchor: tuple[float, float]
     bbox: tuple[float, float, float, float]
     area: float
+    # map2_6: label box ``(x, y, w, h)`` — anchor plus free width/height
+    # the client fits the node name into.
+    label: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
 
 @dataclass
@@ -852,8 +861,110 @@ def _nearest_grid_point_inside(
     return None
 
 
+# map2_6: a part holding this share of the node's area is "dominant" —
+# the label anchors inside it; below it the label spans the whole group
+# (island groups such as the Cyclades).
+_LABEL_DOMINANT_SHARE = 0.6
+# The multi-part label box covers this share of the group bounding box.
+_LABEL_GROUP_SHARE = 0.9
+
+
+def _chord_span(
+    part: Polygon, x: float, y: float, axis: str
+) -> tuple[float, float] | None:
+    """Extent ``(lo, hi)`` of ``part``'s chord through ``(x, y)`` along
+    ``axis`` — the segment of the y=const (``"x"``) or x=const (``"y"``)
+    line inside ``part`` that contains the anchor coordinate. A
+    non-convex part may cross the line in several segments; only the one
+    holding the anchor is the box the label can actually sit in."""
+    minx, miny, maxx, maxy = part.bounds
+    if axis == "x":
+        line = LineString([(minx - 1.0, y), (maxx + 1.0, y)])
+        anchor = x
+    else:
+        line = LineString([(x, miny - 1.0), (x, maxy + 1.0)])
+        anchor = y
+    inter = part.intersection(line)
+    if inter.is_empty:
+        return None
+    best: tuple[float, float] | None = None
+    for seg in shapely.get_parts(inter):
+        if seg.is_empty or seg.geom_type != "LineString":
+            continue
+        # Coordinate range of the segment along the axis.
+        lo, hi = (
+            (seg.bounds[0], seg.bounds[2])
+            if axis == "x"
+            else (seg.bounds[1], seg.bounds[3])
+        )
+        if lo - 1e-9 <= anchor <= hi + 1e-9:
+            if best is None or hi - lo > best[1] - best[0]:
+                best = (lo, hi)
+    return best
+
+
+def _centred_chord(
+    part: Polygon, x: float, y: float, axis: str
+) -> float:
+    """Width of the chord containing the anchor, clipped symmetric
+    around it: text centred on the pole can only occupy
+    ``2 × min(anchor − lo, hi − anchor)`` without crossing the shore."""
+    anchor = x if axis == "x" else y
+    span = _chord_span(part, x, y, axis)
+    if span is None:
+        return 0.0
+    lo, hi = span
+    return max(0.0, 2.0 * min(anchor - lo, hi - anchor))
+
+
+def label_box(geom, grid: float) -> tuple[float, float, float, float]:
+    """``(x, y, w, h)`` label box of one final node geometry (map2_6).
+
+    Dominant part (>= ``_LABEL_DOMINANT_SHARE`` of the node area):
+    ``x, y`` is the pole of inaccessibility of that part and ``w``/``h``
+    are the horizontal/vertical chords of the part through it — the
+    widest free span the name may occupy inside one landmass. Otherwise
+    (a true island group) the anchor is the area-weighted centre of the
+    parts — it may lie over the water between them — and ``w``/``h`` are
+    ``_LABEL_GROUP_SHARE`` of the group bounding box.
+    """
+    parts = _polygon_list(geom)
+    total = float(sum(p.area for p in parts))
+    largest = max(parts, key=lambda p: (p.area, tuple(-b for b in p.bounds)))
+    if total > 0 and largest.area >= _LABEL_DOMINANT_SHARE * total:
+        pole = polylabel(largest, tolerance=grid)
+        x, y = round(pole.x, 2), round(pole.y, 2)
+        if not largest.covers(Point(x, y)):
+            rp = largest.representative_point()
+            x, y = round(rp.x, 2), round(rp.y, 2)
+        # Single-part and dominant-part anchors must sit inside the
+        # polygon — a label never starts over water.
+        assert largest.covers(Point(x, y)), (
+            f"label anchor ({x}, {y}) outside its dominant part"
+        )
+        # The rendered box is centred on the anchor, so the usable
+        # span is the chord clipped to its shorter side — a centred
+        # label can never cross the shore (map2_6).
+        w = _centred_chord(largest, x, y, "x")
+        h = _centred_chord(largest, x, y, "y")
+    else:
+        cx = sum(p.area * p.centroid.x for p in parts) / total
+        cy = sum(p.area * p.centroid.y for p in parts) / total
+        x, y = round(cx, 2), round(cy, 2)
+        minx, miny, maxx, maxy = geom.bounds
+        # The box is centred on the weighted centre; when that centre
+        # sits near a group-bbox edge (one big island on one side) the
+        # full 0.9 share would spill over the edge — clip it symmetric
+        # just like a single-part chord.
+        w = _LABEL_GROUP_SHARE * 2.0 * min(cx - minx, maxx - cx)
+        h = _LABEL_GROUP_SHARE * 2.0 * min(cy - miny, maxy - cy)
+    # The loader contract is w, h > 0 — a degenerate sliver still gets
+    # one grid cell rather than a zero the backend would reject.
+    return (x, y, round(max(w, grid), 2), round(max(h, grid), 2))
+
+
 def node_metrics(geom, cfg: PipelineConfig) -> NodeMetrics:
-    """``anchor``, ``bbox`` and ``area`` of one final node geometry."""
+    """``anchor``, ``bbox``, ``area`` and ``label`` of one final node geometry."""
     grid = cfg.output.grid
     parts = _polygon_list(geom)
     largest = max(parts, key=lambda p: (p.area, tuple(-b for b in p.bounds)))
@@ -879,7 +990,12 @@ def node_metrics(geom, cfg: PipelineConfig) -> NodeMetrics:
         round(math.ceil(maxx / grid - 1e-9) * grid, 2),
         round(math.ceil(maxy / grid - 1e-9) * grid, 2),
     )
-    return NodeMetrics(anchor=(ax, ay), bbox=bbox, area=round(geom.area, 2))
+    return NodeMetrics(
+        anchor=(ax, ay),
+        bbox=bbox,
+        area=round(geom.area, 2),
+        label=label_box(geom, grid),
+    )
 
 
 # ---------------------------------------------------------------- step 9
