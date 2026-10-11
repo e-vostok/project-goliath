@@ -125,11 +125,8 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
         ),
         relief=MapReliefRulesDTO(
             enabled=config.relief.enabled,
-            margin_units=config.relief.margin_units,
             strength_playable=config.relief.strength_playable,
-            inactive_opacity=config.relief.inactive_opacity,
-            inactive_tint=config.relief.inactive_tint,
-            edge_fade_units=config.relief.edge_fade_units,
+            inactive_brightness=config.relief.inactive_brightness,
         ),
         require_connected_start=config.starting_group.require_connected,
         big_window_enabled=config.big_window.enabled,

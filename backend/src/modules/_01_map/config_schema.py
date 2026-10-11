@@ -224,35 +224,22 @@ class StraitSettings(_Strict):
 
 
 class ReliefSettings(_Strict):
-    """Подложка рельефа под картой (map2_5): серая картинка Natural
-    Earth под заливками, приглушённая неигровая суша, мягкий край."""
+    """Подложка рельефа под картой (map2_16): две картинки Natural
+    Earth — светлая под игровыми провинциями, почти чёрный неигровой
+    мир вокруг, без плавных переходов и обрезов."""
 
     enabled: bool = Field(
         description="Слой включён; false — карта выглядит как раньше.",
-    )
-    margin_units: float = Field(
-        ge=1.0,
-        le=40.0,
-        description="Запас картинки рельефа за рамку view.frame на каждую сторону, ед. view_box.",
     )
     strength_playable: float = Field(
         ge=0.0,
         le=1.0,
         description="Сила просвечивания рельефа сквозь заливки провинций (multiply).",
     )
-    inactive_opacity: float = Field(
-        ge=0.0,
+    inactive_brightness: float = Field(
+        ge=0.02,
         le=1.0,
-        description="Прозрачность приглушающей заливки неигровой суши.",
-    )
-    inactive_tint: str = Field(
-        pattern=_HEX_COLOR_RE.pattern,
-        description="Цвет приглушения неигровой суши (нейтральный серо-синий, к цвету моря).",
-    )
-    edge_fade_units: float = Field(
-        ge=0.0,
-        le=20.0,
-        description="Мягкий спад картинки к цвету моря у её края, ед. view_box.",
+        description="Яркость рельефа неигрового мира; целевое — блики не светлее #2A2A2A.",
     )
 
 
