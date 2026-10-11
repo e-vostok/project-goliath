@@ -41,6 +41,17 @@ EdgeType = Literal["land", "coast", "sea", "strait"]
 
 
 @dataclass(frozen=True)
+class NodeLabel:
+    """``manifest.nodes[].label`` (map2_6): anchor plus the free
+    ``w``/``h`` box the client fits the node name into."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+@dataclass(frozen=True)
 class MapNode:
     """One map node — a land province or a sea zone."""
 
@@ -53,6 +64,7 @@ class MapNode:
     anchor: tuple[float, float]
     bbox: tuple[float, float, float, float]
     area: float
+    label: NodeLabel
 
     @property
     def display_name(self) -> str:

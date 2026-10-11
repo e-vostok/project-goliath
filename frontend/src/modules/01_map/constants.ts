@@ -19,17 +19,9 @@ export const TOOLTIP_OFFSET_PX = 14;
 /** Extra margin when the view is fitted to a node bbox (search result). */
 export const FOCUS_BBOX_MARGIN = 1.2;
 
-/** Node label font size on screen, px (kept constant across zoom). */
-export const LABEL_FONT_PX = 13;
-
-/** Halo around label text for readability over any fill, px. */
-export const LABEL_HALO_PX = 3;
-
-/** Label text colour — fixed UI chrome, not a map colour rule. */
-export const LABEL_TEXT_COLOR = '#F2F3F5';
-
-/** Label halo colour — fixed UI chrome. */
-export const LABEL_HALO_COLOR = 'rgba(0,0,0,0.75)';
+/** Debounce of the label relayout after the last zoom step (map2_6,
+ *  Spec 3.9): one layout per settled scale, never mid-gesture. */
+export const LABEL_RELAYOUT_MS = 80;
 
 /** Stroke width of the hover overlay outline, px (screen-constant). */
 export const OVERLAY_STROKE_PX = 2;

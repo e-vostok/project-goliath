@@ -106,6 +106,12 @@ def build_manifest(
                     "anchor": [mt.anchor[0], mt.anchor[1]],
                     "bbox": list(mt.bbox),
                     "area": mt.area,
+                    "label": {
+                        "x": mt.label[0],
+                        "y": mt.label[1],
+                        "w": mt.label[2],
+                        "h": mt.label[3],
+                    },
                 }
             )
         else:
@@ -120,6 +126,12 @@ def build_manifest(
                     "anchor": [mt.anchor[0], mt.anchor[1]],
                     "bbox": list(mt.bbox),
                     "area": mt.area,
+                    "label": {
+                        "x": mt.label[0],
+                        "y": mt.label[1],
+                        "w": mt.label[2],
+                        "h": mt.label[3],
+                    },
                 }
             )
     edges = []

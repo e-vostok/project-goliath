@@ -116,6 +116,21 @@ const RULES = {
     strength_playable: 0.55,
     inactive_brightness: 0.14,
   },
+  // Mirrors the `labels` block of configs/01_map.yaml (map2_6).
+  labels: {
+    font: 'fira_sans_condensed',
+    land_min_px: 9,
+    land_max_px: 15,
+    sea_min_px: 10,
+    sea_max_px: 19,
+    fit_ratio: 0.9,
+    collision_padding_px: 3,
+    halo_width_px: 2.5,
+    halo_color: '#101014',
+    land_color: '#F2F3F5',
+    sea_color: '#C4E0F5',
+    sea_letter_spacing_em: 0.08,
+  },
   require_connected_start: true,
   big_window_enabled: true,
   refresh: {

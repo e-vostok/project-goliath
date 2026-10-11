@@ -20,6 +20,7 @@ const node = (
   anchor: [0, 0],
   bbox: [0, 0, 1, 1],
   area: 1,
+  label: { x: 0, y: 0, w: 1, h: 1 },
 });
 
 const LIMITS = { minChars: 2, maxResults: 3 };

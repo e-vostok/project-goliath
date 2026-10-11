@@ -70,10 +70,7 @@ import {
   DRAG_THRESHOLD_PX,
   FOCUS_BBOX_MARGIN,
   GESTURE_SETTLE_MS,
-  LABEL_FONT_PX,
-  LABEL_HALO_COLOR,
-  LABEL_HALO_PX,
-  LABEL_TEXT_COLOR,
+  LABEL_RELAYOUT_MS,
   OVERLAY_STROKE_PX,
   SEAM_MIN_S,
   SEAM_NSS_MAX_S,
@@ -93,7 +90,12 @@ import { buildOwnerMap, nodeFill } from '../lib/colors';
 import { useRelief } from '../lib/relief';
 import { displayName } from '../lib/search';
 import { selectTooltipStatus } from '../lib/selection';
-import { visibleLabelNodes } from '../lib/labels';
+import {
+  createMeasurer,
+  LABEL_FONT_FAMILIES,
+  layoutLabels,
+  type PlacedLabel,
+} from '../lib/labels';
 import {
   bboxCenter,
   centerOn,
@@ -166,7 +168,6 @@ export function MapView(props: MapViewProps) {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<SVGGElement>(null);
-  const labelsGRef = useRef<SVGGElement>(null);
   const nodesGRef = useRef<SVGGElement>(null);
   const hoverPathRef = useRef<SVGPathElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -194,13 +195,17 @@ export function MapView(props: MapViewProps) {
     target: EventTarget | null;
   } | null>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const labelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverId = useRef<number | null>(null);
   const cursor = useRef<Point>({ x: 0, y: 0 });
 
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const prevViewport = useRef<Size>({ width: 0, height: 0 });
-  const [view, setView] = useState<ViewTransform | null>(null);
   const [hoverNode, setHoverNode] = useState<MapNodeDTO | null>(null);
+  /** Placed labels of the last layout (map2_6) — committed scale only,
+   *  recomputed by the debounced relayout, never mid-gesture. */
+  const [placed, setPlaced] = useState<PlacedLabel[]>([]);
+  const relayoutRef = useRef<() => void>(() => {});
 
   const nodesById = useMemo(
     () => new Map(manifest.nodes.map((n) => [n.id, n])),
@@ -215,6 +220,53 @@ export function MapView(props: MapViewProps) {
   // images arrive — every other layer renders exactly as before while
   // they load and forever when disabled or failed.
   const relief = useRelief(rules.relief);
+
+  /* ---------------------------------------------------- label layout */
+
+  // Bundled label font (map2_6): one measurer per family, measuring the
+  // real font once it has loaded (document.fonts.ready triggers one
+  // extra relayout below; until then the canvas falls back to the
+  // system font and the layout is corrected on arrival).
+  const fontSpec = LABEL_FONT_FAMILIES[rules.labels.font];
+  const measurer = useMemo(
+    () => createMeasurer(fontSpec.family),
+    [fontSpec.family],
+  );
+
+  // One layout per committed scale: positions/sizes live in map units,
+  // so the labels <g> rides the world transform and a pan costs
+  // nothing. The culling rect is the viewport grown to 2× each
+  // dimension so ordinary panning never outruns the placed set —
+  // expressed in the layout's scaled-map space (world × s, i.e. screen
+  // minus the view's translate).
+  const relayout = useCallback(() => {
+    const v = viewRef.current;
+    if (v === null || viewport.width <= 0 || viewport.height <= 0) {
+      return;
+    }
+    const viewRect = {
+      x0: -v.tx - viewport.width / 2,
+      y0: -v.ty - viewport.height / 2,
+      x1: -v.tx + (viewport.width * 3) / 2,
+      y1: -v.ty + (viewport.height * 3) / 2,
+    };
+    setPlaced(
+      layoutLabels(manifest.nodes, v.s, rules.labels, measurer, viewRect),
+    );
+  }, [manifest.nodes, rules.labels, measurer, viewport]);
+  relayoutRef.current = relayout;
+
+  // Zoom storms (wheel bursts, resize streams) collapse into one
+  // layout ~80 ms after the last step.
+  const scheduleRelayout = useCallback(() => {
+    if (labelTimer.current !== null) {
+      clearTimeout(labelTimer.current);
+    }
+    labelTimer.current = setTimeout(() => {
+      labelTimer.current = null;
+      relayoutRef.current();
+    }, LABEL_RELAYOUT_MS);
+  }, []);
 
   /* ------------------------------------------------ transform plumbing */
 
@@ -251,11 +303,11 @@ export function MapView(props: MapViewProps) {
   );
 
   // Write the live view into the DOM: the world transform (every
-  // frame) plus, only when the scale actually moved, the label
-  // font-size/halo on the labels <g> and the border LOD pick — a few
-  // attribute writes per frame, never a React commit. The label SET
-  // re-evaluates only on settle (Spec 3.9) so a zoom burst diffs no
-  // label elements mid-gesture.
+  // frame) plus, only when the scale actually moved, the border LOD
+  // pick — a few attribute writes per frame, never a React commit.
+  // The label SET re-evaluates only on the debounced relayout
+  // (Spec 3.9, map2_6): its font sizes live in map units so the texts
+  // simply scale with the world mid-gesture.
   const writeView = useCallback((v: ViewTransform) => {
     worldRef.current?.setAttribute(
       'transform',
@@ -265,14 +317,6 @@ export function MapView(props: MapViewProps) {
       return;
     }
     scaledS.current = v.s;
-    labelsGRef.current?.setAttribute(
-      'font-size',
-      String(LABEL_FONT_PX / v.s),
-    );
-    labelsGRef.current?.setAttribute(
-      'stroke-width',
-      String(LABEL_HALO_PX / v.s),
-    );
     const nextLod = borderLOD(v.s);
     if (nextLod !== lodRef.current) {
       const prev = lodGroupRefs.current[lodRef.current];
@@ -319,9 +363,9 @@ export function MapView(props: MapViewProps) {
     (v: ViewTransform) => {
       viewRef.current = v;
       writeView(v);
-      setView(v);
+      scheduleRelayout();
     },
-    [writeView],
+    [writeView, scheduleRelayout],
   );
 
   const bounds = useCallback((): [number, number] => {
@@ -418,9 +462,6 @@ export function MapView(props: MapViewProps) {
     settleTimer.current = setTimeout(() => {
       settleTimer.current = null;
       setGestureFlag(false);
-      if (viewRef.current) {
-        setView({ ...viewRef.current });
-      }
     }, GESTURE_SETTLE_MS);
   }, [setGestureFlag]);
 
@@ -449,11 +490,12 @@ export function MapView(props: MapViewProps) {
       beginGesture();
       viewRef.current = clamped(zoomAt(viewRef.current, c, nextScale));
       applyTransform();
+      scheduleRelayout();
       endGestureSoon();
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [bounds, clamped, applyTransform, beginGesture, endGestureSoon]);
+  }, [bounds, clamped, applyTransform, beginGesture, endGestureSoon, scheduleRelayout]);
 
   const positionTooltip = useCallback(() => {
     const el = tooltipRef.current;
@@ -576,6 +618,25 @@ export function MapView(props: MapViewProps) {
     setHover(null);
   }, [setHover]);
 
+  // Label relayout triggers (map2_6): once when the layout inputs
+  // change (mount, new manifest/rules, font swap, resize) and once
+  // after the bundled font has actually loaded — the canvas then
+  // measures the real face instead of the fallback.
+  useEffect(() => {
+    scheduleRelayout();
+  }, [relayout, scheduleRelayout]);
+  useEffect(() => {
+    let cancelled = false;
+    document.fonts?.ready.then(() => {
+      if (!cancelled) {
+        relayoutRef.current();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(
     () => () => {
       if (frame.current) {
@@ -583,6 +644,9 @@ export function MapView(props: MapViewProps) {
       }
       if (settleTimer.current) {
         clearTimeout(settleTimer.current);
+      }
+      if (labelTimer.current) {
+        clearTimeout(labelTimer.current);
       }
     },
     [],
@@ -683,14 +747,6 @@ export function MapView(props: MapViewProps) {
     () =>
       nodePaths.filter((_, i) => manifest.nodes[i].kind === 'SEA'),
     [nodePaths, manifest.nodes],
-  );
-
-  const labeled = useMemo(
-    () =>
-      view === null
-        ? []
-        : visibleLabelNodes(manifest.nodes, view.s, rules.label_min_width_px),
-    [manifest.nodes, view, rules.label_min_width_px],
   );
 
   // Border chunks as a memoised subtree: settle-time React commits
@@ -851,6 +907,59 @@ export function MapView(props: MapViewProps) {
             animation: none;
           }
         }
+        /* Bundled label fonts (map2_6): self-hosted WOFF2 subsets
+           (Latin + Cyrillic + basic punctuation, SIL OFL — licence
+           files alongside), swapped in with font-display: swap. */
+        @font-face {
+          font-family: 'Fira Sans Condensed';
+          src: url('/assets/fonts/firasanscondensed-regular.woff2') format('woff2');
+          font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'Fira Sans Condensed';
+          src: url('/assets/fonts/firasanscondensed-medium.woff2') format('woff2');
+          font-weight: 500; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'Fira Sans Condensed';
+          src: url('/assets/fonts/firasanscondensed-italic.woff2') format('woff2');
+          font-weight: 400; font-style: italic; font-display: swap;
+        }
+        @font-face {
+          font-family: 'Fira Sans Condensed';
+          src: url('/assets/fonts/firasanscondensed-mediumitalic.woff2') format('woff2');
+          font-weight: 500; font-style: italic; font-display: swap;
+        }
+        @font-face {
+          font-family: 'PT Sans Narrow';
+          src: url('/assets/fonts/ptsansnarrow-regular.woff2') format('woff2');
+          font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'PT Sans Narrow';
+          src: url('/assets/fonts/ptsansnarrow-bold.woff2') format('woff2');
+          font-weight: 700; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'Roboto Condensed';
+          src: url('/assets/fonts/robotocondensed-regular.woff2') format('woff2');
+          font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'Roboto Condensed';
+          src: url('/assets/fonts/robotocondensed-medium.woff2') format('woff2');
+          font-weight: 500; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'Roboto Condensed';
+          src: url('/assets/fonts/robotocondensed-italic.woff2') format('woff2');
+          font-weight: 400; font-style: italic; font-display: swap;
+        }
+        @font-face {
+          font-family: 'Roboto Condensed';
+          src: url('/assets/fonts/robotocondensed-mediumitalic.woff2') format('woff2');
+          font-weight: 500; font-style: italic; font-display: swap;
+        }
       `}</style>
       <svg width={viewport.width} height={viewport.height}>
         <g ref={worldRef}>
@@ -959,23 +1068,61 @@ export function MapView(props: MapViewProps) {
           {/* border layer: above the fills, below selection/hover and
               labels — chunked + LOD copies, inert (map2_4, map2_14). */}
           {borderEls}
-          {/* labels — font size and halo live on this <g> (imperative,
-              follows the in-flight scale every frame); the set itself
-              re-evaluates from the committed scale on settle (3.9). */}
-          <g ref={labelsGRef} data-layer="labels" pointerEvents="none">
-            {labeled.map((node) => (
-              <text
-                key={node.id}
-                x={node.anchor[0]}
-                y={node.anchor[1]}
-                textAnchor="middle"
-                fill={LABEL_TEXT_COLOR}
-                stroke={LABEL_HALO_COLOR}
-                paintOrder="stroke"
-              >
-                {displayName(node)}
-              </text>
-            ))}
+          {/* labels (map2_6): only the placed set of the last layout —
+              positions and font sizes are map units, so the group rides
+              the world transform; a pan or mid-gesture zoom writes
+              nothing here. Halo = thin dark glyph outline via stroke +
+              paint-order, no filters/shadows. Sea labels are italic (or
+              skewX-slanted when the family has no italic cut) with
+              letter spacing and their own colour. */}
+          <g data-layer="labels" pointerEvents="none">
+            {placed.map((l) => {
+              const sea = l.kind === 'SEA';
+              const slant = sea && fontSpec.syntheticSlant;
+              return (
+                <text
+                  key={l.id}
+                  data-label={l.id}
+                  textAnchor="middle"
+                  fontSize={l.fontSize}
+                  fontFamily={fontSpec.family}
+                  fontWeight={sea ? 400 : 500}
+                  fontStyle={
+                    sea && !fontSpec.syntheticSlant ? 'italic' : undefined
+                  }
+                  letterSpacing={
+                    sea ? `${rules.labels.sea_letter_spacing_em}em` : undefined
+                  }
+                  fill={sea ? rules.labels.sea_color : rules.labels.land_color}
+                  stroke={rules.labels.halo_color}
+                  strokeWidth={l.haloW}
+                  paintOrder="stroke"
+                  dominantBaseline={
+                    l.lines.length === 1 ? 'central' : undefined
+                  }
+                  {...(slant
+                    ? {
+                        transform: `translate(${l.x} ${l.y}) skewX(-9)`,
+                        x: 0,
+                        y: 0,
+                      }
+                    : { x: l.x, y: l.y })}
+                >
+                  {l.lines.length === 1 ? (
+                    l.lines[0]
+                  ) : (
+                    <>
+                      <tspan x={slant ? 0 : l.x} dy="-0.25em">
+                        {l.lines[0]}
+                      </tspan>
+                      <tspan x={slant ? 0 : l.x} dy="1.2em">
+                        {l.lines[1]}
+                      </tspan>
+                    </>
+                  )}
+                </text>
+              );
+            })}
           </g>
           {/* hover + selection overlays — copies of node paths */}
           <g pointerEvents="none">

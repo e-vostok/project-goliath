@@ -457,6 +457,7 @@ def test_inv_m3_orphan_node(mini_dir):
                 "anchor": [90.0, 70.0],
                 "bbox": [85.0, 65.0, 95.0, 75.0],
                 "area": 100.0,
+                "label": {"x": 90.0, "y": 70.0, "w": 8.0, "h": 8.0},
             }
         )
 

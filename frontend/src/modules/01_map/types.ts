@@ -11,6 +11,17 @@
 export type MapNodeKind = 'LAND' | 'SEA';
 export type MapEdgeType = 'land' | 'coast' | 'sea' | 'strait';
 
+/**
+ * `node.label` (map2_6): label anchor plus the free `w`/`h` box in map
+ * units the client fits the name into (pipeline-computed).
+ */
+export interface MapNodeLabelDTO {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface MapNodeDTO {
   id: number;
   key: string;
@@ -20,6 +31,7 @@ export interface MapNodeDTO {
   anchor: [number, number];
   bbox: [number, number, number, number];
   area: number;
+  label: MapNodeLabelDTO;
 }
 
 export interface MapEdgeDTO {
@@ -73,6 +85,27 @@ export interface MapReliefRulesDTO {
   inactive_brightness: number;
 }
 
+/**
+ * `rules.labels` (map2_6): a name is drawn only if it fits its `label`
+ * box at the current zoom; collisions resolve by area priority
+ * (land first, sea after land at equal area). `font` is one of the
+ * three bundled self-hosted families in `/assets/fonts/`.
+ */
+export interface MapLabelsRulesDTO {
+  font: 'fira_sans_condensed' | 'pt_sans_narrow' | 'roboto_condensed';
+  land_min_px: number;
+  land_max_px: number;
+  sea_min_px: number;
+  sea_max_px: number;
+  fit_ratio: number;
+  collision_padding_px: number;
+  halo_width_px: number;
+  halo_color: string;
+  land_color: string;
+  sea_color: string;
+  sea_letter_spacing_em: number;
+}
+
 export interface MapViewRulesDTO {
   /** [x, y, width, height] in view_box units — Spec 3.8 zoom-out frame. */
   frame: [number, number, number, number];
@@ -89,6 +122,7 @@ export interface MapViewRulesDTO {
   borders: MapBordersRulesDTO;
   selection: MapSelectionRulesDTO;
   relief: MapReliefRulesDTO;
+  labels: MapLabelsRulesDTO;
   require_connected_start: boolean;
   big_window_enabled: boolean;
   refresh: MapRefreshRulesDTO;

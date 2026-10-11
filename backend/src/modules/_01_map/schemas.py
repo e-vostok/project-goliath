@@ -15,6 +15,15 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class MapNodeLabelDTO(BaseModel):
+    """``MapNodeDTO.label`` (map2_6): anchor plus free ``w``/``h`` box."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+
 class MapNodeDTO(BaseModel):
     """One map node in ``MapManifestDTO.nodes``."""
 
@@ -26,6 +35,7 @@ class MapNodeDTO(BaseModel):
     anchor: list[float]
     bbox: list[float]
     area: float
+    label: MapNodeLabelDTO
 
 
 class MapEdgeDTO(BaseModel):
@@ -83,6 +93,23 @@ class MapReliefRulesDTO(BaseModel):
     inactive_brightness: float
 
 
+class MapLabelsRulesDTO(BaseModel):
+    """``MapViewRulesDTO.labels`` — label fit/style rules (map2_6)."""
+
+    font: str
+    land_min_px: int
+    land_max_px: int
+    sea_min_px: int
+    sea_max_px: int
+    fit_ratio: float
+    collision_padding_px: float
+    halo_width_px: float
+    halo_color: str
+    land_color: str
+    sea_color: str
+    sea_letter_spacing_em: float
+
+
 class MapViewRulesDTO(BaseModel):
     """``MapManifestDTO.rules`` — client-side view rules from the config."""
 
@@ -99,6 +126,7 @@ class MapViewRulesDTO(BaseModel):
     borders: MapBordersRulesDTO
     selection: MapSelectionRulesDTO
     relief: MapReliefRulesDTO
+    labels: MapLabelsRulesDTO
     require_connected_start: bool
     big_window_enabled: bool
     refresh: MapRefreshRulesDTO
