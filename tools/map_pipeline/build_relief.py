@@ -1,26 +1,31 @@
-"""map2_5: bake the grayscale relief underlay for the 01_map client.
+"""map2_16: bake the two relief rasters for the 01_map client.
 
 Input : a Natural Earth raster («Gray Earth with Shaded Relief and
         Hypsography», plate carrée) as the downloaded .zip or the .tif
         inside it — fetched manually, NEVER committed.
         Registration (lon/lat -> base units) is the fitted transform in
         ``tools/map_pipeline/relief/registration.json`` — the same for
-        every Natural Earth plate-carrée raster.
-Frame : ``view.frame`` of ``configs/01_map.yaml`` grown by
-        ``relief.margin_units`` on every side; the picture edge fades to
-        transparent (sea colour underneath) over ``relief.edge_fade_units``.
-Output: ONE grayscale+alpha image ``frontend/public/assets/map/
-        relief.<sha256[:12]>.<ext>`` (the smaller of WebP and JPEG) and
-        the client pointer ``frontend/src/modules/01_map/relief/
-        manifest.json`` so a changed picture is never served stale.
+        every Natural Earth plate-carrée raster; its Gall model maps
+        the WHOLE globe to a finite rectangle of base units.
 
-Land mask: sea in this raster is a flat mid-gray — pixels in
-``SEA_BAND`` with a sub-1.2 local std; only connected components of at
-least ``MIN_SEA_UNITS2`` square units count as water (small flat plains
-and speckles stay land). Provinces always get relief pixels: where our
-coast overshoots the raster coast, the value is filled with the nearest
-land texel (``COAST_BLEED_UNITS``). Our lakes and ``sea_water`` bays are
-cut out so they stay sea colour.
+Output (two WebP/PNG images with alpha, content-hashed, written to
+``frontend/public/assets/map/`` plus the client pointer
+``frontend/src/modules/01_map/relief/manifest.json``):
+
+a) PLAYABLE — up to ``MAX_PPU`` px/unit over the LAND-node bbox.
+   Luma is the graded relief; alpha comes ONLY from the geometry:
+   255 inside LAND polygons with their holes (even-odd, rasterised
+   at 2x supersampling), 0 elsewhere — no halo, no phantom islets,
+   no softening on any coast.
+
+b) INACTIVE — ``WORLD_PPU`` px/unit over the whole world rect.
+   Luma is the relief dimmed by ``relief.inactive_brightness``.
+   Alpha = raster land mask MINUS the playable union (all node
+   polygons with holes filled, eroded by ``SUBTRACT_ERODE_UNITS`` so
+   the dark land laps a little under the opaque fills — the visible
+   edge stays exactly the province shape); plus the land parts of
+   ``outside`` (the excluded zone) — which the formula already
+   covers. Everywhere else alpha 0: ocean stays plain sea colour.
 
 Run (from repo root):
     python -m tools.map_pipeline.build_relief --raster <GRAY_HR_SR.zip>
@@ -40,6 +45,7 @@ import numpy as np
 import yaml
 from PIL import Image, ImageDraw
 from scipy.ndimage import (
+    binary_erosion,
     distance_transform_edt,
     label,
     map_coordinates,
@@ -62,18 +68,23 @@ CLIENT_MANIFEST = (
 
 # ------------------------------------------------------------- parameters
 
-MAX_PPU = 18.0          # px per base unit cap — the source is soft above
+MAX_PPU = 18.0            # playable-image px/unit cap (source is soft above)
+MIN_PPU = 8.0             # playable floor under the byte budget (TZ)
+WORLD_PPU = 5.0           # inactive-image px/unit (TZ allows 4..6)
+WORLD_PPU_MIN = 4.0
+SIZE_BUDGET = 3_000_000   # bytes, BOTH images together (TZ)
 WEBP_QUALITY = 78
-JPEG_QUALITY = 80
-SIZE_BUDGET = 1_500_000  # bytes; lower quality first, never resolution
+PNG_COMPRESS = 9
 
-SEA_BAND = (142, 149)   # flat-water value range in GRAY_*_SR rasters
-SEA_MAX_STD = 1.2       # local 5x5 std — the raster sea is texture-free
-MIN_SEA_UNITS2 = 2.5    # smaller flat components are land texture
-COAST_BLEED_UNITS = 0.7  # nearest-land fill under our coast overshoot
-RELIEF_CONTRAST = 0.6   # keep this share of deviation from the local mean
+SEA_BAND = (142, 149)    # flat-water value range in GRAY_*_SR rasters
+SEA_MAX_STD = 1.2        # local 5x5 std — the raster sea is texture-free
+MIN_SEA_UNITS2 = 2.5     # smaller flat components are land texture
+RELIEF_CONTRAST = 0.6    # keep this share of deviation from the local mean
 CONTRAST_SIGMA_UNITS = 0.9
-EDGE_FADE_SMOOTH = True  # smoothstep fade, not linear
+SUBTRACT_ERODE_UNITS = 1.0  # inactive land laps this far under the fills
+POLE_LAT_CUT = 88.0         # |lat| above this is forced sea (pole artifact)
+RECT_PAD_UNITS = 1.0        # output rect padding around tight bounds
+AA_SCALE = 2                # supersampling for polygon-alpha edges
 
 # Coast agreement control points (lon, lat) — checked by --check-coast.
 CONTROL_POINTS = {
@@ -150,8 +161,12 @@ def load_manifest() -> dict:
 # ----------------------------------------------------------------- masks
 
 
-def rasterize(polys, rect, ppu: float, fill: int = 255) -> np.ndarray:
-    """Rasterise polygons over ``rect = (x0, y0, x1, y1)`` base units."""
+def rasterize(polys, rect, ppu: float, fill: int = 255,
+              filled: bool = False) -> np.ndarray:
+    """Rasterise polygons over ``rect = (x0, y0, x1, y1)`` base units.
+
+    ``filled=True`` ignores interior rings (province holes filled).
+    """
     x0, y0, x1, y1 = rect
     w = max(1, int(round((x1 - x0) * ppu)))
     h = max(1, int(round((y1 - y0) * ppu)))
@@ -165,39 +180,75 @@ def rasterize(polys, rect, ppu: float, fill: int = 255) -> np.ndarray:
         geoms = poly.geoms if poly.geom_type == "MultiPolygon" else [poly]
         for g in geoms:
             draw.polygon(to_px(g.exterior.coords), fill=fill)
-            for hole in g.interiors:
-                draw.polygon(to_px(hole.coords), fill=0)
+            if not filled:
+                for hole in g.interiors:
+                    draw.polygon(to_px(hole.coords), fill=0)
     return np.asarray(img)
 
 
-def interior_polys(polys) -> list:
-    """Lake holes: every interior ring as a standalone polygon."""
-    from shapely.geometry import Polygon
-
-    holes = []
-    for poly in polys:
-        geoms = poly.geoms if poly.geom_type == "MultiPolygon" else [poly]
-        for g in geoms:
-            holes.extend(Polygon(r) for r in g.interiors)
-    return holes
-
-
-def our_masks(rect, ppu, geometry, manifest):
-    """(playable LAND, lake holes, sea_water) masks over the rect."""
-    kinds = {str(n["id"]): n["kind"] for n in manifest["nodes"]}
-    playable_polys = []
-    for key, d in geometry["paths"].items():
-        if kinds.get(str(key)) == "LAND":
-            playable_polys.extend(parse_path(d))
-    playable = rasterize(playable_polys, rect, ppu) > 0
-    outside_polys = parse_path(geometry["outside"])
-    lakes = rasterize(interior_polys(outside_polys), rect, ppu) > 0
-    sea_water = (
-        rasterize(parse_path(geometry["sea_water"]), rect, ppu) > 0
-        if geometry.get("sea_water")
-        else np.zeros_like(playable)
+def poly_alpha(polys, rect, ppu: float) -> np.ndarray:
+    """Anti-aliased 0..255 alpha: polygons with holes, 2x supersample."""
+    hi = rasterize(polys, rect, ppu * AA_SCALE)
+    h, w = hi.shape
+    img = Image.fromarray(hi, "L").resize(
+        (w // AA_SCALE, h // AA_SCALE), Image.BOX
     )
-    return playable, lakes, sea_water
+    return np.asarray(img)
+
+
+def node_polys(geometry, manifest, kind=None):
+    """Polygons of all nodes (or of one kind) from geometry paths."""
+    kinds = {str(n["id"]): n["kind"] for n in manifest["nodes"]}
+    polys = []
+    for key, d in geometry["paths"].items():
+        if kind is None or kinds.get(str(key)) == kind:
+            polys.extend(parse_path(d))
+    return polys
+
+
+def land_bbox(geometry, manifest, pad: float) -> tuple:
+    """Bounding rect of all LAND polygons plus ``pad`` units."""
+    x0 = y0 = float("inf")
+    x1 = y1 = float("-inf")
+    for poly in node_polys(geometry, manifest, "LAND"):
+        for g in (
+            poly.geoms if poly.geom_type == "MultiPolygon" else [poly]
+        ):
+            bx0, by0, bx1, by1 = g.bounds
+            x0, y0 = min(x0, bx0), min(y0, by0)
+            x1, y1 = max(x1, bx1), max(y1, by1)
+    if x0 > x1:
+        raise ReliefBuildError("no LAND polygons in geometry")
+    return (x0 - pad, y0 - pad, x1 + pad, y1 + pad)
+
+
+def world_rect(transform: Transform, pad: float) -> tuple:
+    """Outer envelope of the transformed globe border, plus ``pad``.
+
+    Gall is cylindrical: the -180..180 / -90..90 sphere maps to a
+    finite rectangle; the TPS term can wobble edges a little, so the
+    border is sampled densely instead of trusting four corners.
+    """
+    lon = np.linspace(-180.0, 180.0, 721)
+    lat = np.linspace(-90.0, 90.0, 361)
+    xs, ys = [], []
+    for lo, la in [
+        (lon, np.full_like(lon, 90.0)),
+        (lon, np.full_like(lon, -90.0)),
+        (np.full_like(lat, -180.0), lat),
+        (np.full_like(lat, 180.0), lat),
+    ]:
+        bx, by = transform.fwd(lo, la)
+        xs.append(bx)
+        ys.append(by)
+    xs = np.concatenate(xs)
+    ys = np.concatenate(ys)
+    return (
+        float(xs.min()) - pad,
+        float(ys.min()) - pad,
+        float(xs.max()) + pad,
+        float(ys.max()) + pad,
+    )
 
 
 def raster_land_mask(gray: np.ndarray, ppu: float) -> np.ndarray:
@@ -219,33 +270,29 @@ def raster_land_mask(gray: np.ndarray, ppu: float) -> np.ndarray:
     return ~big[lbl]
 
 
-def edge_fade(shape, rect, ppu: float, fade_units: float) -> np.ndarray:
-    """1 inside, soft-stepping to 0 at the rect border."""
-    h, w = shape
-    if fade_units <= 0:
-        return np.ones(shape, dtype=np.float32)
-    fade_px = fade_units * ppu
-    rows = np.arange(h, dtype=np.float32) + 0.5
-    cols = np.arange(w, dtype=np.float32) + 0.5
-    dist = np.minimum.reduce(
-        [
-            np.broadcast_to(rows[:, None], (h, w)),
-            np.broadcast_to((h - rows)[:, None], (h, w)),
-            np.broadcast_to(cols[None, :], (h, w)),
-            np.broadcast_to((w - cols)[None, :], (h, w)),
-        ]
-    )
-    t = np.clip(dist / fade_px, 0.0, 1.0).astype(np.float32)
-    if EDGE_FADE_SMOOTH:
-        t = t * t * (3.0 - 2.0 * t)
-    return t
+def grade(gray: np.ndarray, ppu: float) -> np.ndarray:
+    """Keep ``RELIEF_CONTRAST`` of the deviation from the local mean."""
+    g = gray.astype(np.float32)
+    mean = uniform_filter(g, size=max(3, int(CONTRAST_SIGMA_UNITS * ppu)))
+    return np.clip(mean + (g - mean) * RELIEF_CONTRAST, 0, 255)
 
 
 # ------------------------------------------------------------------ bake
 
 
-def warp(rect, ppu, transform: Transform, raster, to_px):
-    """Resample the raster onto the base-coordinate grid of ``rect``."""
+def warp(rect, ppu, transform: Transform, raster, to_px,
+         strict_share: float | None = 0.005):
+    """Resample the raster onto the base-coordinate grid of ``rect``.
+
+    Returns (gray, valid, lats): ``valid`` marks pixels whose source
+    point lands inside the raster's lon/lat coverage — off-globe pixels
+    are sampled from the clamped edge and must stay transparent;
+    ``lats`` is the geographic latitude of every output pixel.
+
+    ``strict_share`` — if given, fail when more than this share of the
+    rect maps outside the source (a wrong registration), instead of
+    silently marking those pixels invalid.
+    """
     x0, y0, x1, y1 = rect
     w = int(round((x1 - x0) * ppu))
     h = int(round((y1 - y0) * ppu))
@@ -253,70 +300,102 @@ def warp(rect, ppu, transform: Transform, raster, to_px):
         raise ReliefBuildError(f"degenerate output grid {w}x{h}")
     cols = np.arange(w) + 0.5
     rows = np.arange(h) + 0.5
-    bx, by = np.meshgrid(x0 + cols / ppu, y0 + rows / ppu)
-    lon, lat = transform.inv(bx, by)
-    sc, sr = to_px(lon, lat)
     h_src, w_src = raster.shape[:2]
+    # Row bands keep the TPS kernel matrix (points x 250 centres)
+    # bounded on the ~28 MP world grid.
+    band = max(1, int(np.ceil(1_000_000 / w)))
+    lons = np.empty((h, w))
+    lats = np.empty((h, w))
+    for r0 in range(0, h, band):
+        r1 = min(h, r0 + band)
+        bx, by = np.meshgrid(
+            x0 + cols / ppu, y0 + rows[r0:r1] / ppu
+        )
+        lo, la = transform.inv(bx, by)
+        lons[r0:r1] = lo
+        lats[r0:r1] = la
+    sc, sr = to_px(lons, lats)
     outside = (
         (sc < -0.5) | (sc > w_src - 0.5) | (sr < -0.5) | (sr > h_src - 0.5)
     )
     share = float(outside.mean())
-    if share > 0.005:
+    if strict_share is not None and share > strict_share:
         raise ReliefBuildError(
             "registration maps "
-            f"{share:.1%} of the frame ({x0:.1f},{y0:.1f})-({x1:.1f},{y1:.1f}) "
+            f"{share:.1%} of the rect ({x0:.1f},{y0:.1f})-({x1:.1f},{y1:.1f}) "
             f"outside the source raster ({w_src}x{h_src} px) — "
-            "check view.frame, relief.margin_units and registration.json"
+            "check the rect and registration.json"
         )
+    valid = ~outside
+    src_r = np.clip(sr, 0, h_src - 1)
+    src_c = np.clip(sc, 0, w_src - 1)
     if raster.ndim == 2:
-        return map_coordinates(
-            raster, [np.clip(sr, 0, h_src - 1), np.clip(sc, 0, w_src - 1)],
-            order=1,
-            mode="nearest",
+        gray = map_coordinates(
+            raster, [src_r, src_c], order=1, mode="nearest"
         )
-    out = np.empty((h, w, raster.shape[2]), dtype=raster.dtype)
-    for ch in range(raster.shape[2]):
-        out[..., ch] = map_coordinates(
-            raster[..., ch],
-            [np.clip(sr, 0, h_src - 1), np.clip(sc, 0, w_src - 1)],
-            order=1,
-            mode="nearest",
+    else:
+        gray = np.empty(
+            (h, w, raster.shape[2]), dtype=raster.dtype
         )
-    return out
-
-
-def bake(rect, ppu, transform, raster, to_px, geometry, manifest,
-         relief_cfg: dict):
-    """Return the LA image array (H x W x 2 uint8) for the frame rect."""
-    gray = warp(rect, ppu, transform, raster, to_px)
-    if gray.ndim == 3:
+        for ch in range(raster.shape[2]):
+            gray[..., ch] = map_coordinates(
+                raster[..., ch], [src_r, src_c], order=1, mode="nearest"
+            )
         gray = (
             0.299 * gray[..., 0] + 0.587 * gray[..., 1]
             + 0.114 * gray[..., 2]
-        ).astype(np.uint8)
+        )
+    return gray, valid, lats
 
+
+def bake_playable(rect, ppu, transform, raster, to_px,
+                  geometry, manifest):
+    """LA array (H x W x 2): graded relief luma + LAND-polygon alpha."""
+    gray, _valid, _lats = warp(rect, ppu, transform, raster, to_px)
+    gray = grade(gray, ppu)
+
+    land = node_polys(geometry, manifest, "LAND")
+    inside = rasterize(land, rect, ppu) > 0
+    # Where our coast overshoots the raster coast, the flat sea value
+    # would show inside a province — fill those pixels with the
+    # nearest land texel (the alpha mask still ends exactly at the
+    # polygon; this only fixes the luma).
     land_r = raster_land_mask(gray, ppu)
-    playable, lakes, sea_water = our_masks(rect, ppu, geometry, manifest)
+    if not land_r.all():
+        _dist, idx = distance_transform_edt(~land_r, return_indices=True)
+        filled = gray[idx[0], idx[1]]
+        gray = np.where(inside & ~land_r, filled, gray)
 
-    # Nearest-land fill so province coasts overshooting the raster
-    # coast never show sea colour under the multiply fills.
-    _dist, idx = distance_transform_edt(~land_r, return_indices=True)
-    filled = gray[idx[0], idx[1]]
-    gray = np.where(playable | land_r, np.where(land_r, gray, filled),
-                    gray)
+    alpha = poly_alpha(land, rect, ppu)
+    return np.dstack([gray.astype(np.uint8), alpha.astype(np.uint8)])
 
-    # Gentle local-contrast grading (prototype constant): broad height
-    # tint survives, but the picture cannot go muddy under the fills.
-    g = gray.astype(np.float32)
-    mean = uniform_filter(g, size=max(3, int(CONTRAST_SIGMA_UNITS * ppu)))
-    gray = np.clip(mean + (g - mean) * RELIEF_CONTRAST, 0, 255)
 
-    alpha = (land_r | playable) & ~lakes & ~sea_water
-    alpha_f = alpha.astype(np.float32) * edge_fade(
-        gray.shape, rect, ppu, relief_cfg["edge_fade_units"]
+def bake_inactive(rect, ppu, transform, raster, to_px,
+                  geometry, manifest, brightness: float):
+    """LA array: dimmed relief luma + world-land-minus-playable alpha."""
+    gray, valid, lats = warp(rect, ppu, transform, raster, to_px,
+                             strict_share=None)
+    gray = grade(gray, ppu)
+
+    land_r = raster_land_mask(gray, ppu) & valid
+    # The extreme pole caps of the source raster (|lat| > ~88) are a
+    # flat sea sliver disconnected from the ocean — it fails the
+    # component-size test and would bake as a fake dark line along the
+    # world edge. No real land exists there (northernmost land ~83.6N;
+    # the Antarctic pole tip squashes to ~1 unit in this projection),
+    # so force it to sea.
+    land_r &= np.abs(lats) <= POLE_LAT_CUT
+    playable_filled = (
+        rasterize(node_polys(geometry, manifest), rect, ppu,
+                  filled=True) > 0
     )
+    erode_px = max(1, int(round(SUBTRACT_ERODE_UNITS * ppu)))
+    playable_filled = binary_erosion(playable_filled, iterations=erode_px)
+    alpha = land_r & ~playable_filled
+
+    dim = np.clip(gray.astype(np.float32) * brightness, 0, 255)
     return np.dstack(
-        [gray.astype(np.uint8), (alpha_f * 255).astype(np.uint8)]
+        [dim.astype(np.uint8), (alpha * 255).astype(np.uint8)]
     )
 
 
@@ -327,24 +406,18 @@ def encode_webp(la: np.ndarray, quality: int) -> bytes:
     return buf.getvalue()
 
 
-def encode_jpeg(la: np.ndarray, sea_rgb: tuple[int, int, int],
-                quality: int) -> bytes:
-    """Same picture flattened onto the sea colour (no alpha)."""
-    luma = la[..., 0].astype(np.float32)[..., None]
-    alpha = la[..., 1].astype(np.float32)[..., None] / 255.0
-    rgb = np.clip(
-        luma * alpha + np.asarray(sea_rgb, dtype=np.float32) * (1 - alpha),
-        0, 255,
-    ).astype(np.uint8)
-    img = Image.fromarray(rgb, "RGB")
+def encode_png(la: np.ndarray) -> bytes:
+    img = Image.fromarray(la, "LA")
     buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=quality, optimize=True)
+    img.save(buf, "PNG", optimize=True, compress_level=PNG_COMPRESS)
     return buf.getvalue()
 
 
-def hex_rgb(value: str) -> tuple[int, int, int]:
-    v = value.lstrip("#")
-    return int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
+def encode_best(la: np.ndarray, quality: int) -> tuple[bytes, str]:
+    """The smaller of WebP and PNG (alpha is required — no JPEG)."""
+    webp = encode_webp(la, quality)
+    png = encode_png(la)
+    return (webp, "webp") if len(webp) <= len(png) else (png, "png")
 
 
 def native_ppu(raster, to_px, georef_k: float) -> float:
@@ -355,22 +428,11 @@ def native_ppu(raster, to_px, georef_k: float) -> float:
     return px_per_deg / georef_k
 
 
-def frame_rect(frame: dict, margin: float) -> tuple[float, float, float, float]:
-    return (
-        frame["x"] - margin,
-        frame["y"] - margin,
-        frame["x"] + frame["width"] + margin,
-        frame["y"] + frame["height"] + margin,
-    )
-
-
 # ------------------------------------------------------------ coast check
 
 
-def coast_report(transform, raster, to_px, geometry, manifest) -> int:
+def coast_report(transform, raster, to_px, geometry, manifest) -> float:
     """Max coastline shift at the five control points, in base units."""
-    from scipy.ndimage import binary_erosion
-
     kinds = {str(n["id"]): n["kind"] for n in manifest["nodes"]}
     polys = list(parse_path(geometry["outside"]))
     for key, d in geometry["paths"].items():
@@ -388,9 +450,7 @@ def coast_report(transform, raster, to_px, geometry, manifest) -> int:
             float(cx[0]) + CHECK_BOX_HALF,
             float(cy[0]) + CHECK_BOX_HALF,
         )
-        gray = warp(rect, CHECK_PPU, transform, raster, to_px)
-        if gray.ndim == 3:
-            gray = gray[..., 0]
+        gray, _v, _l = warp(rect, CHECK_PPU, transform, raster, to_px)
         land_r = raster_land_mask(gray, CHECK_PPU)
         edge_r = land_r & ~binary_erosion(land_r)
         dt_r = distance_transform_edt(~edge_r)
@@ -416,46 +476,29 @@ def coast_report(transform, raster, to_px, geometry, manifest) -> int:
 # ------------------------------------------------------------------- main
 
 
-def build(raster, to_px, transform, geometry, manifest, relief_cfg,
-          frame_cfg, georef_k, sea_rgb):
-    """Warp + mask + encode. Returns (la array, image bytes, ext, stats)."""
-    margin = relief_cfg["margin_units"]
-    rect = frame_rect(frame_cfg, margin)
-    ppu = min(MAX_PPU, native_ppu(raster, to_px, georef_k))
-    la = bake(rect, ppu, transform, raster, to_px, geometry, manifest,
-              relief_cfg)
-    h, w = la.shape[:2]
-    webp = encode_webp(la, WEBP_QUALITY)
-    jpeg = encode_jpeg(la, sea_rgb, JPEG_QUALITY)
-    ext, body = ("webp", webp) if len(webp) <= len(jpeg) else ("jpg", jpeg)
-    stats = {
-        "rect": rect,
-        "ppu": round(ppu, 2),
-        "pixels": [w, h],
-        "webp_bytes": len(webp),
-        "jpeg_bytes": len(jpeg),
-        "chosen": ext,
-    }
-    return la, body, ext, stats
-
-
-def write_outputs(body: bytes, ext: str, rect, ppu: float,
-                  source_name: str, dry_run: bool) -> dict:
-    sha = hashlib.sha256(body).hexdigest()
-    name = f"relief.{sha[:12]}.{ext}"
-    manifest = {
-        "file": f"/assets/map/{name}",
-        "rect": [rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]],
-        "px_per_unit": round(ppu, 2),
-        "bytes": len(body),
-        "sha256": sha,
-        "source": source_name,
-    }
+def write_outputs(outputs: dict, source_name: str,
+                  dry_run: bool) -> dict:
+    """Write hashed files + the client manifest; delete stale relief.*"""
+    manifest = {"source": source_name}
+    for key, (body, ext, rect, ppu) in outputs.items():
+        sha = hashlib.sha256(body).hexdigest()
+        name = f"relief.{key}.{sha[:12]}.{ext}"
+        manifest[key] = {
+            "file": f"/assets/map/{name}",
+            "rect": [rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]],
+            "px_per_unit": round(ppu, 2),
+            "bytes": len(body),
+            "sha256": sha,
+        }
+        if not dry_run:
+            WEB_DIR.mkdir(parents=True, exist_ok=True)
+            (WEB_DIR / name).write_bytes(body)
     if not dry_run:
-        WEB_DIR.mkdir(parents=True, exist_ok=True)
         for stale in WEB_DIR.glob("relief.*"):
-            stale.unlink()
-        (WEB_DIR / name).write_bytes(body)
+            if stale.name not in {
+                v["file"].rsplit("/", 1)[1] for v in manifest.values() if isinstance(v, dict)
+            }:
+                stale.unlink()
         CLIENT_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
         CLIENT_MANIFEST.write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
@@ -490,20 +533,73 @@ def main(argv=None) -> int:
         print("coast control points:")
         coast_report(transform, raster, to_px, geometry, manifest)
 
-    la, body, ext, stats = build(
-        raster, to_px, transform, geometry, manifest, relief_cfg,
-        config["view"]["frame"], manifest["georef"]["k"],
-        hex_rgb(config["colors"]["sea"]),
+    nat = native_ppu(raster, to_px, manifest["georef"]["k"])
+    playable_ppu = min(MAX_PPU, nat)
+    playable_rect = land_bbox(geometry, manifest, RECT_PAD_UNITS)
+    inactive_rect = world_rect(transform, RECT_PAD_UNITS)
+    inactive_ppu = WORLD_PPU
+
+    def build(ppu_p: float, ppu_w: float):
+        la_p = bake_playable(
+            playable_rect, ppu_p, transform, raster, to_px,
+            geometry, manifest,
+        )
+        la_w = bake_inactive(
+            inactive_rect, ppu_w, transform, raster, to_px,
+            geometry, manifest, relief_cfg["inactive_brightness"],
+        )
+        return (
+            (*encode_best(la_p, WEBP_QUALITY), la_p.shape),
+            (*encode_best(la_w, WEBP_QUALITY), la_w.shape),
+        )
+
+    # Budget ladder: drop the world image to 4 px/u first, then the
+    # playable one toward MIN_PPU (TZ order).
+    budget_plan = [
+        (playable_ppu, WORLD_PPU),
+        (playable_ppu, WORLD_PPU_MIN),
+        (14.0, WORLD_PPU_MIN),
+        (MIN_PPU, WORLD_PPU_MIN),
+    ]
+    chosen = None
+    for pp, pw in budget_plan:
+        if pp > nat + 0.05:
+            continue
+        (body_p, ext_p, shape_p), (body_w, ext_w, shape_w) = build(pp, pw)
+        total = len(body_p) + len(body_w)
+        print(
+            f"  try playable {pp:.2f}px/u {shape_p[1]}x{shape_p[0]} "
+            f"{len(body_p)}B {ext_p} | world {pw:.2f}px/u "
+            f"{shape_w[1]}x{shape_w[0]} {len(body_w)}B {ext_w} "
+            f"| total {total}B",
+            flush=True,
+        )
+        chosen = (pp, pw, body_p, ext_p, body_w, ext_w, total)
+        if total <= SIZE_BUDGET:
+            break
+    else:
+        chosen = None
+    if chosen is None or chosen[6] > SIZE_BUDGET:
+        raise ReliefBuildError(
+            f"budget {SIZE_BUDGET} B exceeded even at "
+            f"{MIN_PPU}/{WORLD_PPU_MIN} px/u — report to the Project Owner"
+        )
+
+    pp, pw, body_p, ext_p, body_w, ext_w, total = chosen
+    if pp < playable_ppu or pw < WORLD_PPU:
+        print(
+            f"WARNING: resolution lowered for the budget — "
+            f"playable {pp:.2f}px/u, world {pw:.2f}px/u"
+        )
+
+    out = write_outputs(
+        {
+            "playable": (body_p, ext_p, playable_rect, pp),
+            "inactive": (body_w, ext_w, inactive_rect, pw),
+        },
+        args.raster.name,
+        args.dry_run,
     )
-    print(
-        f"baked {stats['pixels'][0]}x{stats['pixels'][1]} "
-        f"@ {stats['ppu']} px/unit — webp {stats['webp_bytes']} B, "
-        f"jpeg {stats['jpeg_bytes']} B -> {ext}"
-    )
-    if stats["chosen"] == "webp" and len(body) > SIZE_BUDGET:
-        print(f"WARNING: {len(body)} B exceeds the {SIZE_BUDGET} B budget")
-    out = write_outputs(body, ext, stats["rect"], stats["ppu"],
-                        args.raster.name, args.dry_run)
     print(json.dumps(out, indent=2))
     return 0
 
