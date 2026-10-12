@@ -6,20 +6,39 @@
  * two-line text is no wider and no taller than
  * `fit_ratio × {w,h} × scale` screen px. Two lines (break at a space or
  * hyphen) are used only when they permit a larger size. Candidates are
- * placed in area-priority order (land before sea at equal area) into a
- * screen-space collision grid — the loser is hidden at this zoom. The
- * result depends on nodes + scale only, so a pan never relayouts.
+ * placed in area-priority order into a screen-space collision grid —
+ * the loser is hidden at this zoom. The result depends on nodes +
+ * scale only, so a pan never relayouts.
+ *
+ * map2_6c: kind gating — province names exist only at the maximum zoom
+ * (`scale ≥ province_zoom_ratio × maxScale`), sea names only below it.
+ * The RENDERED subset of placed labels follows the viewport during a
+ * pan (selectRendered / windowCoversView), and at the maximum zoom a
+ * province label shows only while most of its province is in view
+ * (labelMostlyInView).
  */
 
 import type { MapLabelsRulesDTO, MapNodeDTO } from '../types';
+import type { Size, ViewTransform } from './view';
 import { displayName } from './search';
 
 /** Line height used for the text block fit, in em. */
 const LINE_H = 1.2;
 /** Collision-grid cell side, screen px. */
 const GRID_CELL_PX = 96;
-/** Hard cap of rendered <text> elements at any zoom (< 400, Spec 3.9). */
-export const MAX_PLACED_LABELS = 399;
+/** Hard cap of rendered <text> elements at once (map2_6c). */
+export const MAX_RENDERED_LABELS = 600;
+/** Rendered labels must cover the viewport grown by this fraction of
+ *  the screen on every side (so a label exists before it shows). */
+const RENDER_MARGIN = 0.5;
+/** Re-select the rendered set once the viewport grown by this fraction
+ *  is no longer covered by the current selection window. */
+const RESELECT_MARGIN = 0.25;
+/** «Most of the province in view» — bbox share threshold (map2_6c). */
+const MOST_IN_VIEW_SHARE = 0.5;
+/** …or the label anchor inside the viewport shrunk by this fraction on
+ *  every side (covers provinces larger than the screen). */
+const ANCHOR_INSET = 0.1;
 /** Reference font size the canvas measures at (per-px factor below). */
 const MEASURE_REF_PX = 64;
 
@@ -114,6 +133,17 @@ export interface PlacedLabel {
   /** halo stroke-width in map units. */
   haloW: number;
   lines: [string] | [string, string];
+  /** Text box size in map units (screen px ÷ scale). */
+  textW: number;
+  textH: number;
+  /** Node bbox in map units — the «most in view» fade rule (map2_6c). */
+  bbox: [number, number, number, number];
+}
+
+/** A rendered label; `exiting` carries a merge stamp while it fades
+ *  out (zoom/layout change, crossfade) before unmount. */
+export interface RenderedLabel extends PlacedLabel {
+  exiting?: number;
 }
 
 interface Candidate {
@@ -235,27 +265,45 @@ function overlaps(a: Rect, b: Rect): boolean {
 }
 
 /**
+ * True while the camera sits at the maximum zoom: `scale` reaches
+ * `province_zoom_ratio` of the camera's own top scale (map2_6c).
+ * Province names exist only then; sea names exist only below it.
+ */
+export function isProvinceZoom(
+  scale: number,
+  maxScale: number,
+  rules: MapLabelsRulesDTO,
+): boolean {
+  return scale >= rules.province_zoom_ratio * maxScale;
+}
+
+/**
  * Lay out every node label for `scale` screen px per map unit.
  *
- * `viewRect` (screen px, already margined by the caller) culls labels
- * whose collision rect lies entirely off it — the group itself moves
- * with the map so no per-frame work happens while panning. Pass null to
- * skip culling. Result is capped at MAX_PLACED_LABELS by priority.
+ * map2_6c: `maxScale` is the camera's maximum (min scale × zoom_max).
+ * At the maximum zoom only LAND candidates exist; below it only SEA
+ * ones. The layout covers ALL nodes — never culled by the viewport,
+ * so a pan can pull any placed label into the rendered set without a
+ * relayout.
  */
 export function layoutLabels(
   nodes: MapNodeDTO[],
   scale: number,
   rules: MapLabelsRulesDTO,
   measurer: LabelMeasurer,
-  viewRect: LabelRect | null = null,
+  maxScale: number,
 ): PlacedLabel[] {
   if (!Number.isFinite(scale) || scale <= 0) {
     return [];
   }
   const pad = rules.collision_padding_px;
+  const atMax = isProvinceZoom(scale, maxScale, rules);
 
   const candidates: Candidate[] = [];
   for (const node of nodes) {
+    if ((node.kind === 'LAND') !== atMax) {
+      continue;
+    }
     const name = displayName(node);
     if (name === '') {
       continue;
@@ -286,15 +334,6 @@ export function layoutLabels(
       x1: cx + c.textW / 2 + pad,
       y1: cy + c.textH / 2 + pad,
     };
-    if (
-      viewRect !== null &&
-      (rect.x1 < viewRect.x0 ||
-        rect.x0 > viewRect.x1 ||
-        rect.y1 < viewRect.y0 ||
-        rect.y0 > viewRect.y1)
-    ) {
-      continue;
-    }
     const ix0 = Math.floor(rect.x0 / GRID_CELL_PX);
     const ix1 = Math.floor(rect.x1 / GRID_CELL_PX);
     const iy0 = Math.floor(rect.y0 / GRID_CELL_PX);
@@ -331,10 +370,168 @@ export function layoutLabels(
       sizePx: c.sizePx,
       haloW: rules.halo_width_px / scale,
       lines: c.lines,
+      textW: c.textW / scale,
+      textH: c.textH / scale,
+      bbox: c.node.bbox,
     });
-    if (placed.length >= MAX_PLACED_LABELS) {
-      break;
-    }
   }
   return placed;
+}
+
+/** Screen-px rect of a placed label's text box under `view`. */
+export function labelScreenRect(
+  label: PlacedLabel,
+  view: ViewTransform,
+): LabelRect {
+  const cx = view.tx + view.s * label.x;
+  const cy = view.ty + view.s * label.y;
+  const hw = (view.s * label.textW) / 2;
+  const hh = (view.s * label.textH) / 2;
+  return { x0: cx - hw, y0: cy - hh, x1: cx + hw, y1: cy + hh };
+}
+
+function intersectsRect(a: LabelRect, b: LabelRect): boolean {
+  return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+}
+
+/**
+ * Pick the labels that get a `<text>` element under `view`: every placed
+ * label whose text box intersects the viewport enlarged by half a screen
+ * on every side (so a label exists before its province shows), capped at
+ * MAX_RENDERED_LABELS — viewport-intersecting labels first, then the
+ * rest in the placed order (already the priority order), so the lowest
+ * priority outside the viewport drops first.
+ *
+ * Returns the selection window in scaled-map space (screen px minus the
+ * view translate) so windowCoversView can compare later pans cheaply.
+ */
+export function selectRendered(
+  placed: PlacedLabel[],
+  view: ViewTransform,
+  viewport: Size,
+): { items: PlacedLabel[]; window: LabelRect } {
+  const w = viewport.width;
+  const h = viewport.height;
+  const viewRect: LabelRect = { x0: 0, y0: 0, x1: w, y1: h };
+  const margin: LabelRect = {
+    x0: -RENDER_MARGIN * w,
+    y0: -RENDER_MARGIN * h,
+    x1: (1 + RENDER_MARGIN) * w,
+    y1: (1 + RENDER_MARGIN) * h,
+  };
+  const inside: PlacedLabel[] = [];
+  const near: PlacedLabel[] = [];
+  for (const l of placed) {
+    const r = labelScreenRect(l, view);
+    if (intersectsRect(r, viewRect)) {
+      inside.push(l);
+    } else if (intersectsRect(r, margin)) {
+      near.push(l);
+    }
+  }
+  return {
+    items: inside.concat(near).slice(0, MAX_RENDERED_LABELS),
+    window: {
+      x0: -view.tx - RENDER_MARGIN * w,
+      y0: -view.ty - RENDER_MARGIN * h,
+      x1: -view.tx + (1 + RENDER_MARGIN) * w,
+      y1: -view.ty + (1 + RENDER_MARGIN) * h,
+    },
+  };
+}
+
+/**
+ * Does the current selection `window` still cover everything the
+ * viewport enlarged by a quarter screen could touch? While it does,
+ * every label that could enter view already exists; once it doesn't,
+ * the rendered set is re-selected (map2_6c pan fix).
+ */
+export function windowCoversView(
+  window: LabelRect,
+  view: ViewTransform,
+  viewport: Size,
+): boolean {
+  const w = viewport.width;
+  const h = viewport.height;
+  return (
+    -view.tx - RESELECT_MARGIN * w >= window.x0 &&
+    -view.tx + (1 + RESELECT_MARGIN) * w <= window.x1 &&
+    -view.ty - RESELECT_MARGIN * h >= window.y0 &&
+    -view.ty + (1 + RESELECT_MARGIN) * h <= window.y1
+  );
+}
+
+/**
+ * «Most of the province in view» (map2_6c): at the maximum zoom a
+ * province label is visible when at least MOST_IN_VIEW_SHARE of the
+ * node's bbox lies inside the viewport, OR the label anchor is inside
+ * the viewport shrunk by ANCHOR_INSET on every side (covers provinces
+ * larger than the screen).
+ */
+export function labelMostlyInView(
+  label: PlacedLabel,
+  view: ViewTransform,
+  viewport: Size,
+): boolean {
+  const bx0 = view.tx + view.s * label.bbox[0];
+  const by0 = view.ty + view.s * label.bbox[1];
+  const bx1 = view.tx + view.s * label.bbox[2];
+  const by1 = view.ty + view.s * label.bbox[3];
+  const area = (bx1 - bx0) * (by1 - by0);
+  if (area > 0) {
+    const ix = Math.min(bx1, viewport.width) - Math.max(bx0, 0);
+    const iy = Math.min(by1, viewport.height) - Math.max(by0, 0);
+    if (ix > 0 && iy > 0 && (ix * iy) / area >= MOST_IN_VIEW_SHARE) {
+      return true;
+    }
+  }
+  const ax = view.tx + view.s * label.x;
+  const ay = view.ty + view.s * label.y;
+  return (
+    ax >= ANCHOR_INSET * viewport.width &&
+    ax <= (1 - ANCHOR_INSET) * viewport.width &&
+    ay >= ANCHOR_INSET * viewport.height &&
+    ay <= (1 - ANCHOR_INSET) * viewport.height
+  );
+}
+
+/**
+ * Merge a freshly selected rendered set with the previous one so React
+ * unmounts single elements only: continuing labels keep their identity
+ * (same object, same key, no DOM churn), leavers whose text box still
+ * intersects the viewport are kept once as `exiting` copies to fade
+ * out (the caller unmounts them after `fadeMs`), offscreen leavers drop
+ * immediately — invisible either way. Still-fading entries carry over.
+ * The result is capped at MAX_RENDERED_LABELS — exiting copies trim
+ * first.
+ */
+export function mergeRendered(
+  prev: RenderedLabel[],
+  next: PlacedLabel[],
+  view: ViewTransform,
+  viewport: Size,
+  stamp: number,
+  fadeMs: number,
+): RenderedLabel[] {
+  const nextIds = new Set(next.map((l) => l.id));
+  const out: RenderedLabel[] = [...next];
+  const viewRect: LabelRect = {
+    x0: 0,
+    y0: 0,
+    x1: viewport.width,
+    y1: viewport.height,
+  };
+  for (const p of prev) {
+    if (nextIds.has(p.id)) {
+      continue;
+    }
+    if (p.exiting !== undefined) {
+      out.push(p);
+      continue;
+    }
+    if (fadeMs > 0 && intersectsRect(labelScreenRect(p, view), viewRect)) {
+      out.push({ ...p, exiting: stamp });
+    }
+  }
+  return out.slice(0, MAX_RENDERED_LABELS);
 }

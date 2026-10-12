@@ -87,9 +87,12 @@ export interface MapReliefRulesDTO {
 
 /**
  * `rules.labels` (map2_6): a name is drawn only if it fits its `label`
- * box at the current zoom; collisions resolve by area priority
- * (land first, sea after land at equal area). `font` is one of the
- * three bundled self-hosted families in `/assets/fonts/`.
+ * box at the current zoom; collisions resolve by area priority.
+ * `font` is one of the three bundled self-hosted families in
+ * `/assets/fonts/`. map2_6c: `province_zoom_ratio` of the camera's
+ * maximum scale is where province names live (sea names below it);
+ * `fade_ms` is the appear/disappear transition (0 = off,
+ * prefers-reduced-motion forces 0).
  */
 export interface MapLabelsRulesDTO {
   font: 'fira_sans_condensed' | 'pt_sans_narrow' | 'roboto_condensed';
@@ -104,6 +107,8 @@ export interface MapLabelsRulesDTO {
   land_color: string;
   sea_color: string;
   sea_letter_spacing_em: number;
+  province_zoom_ratio: number;
+  fade_ms: number;
 }
 
 export interface MapViewRulesDTO {

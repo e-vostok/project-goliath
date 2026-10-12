@@ -64,6 +64,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react';
 
 import {
@@ -71,6 +72,7 @@ import {
   FOCUS_BBOX_MARGIN,
   GESTURE_SETTLE_MS,
   LABEL_RELAYOUT_MS,
+  LABEL_SWEEP_MS,
   OVERLAY_STROKE_PX,
   SEAM_MIN_S,
   SEAM_NSS_MAX_S,
@@ -92,9 +94,16 @@ import { displayName } from '../lib/search';
 import { selectTooltipStatus } from '../lib/selection';
 import {
   createMeasurer,
+  isProvinceZoom,
   LABEL_FONT_FAMILIES,
+  labelMostlyInView,
   layoutLabels,
+  mergeRendered,
+  selectRendered,
+  windowCoversView,
+  type LabelRect,
   type PlacedLabel,
+  type RenderedLabel,
 } from '../lib/labels';
 import {
   bboxCenter,
@@ -202,9 +211,22 @@ export function MapView(props: MapViewProps) {
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const prevViewport = useRef<Size>({ width: 0, height: 0 });
   const [hoverNode, setHoverNode] = useState<MapNodeDTO | null>(null);
-  /** Placed labels of the last layout (map2_6) — committed scale only,
-   *  recomputed by the debounced relayout, never mid-gesture. */
-  const [placed, setPlaced] = useState<PlacedLabel[]>([]);
+  /** Rendered label set (map2_6c): the placed labels inside the current
+   *  viewport window plus `exiting` copies fading out. Re-selected on
+   *  relayout and by the pan sweep — keyed single-element updates only. */
+  const [rendered, setRendered] = useState<RenderedLabel[]>([]);
+  const renderedRef = useRef<RenderedLabel[]>([]);
+  /** Full layout of the last committed scale — pan-independent. */
+  const placedRef = useRef<PlacedLabel[]>([]);
+  /** Scaled-map-space rect the rendered set covers (±½ screen). */
+  const coverageRef = useRef<LabelRect | null>(null);
+  /** label id → its <text> element (for imperative visibility writes). */
+  const labelEls = useRef(new Map<number, SVGTextElement>());
+  /** label id → last WRITTEN data-off state; writes happen only on a
+   *  flip so the transition is set only for state changes (map2_6c). */
+  const visState = useRef(new Map<number, boolean>());
+  const lastLabelSweep = useRef(0);
+  const exitSeq = useRef(0);
   const relayoutRef = useRef<() => void>(() => {});
 
   const nodesById = useMemo(
@@ -233,27 +255,102 @@ export function MapView(props: MapViewProps) {
     [fontSpec.family],
   );
 
+  /** Fade duration for label appear/disappear (map2_6c):
+   *  labels.fade_ms, forced to 0 under prefers-reduced-motion. */
+  const fadeMs = useCallback(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+        ? 0
+        : rules.labels.fade_ms,
+    [rules.labels.fade_ms],
+  );
+
+  /** Camera top scale (the zoom clamp): minScale × zoom_max. */
+  const maxScale = useCallback(
+    () => minScale(rules.frame, viewport) * rules.zoom_max,
+    [rules.frame, rules.zoom_max, viewport],
+  );
+
+  // Imperative visibility writer (map2_6c): province labels at the
+  // maximum zoom show only while most of their province is in view;
+  // exiting copies stay off so they can fade out; everything else is
+  // on. `data-off` is written only when the desired state differs from
+  // the last written one — no write, no transition, for a label that
+  // merely moved.
+  const applyLabelVisibility = useCallback(() => {
+    const v = viewRef.current;
+    if (v === null || viewport.width <= 0) {
+      return;
+    }
+    const atMax = isProvinceZoom(v.s, maxScale(), rules.labels);
+    for (const l of renderedRef.current) {
+      const el = labelEls.current.get(l.id);
+      if (!el) {
+        continue;
+      }
+      const off =
+        l.exiting !== undefined ||
+        (atMax && l.kind === 'LAND' && !labelMostlyInView(l, v, viewport));
+      if (visState.current.get(l.id) !== off) {
+        visState.current.set(l.id, off);
+        if (off) {
+          el.setAttribute('data-off', '');
+        } else {
+          el.removeAttribute('data-off');
+        }
+      }
+    }
+  }, [viewport, maxScale, rules.labels]);
+
+  // Reconciler for the rendered set: the caller computes `items`
+  // (selectRendered) at any pan position; mergeRendered keeps leaving
+  // onscreen labels as `exiting` copies to fade out and drops offscreen
+  // ones outright. `stamp` tags each exiting batch for its timeout.
+  const commitRendered = useCallback(
+    (items: PlacedLabel[], v: ViewTransform) => {
+      setRendered((prev) => {
+        const merged = mergeRendered(
+          prev,
+          items,
+          v,
+          viewport,
+          ++exitSeq.current,
+          fadeMs(),
+        );
+        if (
+          merged.length === prev.length &&
+          merged.every((l, i) => l === prev[i])
+        ) {
+          return prev;
+        }
+        return merged;
+      });
+    },
+    [viewport, fadeMs],
+  );
+
   // One layout per committed scale: positions/sizes live in map units,
   // so the labels <g> rides the world transform and a pan costs
-  // nothing. The culling rect is the viewport grown to 2× each
-  // dimension so ordinary panning never outruns the placed set —
-  // expressed in the layout's scaled-map space (world × s, i.e. screen
-  // minus the view's translate).
+  // nothing. The layout covers ALL nodes of the zoom-gated kind
+  // (map2_6c) — the rendered subset then follows the viewport.
   const relayout = useCallback(() => {
     const v = viewRef.current;
     if (v === null || viewport.width <= 0 || viewport.height <= 0) {
       return;
     }
-    const viewRect = {
-      x0: -v.tx - viewport.width / 2,
-      y0: -v.ty - viewport.height / 2,
-      x1: -v.tx + (viewport.width * 3) / 2,
-      y1: -v.ty + (viewport.height * 3) / 2,
-    };
-    setPlaced(
-      layoutLabels(manifest.nodes, v.s, rules.labels, measurer, viewRect),
+    const all = layoutLabels(
+      manifest.nodes,
+      v.s,
+      rules.labels,
+      measurer,
+      maxScale(),
     );
-  }, [manifest.nodes, rules.labels, measurer, viewport]);
+    placedRef.current = all;
+    const { items, window } = selectRendered(all, v, viewport);
+    coverageRef.current = window;
+    commitRendered(items, v);
+  }, [manifest.nodes, rules.labels, measurer, viewport, maxScale, commitRendered]);
   relayoutRef.current = relayout;
 
   // Zoom storms (wheel bursts, resize streams) collapse into one
@@ -267,6 +364,45 @@ export function MapView(props: MapViewProps) {
       relayoutRef.current();
     }, LABEL_RELAYOUT_MS);
   }, []);
+
+  /** Stable ref for label <text> elements: mounts start hidden
+   *  (data-off) so the post-commit visibility pass fades in only the
+   *  visible ones; unmounts are pruned from labelEls in the effect. */
+  const labelElRef = useCallback((el: SVGTextElement | null) => {
+    if (el === null) {
+      return;
+    }
+    const id = Number(el.getAttribute('data-label'));
+    labelEls.current.set(id, el);
+    el.setAttribute('data-off', '');
+    visState.current.set(id, true);
+  }, []);
+
+  /** Pan sweep (map2_6c), at most every LABEL_SWEEP_MS: re-selects the
+   *  rendered set once the quarter-screen lead is gone (labels must
+   *  exist before their province comes into view) and re-evaluates the
+   *  «mostly in view» fade — writes only labels whose state changed. */
+  const labelsTick = useCallback(
+    (force = false) => {
+      const v = viewRef.current;
+      if (v === null || viewport.width <= 0) {
+        return;
+      }
+      const now = performance.now();
+      if (!force && now - lastLabelSweep.current < LABEL_SWEEP_MS) {
+        return;
+      }
+      lastLabelSweep.current = now;
+      const cov = coverageRef.current;
+      if (cov === null || !windowCoversView(cov, v, viewport)) {
+        const sel = selectRendered(placedRef.current, v, viewport);
+        coverageRef.current = sel.window;
+        commitRendered(sel.items, v);
+      }
+      applyLabelVisibility();
+    },
+    [viewport, commitRendered, applyLabelVisibility],
+  );
 
   /* ------------------------------------------------ transform plumbing */
 
@@ -313,6 +449,7 @@ export function MapView(props: MapViewProps) {
       'transform',
       `translate(${v.tx} ${v.ty}) scale(${v.s})`,
     );
+    labelsTick();
     if (v.s === scaledS.current) {
       return;
     }
@@ -342,7 +479,7 @@ export function MapView(props: MapViewProps) {
       seamBand.current = band;
       applySeamBand(band, prev);
     }
-  }, [applySeamBand]);
+  }, [applySeamBand, labelsTick]);
 
   // Per-frame live redraw while a gesture is in flight — every frame
   // paints the real map at the in-flight position (map2_14).
@@ -462,8 +599,11 @@ export function MapView(props: MapViewProps) {
     settleTimer.current = setTimeout(() => {
       settleTimer.current = null;
       setGestureFlag(false);
+      // Final label sweep at gesture end — catches any viewport the
+      // throttled mid-gesture sweeps skipped.
+      labelsTick(true);
     }, GESTURE_SETTLE_MS);
-  }, [setGestureFlag]);
+  }, [setGestureFlag, labelsTick]);
 
   // Wheel zoom — non-passive, the only zoom path (Spec 3.8).
   useEffect(() => {
@@ -625,6 +765,45 @@ export function MapView(props: MapViewProps) {
   useEffect(() => {
     scheduleRelayout();
   }, [relayout, scheduleRelayout]);
+
+  // Post-commit label pass (map2_6c): mirror the rendered set for the
+  // imperative writer, drop refs of unmounted texts, apply the
+  // «mostly in view» visibility (only changed labels are written), and
+  // unmount exiting copies once their fade has run.
+  useEffect(() => {
+    renderedRef.current = rendered;
+    applyLabelVisibility();
+    const alive = new Set(rendered.map((l) => l.id));
+    for (const id of labelEls.current.keys()) {
+      if (!alive.has(id)) {
+        labelEls.current.delete(id);
+        visState.current.delete(id);
+      }
+    }
+    const stamps = new Set(
+      rendered
+        .filter((l) => l.exiting !== undefined)
+        .map((l) => l.exiting as number),
+    );
+    if (stamps.size === 0) {
+      return;
+    }
+    const drop = () =>
+      setRendered((list) =>
+        list.filter(
+          (l) =>
+            l.exiting === undefined || !stamps.has(l.exiting as number),
+        ),
+      );
+    const ms = fadeMs();
+    if (ms <= 0) {
+      drop();
+      return;
+    }
+    const t = setTimeout(drop, ms);
+    return () => clearTimeout(t);
+  }, [rendered, applyLabelVisibility, fadeMs]);
+
   useEffect(() => {
     let cancelled = false;
     document.fonts?.ready.then(() => {
@@ -907,6 +1086,20 @@ export function MapView(props: MapViewProps) {
             animation: none;
           }
         }
+        /* Label visibility transition (map2_6c): data-off hides a label
+           — opacity fades out, visibility flips at the end of the fade;
+           on removal the label reappears instantly and fades in. The
+           duration comes from --pg-label-fade (labels.fade_ms, 0 under
+           prefers-reduced-motion). */
+        .pg-map-label {
+          transition: opacity var(--pg-label-fade) ease, visibility 0s;
+        }
+        .pg-map-label[data-off] {
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity var(--pg-label-fade) ease,
+            visibility 0s linear var(--pg-label-fade);
+        }
         /* Bundled label fonts (map2_6): self-hosted WOFF2 subsets
            (Latin + Cyrillic + basic punctuation, SIL OFL — licence
            files alongside), swapped in with font-display: swap. */
@@ -1068,20 +1261,31 @@ export function MapView(props: MapViewProps) {
           {/* border layer: above the fills, below selection/hover and
               labels — chunked + LOD copies, inert (map2_4, map2_14). */}
           {borderEls}
-          {/* labels (map2_6): only the placed set of the last layout —
-              positions and font sizes are map units, so the group rides
-              the world transform; a pan or mid-gesture zoom writes
-              nothing here. Halo = thin dark glyph outline via stroke +
-              paint-order, no filters/shadows. Sea labels are italic (or
-              skewX-slanted when the family has no italic cut) with
-              letter spacing and their own colour. */}
-          <g data-layer="labels" pointerEvents="none">
-            {placed.map((l) => {
+          {/* labels (map2_6/map2_6c): the rendered subset of the last
+              layout — placed for all nodes of the zoom-gated kind
+              (provinces only at the maximum zoom, seas only below),
+              then kept to the viewport ±½ screen by the pan sweep.
+              Positions and font sizes are map units, so the group rides
+              the world transform; a pan adds/removes single <text>
+              elements only (≤100 ms sweeps, keyed merges). Visibility is
+              imperative `data-off` writes — opacity/visibility fade via
+              the .pg-map-label transition above. Halo = thin dark glyph
+              outline via stroke + paint-order, no filters/shadows. Sea
+              labels are italic (or skewX-slanted when the family has no
+              italic cut) with letter spacing and their own colour. */}
+          <g
+            data-layer="labels"
+            pointerEvents="none"
+            style={{ '--pg-label-fade': `${fadeMs()}ms` } as CSSProperties}
+          >
+            {rendered.map((l) => {
               const sea = l.kind === 'SEA';
               const slant = sea && fontSpec.syntheticSlant;
               return (
                 <text
                   key={l.id}
+                  ref={labelElRef}
+                  className="pg-map-label"
                   data-label={l.id}
                   textAnchor="middle"
                   fontSize={l.fontSize}
