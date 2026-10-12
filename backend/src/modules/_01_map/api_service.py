@@ -133,6 +133,7 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
         ),
         labels=MapLabelsRulesDTO(
             font=config.labels.font,
+            sea_font=config.labels.sea_font,
             land_min_px=config.labels.land_min_px,
             land_max_px=config.labels.land_max_px,
             sea_min_px=config.labels.sea_min_px,

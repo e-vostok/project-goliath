@@ -78,6 +78,7 @@ def _base_config() -> dict:
         },
         "labels": {
             "font": "fira_sans_condensed",
+            "sea_font": "pt_mono",
             "land_min_px": 9,
             "land_max_px": 15,
             "sea_min_px": 10,
@@ -101,7 +102,7 @@ def _base_config() -> dict:
             "sea_curved": True,
         },
         "states": {
-            "font": "jetbrains_mono",
+            "font": "pt_mono",
             "uppercase": True,
             "opacity": 0.4,
             "max_angle_deg": 60,

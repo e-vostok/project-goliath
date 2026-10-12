@@ -42,12 +42,10 @@ import type {
 } from '../types';
 import type { Point } from './view';
 
-/** Bundled monospace families (SIL OFL, self-hosted WOFF2 subsets). */
-export const STATE_FONT_FAMILIES: Record<MapStatesRulesDTO['font'], string> = {
-  jetbrains_mono: '"JetBrains Mono"',
-  ibm_plex_mono: '"IBM Plex Mono"',
-  pt_mono: '"PT Mono"',
-};
+/** Bundled faces of the map font registry (map2_21, SIL OFL
+ *  self-hosted WOFF2 subsets) — the full CSS stacks live in
+ *  `fonts.ts`. */
+export { MAP_FONTS as STATE_FONT_FAMILIES } from './fonts';
 
 /** Fixed colours for `color_mode` — palette-consistent with the map. */
 export const STATE_TEXT_LIGHT = '#F2F3F5';
