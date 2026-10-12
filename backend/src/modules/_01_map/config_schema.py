@@ -268,6 +268,17 @@ class LabelsSettings(_Strict):
         le=0.3,
         description="Разрежение букв морских подписей, em.",
     )
+    province_zoom_ratio: float = Field(
+        ge=0.5,
+        le=1.0,
+        description="Доля максимального зума камеры, с которой считается «максимальный зум» "
+        "для подписей провинций (map2_6c): ниже — только морские подписи, на максимуме — только провинции.",
+    )
+    fade_ms: int = Field(
+        ge=0,
+        le=500,
+        description="Длительность появления/исчезновения подписи, мс (map2_6c; 0 = без перехода).",
+    )
 
     @model_validator(mode="after")
     def check_min_max(self) -> Self:
