@@ -12,7 +12,11 @@
  * thickness, length ≈ `length_ratio` of the free run, filled first by
  * letter-spacing up to `max_letter_spacing_em` and then by the font
  * size — and must sit ≥97 % inside the mask or shrink/retry until it
- * does (else the group gets no inscription).
+ * does (else the group gets no inscription). map2_7a: each chord is
+ * also tried as a gentle arc (sagitta ±max_bend/±max_bend/2 of the
+ * chord span); a crescent gets a slightly bent name, a compact state a
+ * straight one. The rendered baseline is one quadratic Bézier — a
+ * parabola segment — drawn with <textPath>.
  *
  * Everything is computed in MAP units once per ownership/font/config
  * change, so during a pan or a zoom the <text> elements only move and
@@ -92,6 +96,10 @@ export interface PlacedStateName {
   /** Total state area — overlap priority. */
   area: number;
   groupArea: number;
+  /** Effective bend of the drawn arc (sagitta ÷ chord, signed; map2_7a). */
+  bend: number;
+  /** Quadratic-Bézier baseline in map units for the <textPath>. */
+  path: { x0: number; y0: number; cx: number; cy: number; x1: number; y1: number };
   /** Placement signature the cache entry was built under. */
   sig: string;
 }
@@ -234,7 +242,8 @@ interface ScanLine {
   theta: number;
   /** Offset along the line normal, cells. */
   offset: number;
-  /** Inside-run extent along the direction, cells. */
+  /** Inside-run extent along the direction, cells (on the ARC when
+   *  bent — t is the chord parameter). */
   t0: number;
   t1: number;
   /** Min perpendicular thickness over the run's central part, cells. */
@@ -242,9 +251,74 @@ interface ScanLine {
   /** Worst-case distance to the nearer mask edge over the central part —
    *  how centred the line is inside the strip, cells. */
   clear: number;
+  /** Signed sagitta fraction of the chord span (map2_7a; 0 = straight).
+   *  The sign says to which side of the chord (+dn/−dn) the arc bows. */
+  bend: number;
+  /** Chord parameter span the arc parabola is defined over. */
+  e0: number;
+  e1: number;
 }
 
-function scanLine(g: Mask, theta: number, o: number): ScanLine | null {
+/** Parabolic arc height above the chord at parameter t, cells. */
+const arcRise = (t: number, e0: number, e1: number, sag: number): number => {
+  const u = (t - e0) / (e1 - e0);
+  return 4 * sag * u * (1 - u);
+};
+
+/** dh/dt of arcRise — the arc's slope along the chord direction. */
+const arcSlope = (t: number, e0: number, e1: number, sag: number): number => {
+  const u = (t - e0) / (e1 - e0);
+  return ((4 * sag) / (e1 - e0)) * (1 - 2 * u);
+};
+
+/** Arc point in grid cells: chord point + rise along the normal. */
+const arcPos = (
+  du: Point,
+  dn: Point,
+  o: number,
+  t: number,
+  e0: number,
+  e1: number,
+  sag: number,
+): Point => {
+  const oo = o + arcRise(t, e0, e1, sag);
+  return { x: oo * dn.x + t * du.x, y: oo * dn.y + t * du.y };
+};
+
+/** Unit normal of the arc at parameter t (rotated −90° of the tangent). */
+const arcNormal = (
+  du: Point,
+  dn: Point,
+  t: number,
+  e0: number,
+  e1: number,
+  sag: number,
+): Point => {
+  const s = arcSlope(t, e0, e1, sag);
+  const tx = du.x + s * dn.x;
+  const ty = du.y + s * dn.y;
+  const m = Math.hypot(tx, ty) || 1;
+  return { x: -ty / m, y: tx / m };
+};
+
+/**
+ * One scan line at (theta, offset): the straight inside-run plus — for
+ * `maxBend > 0` — the same chord tried as a gentle arc. The chord span
+ * for the arc is the whole inside extent of the line (first run start
+ * → last run end): on a crescent the straight middle can sit in a bay
+ * while the arc dips back into the territory, so a bent run may span
+ * gaps the straight run never could. Scored per run
+ * `len × min(thickness, len)`; ties prefer the smaller |bend|.
+ */
+function scanLine(
+  g: Mask,
+  theta: number,
+  o: number,
+  maxBend: number,
+  maxAngle: number,
+  scoreFloor: number,
+  tryBends: boolean,
+): ScanLine | null {
   const du = { x: Math.cos(theta), y: Math.sin(theta) };
   const dn = { x: -du.y, y: du.x };
   const corners = [
@@ -262,7 +336,8 @@ function scanLine(g: Mask, theta: number, o: number): ScanLine | null {
   }
   const limit = g.w + g.h;
 
-  let best: { t0: number; t1: number } | null = null;
+  // All inside-runs along the chord line.
+  const runs: { t0: number; t1: number }[] = [];
   let runStart: number | null = null;
   for (let t = tLo; t <= tHi; t += SCAN_STEP) {
     const x = o * dn.x + t * du.x;
@@ -272,55 +347,166 @@ function scanLine(g: Mask, theta: number, o: number): ScanLine | null {
         runStart = t;
       }
     } else if (runStart !== null) {
-      if (best === null || t - runStart > best.t1 - best.t0) {
-        best = { t0: runStart, t1: t };
-      }
+      runs.push({ t0: runStart, t1: t });
       runStart = null;
     }
   }
-  if (runStart !== null && (best === null || tHi - runStart > best.t1 - best.t0)) {
-    best = { t0: runStart, t1: tHi };
+  if (runStart !== null) {
+    runs.push({ t0: runStart, t1: tHi });
   }
-  if (best === null || best.t1 - best.t0 < 4) {
+  let longest: { t0: number; t1: number } | null = null;
+  for (const r of runs) {
+    if (longest === null || r.t1 - r.t0 > longest.t1 - longest.t0) {
+      longest = r;
+    }
+  }
+  if (longest === null || longest.t1 - longest.t0 < 4) {
     return null;
   }
 
-  const L = best.t1 - best.t0;
-  const a = best.t0 + (L * (1 - CENTRAL_PART)) / 2;
-  const b = best.t1 - (L * (1 - CENTRAL_PART)) / 2;
-  let thickness = Infinity;
-  let clear = Infinity;
-  for (let i = 0; i < 7; i++) {
-    const t = a + ((b - a) * i) / 6;
-    const x = o * dn.x + t * du.x;
-    const y = o * dn.y + t * du.y;
-    let s = 0;
-    while (s < limit && inside(g, x + s * dn.x, y + s * dn.y)) {
-      s += SCAN_STEP;
+  // Min thickness / clearance over a run's central part, measured along
+  // the local arc normal (identical to ±dn for a straight line).
+  const profile = (t0: number, t1: number, e0: number, e1: number, sag: number) => {
+    const L = t1 - t0;
+    const a = t0 + (L * (1 - CENTRAL_PART)) / 2;
+    const b = t1 - (L * (1 - CENTRAL_PART)) / 2;
+    let thickness = Infinity;
+    let clear = Infinity;
+    for (let i = 0; i < 7; i++) {
+      const t = a + ((b - a) * i) / 6;
+      const p = arcPos(du, dn, o, t, e0, e1, sag);
+      const n = arcNormal(du, dn, t, e0, e1, sag);
+      let s = 0;
+      while (s < limit && inside(g, p.x + s * n.x, p.y + s * n.y)) {
+        s += SCAN_STEP;
+      }
+      const up = s;
+      s = 0;
+      while (s < limit && inside(g, p.x - s * n.x, p.y - s * n.y)) {
+        s += SCAN_STEP;
+      }
+      const out = up + s;
+      if (out < thickness) {
+        thickness = out;
+      }
+      const half = Math.min(up, s);
+      if (half < clear) {
+        clear = half;
+      }
     }
-    const up = s;
-    s = 0;
-    while (s < limit && inside(g, x - s * dn.x, y - s * dn.y)) {
-      s += SCAN_STEP;
-    }
-    const down = s;
-    const out = up + down;
-    if (out < thickness) {
-      thickness = out;
-    }
-    const half = Math.min(up, down);
-    if (half < clear) {
-      clear = half;
+    return { thickness, clear };
+  };
+
+  const mkLine = (
+    t0: number,
+    t1: number,
+    bend: number,
+    e0: number,
+    e1: number,
+  ): ScanLine => {
+    const prof = profile(t0, t1, e0, e1, bend * (e1 - e0));
+    return {
+      theta,
+      offset: o,
+      t0,
+      t1,
+      thickness: prof.thickness,
+      clear: prof.clear,
+      bend,
+      e0,
+      e1,
+    };
+  };
+  const scoreOf = (l: ScanLine): number => {
+    const len = l.t1 - l.t0;
+    return len * Math.min(l.thickness, len);
+  };
+
+  let best = mkLine(longest.t0, longest.t1, 0, longest.t0, longest.t1);
+
+  // Bend trials only on multi-run chords: a single-run chord is fully
+  // inside, so an arc can never lengthen the run — the marginal
+  // thickness gain it could find is already covered by the
+  // neighbouring offsets of the grid. On a crescent or a state split
+  // by a bay the chord exits in the middle and the arc can span the
+  // gap — that is where the sagitta earns its keep.
+  if (tryBends && maxBend > 0 && runs.length > 1) {
+    const e0 = runs[0].t0;
+    const e1 = runs[runs.length - 1].t1;
+    const span = e1 - e0;
+    // An arc run can span at most the whole extent and its thickness
+    // rarely exceeds ~2.5× the straight run's — below that bound even
+    // a perfect arc loses, so the four arc scans are skipped.
+    const bound =
+      span * Math.min(span, 2.5 * Math.max(1, best.thickness));
+    if (
+      span >= 4 &&
+      bound > Math.max(scoreOf(best), scoreFloor) + 1e-9
+    ) {
+      const bestScore = () => scoreOf(best);
+      for (const bf of [0.5, -0.5, 1, -1]) {
+        const sag = bf * maxBend * span;
+        // Longest inside-run ALONG THE ARC (gaps of the chord where
+        // the arc stays inside count as continuous). Step 1 cell —
+        // mask-level precision is enough for scoring.
+        let arcBest: { t0: number; t1: number } | null = null;
+        let rs: number | null = null;
+        for (let t = e0; t <= e1; t += 1) {
+          const p = arcPos(du, dn, o, t, e0, e1, sag);
+          if (inside(g, p.x, p.y)) {
+            if (rs === null) {
+              rs = t;
+            }
+          } else if (rs !== null) {
+            if (arcBest === null || t - rs > arcBest.t1 - arcBest.t0) {
+              arcBest = { t0: rs, t1: t };
+            }
+            rs = null;
+          }
+        }
+        if (
+          rs !== null &&
+          (arcBest === null || e1 - rs > arcBest.t1 - arcBest.t0)
+        ) {
+          arcBest = { t0: rs, t1: e1 };
+        }
+        if (arcBest === null || arcBest.t1 - arcBest.t0 < 4) {
+          continue;
+        }
+        const lenArc = arcBest.t1 - arcBest.t0;
+        // Skip the profile when the arc run cannot outscore the
+        // current best even at thickness = length.
+        if (lenArc * lenArc <= Math.max(bestScore(), scoreFloor)) {
+          continue;
+        }
+        // The angle limit applies to the chord between the run's
+        // ends — a bent run whose ends tilt the chord past
+        // max_angle_deg is not a candidate.
+        const pa = arcPos(du, dn, o, arcBest.t0, e0, e1, sag);
+        const pb = arcPos(du, dn, o, arcBest.t1, e0, e1, sag);
+        const chordAng = Math.atan2(pb.y - pa.y, pb.x - pa.x);
+        if (Math.abs(chordAng) > maxAngle + 1e-9) {
+          continue;
+        }
+        const line = mkLine(
+          arcBest.t0,
+          arcBest.t1,
+          bf * maxBend,
+          e0,
+          e1,
+        );
+        const s = scoreOf(line);
+        const bs = bestScore();
+        if (
+          s > bs + 1e-9 ||
+          (s >= bs - 1e-9 && Math.abs(line.bend) < Math.abs(best.bend))
+        ) {
+          best = line;
+        }
+      }
     }
   }
-  return {
-    theta,
-    offset: o,
-    t0: best.t0,
-    t1: best.t1,
-    thickness,
-    clear,
-  };
+  return best;
 }
 
 /** Within this share of the best score the most horizontal line wins —
@@ -336,6 +522,9 @@ function searchLines(
   offsetCentre: number | null,
   offsetHalfRange: number,
   offsetStep: number,
+  maxBend: number,
+  maxAngle: number,
+  bendStride: number,
 ): ScanLine | null {
   const corners = [
     { x: 0, y: 0 },
@@ -362,8 +551,21 @@ function searchLines(
       offsetCentre === null
         ? oHi
         : Math.min(oHi, offsetCentre + offsetHalfRange);
-    for (let o = lo; o <= hi + 1e-9; o += offsetStep) {
-      const line = scanLine(g, th, o);
+    let oIndex = 0;
+    for (let o = lo; o <= hi + 1e-9; o += offsetStep, oIndex++) {
+      // Bend trials every bendStride-th chord: the coarse grid only
+      // needs to DISCOVER curvature (the refine pass retries all five
+      // sagittae around the winner at its fine offsets).
+      const tryBends = bendStride <= 1 || oIndex % bendStride === 0;
+      const line = scanLine(
+        g,
+        th,
+        o,
+        maxBend,
+        maxAngle,
+        maxScore,
+        tryBends,
+      );
       if (line === null || line.thickness <= 0) {
         continue;
       }
@@ -403,25 +605,30 @@ function searchLines(
   return best;
 }
 
-/** Share of sampled rotated-text-box points inside the mask. */
-function boxCoverage(
+/**
+ * Share of sampled text-box points inside the mask, sampled along the
+ * (possibly bent) baseline: 13 stations along the arc × 7 rows across
+ * the box height along the local arc normal. `arcP(t)`/`arcN(t)` give
+ * the baseline point and unit normal at chord parameter t.
+ */
+function arcCoverage(
   g: Mask,
-  cx: number,
-  cy: number,
-  theta: number,
-  w: number,
-  h: number,
+  arcP: (t: number) => Point,
+  arcN: (t: number) => Point,
+  tCentre: number,
+  halfLen: number,
+  halfH: number,
 ): number {
-  const du = { x: Math.cos(theta), y: Math.sin(theta) };
-  const dn = { x: -du.y, y: du.x };
   let inCount = 0;
   let total = 0;
-  for (let i = 0; i <= 10; i++) {
-    const u = (i / 10 - 0.5) * w;
+  for (let i = 0; i <= 12; i++) {
+    const t = tCentre - halfLen + ((2 * halfLen * i) / 12);
+    const p = arcP(t);
+    const n = arcN(t);
     for (let j = 0; j <= 6; j++) {
-      const v = (j / 6 - 0.5) * h;
+      const v = (j / 6 - 0.5) * 2 * halfH;
       total += 1;
-      if (inside(g, cx + u * du.x + v * dn.x, cy + u * du.y + v * dn.y)) {
+      if (inside(g, p.x + v * n.x, p.y + v * n.y)) {
         inCount += 1;
       }
     }
@@ -429,30 +636,29 @@ function boxCoverage(
   return total === 0 ? 0 : inCount / total;
 }
 
-/** Thickness (cells) across the run part the text actually occupies. */
-function thicknessOver(
+/** Thickness (cells) across the run part the text actually occupies,
+ *  measured along the local arc normal. */
+function thicknessOverArc(
   g: Mask,
-  theta: number,
-  o: number,
+  arcP: (t: number) => Point,
+  arcN: (t: number) => Point,
   tCentre: number,
   halfLen: number,
 ): number {
-  const du = { x: Math.cos(theta), y: Math.sin(theta) };
-  const dn = { x: -du.y, y: du.x };
   const limit = g.w + g.h;
   let min = Infinity;
   for (let i = 0; i < 9; i++) {
     const t = tCentre - halfLen + (2 * halfLen * i) / 8;
-    const x = o * dn.x + t * du.x;
-    const y = o * dn.y + t * du.y;
+    const p = arcP(t);
+    const n = arcN(t);
     let out = 0;
     let s = 0;
-    while (s < limit && inside(g, x + s * dn.x, y + s * dn.y)) {
+    while (s < limit && inside(g, p.x + s * n.x, p.y + s * n.y)) {
       s += SCAN_STEP;
     }
     out += s;
     s = 0;
-    while (s < limit && inside(g, x - s * dn.x, y - s * dn.y)) {
+    while (s < limit && inside(g, p.x - s * n.x, p.y - s * n.y)) {
       s += SCAN_STEP;
     }
     out += s;
@@ -497,6 +703,9 @@ export function placeStateLabel(
     null,
     0,
     OFFSET_STEP,
+    rules.max_bend,
+    maxAngle,
+    2,
   );
   if (coarse === null) {
     return null;
@@ -510,11 +719,22 @@ export function placeStateLabel(
       coarse.offset,
       2,
       OFFSET_STEP_FINE,
+      rules.max_bend,
+      maxAngle,
+      1,
     ) ?? coarse;
 
   const theta = refined.theta;
   const du = { x: Math.cos(theta), y: Math.sin(theta) };
   const dn = { x: -du.y, y: du.x };
+  // The inscription's baseline: a straight chord or a gentle parabolic
+  // arc of sagitta `bend × chord span` (map2_7a).
+  const arcSpan = Math.max(1e-9, refined.e1 - refined.e0);
+  const sag = refined.bend * arcSpan; // cells, signed
+  const arcP = (t: number): Point =>
+    arcPos(du, dn, refined.offset, t, refined.e0, refined.e1, sag);
+  const arcN = (t: number): Point =>
+    arcNormal(du, dn, t, refined.e0, refined.e1, sag);
   const tCentre = (refined.t0 + refined.t1) / 2;
   const L = (refined.t1 - refined.t0) * g.cell; // free length, map units
 
@@ -539,7 +759,7 @@ export function placeStateLabel(
   let W = fontSize * (widthEm + ls * gaps);
   // Re-measure thickness across the text extent once — a tapering
   // shape can be thinner under the text than across the whole run.
-  const t2 = thicknessOver(g, theta, refined.offset, tCentre, (W / g.cell) / 2);
+  const t2 = thicknessOverArc(g, arcP, arcN, tCentre, (W / g.cell) / 2);
   if (t2 * g.cell < thickness) {
     thickness = Math.max(0, t2 * g.cell);
     fontSize = Math.min(
@@ -551,13 +771,11 @@ export function placeStateLabel(
     W = fontSize * (widthEm + ls * gaps);
   }
 
-  const cx = g.x0 + (refined.offset * dn.x + tCentre * du.x) * g.cell;
-  const cy = g.y0 + (refined.offset * dn.y + tCentre * du.y) * g.cell;
-  const gcx = (cx - g.x0) / g.cell;
-  const gcy = (cy - g.y0) / g.cell;
-
   let H = fontSize * BOX_HEIGHT_EM;
-  while (boxCoverage(g, gcx, gcy, theta, W / g.cell, H / g.cell) < INSIDE_SHARE) {
+  while (
+    arcCoverage(g, arcP, arcN, tCentre, (W / g.cell) / 2, (H / g.cell) / 2) <
+    INSIDE_SHARE
+  ) {
     fontSize *= SHRINK;
     W = fontSize * (widthEm + ls * gaps);
     H = fontSize * BOX_HEIGHT_EM;
@@ -569,20 +787,53 @@ export function placeStateLabel(
     return null;
   }
 
-  // SVG-y is down, grid-y is down — the scan theta IS the SVG rotate()
-  // angle; clamp into (−90, 90] so the text never reads upside down.
-  let angleDeg = (theta * 180) / Math.PI;
+  // The drawn baseline is the text-length slice of the arc — itself a
+  // parabola, so one quadratic Bézier reproduces it exactly:
+  // B(0.5) = (P0 + 2C + P1)/4 → C = 2·M − (P0 + P1)/2.
+  const tA = tCentre - W / g.cell / 2;
+  const tB = tCentre + W / g.cell / 2;
+  const p0 = arcP(tA);
+  const p1 = arcP(tB);
+  const pm = arcP(tCentre);
+  const ctrl = {
+    x: 2 * pm.x - (p0.x + p1.x) / 2,
+    y: 2 * pm.y - (p0.y + p1.y) / 2,
+  };
+  const mid = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+  const chordLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  const side =
+    Math.sign((pm.x - mid.x) * dn.x + (pm.y - mid.y) * dn.y) || 0;
+  const bend =
+    chordLen > 0
+      ? (side * Math.hypot(pm.x - mid.x, pm.y - mid.y)) / chordLen
+      : 0;
+
+  const toMap = (p: Point) => ({
+    x: g.x0 + p.x * g.cell,
+    y: g.y0 + p.y * g.cell,
+  });
+  const P0 = toMap(p0);
+  const P1 = toMap(p1);
+  const C = toMap(ctrl);
+  const Cm = toMap(pm);
+
+  // SVG-y is down, grid-y is down — the chord angle IS the SVG
+  // orientation; clamp into (−90, 90] so the text never reads
+  // upside down.
+  let angleDeg = (Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180) / Math.PI;
   if (angleDeg > 90) angleDeg -= 180;
   if (angleDeg <= -90) angleDeg += 180;
 
   return {
-    x: cx,
-    y: cy,
+    x: Cm.x,
+    y: Cm.y,
     angleDeg,
     fontSize,
     letterSpacingEm: ls,
     width: W,
     height: H,
+    bend,
+    path: { x0: P0.x, y0: P0.y, cx: C.x, cy: C.y, x1: P1.x, y1: P1.y },
   };
 }
 

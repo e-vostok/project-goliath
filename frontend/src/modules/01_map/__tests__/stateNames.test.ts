@@ -56,28 +56,36 @@ function inside(rings: Point[][], x: number, y: number): boolean {
   return insideAny;
 }
 
-/** Rotated-box coverage against the true (non-rasterised) rings. */
+/** Curved text-box coverage against the true (non-rasterised) rings:
+ *  the baseline is the quadratic Bézier `placed.path` (map2_7a), rows
+ *  run along the local normal. */
 function boxInsideShare(
   rings: Point[][],
-  placed: { x: number; y: number; angleDeg: number; width: number; height: number },
+  placed: {
+    path: { x0: number; y0: number; cx: number; cy: number; x1: number; y1: number };
+    height: number;
+  },
 ): number {
-  const r = (placed.angleDeg * Math.PI) / 180;
-  const du = { x: Math.cos(r), y: Math.sin(r) };
-  const dn = { x: -du.y, y: du.x };
+  const { x0, y0, cx, cy, x1, y1 } = placed.path;
+  const B = (u: number) => ({
+    x: (1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * cx + u * u * x1,
+    y: (1 - u) * (1 - u) * y0 + 2 * (1 - u) * u * cy + u * u * y1,
+  });
+  const N = (u: number) => {
+    const tx = 2 * (1 - u) * (cx - x0) + 2 * u * (x1 - cx);
+    const ty = 2 * (1 - u) * (cy - y0) + 2 * u * (y1 - cy);
+    const m = Math.hypot(tx, ty) || 1;
+    return { x: -ty / m, y: tx / m };
+  };
   let hit = 0;
   let total = 0;
   for (let i = 0; i <= 12; i++) {
-    for (let j = 0; j <= 8; j++) {
-      const u = (i / 12 - 0.5) * placed.width;
-      const v = (j / 8 - 0.5) * placed.height;
+    const p = B(i / 12);
+    const n = N(i / 12);
+    for (let j = 0; j <= 6; j++) {
+      const v = (j / 6 - 0.5) * placed.height;
       total += 1;
-      if (
-        inside(
-          rings,
-          placed.x + u * du.x + v * dn.x,
-          placed.y + u * du.y + v * dn.y,
-        )
-      ) {
+      if (inside(rings, p.x + v * n.x, p.y + v * n.y)) {
         hit += 1;
       }
     }
@@ -124,6 +132,40 @@ describe('placeStateLabel — synthetic territories', () => {
     expect(placed!.y).toBeGreaterThan(0);
     expect(placed!.y).toBeLessThan(10);
     expect(boxInsideShare(rings, placed!)).toBeGreaterThanOrEqual(0.97);
+  });
+
+  it('crescent: the inscription bends gently along the arc', () => {
+    // Annular sector (a rainbow band): outer R=200, inner R=170,
+    // angle span 45°..135° — the straight chord across it exits the
+    // band in the middle, so the arc wins.
+    const crescent: Point[] = [];
+    for (let i = 0; i <= 40; i++) {
+      const t = ((45 + (90 * i) / 40) * Math.PI) / 180;
+      crescent.push({ x: 200 * Math.cos(t), y: 200 * Math.sin(t) });
+    }
+    for (let i = 40; i >= 0; i--) {
+      const t = ((45 + (90 * i) / 40) * Math.PI) / 180;
+      crescent.push({ x: 170 * Math.cos(t), y: 170 * Math.sin(t) });
+    }
+    const rings = [crescent];
+    const placed = placeStateLabel(
+      rings,
+      'СЕРПОЛАНДИЯ',
+      0.6 * 10,
+      RULES,
+      MIN_FONT,
+    );
+    expect(placed).not.toBeNull();
+    expect(Math.abs(placed!.bend)).toBeGreaterThanOrEqual(0.03);
+    expect(Math.abs(placed!.bend)).toBeLessThanOrEqual(0.1);
+    expect(boxInsideShare(rings, placed!)).toBeGreaterThanOrEqual(0.97);
+  });
+
+  it('rectangle: no bend (straight baseline)', () => {
+    const rings = [rect(0, 0, 100, 30)];
+    const placed = placeStateLabel(rings, 'ТЕСТИЯ', 0.6 * 6, RULES, MIN_FONT);
+    expect(placed).not.toBeNull();
+    expect(placed!.bend).toBe(0);
   });
 
   it('tiny territory: nothing below the min_px floor', () => {

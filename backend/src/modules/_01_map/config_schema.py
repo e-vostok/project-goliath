@@ -329,6 +329,11 @@ class StatesSettings(_Strict):
         le=3.0,
         description="Максимальное разрежение букв при растяжении надписи, em.",
     )
+    max_bend: float = Field(
+        ge=0.0,
+        le=0.25,
+        description="Максимальный изгиб надписи: стрелка дуги / длина хорды (0 — прямая строка).",
+    )
     min_px: int = Field(
         ge=6,
         le=30,
