@@ -24,7 +24,15 @@ const land: MapNodeDTO = {
   anchor: [0, 0],
   bbox: [0, 0, 1, 1],
   area: 1,
-  label: { x: 0, y: 0, w: 1, h: 1 },
+  label: {
+    x: 0,
+    y: 0,
+    w: 1,
+    h: 1,
+    spine: [-0.4, 0, 0.4, 0, 0],
+    len: 0.8,
+    thick: 1,
+  },
 };
 const sea: MapNodeDTO = { ...land, id: 2, key: 'sea_x', kind: 'SEA' };
 
