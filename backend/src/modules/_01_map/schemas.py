@@ -108,6 +108,8 @@ class MapLabelsRulesDTO(BaseModel):
     land_color: str
     sea_color: str
     sea_letter_spacing_em: float
+    province_zoom_ratio: float
+    fade_ms: int
 
 
 class MapViewRulesDTO(BaseModel):

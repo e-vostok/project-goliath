@@ -89,6 +89,8 @@ def _base_config() -> dict:
             "land_color": "#F2F3F5",
             "sea_color": "#C4E0F5",
             "sea_letter_spacing_em": 0.08,
+            "province_zoom_ratio": 0.98,
+            "fade_ms": 120,
         },
         "starting_group": {"require_connected": True},
         "big_window": {"enabled": True},

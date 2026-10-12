@@ -143,6 +143,8 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             land_color=config.labels.land_color,
             sea_color=config.labels.sea_color,
             sea_letter_spacing_em=config.labels.sea_letter_spacing_em,
+            province_zoom_ratio=config.labels.province_zoom_ratio,
+            fade_ms=config.labels.fade_ms,
         ),
         require_connected_start=config.starting_group.require_connected,
         big_window_enabled=config.big_window.enabled,

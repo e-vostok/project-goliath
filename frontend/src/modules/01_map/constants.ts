@@ -23,6 +23,12 @@ export const FOCUS_BBOX_MARGIN = 1.2;
  *  Spec 3.9): one layout per settled scale, never mid-gesture. */
 export const LABEL_RELAYOUT_MS = 80;
 
+/** Minimum interval between label viewport sweeps during a pan
+ *  (map2_6c): re-selects the rendered set when the quarter-screen lead
+ *  is gone and re-evaluates the «mostly in view» fade — cheap enough to
+ *  run this often because only changed labels are written. */
+export const LABEL_SWEEP_MS = 100;
+
 /** Stroke width of the hover overlay outline, px (screen-constant). */
 export const OVERLAY_STROKE_PX = 2;
 

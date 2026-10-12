@@ -113,6 +113,8 @@ const RULES = {
     land_color: '#F2F3F5',
     sea_color: '#C4E0F5',
     sea_letter_spacing_em: 0.08,
+    province_zoom_ratio: 0.98,
+    fade_ms: 120,
   },
   require_connected_start: true,
   big_window_enabled: true,
