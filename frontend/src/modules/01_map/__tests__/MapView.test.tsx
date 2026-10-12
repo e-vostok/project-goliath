@@ -12,6 +12,7 @@ import {
   MINI_GEOMETRY,
   MINI_MANIFEST,
   MINI_RULES,
+  MINI_STATE,
 } from '../fixtures/miniMap';
 import type { MapGeometryDTO } from '../types';
 
@@ -166,6 +167,105 @@ describe('MapView — live-pan gestures (map2_14)', () => {
     expect(world.getAttribute('transform')).toBe(
       'translate(-80 -110) scale(12)',
     );
+  });
+});
+
+describe('MapView — state names (map2_7)', () => {
+  // Same real-size container as the gesture suite — the view transform
+  // must initialise for the zoom gate to engage.
+  beforeEach(() => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 800,
+      height: 600,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      toJSON: () => ({}),
+    } as DOMRect);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const wheel = (el: HTMLElement, deltaY: number) =>
+    el.dispatchEvent(
+      new WheelEvent('wheel', {
+        deltaY,
+        clientX: 400,
+        clientY: 300,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+  it('inscriptions ride the world transform; layer off only at max zoom', async () => {
+    render(
+      <MapView
+        manifest={MINI_MANIFEST}
+        geometry={MINI_GEOMETRY}
+        borders={MINI_BORDERS}
+        state={MINI_STATE}
+      />,
+    );
+    const container = document.querySelector(
+      '[data-testid="map-view"]',
+    ) as HTMLElement;
+    const layer = document.querySelector(
+      '[data-layer="state-names"]',
+    ) as SVGGElement;
+    expect(layer).not.toBeNull();
+    expect(layer.getAttribute('pointer-events')).toBe('none');
+    // Above the borders group (which wraps the LOD copies), below the
+    // label layer.
+    expect(layer.previousElementSibling?.getAttribute('data-layer')).toBe(
+      'borders',
+    );
+    expect(layer.nextElementSibling?.getAttribute('data-layer')).toBe(
+      'labels',
+    );
+
+    const texts = () => [
+      ...layer.querySelectorAll('text[data-state]'),
+    ] as SVGTextElement[];
+    // MINI_STATE owns provinces 1001+1002 → one inscription, uppercased.
+    await waitFor(() => expect(texts().length).toBe(1));
+    expect(texts()[0].textContent).toBe('ТЕСТИЯ');
+    expect(layer.hasAttribute('data-off')).toBe(false);
+
+    // A pan moves the world — the inscription nodes are NOT rebuilt.
+    const before = texts();
+    fireEvent.mouseDown(container, {
+      button: 0,
+      clientX: 400,
+      clientY: 300,
+    });
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: 440, clientY: 310 }),
+    );
+    window.dispatchEvent(new MouseEvent('mouseup'));
+    expect(texts().length).toBe(before.length);
+    expect(texts().every((t, i) => t === before[i])).toBe(true);
+
+    // One zoom step, still below the maximum: same nodes, still on.
+    wheel(container, -100);
+    await waitFor(() => expect(texts().length).toBe(1));
+    expect(texts().every((t, i) => t === before[i])).toBe(true);
+    expect(layer.hasAttribute('data-off')).toBe(false);
+
+    // Zoom to the maximum: the layer crosses the province-name
+    // threshold and fades out (mirror of the province names fading in).
+    for (let i = 0; i < 15; i++) {
+      wheel(container, -100);
+    }
+    await waitFor(() => expect(layer.hasAttribute('data-off')).toBe(true));
+
+    // Back below the threshold the inscriptions return — same nodes.
+    for (let i = 0; i < 15; i++) {
+      wheel(container, 100);
+    }
+    await waitFor(() => expect(layer.hasAttribute('data-off')).toBe(false));
+    expect(texts().every((t, i) => t === before[i])).toBe(true);
   });
 });
 

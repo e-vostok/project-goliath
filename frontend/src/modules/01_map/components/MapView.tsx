@@ -7,7 +7,7 @@
  *   inactive-world + playable relief images (map2_16, lazy) ·
  *   ONE <g> with all node paths (single delegated mouse handling,
  *   resolved via `data-id`, no per-path listeners) · border chunks ·
- *   labels · overlays.
+ *   state-name inscriptions (map2_7) · labels · overlays.
  * - Pan/zoom live in refs, never in React state. Every frame of a
  *   gesture writes the LIVE transform into the `transform` attribute
  *   of ONE container <g> inside requestAnimationFrame (map2_14): the
@@ -105,6 +105,14 @@ import {
   type PlacedLabel,
   type RenderedLabel,
 } from '../lib/labels';
+import {
+  collectStates,
+  measureMonoAdvance,
+  parsePathRings,
+  placeStateNames,
+  STATE_FONT_FAMILIES,
+  type StateNameCacheEntry,
+} from '../lib/stateNames';
 import {
   bboxCenter,
   centerOn,
@@ -228,6 +236,15 @@ export function MapView(props: MapViewProps) {
   const lastLabelSweep = useRef(0);
   const exitSeq = useRef(0);
   const relayoutRef = useRef<() => void>(() => {});
+  /** Scale of the last settled gesture — the state-name layer derives
+   *  its min_px/max_px/visibility writes from it (map2_7). */
+  const [committedScale, setCommittedScale] = useState(0);
+  /** Bumped when the bundled fonts finish loading — re-measures the
+   *  real monospace advance and re-places state names once. */
+  const [fontEpoch, setFontEpoch] = useState(0);
+  /** Per-state placement cache (map2_7): an ownership change recomputes
+   *  only the states whose signature moved. */
+  const stateNameCache = useRef(new Map<string, StateNameCacheEntry>());
 
   const nodesById = useMemo(
     () => new Map(manifest.nodes.map((n) => [n.id, n])),
@@ -271,6 +288,90 @@ export function MapView(props: MapViewProps) {
     () => minScale(rules.frame, viewport) * rules.zoom_max,
     [rules.frame, rules.zoom_max, viewport],
   );
+
+  /* -------------------------------------------- state names (map2_7) */
+
+  // One fitted inscription per state territory, in MAP units: the
+  // placement is recomputed only when ownership, the font, the config
+  // or the manifest changes — a pan or a zoom re-derives nothing (the
+  // <text> elements ride the world transform; only the min_px/max_px
+  // screen clamp and the maximum-zoom gate follow the settled scale).
+  const stateFontFamily = STATE_FONT_FAMILIES[rules.states.font];
+  const stateAdvanceEm = useMemo(
+    () => measureMonoAdvance(stateFontFamily),
+    // fontEpoch: re-measure once document.fonts delivers the real face.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stateFontFamily, fontEpoch],
+  );
+  const ringsById = useMemo(() => {
+    const map = new Map<number, Point[][]>();
+    for (const node of manifest.nodes) {
+      if (node.kind === 'LAND') {
+        map.set(node.id, parsePathRings(geometry.paths[node.id] ?? ''));
+      }
+    }
+    return map;
+  }, [manifest.nodes, geometry.paths]);
+  /** Map-unit floor of the font size: below states.min_px even at the
+   *  TOP of the zoom range the inscription can never be readable, so
+   *  the placement skips it outright. Depends on the fit scale — part
+   *  of the placement signature below (a resize re-fits once, exactly
+   *  like a config change; never during a gesture). */
+  const stateFontFloor =
+    viewport.width > 0
+      ? rules.states.min_px / Math.max(maxScale(), 1e-9)
+      : 0;
+  const stateNames = useMemo(() => {
+    // No viewport yet → no scale → nothing to place (the cache stays
+    // empty until the first sized pass writes entries under the real
+    // floor).
+    const specs =
+      viewport.width > 0 ? collectStates(props.state ?? null, nodesById) : [];
+    const fingerprint = `${JSON.stringify(rules.states)}|${stateAdvanceEm.toFixed(4)}|${stateFontFloor.toFixed(4)}`;
+    const result = placeStateNames(specs, fingerprint, {
+      nodesById,
+      edges: manifest.edges,
+      ringsById,
+      advanceEm: stateAdvanceEm,
+      rules: rules.states,
+      minFontSize: stateFontFloor,
+      cache: stateNameCache.current,
+    });
+    stateNameCache.current = result.cache;
+    return result.names;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props.state,
+    viewport.width,
+    nodesById,
+    manifest.edges,
+    ringsById,
+    rules.states,
+    stateAdvanceEm,
+    stateFontFloor,
+  ]);
+  // Per-settled-scale resolution: the map-unit size becomes screen px
+  // under the current zoom — below min_px the inscription is off, above
+  // max_px its font size is capped (the box stays inside the state).
+  const stateNameRows = useMemo(
+    () =>
+      stateNames.map((label) => ({
+        label,
+        hidden:
+          !(committedScale > 0) ||
+          label.fontSize * committedScale < rules.states.min_px,
+        fontSize:
+          committedScale > 0
+            ? Math.min(label.fontSize, rules.states.max_px / committedScale)
+            : label.fontSize,
+      })),
+    [stateNames, committedScale, rules.states],
+  );
+  // Mirror image of the province names: visible at every zoom BELOW
+  // the province-name threshold, gone at the maximum zoom.
+  const stateNamesOff =
+    committedScale > 0 &&
+    isProvinceZoom(committedScale, maxScale(), rules.labels);
 
   // Imperative visibility writer (map2_6c): province labels at the
   // maximum zoom show only while most of their province is in view;
@@ -346,6 +447,7 @@ export function MapView(props: MapViewProps) {
       measurer,
       maxScale(),
     );
+    setCommittedScale(v.s);
     placedRef.current = all;
     const { items, window } = selectRendered(all, v, viewport);
     coverageRef.current = window;
@@ -809,6 +911,9 @@ export function MapView(props: MapViewProps) {
     document.fonts?.ready.then(() => {
       if (!cancelled) {
         relayoutRef.current();
+        // Re-measure the real bundled faces and re-place the state
+        // names once (map2_7) — until now the advance was a fallback.
+        setFontEpoch((e) => e + 1);
       }
     });
     return () => {
@@ -1100,6 +1205,18 @@ export function MapView(props: MapViewProps) {
           transition: opacity var(--pg-label-fade) ease,
             visibility 0s linear var(--pg-label-fade);
         }
+        /* State-name layer (map2_7): same data-off fade as labels —
+           the group fades out at the maximum zoom, a single
+           inscription fades under states.min_px. */
+        .pg-map-state {
+          transition: opacity var(--pg-label-fade) ease, visibility 0s;
+        }
+        .pg-map-state[data-off] {
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity var(--pg-label-fade) ease,
+            visibility 0s linear var(--pg-label-fade);
+        }
         /* Bundled label fonts (map2_6): self-hosted WOFF2 subsets
            (Latin + Cyrillic + basic punctuation, SIL OFL — licence
            files alongside), swapped in with font-display: swap. */
@@ -1152,6 +1269,23 @@ export function MapView(props: MapViewProps) {
           font-family: 'Roboto Condensed';
           src: url('/assets/fonts/robotocondensed-mediumitalic.woff2') format('woff2');
           font-weight: 500; font-style: italic; font-display: swap;
+        }
+        /* State-name monospace faces (map2_7): same self-hosted OFL
+           WOFF2 subsets — Latin + Cyrillic + digits + punctuation. */
+        @font-face {
+          font-family: 'JetBrains Mono';
+          src: url('/assets/fonts/jetbrainsmono-regular.woff2') format('woff2');
+          font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'IBM Plex Mono';
+          src: url('/assets/fonts/ibmplexmono-regular.woff2') format('woff2');
+          font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+          font-family: 'PT Mono';
+          src: url('/assets/fonts/ptmono-regular.woff2') format('woff2');
+          font-weight: 400; font-style: normal; font-display: swap;
         }
       `}</style>
       <svg width={viewport.width} height={viewport.height}>
@@ -1261,6 +1395,43 @@ export function MapView(props: MapViewProps) {
           {/* border layer: above the fills, below selection/hover and
               labels — chunked + LOD copies, inert (map2_4, map2_14). */}
           {borderEls}
+          {/* state names (map2_7): one fitted inscription per state
+              territory — above the fills and internal borders, below
+              the labels and the hover/selection overlays, and never an
+              event target. Map-unit geometry + font size: a pan/zoom
+              moves and scales it with the world; the settled scale only
+              clamps screen size to states.min_px..max_px and gates the
+              whole layer at the maximum zoom (fade = labels.fade_ms —
+              the crossfade mirror of the province names). */}
+          <g
+            data-layer="state-names"
+            pointerEvents="none"
+            className="pg-map-state"
+            {...(stateNamesOff ? { 'data-off': '' } : {})}
+            style={
+              { '--pg-label-fade': `${fadeMs()}ms` } as CSSProperties
+            }
+          >
+            <g opacity={rules.states.opacity}>
+              {stateNameRows.map(({ label: l, hidden, fontSize }) => (
+                <text
+                  key={l.key}
+                  data-state={l.stateKey}
+                  className="pg-map-state"
+                  {...(hidden ? { 'data-off': '' } : {})}
+                  transform={`translate(${l.x} ${l.y}) rotate(${l.angleDeg})`}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={fontSize}
+                  fontFamily={stateFontFamily}
+                  letterSpacing={`${l.letterSpacingEm}em`}
+                  fill={l.color}
+                >
+                  {l.text}
+                </text>
+              ))}
+            </g>
+          </g>
           {/* labels (map2_6/map2_6c): the rendered subset of the last
               layout — placed for all nodes of the zoom-gated kind
               (provinces only at the maximum zoom, seas only below),

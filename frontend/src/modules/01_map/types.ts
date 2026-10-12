@@ -111,6 +111,27 @@ export interface MapLabelsRulesDTO {
   fade_ms: number;
 }
 
+/**
+ * `rules.states` (map2_7): one rotated inscription per state, fitted
+ * inside its territory, visible at every zoom below the maximum (the
+ * `labels.province_zoom_ratio` threshold where province names live).
+ * `font` is one of the three bundled monospace families in
+ * `/assets/fonts/`.
+ */
+export interface MapStatesRulesDTO {
+  font: 'jetbrains_mono' | 'ibm_plex_mono' | 'pt_mono';
+  uppercase: boolean;
+  opacity: number;
+  max_angle_deg: number;
+  thickness_ratio: number;
+  length_ratio: number;
+  max_letter_spacing_em: number;
+  min_px: number;
+  max_px: number;
+  color_mode: 'auto' | 'light' | 'dark';
+  min_group_share: number;
+}
+
 export interface MapViewRulesDTO {
   /** [x, y, width, height] in view_box units — Spec 3.8 zoom-out frame. */
   frame: [number, number, number, number];
@@ -128,6 +149,7 @@ export interface MapViewRulesDTO {
   selection: MapSelectionRulesDTO;
   relief: MapReliefRulesDTO;
   labels: MapLabelsRulesDTO;
+  states: MapStatesRulesDTO;
   require_connected_start: boolean;
   big_window_enabled: boolean;
   refresh: MapRefreshRulesDTO;
