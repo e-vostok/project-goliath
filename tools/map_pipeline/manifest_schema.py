@@ -9,6 +9,7 @@ Pydantic model pins the field lists (``extra="forbid"``) and formats, then
 """
 from __future__ import annotations
 
+import math
 from typing import Literal
 
 from pydantic import (
@@ -56,12 +57,28 @@ class InputsSha256(_Strict):
 
 class ManifestLabel(_Strict):
     """``label`` box of a node (map2_6): anchor ``(x, y)`` plus the free
-    width ``w`` and height ``h`` the client fits the name into."""
+    width ``w`` and height ``h`` the client fits the name into.
+
+    ``spine``/``len``/``thick`` (map2_20): the baseline the curved name
+    rides — endpoints, the signed sagitta (quadratic-Bézier control =
+    chord midpoint + 2·s along the left normal), the chord length and
+    the minimum thickness across the central part of the spine."""
 
     x: float
     y: float
     w: float = Field(gt=0.0)
     h: float = Field(gt=0.0)
+    spine: list[float] = Field(min_length=5, max_length=5)
+    len: float = Field(gt=0.0)
+    thick: float = Field(gt=0.0)
+
+    @field_validator("x", "y", "spine")
+    @classmethod
+    def _finite(cls, v):
+        vals = v if isinstance(v, list) else [v]
+        if not all(math.isfinite(f) for f in vals):
+            raise ValueError("label numbers must be finite")
+        return v
 
 
 class ManifestNode(_Strict):

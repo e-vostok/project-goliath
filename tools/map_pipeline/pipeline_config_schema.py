@@ -137,6 +137,21 @@ class BordersConfig(_Strict):
     coverage_fail: float = Field(ge=0.005, le=0.2)
 
 
+class SpineConfig(_Strict):
+    """Label spine scan (map2_20): the name rides a chord or a gentle
+    parabolic arc inscribed in the node's territory. ``max_angle_deg``
+    and ``max_bend`` mirror the client-side ``labels.*`` rules — the
+    tool never reads ``configs/01_map.yaml``."""
+
+    max_angle_deg: float = Field(ge=0.0, le=89.0)
+    angle_step_deg: float = Field(ge=1.0, le=30.0)
+    offset_step: float = Field(ge=0.01, le=0.5)
+    max_bend: float = Field(ge=0.0, le=0.25)
+    central_share: float = Field(ge=0.3, le=1.0)
+    thickness_samples: int = Field(ge=3, le=15)
+    arc_samples: int = Field(ge=9, le=129)
+
+
 class LimitsConfig(_Strict):
     """Server-side size limits mirrored for the tool (Spec Part 4)."""
 
@@ -164,6 +179,7 @@ class PipelineConfig(_Strict):
     sea_cut: SeaCutConfig
     outside: OutsideConfig
     borders: BordersConfig
+    spine: SpineConfig
     limits: LimitsConfig
 
 

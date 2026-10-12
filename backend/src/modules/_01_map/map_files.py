@@ -78,12 +78,23 @@ class InputsSha256(_Strict):
 
 class ManifestNodeLabel(_Strict):
     """``manifest.nodes[].label`` (map2_6): the label anchor ``(x, y)``
-    and the free ``w``/``h`` box the client fits the name into."""
+    and the free ``w``/``h`` box the client fits the name into.
+
+    ``spine``/``len``/``thick`` (map2_20): the inscribed baseline the
+    curved name rides — ``[x0, y0, x1, y1, s]`` endpoints plus the
+    signed sagitta (quadratic-Bézier control = chord midpoint + 2·s
+    along the chord's left normal), the chord length and the minimum
+    thickness across the spine's central part."""
 
     x: FiniteFloat
     y: FiniteFloat
     w: FiniteFloat = Field(gt=0.0)
     h: FiniteFloat = Field(gt=0.0)
+    spine: tuple[
+        FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat
+    ]
+    len: FiniteFloat = Field(gt=0.0)
+    thick: FiniteFloat = Field(gt=0.0)
 
 
 class ManifestNode(_Strict):

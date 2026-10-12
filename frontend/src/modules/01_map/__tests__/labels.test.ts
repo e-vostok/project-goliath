@@ -41,7 +41,32 @@ const RULES: MapLabelsRulesDTO = {
   sea_letter_spacing_em: 0.08,
   province_zoom_ratio: 0.98,
   fade_ms: 120,
+  max_angle_deg: 60,
+  max_bend: 0.1,
+  thickness_ratio: 0.55,
+  length_ratio: 0.85,
+  letter_spacing_min_em: -0.02,
+  letter_spacing_max_em: 0.3,
+  land_opacity: 0.6,
+  sea_curved: true,
 };
+
+/** A label box plus a centred horizontal spine covering 80% of it —
+ *  what the pipeline emits for an oblong territory. */
+const labelBox = (
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): MapNodeDTO['label'] => ({
+  x,
+  y,
+  w,
+  h,
+  spine: [x - 0.4 * w, y, x + 0.4 * w, y, 0],
+  len: 0.8 * w,
+  thick: h,
+});
 
 const node = (
   id: number,
@@ -55,7 +80,7 @@ const node = (
   anchor: [0, 0],
   bbox: [0, 0, 10, 10],
   area: 100,
-  label: { x: 0, y: 0, w: 10, h: 10 },
+  label: labelBox(0, 0, 10, 10),
   ...opts,
 });
 
@@ -91,7 +116,7 @@ describe('layoutLabels', () => {
     // but 'Alpha'/'Beta' (max line 2.5) fits at a readable size.
     const n = node(1, {
       name: 'Alpha Beta',
-      label: { x: 0, y: 0, w: 4, h: 10 },
+      label: labelBox(0, 0, 4, 10),
     });
     const placed = layoutLabels([n], 10, RULES, MEASURER, 10);
     expect(placed).toHaveLength(1);
@@ -104,13 +129,142 @@ describe('layoutLabels', () => {
     const group = node(1, {
       name: 'Cyclades Islands',
       bbox: [0, 0, 1, 1],
-      label: { x: 0, y: 0, w: 20, h: 6 },
+      label: labelBox(0, 0, 20, 6),
     });
     const placed = layoutLabels([group], 10, RULES, MEASURER, 10);
     expect(placed.map((l) => l.id)).toEqual([1]);
     // Same node with a single-part-size box stays hidden at this zoom.
-    const tiny = { ...group, label: { x: 0, y: 0, w: 1, h: 1 } };
+    const tiny = { ...group, label: labelBox(0, 0, 1, 1) };
     expect(layoutLabels([tiny], 10, RULES, MEASURER, 10)).toEqual([]);
+  });
+});
+
+describe('spine labels (map2_20)', () => {
+  // A 40×8 territory at scale 40: chord 32 u = 1280 px, cap by
+  // thickness 8 u → heightCap = 0.55·8·40 = 176 px.
+  const oblong = node(1, {
+    name: 'Abcdefgh',
+    label: {
+      x: 0, y: 0, w: 40, h: 8,
+      spine: [-16, 0, 16, 0, 0], len: 32, thick: 8,
+    },
+  });
+
+  it('spreads letters up to length_ratio of the chord, opacity 0.6', () => {
+    const placed = layoutLabels([oblong], 40, RULES, MEASURER, 40);
+    expect(placed).toHaveLength(1);
+    const l = placed[0];
+    expect(l.path).not.toBeNull();
+    // w0 = 4 per px; target = 0.85·32·40 = 1088 px; size capped at 15
+    // → spacing = (1088/15 − 4)/7 ≈ 9.79 → clamped to 0.3.
+    expect(l.letterSpacingEm).toBeLessThanOrEqual(
+      RULES.letter_spacing_max_em,
+    );
+    expect(l.letterSpacingEm).toBeGreaterThanOrEqual(
+      RULES.letter_spacing_min_em,
+    );
+    expect(l.sizePx).toBe(15);
+    expect(l.opacity).toBe(RULES.land_opacity);
+  });
+
+  it('shrinks the font when even the tightest spacing overflows', () => {
+    // len 10 → target 340 px; 50 chars (w0 25) at the min spacing
+    // still overflow at 15 px → size drops to 340/(25−0.98) ≈ 14.2.
+    const n = node(1, {
+      name: 'Abcdefghij'.repeat(5),
+      label: {
+        x: 0, y: 0, w: 10, h: 8,
+        spine: [-5, 0, 5, 0, 0], len: 10, thick: 8,
+      },
+    });
+    const placed = layoutLabels([n], 40, RULES, MEASURER, 40);
+    expect(placed).toHaveLength(1);
+    const l = placed[0];
+    expect(l.letterSpacingEm).toBe(RULES.letter_spacing_min_em);
+    expect(l.sizePx).toBeLessThan(15);
+    expect(l.sizePx).toBeGreaterThanOrEqual(RULES.land_min_px);
+    // exactly fills the target: size · (w0 + min·gaps) = 0.85·len·scale
+    expect(l.sizePx * (25 + RULES.letter_spacing_min_em * 49)).toBeCloseTo(
+      RULES.length_ratio * 10 * 40,
+      5,
+    );
+  });
+
+  it('hides a name that cannot reach land_min_px along the spine', () => {
+    // len 1 u → target 34 px; the name needs ≥ 9·(17−0.66) ≈ 147 px.
+    const tiny = node(1, {
+      name: 'AbcdefghijklmnopqrstuvwxyzAbcdefghij',
+      label: {
+        x: 0, y: 0, w: 1, h: 0.5, // box too small for a two-line save
+        spine: [-0.5, 0, 0.5, 0, 0], len: 1, thick: 0.5,
+      },
+    });
+    expect(layoutLabels([tiny], 40, RULES, MEASURER, 40)).toEqual([]);
+  });
+
+  it('falls back to two horizontal lines when the spine is too short', () => {
+    const n = node(1, {
+      name: 'Abcdef Ghijkl',
+      // the spine offers ~8.8 px, hopeless for 13 glyphs; the box is
+      // narrow (w 2 u) so one line caps at 11 px but two lines reach
+      // the 15 px cap — the map2_6 two-line fit wins.
+      label: {
+        x: 0, y: 0, w: 2, h: 4,
+        spine: [-0.13, 0, 0.13, 0, 0], len: 0.26, thick: 4,
+      },
+    });
+    const placed = layoutLabels([n], 40, RULES, MEASURER, 40);
+    expect(placed).toHaveLength(1);
+    expect(placed[0].path).toBeNull();
+    expect(placed[0].lines).toEqual(['Abcdef', 'Ghijkl']);
+    expect(placed[0].sizePx).toBe(15);
+    expect(placed[0].opacity).toBe(RULES.land_opacity);
+  });
+
+  it('bends the slice along the spine sagitta', () => {
+    const bent = node(1, {
+      name: 'Abcdefgh',
+      label: {
+        x: 0, y: 0, w: 40, h: 8,
+        spine: [-16, 0, 16, 0, 1.6], len: 32, thick: 8,
+      },
+    });
+    const placed = layoutLabels([bent], 40, RULES, MEASURER, 40);
+    expect(placed).toHaveLength(1);
+    const p = placed[0].path!;
+    // control point along the chord's left normal (+y for a
+    // left-to-right chord): s > 0 bends the slice that way
+    expect(p.cy).toBeGreaterThan(0);
+    // endpoints on the arc, symmetric around the midpoint
+    expect(p.y0).toBeCloseTo(p.y1, 6);
+    expect(p.x0).toBeLessThan(0);
+    expect(p.x1).toBeGreaterThan(0);
+  });
+
+  it('rotated collision boxes do not falsely overlap', () => {
+    // Two parallel 45° spines 2.2 units apart along their shared
+    // normal: the thin oriented boxes never touch (hh+hh ≈ 17 px <
+    // 22 px), but their axis-aligned bounds overlap — the old AABB
+    // collision would have dropped the second label.
+    const mk = (id: number, dx: number, dy: number) =>
+      node(id, {
+        name: `Aa${id}`,
+        area: 100,
+        label: {
+          x: 0, y: 0, w: 1, h: 1,
+          spine: [dx, dy, dx + 8, dy + 8, 0],
+          len: Math.hypot(8, 8),
+          thick: 2,
+        },
+      });
+    const placed = layoutLabels(
+      [mk(1, 0, 0), mk(2, -1.56, 1.56)],
+      10,
+      RULES,
+      MEASURER,
+      10,
+    );
+    expect(placed.map((l) => l.id).sort()).toEqual([1, 2]);
   });
 });
 
@@ -120,7 +274,7 @@ describe('zoom gating (map2_6c)', () => {
     kind: 'SEA',
     name: 'Sea',
     area: 500,
-    label: { x: 0, y: 0, w: 40, h: 20 },
+    label: labelBox(0, 0, 40, 20),
   });
 
   it('renders provinces only at the maximum zoom, seas only below', () => {
@@ -146,7 +300,7 @@ describe('rendered set follows the viewport (map2_6c pan bug)', () => {
       name: `P${i + 1}`,
       area: 100,
       bbox: [i * 20, 0, i * 20 + 18, 18],
-      label: { x: i * 20 + 9, y: 9, w: 18, h: 18 },
+      label: labelBox(i * 20 + 9, 9, 18, 18),
     }),
   );
   const viewport = { width: 800, height: 600 };
@@ -200,6 +354,9 @@ describe('labelMostlyInView (map2_6c)', () => {
     lines: ['X'],
     textW: 5,
     textH: 1.2,
+    path: null,
+    letterSpacingEm: 0,
+    opacity: 0.6,
     bbox,
   });
 
@@ -240,6 +397,9 @@ describe('mergeRendered (map2_6c)', () => {
     lines: ['X'],
     textW: 5,
     textH: 1.2,
+    path: null,
+    letterSpacingEm: 0,
+    opacity: 0.6,
     bbox: [x - 5, 25, x + 5, 35],
   });
 

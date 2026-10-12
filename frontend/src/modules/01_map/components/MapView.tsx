@@ -1457,12 +1457,30 @@ export function MapView(props: MapViewProps) {
               the .pg-map-label transition above. Halo = thin dark glyph
               outline via stroke + paint-order, no filters/shadows. Sea
               labels are italic (or skewX-slanted when the family has no
-              italic cut) with letter spacing and their own colour. */}
+              italic cut) with letter spacing and their own colour.
+              map2_20: a name with a `path` rides its spine via
+              <textPath> exactly like the state names; the whole-element
+              opacity sits on the <text> itself so glyphs and halo
+              composite together (an opacity<1 element renders to one
+              surface either way — a wrapping <g> would only add ~150
+              DOM nodes to the per-frame SVG repaint). */}
           <g
             data-layer="labels"
             pointerEvents="none"
             style={{ '--pg-label-fade': `${fadeMs()}ms` } as CSSProperties}
           >
+            <defs>
+              {rendered.map((l) =>
+                l.path === null ? null : (
+                  <path
+                    key={`arc-${l.id}`}
+                    id={`pg-label-arc-${l.id}`}
+                    d={`M ${l.path.x0} ${l.path.y0} Q ${l.path.cx} ${l.path.cy} ${l.path.x1} ${l.path.y1}`}
+                    fill="none"
+                  />
+                ),
+              )}
+            </defs>
             {rendered.map((l) => {
               const sea = l.kind === 'SEA';
               const slant = sea && fontSpec.syntheticSlant;
@@ -1471,6 +1489,7 @@ export function MapView(props: MapViewProps) {
                   key={l.id}
                   ref={labelElRef}
                   className="pg-map-label"
+                  opacity={l.opacity < 1 ? l.opacity : undefined}
                   data-label={l.id}
                   textAnchor="middle"
                   fontSize={l.fontSize}
@@ -1480,7 +1499,9 @@ export function MapView(props: MapViewProps) {
                     sea && !fontSpec.syntheticSlant ? 'italic' : undefined
                   }
                   letterSpacing={
-                    sea ? `${rules.labels.sea_letter_spacing_em}em` : undefined
+                    l.letterSpacingEm !== 0
+                      ? `${l.letterSpacingEm}em`
+                      : undefined
                   }
                   fill={sea ? rules.labels.sea_color : rules.labels.land_color}
                   stroke={rules.labels.halo_color}
@@ -1489,15 +1510,28 @@ export function MapView(props: MapViewProps) {
                   dominantBaseline={
                     l.lines.length === 1 ? 'central' : undefined
                   }
-                  {...(slant
-                    ? {
-                        transform: `translate(${l.x} ${l.y}) skewX(-9)`,
-                        x: 0,
-                        y: 0,
-                      }
-                    : { x: l.x, y: l.y })}
+                  {...(l.path !== null
+                    ? slant
+                      ? {
+                          transform: `translate(${l.x} ${l.y}) skewX(-9) translate(${-l.x} ${-l.y})`,
+                        }
+                      : {}
+                    : slant
+                      ? {
+                          transform: `translate(${l.x} ${l.y}) skewX(-9)`,
+                          x: 0,
+                          y: 0,
+                        }
+                      : { x: l.x, y: l.y })}
                 >
-                  {l.lines.length === 1 ? (
+                  {l.path !== null ? (
+                    <textPath
+                      href={`#pg-label-arc-${l.id}`}
+                      startOffset="50%"
+                    >
+                      {l.lines[0]}
+                    </textPath>
+                  ) : l.lines.length === 1 ? (
                     l.lines[0]
                   ) : (
                     <>

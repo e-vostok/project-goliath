@@ -116,7 +116,7 @@ const RULES = {
     strength_playable: 0.55,
     inactive_brightness: 0.14,
   },
-  // Mirrors the `labels` block of configs/01_map.yaml (map2_6).
+  // Mirrors the `labels` block of configs/01_map.yaml (map2_6 + map2_20).
   labels: {
     font: 'fira_sans_condensed',
     land_min_px: 9,
@@ -132,6 +132,14 @@ const RULES = {
     sea_letter_spacing_em: 0.08,
     province_zoom_ratio: 0.98,
     fade_ms: 120,
+    max_angle_deg: 60,
+    max_bend: 0.10,
+    thickness_ratio: 0.55,
+    length_ratio: 0.85,
+    letter_spacing_min_em: -0.02,
+    letter_spacing_max_em: 0.30,
+    land_opacity: 0.6,
+    sea_curved: true,
   },
   // Mirrors the `states` block of configs/01_map.yaml (map2_7).
   states: {

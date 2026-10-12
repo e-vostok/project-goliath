@@ -279,6 +279,48 @@ class LabelsSettings(_Strict):
         le=500,
         description="Длительность появления/исчезновения подписи, мс (map2_6c; 0 = без перехода).",
     )
+    # map2_20: подписи провинций идут вдоль «спины» — поворот, растяжка,
+    # лёгкий изгиб и частичная прозрачность, как у названий государств.
+    max_angle_deg: float = Field(
+        ge=0.0,
+        le=89.0,
+        description="Максимальный наклон хорды «спины» подписи от горизонтали, градусы (map2_20).",
+    )
+    max_bend: float = Field(
+        ge=0.0,
+        le=0.25,
+        description="Максимальный изгиб подписи: стрелка дуги как доля длины хорды (map2_20).",
+    )
+    thickness_ratio: float = Field(
+        ge=0.2,
+        le=0.95,
+        description="Высота текста как доля локальной толщины провинции поперёк спины (map2_20).",
+    )
+    length_ratio: float = Field(
+        ge=0.3,
+        le=1.0,
+        description="Целевая длина текста как доля свободной длины спины (map2_20).",
+    )
+    letter_spacing_min_em: float = Field(
+        ge=-0.1,
+        le=0.0,
+        description="Минимальное разрежение букв при подгонке вдоль спины, em (map2_20).",
+    )
+    letter_spacing_max_em: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Максимальное разрежение букв при подгонке вдоль спины, em (map2_20).",
+    )
+    land_opacity: float = Field(
+        ge=0.2,
+        le=1.0,
+        description="Прозрачность подписей провинций: применяется ко всему элементу, "
+        "обвод и буквы смешиваются вместе (map2_20).",
+    )
+    sea_curved: bool = Field(
+        description="Морские зоны тоже повторяют форму по своей спине (map2_20); "
+        "false — горизонтальная подпись в боксе, как в map2_6.",
+    )
 
     @model_validator(mode="after")
     def check_min_max(self) -> Self:

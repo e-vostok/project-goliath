@@ -14,12 +14,21 @@ export type MapEdgeType = 'land' | 'coast' | 'sea' | 'strait';
 /**
  * `node.label` (map2_6): label anchor plus the free `w`/`h` box in map
  * units the client fits the name into (pipeline-computed).
+ *
+ * `spine`/`len`/`thick` (map2_20): the inscribed baseline the curved
+ * name rides — `[x0, y0, x1, y1, s]` chord endpoints plus the signed
+ * sagitta (the quadratic Bézier control point is the chord midpoint
+ * moved by `2·s` along the chord's left normal), the chord length
+ * `len` and the local thickness `thick` across the spine.
  */
 export interface MapNodeLabelDTO {
   x: number;
   y: number;
   w: number;
   h: number;
+  spine: [number, number, number, number, number];
+  len: number;
+  thick: number;
 }
 
 export interface MapNodeDTO {
@@ -92,7 +101,10 @@ export interface MapReliefRulesDTO {
  * `/assets/fonts/`. map2_6c: `province_zoom_ratio` of the camera's
  * maximum scale is where province names live (sea names below it);
  * `fade_ms` is the appear/disappear transition (0 = off,
- * prefers-reduced-motion forces 0).
+ * prefers-reduced-motion forces 0). map2_20: `max_angle_deg`/`max_bend`/
+ * `thickness_ratio`/`length_ratio`/`letter_spacing_*_em`/`land_opacity`
+ * drive the curved name along the node's spine; `sea_curved` applies
+ * the same mechanism to sea names (their own style is kept).
  */
 export interface MapLabelsRulesDTO {
   font: 'fira_sans_condensed' | 'pt_sans_narrow' | 'roboto_condensed';
@@ -109,6 +121,14 @@ export interface MapLabelsRulesDTO {
   sea_letter_spacing_em: number;
   province_zoom_ratio: number;
   fade_ms: number;
+  max_angle_deg: number;
+  max_bend: number;
+  thickness_ratio: number;
+  length_ratio: number;
+  letter_spacing_min_em: number;
+  letter_spacing_max_em: number;
+  land_opacity: number;
+  sea_curved: boolean;
 }
 
 /**

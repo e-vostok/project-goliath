@@ -16,6 +16,17 @@
  * pan (selectRendered / windowCoversView), and at the maximum zoom a
  * province label shows only while most of its province is in view
  * (labelMostlyInView).
+ *
+ * map2_20: the name follows the province's shape. The pipeline baked a
+ * `spine` baseline into every label — a straight or gently bent chord
+ * inscribed in the territory — and the client only fits text onto it:
+ * font size bounded by the local `thick`, letter spacing between
+ * `letter_spacing_min_em`/`_max_em` to reach `length_ratio` of the
+ * chord, `max_bend` already honoured by the arc itself. Curved labels
+ * collide as oriented boxes around the real path. When nothing fits
+ * along the spine the map2_6 box fit (the two-line horizontal version
+ * included) stays as the fallback; nodes without `spine` keep the old
+ * behaviour too.
  */
 
 import type { MapLabelsRulesDTO, MapNodeDTO } from '../types';
@@ -41,6 +52,18 @@ const MOST_IN_VIEW_SHARE = 0.5;
 const ANCHOR_INSET = 0.1;
 /** Reference font size the canvas measures at (per-px factor below). */
 const MEASURE_REF_PX = 64;
+
+/** map2_20 rule defaults — the configs/01_map.yaml values, used when a
+ *  rules block predates the curved-label keys (cached manifests, perf
+ *  stubs); a live server always sends them. */
+const SPINE_DEFAULTS = {
+  thickness_ratio: 0.55,
+  length_ratio: 0.85,
+  letter_spacing_min_em: -0.02,
+  letter_spacing_max_em: 0.3,
+  land_opacity: 0.6,
+  sea_curved: true,
+} as const;
 
 /** Bundled-family table: CSS family plus whether the family has a real
  *  italic cut — families without one get a synthetic `skewX` slant on
@@ -117,13 +140,25 @@ export function createMeasurer(family: string): LabelMeasurer {
   };
 }
 
+/** Quadratic-Bézier baseline slice a curved name follows (map2_20),
+ *  map units — rendered via `<textPath>` like the state names. */
+export interface LabelPath {
+  x0: number;
+  y0: number;
+  cx: number;
+  cy: number;
+  x1: number;
+  y1: number;
+}
+
 /** One label that survived fit + collision, ready to render. Positions
  *  and sizes are in MAP units so the label <g> moves with the world
  *  transform and needs no work during a pan. */
 export interface PlacedLabel {
   id: number;
   kind: 'LAND' | 'SEA';
-  /** Text centre, map units. */
+  /** Text centre, map units (the collision box's centre for a curved
+   *  label — its baseline midpoint offset along the slice normal). */
   x: number;
   y: number;
   /** font-size in map units (screen px ÷ scale). */
@@ -133,9 +168,18 @@ export interface PlacedLabel {
   /** halo stroke-width in map units. */
   haloW: number;
   lines: [string] | [string, string];
-  /** Text box size in map units (screen px ÷ scale). */
+  /** Axis-aligned text box size in map units (screen px ÷ scale) —
+   *  the bounding box of the curved box for a path label. */
   textW: number;
   textH: number;
+  /** Curved baseline slice (map2_20); null → straight box label. */
+  path: LabelPath | null;
+  /** Letter spacing in em (computed along the spine for curved labels;
+   *  `sea_letter_spacing_em` for a straight sea label, 0 for land). */
+  letterSpacingEm: number;
+  /** Whole-element opacity — `labels.land_opacity` for province names
+   *  (map2_20), 1 for sea labels (their map2_6 look is unchanged). */
+  opacity: number;
   /** Node bbox in map units — the «most in view» fade rule (map2_6c). */
   bbox: [number, number, number, number];
 }
@@ -149,12 +193,24 @@ export interface RenderedLabel extends PlacedLabel {
 interface Candidate {
   node: MapNodeDTO;
   name: string;
+  /** Collision-box centre, map units. */
   x: number;
   y: number;
   sizePx: number;
   lines: [string] | [string, string];
+  /** Text box dims, screen px (pre-padding). */
   textW: number;
   textH: number;
+  path: LabelPath | null;
+  letterSpacingEm: number;
+  opacity: number;
+  /** Collision OBB: major-axis unit vector and half extents in map
+   *  units, centred on (x, y); the padding is added in screen px when
+   *  the grid is built. */
+  ux: number;
+  uy: number;
+  hw: number;
+  hh: number;
 }
 
 /** Every valid two-line split of `name`: break at a space (removed) or
@@ -239,6 +295,7 @@ function fitCandidate(
   } else {
     return null;
   }
+  const textH = lines.length * LINE_H * sizePx;
   return {
     node,
     name,
@@ -247,7 +304,146 @@ function fitCandidate(
     sizePx,
     lines,
     textW,
-    textH: lines.length * LINE_H * sizePx,
+    textH,
+    path: null,
+    letterSpacingEm: spacing,
+    opacity: sea ? 1 : (rules.land_opacity ?? SPINE_DEFAULTS.land_opacity),
+    ux: 1,
+    uy: 0,
+    hw: textW / 2 / scale,
+    hh: textH / 2 / scale,
+  };
+}
+
+/**
+ * map2_20: fit `name` along the node's spine — a chord or gentle arc
+ * inscribed in the territory. Font size is capped by the local
+ * thickness (`thickness_ratio × thick` screen px of text height) and
+ * `min/max_px`; letter spacing spreads the glyphs between
+ * `letter_spacing_min_em`/`_max_em` up to `length_ratio` of the chord
+ * length, and when even the tightest spacing overflows, the font
+ * shrinks. Returns null below `minPx` — the caller falls back to the
+ * map2_6 box fit. The collision box is oriented along the drawn arc
+ * slice, not the axis-aligned `label` box.
+ */
+function fitSpineCandidate(
+  node: MapNodeDTO,
+  name: string,
+  scale: number,
+  rules: MapLabelsRulesDTO,
+  measurer: LabelMeasurer,
+): Candidate | null {
+  const label = node.label;
+  if (
+    label.spine === undefined ||
+    label.len === undefined ||
+    label.thick === undefined
+  ) {
+    return null;
+  }
+  const sea = node.kind === 'SEA';
+  const minPx = sea ? rules.sea_min_px : rules.land_min_px;
+  const maxPx = sea ? rules.sea_max_px : rules.land_max_px;
+  const lengthRatio = rules.length_ratio ?? SPINE_DEFAULTS.length_ratio;
+  const thicknessRatio =
+    rules.thickness_ratio ?? SPINE_DEFAULTS.thickness_ratio;
+  const lsMin =
+    rules.letter_spacing_min_em ?? SPINE_DEFAULTS.letter_spacing_min_em;
+  const lsMax =
+    rules.letter_spacing_max_em ?? SPINE_DEFAULTS.letter_spacing_max_em;
+  const targetLen = lengthRatio * label.len * scale;
+  const heightCap = thicknessRatio * label.thick * scale;
+  if (!(targetLen > 0) || !(heightCap > 0)) {
+    return null;
+  }
+
+  const w0 = measurer.measure(name, 0);
+  if (!(w0 > 0)) {
+    return null;
+  }
+  const gaps = Math.max(0, Array.from(name).length - 1);
+  let sizePx = Math.min(maxPx, heightCap / LINE_H);
+  let spacing: number;
+  if (gaps === 0) {
+    spacing = 0;
+    if (sizePx * w0 > targetLen) {
+      sizePx = targetLen / w0;
+    }
+  } else {
+    spacing = (targetLen / sizePx - w0) / gaps;
+    if (spacing > lsMax) {
+      spacing = lsMax;
+    } else if (spacing < lsMin) {
+      spacing = lsMin;
+      sizePx = targetLen / (w0 + lsMin * gaps);
+    }
+  }
+  if (sizePx < minPx || !(sizePx > 0)) {
+    return null;
+  }
+  sizePx = Math.min(sizePx, maxPx);
+
+  const textW = sizePx * (w0 + spacing * gaps);
+  const textH = LINE_H * sizePx;
+
+  // The arc slice the text actually rides: the central part of the
+  // spine whose chord is exactly the text width — centred on the
+  // spine's midpoint so the name sits in the middle of the stretch.
+  const [x0, y0, x1, y1, s] = label.spine;
+  const len = label.len;
+  const halfT = Math.min(textW / scale / len / 2, 0.5);
+  const tA = 0.5 - halfT;
+  const tB = 0.5 + halfT;
+  const dnx = -(y1 - y0) / len;
+  const dny = (x1 - x0) / len;
+  const arcPt = (t: number) => {
+    const f = 4 * s * t * (1 - t);
+    return {
+      x: x0 + (x1 - x0) * t + f * dnx,
+      y: y0 + (y1 - y0) * t + f * dny,
+    };
+  };
+  const pA = arcPt(tA);
+  const pB = arcPt(tB);
+  const pM = arcPt(0.5);
+
+  // The slice is itself a parabola: control = 2·mid − chord mid.
+  const path: LabelPath = {
+    x0: pA.x,
+    y0: pA.y,
+    cx: 2 * pM.x - (pA.x + pB.x) / 2,
+    cy: 2 * pM.y - (pA.y + pB.y) / 2,
+    x1: pB.x,
+    y1: pB.y,
+  };
+
+  // Oriented collision box around the drawn slice: major axis = the
+  // slice's own chord, minor = slice sagitta + text height.
+  const midX = (pA.x + pB.x) / 2;
+  const midY = (pA.y + pB.y) / 2;
+  const sliceLen = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+  const ux = sliceLen > 1e-9 ? (pB.x - pA.x) / sliceLen : 1;
+  const uy = sliceLen > 1e-9 ? (pB.y - pA.y) / sliceLen : 0;
+  const sagSlice =
+    (pM.x - midX) * -uy + (pM.y - midY) * ux;
+  const hw = sliceLen / 2;
+  const hh = Math.abs(sagSlice) / 2 + textH / 2 / scale;
+  return {
+    node,
+    name,
+    x: midX + (sagSlice / 2) * -uy,
+    y: midY + (sagSlice / 2) * ux,
+    sizePx,
+    lines: [name],
+    textW,
+    textH,
+    path,
+    letterSpacingEm: spacing,
+    opacity: sea ? 1 : (rules.land_opacity ?? SPINE_DEFAULTS.land_opacity),
+    ux,
+    uy,
+    hw,
+    hh,
   };
 }
 
@@ -258,10 +454,52 @@ export interface LabelRect {
   y1: number;
 }
 
-type Rect = LabelRect;
+/** Oriented box in screen px — the real collision shape of a curved
+ *  (or straight: u=(1,0)) label. `v` = the left normal (−uy, ux). */
+interface LabelBox {
+  cx: number;
+  cy: number;
+  ux: number;
+  uy: number;
+  hw: number;
+  hh: number;
+}
 
-function overlaps(a: Rect, b: Rect): boolean {
-  return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+/** Separating-axis test of two oriented boxes (4 axis projections:
+ *  both majors and both normals). */
+function boxOverlaps(a: LabelBox, b: LabelBox): boolean {
+  const dcx = b.cx - a.cx;
+  const dcy = b.cy - a.cy;
+  const axes = [
+    [a.ux, a.uy],
+    [-a.uy, a.ux],
+    [b.ux, b.uy],
+    [-b.uy, b.ux],
+  ];
+  for (const [ax, ay] of axes) {
+    const ra =
+      a.hw * Math.abs(a.ux * ax + a.uy * ay) +
+      a.hh * Math.abs(-a.uy * ax + a.ux * ay);
+    const rb =
+      b.hw * Math.abs(b.ux * ax + b.uy * ay) +
+      b.hh * Math.abs(-b.uy * ax + b.ux * ay);
+    if (Math.abs(dcx * ax + dcy * ay) > ra + rb + 1e-9) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Axis-aligned bounds of an oriented box, for the grid index. */
+function boxBounds(b: LabelBox): LabelRect {
+  const ex = b.hw * Math.abs(b.ux) + b.hh * Math.abs(b.uy);
+  const ey = b.hw * Math.abs(b.uy) + b.hh * Math.abs(b.ux);
+  return {
+    x0: b.cx - ex,
+    y0: b.cy - ey,
+    x1: b.cx + ex,
+    y1: b.cy + ey,
+  };
 }
 
 /**
@@ -298,6 +536,7 @@ export function layoutLabels(
   }
   const pad = rules.collision_padding_px;
   const atMax = isProvinceZoom(scale, maxScale, rules);
+  const seaCurved = rules.sea_curved ?? SPINE_DEFAULTS.sea_curved;
 
   const candidates: Candidate[] = [];
   for (const node of nodes) {
@@ -308,7 +547,13 @@ export function layoutLabels(
     if (name === '') {
       continue;
     }
-    const c = fitCandidate(node, name, scale, rules, measurer);
+    // map2_20: along the spine first; the map2_6 box (two-line version
+    // included) is the fallback. Sea zones keep the box when
+    // labels.sea_curved is off.
+    const c =
+      (node.kind === 'LAND' || seaCurved
+        ? fitSpineCandidate(node, name, scale, rules, measurer)
+        : null) ?? fitCandidate(node, name, scale, rules, measurer);
     if (c !== null) {
       candidates.push(c);
     }
@@ -323,17 +568,18 @@ export function layoutLabels(
       a.node.id - b.node.id,
   );
 
-  const grid = new Map<string, Rect[]>();
+  const grid = new Map<string, LabelBox[]>();
   const placed: PlacedLabel[] = [];
   for (const c of candidates) {
-    const cx = c.x * scale;
-    const cy = c.y * scale;
-    const rect: Rect = {
-      x0: cx - c.textW / 2 - pad,
-      y0: cy - c.textH / 2 - pad,
-      x1: cx + c.textW / 2 + pad,
-      y1: cy + c.textH / 2 + pad,
+    const box: LabelBox = {
+      cx: c.x * scale,
+      cy: c.y * scale,
+      ux: c.ux,
+      uy: c.uy,
+      hw: c.hw * scale + pad,
+      hh: c.hh * scale + pad,
     };
+    const rect = boxBounds(box);
     const ix0 = Math.floor(rect.x0 / GRID_CELL_PX);
     const ix1 = Math.floor(rect.x1 / GRID_CELL_PX);
     const iy0 = Math.floor(rect.y0 / GRID_CELL_PX);
@@ -342,7 +588,7 @@ export function layoutLabels(
     for (let ix = ix0; ix <= ix1 && !collides; ix++) {
       for (let iy = iy0; iy <= iy1 && !collides; iy++) {
         const cell = grid.get(`${ix}:${iy}`);
-        if (cell !== undefined && cell.some((r) => overlaps(rect, r))) {
+        if (cell !== undefined && cell.some((b) => boxOverlaps(box, b))) {
           collides = true;
         }
       }
@@ -355,12 +601,15 @@ export function layoutLabels(
         const key = `${ix}:${iy}`;
         const cell = grid.get(key);
         if (cell === undefined) {
-          grid.set(key, [rect]);
+          grid.set(key, [box]);
         } else {
-          cell.push(rect);
+          cell.push(box);
         }
       }
     }
+    // x/y keep the OBB centre and textW/textH its axis-aligned bounds —
+    // the pan sweep only needs a sane screen rect.
+    const bounds = boxBounds({ ...box, hw: c.hw * scale, hh: c.hh * scale });
     placed.push({
       id: c.node.id,
       kind: c.node.kind,
@@ -370,8 +619,11 @@ export function layoutLabels(
       sizePx: c.sizePx,
       haloW: rules.halo_width_px / scale,
       lines: c.lines,
-      textW: c.textW / scale,
-      textH: c.textH / scale,
+      textW: (bounds.x1 - bounds.x0) / scale,
+      textH: (bounds.y1 - bounds.y0) / scale,
+      path: c.path,
+      letterSpacingEm: c.letterSpacingEm,
+      opacity: c.opacity,
       bbox: c.node.bbox,
     });
   }
