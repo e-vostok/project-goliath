@@ -350,6 +350,32 @@ def _prepare(data_dir: Path) -> _Prep:
     return _Prep(cfg, boundary, overrides, paths, nodes, geoms, info, applied)
 
 
+def _metrics_worker(item):
+    """One node's metrics in a worker process. Geometry travels as WKB;
+    the result (a plain dataclass) is keyed by the caller — output order
+    and bytes never depend on scheduling."""
+    from shapely import from_wkb
+
+    _key, wkb, cfg = item
+    return node_metrics(from_wkb(wkb), cfg)
+
+
+def _node_metrics_all(canon: dict, cfg: PipelineConfig) -> dict:
+    """``metrics[k]`` for every node. The map2_20 spine scan is the bulk
+    of the build (~1 s/node), so it fans out across processes; a
+    platform without a usable pool falls back to the serial loop."""
+    keys = sorted(canon)
+    try:
+        from concurrent.futures import ProcessPoolExecutor
+
+        items = [(k, canon[k].wkb, cfg) for k in keys]
+        with ProcessPoolExecutor() as pool:
+            done = list(pool.map(_metrics_worker, items, chunksize=8))
+    except Exception:
+        done = [_metrics_worker((k, canon[k].wkb, cfg)) for k in keys]
+    return dict(zip(keys, done))
+
+
 def _sea_keys(overrides: Overrides) -> list[str]:
     return [z.key for z in overrides.sea_zones]
 
@@ -1025,9 +1051,7 @@ def run_build(
         )
         for key in all_geoms
     }
-    metrics = {
-        k: node_metrics(canon[k], cfg) for k in sorted(canon)
-    }
+    metrics = _node_metrics_all(canon, cfg)
 
     view_poly = box(0.0, 0.0, float(cfg.view.width), float(cfg.view.height))
     land_keys = sorted(

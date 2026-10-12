@@ -74,6 +74,22 @@ def playable_bbox(
     ]
 
 
+def _label_entry(mt: NodeMetrics) -> dict:
+    """``label`` payload: the map2_6 fallback box plus the map2_20 spine
+    baseline the curved name is laid out along."""
+    entry = {
+        "x": mt.label[0],
+        "y": mt.label[1],
+        "w": mt.label[2],
+        "h": mt.label[3],
+    }
+    if mt.spine is not None:
+        entry["spine"] = list(mt.spine.spine)
+        entry["len"] = mt.spine.len
+        entry["thick"] = mt.spine.thick
+    return entry
+
+
 def build_manifest(
     graph: Graph,
     land: dict,  # key -> pipeline _Node
@@ -106,12 +122,7 @@ def build_manifest(
                     "anchor": [mt.anchor[0], mt.anchor[1]],
                     "bbox": list(mt.bbox),
                     "area": mt.area,
-                    "label": {
-                        "x": mt.label[0],
-                        "y": mt.label[1],
-                        "w": mt.label[2],
-                        "h": mt.label[3],
-                    },
+                    "label": _label_entry(mt),
                 }
             )
         else:
@@ -126,12 +137,7 @@ def build_manifest(
                     "anchor": [mt.anchor[0], mt.anchor[1]],
                     "bbox": list(mt.bbox),
                     "area": mt.area,
-                    "label": {
-                        "x": mt.label[0],
-                        "y": mt.label[1],
-                        "w": mt.label[2],
-                        "h": mt.label[3],
-                    },
+                    "label": _label_entry(mt),
                 }
             )
     edges = []

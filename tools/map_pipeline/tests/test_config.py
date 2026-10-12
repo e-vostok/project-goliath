@@ -54,6 +54,14 @@ def test_committed_config_validates():
     assert cfg.limits.max_edges_per_node == 60
     assert cfg.limits.max_geometry_bytes == 5_000_000
     assert cfg.limits.max_manifest_bytes == 3_000_000
+    # map2_20: the label-spine scan mirrors the client labels.* rules
+    assert cfg.spine.max_angle_deg == 60
+    assert cfg.spine.max_bend == 0.10
+    assert cfg.spine.offset_step == 0.05
+    assert cfg.spine.angle_step_deg == 5
+    assert cfg.spine.central_share == 0.8
+    assert cfg.spine.thickness_samples == 7
+    assert cfg.spine.arc_samples == 33
 
 
 def _committed() -> dict:
@@ -90,6 +98,10 @@ def _committed() -> dict:
         ("limits", "max_edges_per_node", 3),
         ("limits", "max_geometry_bytes", 10),
         ("limits", "max_manifest_bytes", 99_000_000),
+        ("spine", "max_angle_deg", 90.0),
+        ("spine", "max_bend", 0.5),
+        ("spine", "offset_step", 0.0),
+        ("spine", "thickness_samples", 2),
     ],
 )
 def test_out_of_range_rejected(tmp_path, section, key, value):
@@ -105,7 +117,7 @@ def test_out_of_range_rejected(tmp_path, section, key, value):
 @pytest.mark.parametrize(
     "section",
     ["raster", "sea", "report", "preview", "simplify", "view", "georef",
-     "output", "sea_cut", "outside", "limits"],
+     "output", "sea_cut", "outside", "spine", "limits"],
 )
 def test_missing_key_rejected(tmp_path, section):
     doc = _committed()

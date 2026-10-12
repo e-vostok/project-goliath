@@ -482,6 +482,16 @@ def test_manifest_schema_invariants(make_data_dir, tmp_path):
     fails(lambda d: d.pop("nodes"), MANIFEST_INVALID)
     fails(lambda d: d.update(geometry_version="zzzzzzzzzzzz"),
           MANIFEST_INVALID)
+    # map2_20: spine/len/thick are required, finite and positive
+    fails(lambda d: d["nodes"][0]["label"].pop("spine"),
+          MANIFEST_INVALID)
+    fails(lambda d: d["nodes"][0]["label"].update(len=0.0),
+          MANIFEST_INVALID)
+    fails(lambda d: d["nodes"][0]["label"].update(thick=-1.0),
+          MANIFEST_INVALID)
+    fails(lambda d: d["nodes"][0]["label"].update(
+              spine=[0.0, 0.0, 1.0, 1.0, float("nan")]),
+          MANIFEST_INVALID)
 
 
 def test_manifest_limits(make_data_dir, tmp_path):
