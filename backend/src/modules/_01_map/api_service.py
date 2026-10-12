@@ -155,6 +155,7 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             thickness_ratio=config.states.thickness_ratio,
             length_ratio=config.states.length_ratio,
             max_letter_spacing_em=config.states.max_letter_spacing_em,
+            max_bend=config.states.max_bend,
             min_px=config.states.min_px,
             max_px=config.states.max_px,
             color_mode=config.states.color_mode,

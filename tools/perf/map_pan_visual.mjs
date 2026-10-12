@@ -142,6 +142,7 @@ const RULES = {
     thickness_ratio: 0.6,
     length_ratio: 0.8,
     max_letter_spacing_em: 1.0,
+    max_bend: 0.1,
     min_px: 10,
     max_px: 72,
     color_mode: 'auto',

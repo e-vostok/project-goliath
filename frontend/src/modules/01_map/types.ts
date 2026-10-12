@@ -126,6 +126,7 @@ export interface MapStatesRulesDTO {
   thickness_ratio: number;
   length_ratio: number;
   max_letter_spacing_em: number;
+  max_bend: number;
   min_px: number;
   max_px: number;
   color_mode: 'auto' | 'light' | 'dark';

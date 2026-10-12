@@ -122,6 +122,7 @@ class MapStatesRulesDTO(BaseModel):
     thickness_ratio: float
     length_ratio: float
     max_letter_spacing_em: float
+    max_bend: float
     min_px: int
     max_px: int
     color_mode: str

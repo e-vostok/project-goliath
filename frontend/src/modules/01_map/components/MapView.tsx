@@ -1413,13 +1413,22 @@ export function MapView(props: MapViewProps) {
             }
           >
             <g opacity={rules.states.opacity}>
+              <defs>
+                {stateNameRows.map(({ label: l }) => (
+                  <path
+                    key={`arc-${l.key}`}
+                    id={`pg-state-arc-${l.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
+                    d={`M ${l.path.x0} ${l.path.y0} Q ${l.path.cx} ${l.path.cy} ${l.path.x1} ${l.path.y1}`}
+                    fill="none"
+                  />
+                ))}
+              </defs>
               {stateNameRows.map(({ label: l, hidden, fontSize }) => (
                 <text
                   key={l.key}
                   data-state={l.stateKey}
                   className="pg-map-state"
                   {...(hidden ? { 'data-off': '' } : {})}
-                  transform={`translate(${l.x} ${l.y}) rotate(${l.angleDeg})`}
                   textAnchor="middle"
                   dominantBaseline="central"
                   fontSize={fontSize}
@@ -1427,7 +1436,12 @@ export function MapView(props: MapViewProps) {
                   letterSpacing={`${l.letterSpacingEm}em`}
                   fill={l.color}
                 >
-                  {l.text}
+                  <textPath
+                    href={`#pg-state-arc-${l.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
+                    startOffset="50%"
+                  >
+                    {l.text}
+                  </textPath>
                 </text>
               ))}
             </g>
