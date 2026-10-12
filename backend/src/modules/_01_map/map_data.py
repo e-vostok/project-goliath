@@ -43,12 +43,19 @@ EdgeType = Literal["land", "coast", "sea", "strait"]
 @dataclass(frozen=True)
 class NodeLabel:
     """``manifest.nodes[].label`` (map2_6): anchor plus the free
-    ``w``/``h`` box the client fits the node name into."""
+    ``w``/``h`` box the client fits the node name into.
+
+    ``spine``/``len``/``thick`` (map2_20): the inscribed baseline —
+    endpoints plus signed sagitta, chord length and local thickness.
+    """
 
     x: float
     y: float
     w: float
     h: float
+    spine: tuple[float, float, float, float, float]
+    len: float
+    thick: float
 
 
 @dataclass(frozen=True)

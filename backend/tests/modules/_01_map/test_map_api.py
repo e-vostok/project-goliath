@@ -258,8 +258,9 @@ class TestManifest:
             if edge["type"] != "strait":
                 assert edge["multiplier"] is None
         assert edges[(1005, 1006)]["name"]
-        # `len` must not leak into the wire body at all.
-        assert '"len"' not in resp.text
+        # `len` must not leak into EDGE objects (map2_20 uses it as a
+        # legitimate node label field — spine chord length).
+        assert all("len" not in edge for edge in edges.values())
 
     async def test_rules_built_from_config(self, client, map_db_session):
         player = await seed_player(map_db_session)

@@ -146,6 +146,14 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             sea_letter_spacing_em=config.labels.sea_letter_spacing_em,
             province_zoom_ratio=config.labels.province_zoom_ratio,
             fade_ms=config.labels.fade_ms,
+            max_angle_deg=config.labels.max_angle_deg,
+            max_bend=config.labels.max_bend,
+            thickness_ratio=config.labels.thickness_ratio,
+            length_ratio=config.labels.length_ratio,
+            letter_spacing_min_em=config.labels.letter_spacing_min_em,
+            letter_spacing_max_em=config.labels.letter_spacing_max_em,
+            land_opacity=config.labels.land_opacity,
+            sea_curved=config.labels.sea_curved,
         ),
         states=MapStatesRulesDTO(
             font=config.states.font,
@@ -223,6 +231,9 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
                 y=node.label.y,
                 w=node.label.w,
                 h=node.label.h,
+                spine=list(node.label.spine),
+                len=node.label.len,
+                thick=node.label.thick,
             ),
         )
         for node in data.nodes.values()  # already ascending id order

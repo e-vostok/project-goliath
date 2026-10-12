@@ -16,12 +16,19 @@ from pydantic import BaseModel, Field
 
 
 class MapNodeLabelDTO(BaseModel):
-    """``MapNodeDTO.label`` (map2_6): anchor plus free ``w``/``h`` box."""
+    """``MapNodeDTO.label`` (map2_6): anchor plus free ``w``/``h`` box.
+
+    ``spine``/``len``/``thick`` (map2_20): the inscribed baseline the
+    curved name rides — ``[x0, y0, x1, y1, s]`` endpoints plus signed
+    sagitta, chord length and local thickness."""
 
     x: float
     y: float
     w: float
     h: float
+    spine: list[float]
+    len: float
+    thick: float
 
 
 class MapNodeDTO(BaseModel):
@@ -110,6 +117,15 @@ class MapLabelsRulesDTO(BaseModel):
     sea_letter_spacing_em: float
     province_zoom_ratio: float
     fade_ms: int
+    # map2_20: province names follow the shape (curved spine labels)
+    max_angle_deg: float
+    max_bend: float
+    thickness_ratio: float
+    length_ratio: float
+    letter_spacing_min_em: float
+    letter_spacing_max_em: float
+    land_opacity: float
+    sea_curved: bool
 
 
 class MapStatesRulesDTO(BaseModel):
