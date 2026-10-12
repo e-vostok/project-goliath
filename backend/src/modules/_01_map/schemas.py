@@ -112,6 +112,22 @@ class MapLabelsRulesDTO(BaseModel):
     fade_ms: int
 
 
+class MapStatesRulesDTO(BaseModel):
+    """``MapViewRulesDTO.states`` — state-name layer rules (map2_7)."""
+
+    font: str
+    uppercase: bool
+    opacity: float
+    max_angle_deg: float
+    thickness_ratio: float
+    length_ratio: float
+    max_letter_spacing_em: float
+    min_px: int
+    max_px: int
+    color_mode: str
+    min_group_share: float
+
+
 class MapViewRulesDTO(BaseModel):
     """``MapManifestDTO.rules`` — client-side view rules from the config."""
 
@@ -129,6 +145,7 @@ class MapViewRulesDTO(BaseModel):
     selection: MapSelectionRulesDTO
     relief: MapReliefRulesDTO
     labels: MapLabelsRulesDTO
+    states: MapStatesRulesDTO
     require_connected_start: bool
     big_window_enabled: bool
     refresh: MapRefreshRulesDTO

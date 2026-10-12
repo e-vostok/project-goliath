@@ -116,6 +116,20 @@ const RULES = {
     province_zoom_ratio: 0.98,
     fade_ms: 120,
   },
+  // Mirrors the `states` block of configs/01_map.yaml (map2_7).
+  states: {
+    font: 'jetbrains_mono',
+    uppercase: true,
+    opacity: 0.4,
+    max_angle_deg: 60,
+    thickness_ratio: 0.6,
+    length_ratio: 0.8,
+    max_letter_spacing_em: 1.0,
+    min_px: 10,
+    max_px: 72,
+    color_mode: 'auto',
+    min_group_share: 0.2,
+  },
   require_connected_start: true,
   big_window_enabled: true,
   refresh: {

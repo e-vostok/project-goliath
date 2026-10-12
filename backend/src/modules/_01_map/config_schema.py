@@ -293,6 +293,70 @@ class LabelsSettings(_Strict):
         return self
 
 
+class StatesSettings(_Strict):
+    """Названия государств на их территории (map2_7): моноширинный
+    «терминальный» шрифт, надпись повёрнута и вписана в форму
+    государства, видна на всех зумах кроме максимального."""
+
+    font: Literal["jetbrains_mono", "ibm_plex_mono", "pt_mono"] = Field(
+        description="Один из трёх встроенных моноширинных шрифтов (SIL OFL, WOFF2 в клиенте).",
+    )
+    uppercase: bool = Field(
+        description="Надпись ЗАГЛАВНЫМИ буквами.",
+    )
+    opacity: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Прозрачность надписи.",
+    )
+    max_angle_deg: float = Field(
+        ge=0.0,
+        le=89.0,
+        description="Максимальный наклон строки надписи от горизонтали, градусы.",
+    )
+    thickness_ratio: float = Field(
+        ge=0.2,
+        le=0.95,
+        description="Высота текста не более этой доли локальной толщины территории поперёк строки.",
+    )
+    length_ratio: float = Field(
+        ge=0.3,
+        le=1.0,
+        description="Целевая длина надписи — доля свободной длины вдоль строки.",
+    )
+    max_letter_spacing_em: float = Field(
+        ge=0.0,
+        le=3.0,
+        description="Максимальное разрежение букв при растяжении надписи, em.",
+    )
+    min_px: int = Field(
+        ge=6,
+        le=30,
+        description="Надпись скрывается ниже этого экранного размера, px.",
+    )
+    max_px: int = Field(
+        ge=20,
+        le=200,
+        description="Максимальный экранный размер надписи, px.",
+    )
+    color_mode: Literal["auto", "light", "dark"] = Field(
+        description="Цвет надписи: auto — светлый или тёмный по контрасту с цветом государства.",
+    )
+    min_group_share: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Надпись для отдельной связной части государства, если её площадь не меньше этой доли общей.",
+    )
+
+    @model_validator(mode="after")
+    def check_min_max(self) -> Self:
+        if self.min_px > self.max_px:
+            raise ValueError(
+                "states.min_px must not exceed states.max_px"
+            )
+        return self
+
+
 class StraitSettings(_Strict):
     default_crossing_multiplier: float = Field(
         ge=0.05,
@@ -361,6 +425,7 @@ class MapConfig(_Strict):
     strait: StraitSettings
     relief: ReliefSettings
     labels: LabelsSettings
+    states: StatesSettings
     starting_group: StartingGroupSettings
     big_window: BigWindowSettings
     limits: LimitsSettings

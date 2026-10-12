@@ -92,6 +92,8 @@ async function loadRules() {
   const view = sec('view');
   const starting = sec('starting_group');
   const relief = sec('relief');
+  const labels = sec('labels');
+  const states = sec('states');
   return {
     frame: [fx, fy, fw, fh],
     zoom_max: view.zoom_max,
@@ -105,6 +107,8 @@ async function loadRules() {
     borders,
     selection,
     relief, // map2_5 — straight pass-through of the yaml block
+    labels, // map2_6 — straight pass-through
+    states, // map2_7 — straight pass-through
     require_connected_start: starting.require_connected,
     big_window_enabled: bigWindow.enabled,
     refresh: {
