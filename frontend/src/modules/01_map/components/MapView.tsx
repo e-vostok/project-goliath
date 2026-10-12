@@ -73,6 +73,7 @@ import {
   GESTURE_SETTLE_MS,
   LABEL_RELAYOUT_MS,
   LABEL_SWEEP_MS,
+  EXIT_DROP_CHUNK,
   OVERLAY_STROKE_PX,
   SEAM_MIN_S,
   SEAM_NSS_MAX_S,
@@ -100,11 +101,16 @@ import {
   layoutLabels,
   mergeRendered,
   selectRendered,
+  SPINE_DEFAULTS,
   windowCoversView,
   type LabelRect,
   type PlacedLabel,
   type RenderedLabel,
 } from '../lib/labels';
+import {
+  ensureMapFont,
+  FONT_LOAD_TIMEOUT_MS,
+} from '../lib/fonts';
 import {
   collectStates,
   measureMonoAdvance,
@@ -235,6 +241,20 @@ export function MapView(props: MapViewProps) {
   const visState = useRef(new Map<number, boolean>());
   const lastLabelSweep = useRef(0);
   const exitSeq = useRef(0);
+  /** The two label kind groups — LAND and SEA fade against each other
+   *  as ONE element each on a zoom-threshold crossing (map2_21)
+   *  instead of per-label exits. */
+  const labelKindEls = useRef<{ LAND?: SVGGElement; SEA?: SVGGElement }>(
+    {},
+  );
+  /** True while a wheel-zoom gesture is in flight (settle window
+   *  included): the rendered set is frozen — re-selecting it every
+   *  sweep under a moving scale is what churned ~9k mounts (map2_21). */
+  const zoomGesture = useRef(false);
+  /** Kind the current `placed` set was laid out for — a mid-gesture
+   *  change means the wheel crossed `province_zoom_ratio` and the
+   *  incoming kind must be laid out exactly once (map2_21). */
+  const placedKind = useRef<'LAND' | 'SEA' | null>(null);
   const relayoutRef = useRef<() => void>(() => {});
   /** Scale of the last settled gesture — the state-name layer derives
    *  its min_px/max_px/visibility writes from it (map2_7). */
@@ -266,10 +286,30 @@ export function MapView(props: MapViewProps) {
   // real font once it has loaded (document.fonts.ready triggers one
   // extra relayout below; until then the canvas falls back to the
   // system font and the layout is corrected on arrival).
+  // Bundled label faces (map2_21): one registry — province names use
+  // labels.font, sea names labels.sea_font (defaulting to the same
+  // face); each stack already ends with its generic family, so a
+  // missing bundle degrades to system mono/sans, never serif.
   const fontSpec = LABEL_FONT_FAMILIES[rules.labels.font];
+  const seaFontSpec =
+    LABEL_FONT_FAMILIES[
+      rules.labels.sea_font ?? SPINE_DEFAULTS.sea_font
+    ];
   const measurer = useMemo(
     () => createMeasurer(fontSpec.family),
-    [fontSpec.family],
+    // fontEpoch: re-create (fresh width cache) once the bundled face
+    // really loads — the layout then measures the real face, not the
+    // generic fallback it was built with (map2_21).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fontSpec.family, fontEpoch],
+  );
+  const seaMeasurer = useMemo(
+    () =>
+      seaFontSpec.family === fontSpec.family
+        ? measurer
+        : createMeasurer(seaFontSpec.family),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seaFontSpec.family, fontSpec.family, measurer, fontEpoch],
   );
 
   /** Fade duration for label appear/disappear (map2_6c):
@@ -296,12 +336,12 @@ export function MapView(props: MapViewProps) {
   // or the manifest changes — a pan or a zoom re-derives nothing (the
   // <text> elements ride the world transform; only the min_px/max_px
   // screen clamp and the maximum-zoom gate follow the settled scale).
-  const stateFontFamily = STATE_FONT_FAMILIES[rules.states.font];
+  const stateFontSpec = STATE_FONT_FAMILIES[rules.states.font];
   const stateAdvanceEm = useMemo(
-    () => measureMonoAdvance(stateFontFamily),
+    () => measureMonoAdvance(stateFontSpec.family),
     // fontEpoch: re-measure once document.fonts delivers the real face.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stateFontFamily, fontEpoch],
+    [stateFontSpec.family, fontEpoch],
   );
   const ringsById = useMemo(() => {
     const map = new Map<number, Point[][]>();
@@ -385,9 +425,25 @@ export function MapView(props: MapViewProps) {
       return;
     }
     const atMax = isProvinceZoom(v.s, maxScale(), rules.labels);
+    // map2_21: exiting copies whose kind group is already faded out are
+    // invisible either way — writing data-off on each is ~450 attribute
+    // writes burned on the crossing frame for nothing.
+    const groupOff = { LAND: false, SEA: false };
+    for (const kind of ['LAND', 'SEA'] as const) {
+      groupOff[kind] =
+        labelKindEls.current[kind]?.hasAttribute('data-off') === true;
+    }
     for (const l of renderedRef.current) {
       const el = labelEls.current.get(l.id);
       if (!el) {
+        continue;
+      }
+      // Ghost copies are display:none — a visibility write on each is
+      // a wasted attribute on the crossing frame (map2_21).
+      if (
+        l.ghost === true ||
+        (l.exiting !== undefined && groupOff[l.kind])
+      ) {
         continue;
       }
       const off =
@@ -411,6 +467,10 @@ export function MapView(props: MapViewProps) {
   const commitRendered = useCallback(
     (items: PlacedLabel[], v: ViewTransform) => {
       setRendered((prev) => {
+        // map2_21: on a LAND↔SEA set switch the outgoing labels stay
+        // mounted under their own kind group so the group fade-out has
+        // something to show — mergeRendered already keeps onscreen
+        // leavers as `exiting` copies for exactly that.
         const merged = mergeRendered(
           prev,
           items,
@@ -431,6 +491,48 @@ export function MapView(props: MapViewProps) {
     [viewport, fadeMs],
   );
 
+  /** Kind-of-set the live scale wants: province names exist only at
+   *  the maximum zoom, sea names only below it (map2_6c). */
+  const liveLabelKind = useCallback(
+    (s: number) =>
+      isProvinceZoom(s, maxScale(), rules.labels) ? 'LAND' : 'SEA',
+    [maxScale, rules.labels],
+  );
+
+  /** The LAND↔SEA crossfade as ONE opacity animation of two groups
+   *  (map2_21): each kind group is faded out when the live scale wants
+   *  the other kind — the outgoing set fades under its own group while
+   *  the incoming group fades back in once its set is mounted. A
+   *  single attribute write per group per crossing replaces up to 600
+   *  individual opacity transitions racing the transform; a group with
+   *  no mounted set of its kind stays hidden (`visibility:hidden`
+   *  stops its repaint entirely). */
+  const applyKindFade = useCallback(
+    (v: ViewTransform) => {
+      const live = liveLabelKind(v.s);
+      const mounted = { LAND: false, SEA: false };
+      for (const l of renderedRef.current) {
+        if (l.exiting === undefined) {
+          mounted[l.kind] = true;
+          if (mounted.LAND && mounted.SEA) {
+            break;
+          }
+        }
+      }
+      for (const kind of ['LAND', 'SEA'] as const) {
+        const g = labelKindEls.current[kind];
+        if (g === undefined) {
+          continue;
+        }
+        const off = kind !== live || !mounted[kind];
+        if (g.hasAttribute('data-off') !== off) {
+          g.toggleAttribute('data-off', off);
+        }
+      }
+    },
+    [liveLabelKind],
+  );
+
   // One layout per committed scale: positions/sizes live in map units,
   // so the labels <g> rides the world transform and a pan costs
   // nothing. The layout covers ALL nodes of the zoom-gated kind
@@ -440,30 +542,67 @@ export function MapView(props: MapViewProps) {
     if (v === null || viewport.width <= 0 || viewport.height <= 0) {
       return;
     }
+    const t0 = performance.now();
+    // Only one kind is laid out per call (map2_6c kind gate) — the
+    // measurer follows it: land face at the maximum zoom, sea face
+    // below (map2_21).
     const all = layoutLabels(
       manifest.nodes,
       v.s,
       rules.labels,
-      measurer,
+      isProvinceZoom(v.s, maxScale(), rules.labels)
+        ? measurer
+        : seaMeasurer,
       maxScale(),
     );
+    // map2_21: the benchmark counts layout runs/cost through this
+    // optional hook — absent in normal use, zero overhead.
+    (
+      globalThis as unknown as {
+        __pgLabelStats?: { scale: number; ms: number; placed: number }[];
+      }
+    ).__pgLabelStats?.push({
+      scale: v.s,
+      ms: performance.now() - t0,
+      placed: all.length,
+    });
     setCommittedScale(v.s);
     placedRef.current = all;
+    placedKind.current = liveLabelKind(v.s);
     const { items, window } = selectRendered(all, v, viewport);
     coverageRef.current = window;
     commitRendered(items, v);
-  }, [manifest.nodes, rules.labels, measurer, viewport, maxScale, commitRendered]);
+  }, [
+    manifest.nodes,
+    rules.labels,
+    measurer,
+    seaMeasurer,
+    viewport,
+    maxScale,
+    liveLabelKind,
+    commitRendered,
+  ]);
   relayoutRef.current = relayout;
 
   // Zoom storms (wheel bursts, resize streams) collapse into one
-  // layout ~80 ms after the last step.
+  // layout after the last step (map2_6, Spec 3.9). map2_21: while a
+  // wheel gesture is in flight NO layout is scheduled at all — a
+  // mid-gesture ~60 ms layout of the whole node set is what produced
+  // the >33 ms frames; the settle callback runs it exactly once.
   const scheduleRelayout = useCallback(() => {
+    if (zoomGesture.current) {
+      return;
+    }
     if (labelTimer.current !== null) {
       clearTimeout(labelTimer.current);
     }
     labelTimer.current = setTimeout(() => {
       labelTimer.current = null;
-      relayoutRef.current();
+      // A timer armed just before the gesture started must not fire
+      // inside it either — the settle callback owns the layout.
+      if (!zoomGesture.current) {
+        relayoutRef.current();
+      }
     }, LABEL_RELAYOUT_MS);
   }, []);
 
@@ -476,14 +615,25 @@ export function MapView(props: MapViewProps) {
     }
     const id = Number(el.getAttribute('data-label'));
     labelEls.current.set(id, el);
-    el.setAttribute('data-off', '');
-    visState.current.set(id, true);
+    // Mounts under a group that is itself faded out skip the per-label
+    // off-state — the kind group's own fade-in carries them as ONE
+    // animation (map2_21), not ~450 individual transitions.
+    const off = !el
+      .closest('g[data-labelkind]')
+      ?.hasAttribute('data-off');
+    if (off) {
+      el.setAttribute('data-off', '');
+    }
+    visState.current.set(id, off);
   }, []);
 
   /** Pan sweep (map2_6c), at most every LABEL_SWEEP_MS: re-selects the
    *  rendered set once the quarter-screen lead is gone (labels must
    *  exist before their province comes into view) and re-evaluates the
-   *  «mostly in view» fade — writes only labels whose state changed. */
+   *  «mostly in view» fade — writes only labels whose state changed.
+   *  map2_21: during a wheel-zoom gesture the re-selection is skipped —
+   *  the set rides the world transform, edge labels that only became
+   *  eligible mid-zoom wait for the settle sweep. */
   const labelsTick = useCallback(
     (force = false) => {
       const v = viewRef.current;
@@ -496,7 +646,10 @@ export function MapView(props: MapViewProps) {
       }
       lastLabelSweep.current = now;
       const cov = coverageRef.current;
-      if (cov === null || !windowCoversView(cov, v, viewport)) {
+      if (
+        cov === null ||
+        (!zoomGesture.current && !windowCoversView(cov, v, viewport))
+      ) {
         const sel = selectRendered(placedRef.current, v, viewport);
         coverageRef.current = sel.window;
         commitRendered(sel.items, v);
@@ -546,12 +699,24 @@ export function MapView(props: MapViewProps) {
   // The label SET re-evaluates only on the debounced relayout
   // (Spec 3.9, map2_6): its font sizes live in map units so the texts
   // simply scale with the world mid-gesture.
-  const writeView = useCallback((v: ViewTransform) => {
-    worldRef.current?.setAttribute(
-      'transform',
-      `translate(${v.tx} ${v.ty}) scale(${v.s})`,
-    );
-    labelsTick();
+  const writeView = useCallback(
+    (v: ViewTransform) => {
+      worldRef.current?.setAttribute(
+        'transform',
+        `translate(${v.tx} ${v.ty}) scale(${v.s})`,
+      );
+      applyKindFade(v);
+      // Threshold crossed inside a wheel gesture: the incoming kind is
+      // laid out exactly ONCE here (map2_21) so the group crossfade has
+      // its set — the only mid-gesture layout, never both kinds.
+      if (
+        zoomGesture.current &&
+        placedKind.current !== null &&
+        placedKind.current !== liveLabelKind(v.s)
+      ) {
+        relayoutRef.current();
+      }
+      labelsTick();
     if (v.s === scaledS.current) {
       return;
     }
@@ -581,7 +746,9 @@ export function MapView(props: MapViewProps) {
       seamBand.current = band;
       applySeamBand(band, prev);
     }
-  }, [applySeamBand, labelsTick]);
+    },
+    [applyKindFade, applySeamBand, labelsTick, liveLabelKind],
+  );
 
   // Per-frame live redraw while a gesture is in flight — every frame
   // paints the real map at the in-flight position (map2_14).
@@ -700,9 +867,20 @@ export function MapView(props: MapViewProps) {
     }
     settleTimer.current = setTimeout(() => {
       settleTimer.current = null;
+      const wasZoom = zoomGesture.current;
+      zoomGesture.current = false;
       setGestureFlag(false);
-      // Final label sweep at gesture end — catches any viewport the
-      // throttled mid-gesture sweeps skipped.
+      if (labelTimer.current !== null) {
+        clearTimeout(labelTimer.current);
+        labelTimer.current = null;
+      }
+      // Wheel-zoom settle: the one deferred layout (map2_21 — none ran
+      // mid-gesture except a single threshold-crossing build) re-fits
+      // the set for the new scale; a pan settle only needs the final
+      // sweep catching any viewport the throttled sweeps skipped.
+      if (wasZoom) {
+        relayoutRef.current();
+      }
       labelsTick(true);
     }, GESTURE_SETTLE_MS);
   }, [setGestureFlag, labelsTick]);
@@ -730,6 +908,7 @@ export function MapView(props: MapViewProps) {
         return;
       }
       beginGesture();
+      zoomGesture.current = true;
       viewRef.current = clamped(zoomAt(viewRef.current, c, nextScale));
       applyTransform();
       scheduleRelayout();
@@ -874,6 +1053,11 @@ export function MapView(props: MapViewProps) {
   // unmount exiting copies once their fade has run.
   useEffect(() => {
     renderedRef.current = rendered;
+    // A fresh set of the live kind lifts the group fade (map2_21) —
+    // applyKindFade compares kinds itself, so a stale set stays hidden.
+    if (viewRef.current !== null) {
+      applyKindFade(viewRef.current);
+    }
     applyLabelVisibility();
     const alive = new Set(rendered.map((l) => l.id));
     for (const id of labelEls.current.keys()) {
@@ -890,13 +1074,34 @@ export function MapView(props: MapViewProps) {
     if (stamps.size === 0) {
       return;
     }
+    // map2_21: a kind switch leaves up to ~500 exiting copies — dropping
+    // them in ONE commit produced a >33 ms frame mid-gesture. Ghost
+    // copies are display:none and the faded-out group is
+    // visibility:hidden, so their detach is pure DOM work with no
+    // raster — all ghosts go in the first tick; the visible exits then
+    // drain at EXIT_DROP_CHUNK per tick across the next frames.
     const drop = () =>
-      setRendered((list) =>
-        list.filter(
+      setRendered((list) => {
+        const tagged = list.filter(
+          (l) => l.exiting !== undefined && stamps.has(l.exiting),
+        );
+        const visible = tagged.filter((l) => l.ghost !== true);
+        if (visible.length <= EXIT_DROP_CHUNK) {
+          return list.filter(
+            (l) =>
+              l.exiting === undefined || !stamps.has(l.exiting as number),
+          );
+        }
+        const keep = new Set(
+          visible.slice(EXIT_DROP_CHUNK).map((l) => l.id),
+        );
+        return list.filter(
           (l) =>
-            l.exiting === undefined || !stamps.has(l.exiting as number),
-        ),
-      );
+            l.exiting === undefined ||
+            !stamps.has(l.exiting as number) ||
+            (l.ghost !== true && keep.has(l.id)),
+        );
+      });
     const ms = fadeMs();
     if (ms <= 0) {
       drop();
@@ -904,22 +1109,56 @@ export function MapView(props: MapViewProps) {
     }
     const t = setTimeout(drop, ms);
     return () => clearTimeout(t);
-  }, [rendered, applyLabelVisibility, fadeMs]);
+  }, [rendered, applyLabelVisibility, applyKindFade, fadeMs]);
 
+  // Bundled-face loading (map2_21): probe every face the config asks
+  // for with real Cyrillic text. A face that is not usable within
+  // FONT_LOAD_TIMEOUT_MS logs ONE warning — the stack's generic tail
+  // keeps drawing meanwhile (never a serif); when a face does arrive
+  // (loadingdone), the layout and the mono advance re-run once.
   useEffect(() => {
+    if (typeof document === 'undefined' || document.fonts === undefined) {
+      return;
+    }
+    const fonts = document.fonts;
     let cancelled = false;
-    document.fonts?.ready.then(() => {
-      if (!cancelled) {
-        relayoutRef.current();
-        // Re-measure the real bundled faces and re-place the state
-        // names once (map2_7) — until now the advance was a fallback.
-        setFontEpoch((e) => e + 1);
+    const faces = new Set([
+      fontSpec.face,
+      seaFontSpec.face,
+      stateFontSpec.face,
+    ]);
+    const relayout = () => {
+      if (cancelled) {
+        return;
       }
-    });
+      // The epoch bump alone drives the one re-layout: new measurers →
+      // new `relayout` identity → the debounced scheduler runs it (or
+      // the settle does, if a wheel gesture is in flight — a ~45 ms
+      // layout inside a wheel storm is what map2_21 removes). Calling
+      // relayoutRef here too would do the same layout twice.
+      setFontEpoch((e) => e + 1);
+    };
+    for (const face of faces) {
+      ensureMapFont(face).then((ok) => {
+        if (cancelled) {
+          return;
+        }
+        if (!ok) {
+          console.warn(
+            `[01_map] bundled font ${face} did not load within ${FONT_LOAD_TIMEOUT_MS} ms — generic fallback stays`,
+          );
+        }
+        relayout();
+      });
+    }
+    // A face that missed the timeout but arrived later still triggers
+    // exactly one re-measure + relayout.
+    fonts.addEventListener('loadingdone', relayout);
     return () => {
       cancelled = true;
+      fonts.removeEventListener('loadingdone', relayout);
     };
-  }, []);
+  }, [fontSpec.face, seaFontSpec.face, stateFontSpec.face]);
 
   useEffect(
     () => () => {
@@ -1217,6 +1456,22 @@ export function MapView(props: MapViewProps) {
           transition: opacity var(--pg-label-fade) ease,
             visibility 0s linear var(--pg-label-fade);
         }
+        /* Kind-group fade (map2_21): crossing labels.province_zoom_ratio
+           swaps province names for sea names — ONE opacity transition on
+           each of the two kind groups instead of a transition per <text>;
+           visibility:hidden at the end of the fade stops the group's
+           repaint entirely while the wrong-kind set stays mounted
+           underneath (it also covers mounts that skipped their own
+           data-off because the group was already off). */
+        g[data-labelkind] {
+          transition: opacity var(--pg-label-fade) ease, visibility 0s;
+        }
+        g[data-labelkind][data-off] {
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity var(--pg-label-fade) ease,
+            visibility 0s linear var(--pg-label-fade);
+        }
         /* Bundled label fonts (map2_6): self-hosted WOFF2 subsets
            (Latin + Cyrillic + basic punctuation, SIL OFL — licence
            files alongside), swapped in with font-display: swap. */
@@ -1270,11 +1525,11 @@ export function MapView(props: MapViewProps) {
           src: url('/assets/fonts/robotocondensed-mediumitalic.woff2') format('woff2');
           font-weight: 500; font-style: italic; font-display: swap;
         }
-        /* State-name monospace faces (map2_7): same self-hosted OFL
-           WOFF2 subsets — Latin + Cyrillic + digits + punctuation. */
+        /* Terminal monospace faces (map2_7/map2_21): same self-hosted
+           OFL WOFF2 subsets — Latin + Cyrillic + digits + punctuation. */
         @font-face {
-          font-family: 'JetBrains Mono';
-          src: url('/assets/fonts/jetbrainsmono-regular.woff2') format('woff2');
+          font-family: 'Share Tech Mono';
+          src: url('/assets/fonts/sharetechmono-regular.woff2') format('woff2');
           font-weight: 400; font-style: normal; font-display: swap;
         }
         @font-face {
@@ -1432,7 +1687,7 @@ export function MapView(props: MapViewProps) {
                   textAnchor="middle"
                   dominantBaseline="central"
                   fontSize={fontSize}
-                  fontFamily={stateFontFamily}
+                  fontFamily={stateFontSpec.family}
                   letterSpacing={`${l.letterSpacingEm}em`}
                   fill={l.color}
                 >
@@ -1481,22 +1736,40 @@ export function MapView(props: MapViewProps) {
                 ),
               )}
             </defs>
-            {rendered.map((l) => {
+            {(['LAND', 'SEA'] as const).map((kind) => (
+              // map2_21: each kind lives in its own group — the
+              // LAND↔SEA crossfade is ONE opacity animation of the two
+              // groups (`data-off` is written imperatively).
+              <g
+                key={kind}
+                ref={(el) => {
+                  if (el !== null) {
+                    labelKindEls.current[kind] = el;
+                  }
+                }}
+                data-labelkind={kind}
+              >
+                {rendered.map((l) => {
+                  if (l.kind !== kind) {
+                    return null;
+                  }
               const sea = l.kind === 'SEA';
-              const slant = sea && fontSpec.syntheticSlant;
+              const spec = sea ? seaFontSpec : fontSpec;
+              const slant = sea && spec.syntheticSlant;
               return (
                 <text
                   key={l.id}
                   ref={labelElRef}
                   className="pg-map-label"
                   opacity={l.opacity < 1 ? l.opacity : undefined}
+                  display={l.ghost === true ? 'none' : undefined}
                   data-label={l.id}
                   textAnchor="middle"
                   fontSize={l.fontSize}
-                  fontFamily={fontSpec.family}
-                  fontWeight={sea ? 400 : 500}
+                  fontFamily={spec.family}
+                  fontWeight={sea || spec.mono ? 400 : 500}
                   fontStyle={
-                    sea && !fontSpec.syntheticSlant ? 'italic' : undefined
+                    sea && !spec.syntheticSlant ? 'italic' : undefined
                   }
                   letterSpacing={
                     l.letterSpacingEm !== 0
@@ -1545,7 +1818,9 @@ export function MapView(props: MapViewProps) {
                   )}
                 </text>
               );
-            })}
+                })}
+              </g>
+            ))}
           </g>
           {/* hover + selection overlays — copies of node paths */}
           <g pointerEvents="none">

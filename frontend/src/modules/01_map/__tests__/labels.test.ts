@@ -27,7 +27,8 @@ const MEASURER: LabelMeasurer = {
 };
 
 const RULES: MapLabelsRulesDTO = {
-  font: 'fira_sans_condensed',
+  font: 'pt_mono',
+  sea_font: 'pt_mono',
   land_min_px: 9,
   land_max_px: 15,
   sea_min_px: 10,
@@ -403,16 +404,19 @@ describe('mergeRendered (map2_6c)', () => {
     bbox: [x - 5, 25, x + 5, 35],
   });
 
-  it('keeps continuing labels untouched; only onscreen leavers fade out', () => {
+  it('keeps continuing labels untouched; onscreen leavers fade out, offscreen go ghost', () => {
     const stay = l(1, 40); // onscreen, stays
     const onscreen = l(2, 60); // onscreen (x·s = 600 px), leaves → exiting copy
-    const farOff = l(3, 2000); // offscreen, leaves → dropped at once
+    const farOff = l(3, 2000); // offscreen, leaves → ghost exit (map2_21:
+    // kept mounted display:none so a mass leave is never one big commit)
     const prev = [stay, onscreen, farOff];
     const next = [stay];
     const merged = mergeRendered(prev, next, v, viewport, 1000, 120);
     expect(merged[0]).toBe(stay);
     const exiting = merged.filter((m) => m.exiting !== undefined);
-    expect(exiting.map((m) => m.id)).toEqual([2]);
+    expect(exiting.map((m) => m.id)).toEqual([2, 3]);
+    expect(exiting.find((m) => m.id === 3)?.ghost).toBe(true);
+    expect(exiting.find((m) => m.id === 2)?.ghost).toBeUndefined();
     // No exiting entries when the fade is disabled.
     expect(
       mergeRendered(prev, next, v, viewport, 1000, 0).filter(

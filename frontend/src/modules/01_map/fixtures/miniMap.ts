@@ -53,7 +53,8 @@ export const MINI_RULES: MapViewRulesDTO = {
     inactive_brightness: 0.14,
   },
   labels: {
-    font: 'fira_sans_condensed',
+    font: 'pt_mono',
+    sea_font: 'pt_mono',
     land_min_px: 9,
     land_max_px: 15,
     sea_min_px: 10,
@@ -78,7 +79,7 @@ export const MINI_RULES: MapViewRulesDTO = {
     sea_curved: true,
   },
   states: {
-    font: 'jetbrains_mono',
+    font: 'pt_mono',
     uppercase: true,
     opacity: 0.4,
     max_angle_deg: 60,

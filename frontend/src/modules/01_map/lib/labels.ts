@@ -39,6 +39,12 @@ const LINE_H = 1.2;
 const GRID_CELL_PX = 96;
 /** Hard cap of rendered <text> elements at once (map2_6c). */
 export const MAX_RENDERED_LABELS = 600;
+/** How many `exiting` copies paint the fade at once (map2_21): the
+ *  merge order is the placed priority order, so these are the
+ *  top-priority leavers; the rest stay mounted as `ghost` copies
+ *  (display:none — no raster, no extra commit) until the chunked
+ *  sweep unmounts the batch. */
+export const MAX_EXITING_LABELS = 100;
 /** Rendered labels must cover the viewport grown by this fraction of
  *  the screen on every side (so a label exists before it shows). */
 const RENDER_MARGIN = 0.5;
@@ -53,38 +59,20 @@ const ANCHOR_INSET = 0.1;
 /** Reference font size the canvas measures at (per-px factor below). */
 const MEASURE_REF_PX = 64;
 
-/** map2_20 rule defaults — the configs/01_map.yaml values, used when a
- *  rules block predates the curved-label keys (cached manifests, perf
+/** map2_20/map2_21 rule defaults — the configs/01_map.yaml values,
+ *  used when a rules block predates the keys (cached manifests, perf
  *  stubs); a live server always sends them. */
-const SPINE_DEFAULTS = {
+export const SPINE_DEFAULTS = {
   thickness_ratio: 0.55,
   length_ratio: 0.85,
   letter_spacing_min_em: -0.02,
   letter_spacing_max_em: 0.3,
   land_opacity: 0.6,
   sea_curved: true,
+  sea_font: 'pt_mono',
 } as const;
 
-/** Bundled-family table: CSS family plus whether the family has a real
- *  italic cut — families without one get a synthetic `skewX` slant on
- *  sea labels instead of `font-style: italic`. */
-export const LABEL_FONT_FAMILIES: Record<
-  MapLabelsRulesDTO['font'],
-  { family: string; syntheticSlant: boolean }
-> = {
-  fira_sans_condensed: {
-    family: '"Fira Sans Condensed"',
-    syntheticSlant: false,
-  },
-  pt_sans_narrow: {
-    family: '"PT Sans Narrow"',
-    syntheticSlant: true, // the family ships Regular+Bold only
-  },
-  roboto_condensed: {
-    family: '"Roboto Condensed"',
-    syntheticSlant: false,
-  },
-};
+export { MAP_FONTS as LABEL_FONT_FAMILIES } from './fonts';
 
 export interface LabelMeasurer {
   /** Text width at font-size 1 px, letter spacing included. */
@@ -185,9 +173,13 @@ export interface PlacedLabel {
 }
 
 /** A rendered label; `exiting` carries a merge stamp while it fades
- *  out (zoom/layout change, crossfade) before unmount. */
+ *  out (zoom/layout change, crossfade) before unmount. `ghost` marks
+ *  exiting copies beyond the visible-fade cap: kept mounted
+ *  (display:none — no raster) so a kind switch never becomes one big
+ *  removal commit, and dropped by the chunked sweep (map2_21). */
 export interface RenderedLabel extends PlacedLabel {
   exiting?: number;
+  ghost?: boolean;
 }
 
 interface Candidate {
@@ -773,17 +765,33 @@ export function mergeRendered(
     x1: viewport.width,
     y1: viewport.height,
   };
+  // map2_21: every leaver stays mounted as an exiting copy — a kind
+  // switch that dropped ~440 nodes in one commit was a >33 ms frame.
+  // Only the first MAX_EXITING_LABELS (placed priority order) paint
+  // the fade; the rest are `ghost` copies (display:none, no raster),
+  // and the chunked sweep unmounts the batch a few at a time.
+  let exits = 0;
   for (const p of prev) {
     if (nextIds.has(p.id)) {
       continue;
     }
     if (p.exiting !== undefined) {
+      if (!p.ghost) {
+        exits += 1;
+      }
       out.push(p);
       continue;
     }
-    if (fadeMs > 0 && intersectsRect(labelScreenRect(p, view), viewRect)) {
-      out.push({ ...p, exiting: stamp });
+    if (fadeMs <= 0) {
+      continue;
     }
+    const ghost =
+      exits >= MAX_EXITING_LABELS ||
+      !intersectsRect(labelScreenRect(p, view), viewRect);
+    if (!ghost) {
+      exits += 1;
+    }
+    out.push(ghost ? { ...p, exiting: stamp, ghost: true } : { ...p, exiting: stamp });
   }
   return out.slice(0, MAX_RENDERED_LABELS);
 }

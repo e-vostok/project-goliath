@@ -215,15 +215,31 @@ class SelectionSettings(_Strict):
         return self
 
 
+# map2_21: единый реестр встроенных шрифтов карты — три терминальных
+# моноширинных и три узких беззасечных (SIL OFL, WOFF2 в клиенте).
+MapFontName = Literal[
+    "share_tech_mono",
+    "ibm_plex_mono",
+    "pt_mono",
+    "fira_sans_condensed",
+    "pt_sans_narrow",
+    "roboto_condensed",
+]
+
+
 class LabelsSettings(_Strict):
     """Подписи узлов (map2_6): название рисуется, только если помещается
     в свой ``label``-бокс на текущем масштабе; столкновения снимаются по
-    приоритету площади. Шрифт — один из встроенных файлов клиента."""
+    приоритету площади. Шрифт — один из встроенных файлов клиента
+    (map2_21: единый реестр из шести шрифтов)."""
 
-    font: Literal[
-        "fira_sans_condensed", "pt_sans_narrow", "roboto_condensed"
-    ] = Field(
-        description="Один из трёх встроенных шрифтов (SIL OFL, WOFF2 в клиенте).",
+    font: MapFontName = Field(
+        description="Шрифт подписей провинций — один из шести встроенных "
+        "(SIL OFL, WOFF2 в клиенте).",
+    )
+    sea_font: MapFontName = Field(
+        description="Шрифт подписей морских зон — один из шести встроенных "
+        "(map2_21).",
     )
     land_min_px: int = Field(
         ge=6,
@@ -340,8 +356,9 @@ class StatesSettings(_Strict):
     «терминальный» шрифт, надпись повёрнута и вписана в форму
     государства, видна на всех зумах кроме максимального."""
 
-    font: Literal["jetbrains_mono", "ibm_plex_mono", "pt_mono"] = Field(
-        description="Один из трёх встроенных моноширинных шрифтов (SIL OFL, WOFF2 в клиенте).",
+    font: MapFontName = Field(
+        description="Шрифт надписей государств — один из шести встроенных "
+        "(SIL OFL, WOFF2 в клиенте, map2_21).",
     )
     uppercase: bool = Field(
         description="Надпись ЗАГЛАВНЫМИ буквами.",

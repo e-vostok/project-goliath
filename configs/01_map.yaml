@@ -58,7 +58,8 @@ relief:                             # подложка рельефа под к�
   inactive_brightness: 0.14         # яркость рельефа неигрового мира (0.02..1); макс. блик не светлее #2A2A2A
 
 labels:                             # подписи узлов (map2_6): показываются, только если помещаются в label-бокс на текущем зуме; столкновения снимаются по приоритету площади
-  font: fira_sans_condensed           # один из встроенных шрифтов: fira_sans_condensed | pt_sans_narrow | roboto_condensed
+  font: pt_mono                       # один из шести встроенных шрифтов (map2_21): share_tech_mono | ibm_plex_mono | pt_mono | fira_sans_condensed | pt_sans_narrow | roboto_condensed
+  sea_font: pt_mono                   # шрифт морских подписей из того же реестра (map2_21); по умолчанию совпадает с labels.font
   land_min_px: 9                      # подпись суши скрывается ниже этого размера, px (6..14)
   land_max_px: 15                     # максимальный размер подписи суши, px (9..30)
   sea_min_px: 10                      # подпись морской зоны скрывается ниже этого размера, px (6..14)
@@ -85,7 +86,7 @@ labels:                             # подписи узлов (map2_6): пок
 states:                             # названия государств на их территории (map2_7): моноширинный «терминальный» шрифт, повёрнуты по форме, видны на любом зуме кроме максимального (кроссфейд с подписями провинций)
   opacity: 0.4                      # прозрачность надписи (0..1)
   uppercase: true                   # надпись ЗАГЛАВНЫМИ буквами
-  font: jetbrains_mono              # встроенный шрифт: jetbrains_mono | ibm_plex_mono | pt_mono
+  font: pt_mono                       # встроенный шрифт из реестра map2_21: share_tech_mono | ibm_plex_mono | pt_mono | fira_sans_condensed | pt_sans_narrow | roboto_condensed
   max_angle_deg: 60                 # максимальный наклон строки от горизонтали, градусы (0..89)
   thickness_ratio: 0.6              # высота текста не более этой доли локальной толщины государства поперёк строки (0.2..0.95)
   length_ratio: 0.8                 # целевая длина надписи — доля свободной длины вдоль строки (0.3..1)

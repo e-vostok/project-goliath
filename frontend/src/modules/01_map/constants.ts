@@ -20,14 +20,22 @@ export const TOOLTIP_OFFSET_PX = 14;
 export const FOCUS_BBOX_MARGIN = 1.2;
 
 /** Debounce of the label relayout after the last zoom step (map2_6,
- *  Spec 3.9): one layout per settled scale, never mid-gesture. */
-export const LABEL_RELAYOUT_MS = 80;
+ *  Spec 3.9): one layout per settled scale, never mid-gesture —
+ *  map2_21 raised the quiet window to 120 ms so a wheel storm can
+ *  never trigger more than one layout per 120 ms. */
+export const LABEL_RELAYOUT_MS = 120;
 
 /** Minimum interval between label viewport sweeps during a pan
  *  (map2_6c): re-selects the rendered set when the quarter-screen lead
  *  is gone and re-evaluates the «mostly in view» fade — cheap enough to
  *  run this often because only changed labels are written. */
 export const LABEL_SWEEP_MS = 100;
+
+/** Exiting label copies unmounted per commit after their fade
+ *  (map2_21): a kind switch can leave ~500 exits under the hidden
+ *  group — dropping them all in one commit produced >33 ms frames, so
+ *  they drain in chunks over a few ticks. */
+export const EXIT_DROP_CHUNK = 60;
 
 /** Stroke width of the hover overlay outline, px (screen-constant). */
 export const OVERLAY_STROKE_PX = 2;

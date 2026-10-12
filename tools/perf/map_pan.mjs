@@ -99,9 +99,11 @@ const RULES = {
     strength_playable: 0.55,
     inactive_brightness: 0.14,
   },
-  // Mirrors the `labels` block of configs/01_map.yaml (map2_6 + map2_20).
+  // Mirrors the `labels` block of configs/01_map.yaml (map2_6 + map2_20
+  // + map2_21 font registry).
   labels: {
-    font: 'fira_sans_condensed',
+    font: opt('font', 'pt_mono'),
+    sea_font: opt('sea_font', 'pt_mono'),
     land_min_px: 9,
     land_max_px: 15,
     sea_min_px: 10,
@@ -126,7 +128,7 @@ const RULES = {
   },
   // Mirrors the `states` block of configs/01_map.yaml (map2_7).
   states: {
-    font: 'jetbrains_mono',
+    font: 'pt_mono',
     uppercase: true,
     opacity: 0.4,
     max_angle_deg: 60,
@@ -285,6 +287,7 @@ async function makeServer() {
         return send(res, 200, body, MIME['.html']);
       }
     } catch (error) {
+      console.error(`[srv500] ${req.method} ${req.url}: ${String(error)}`);
       return send(res, 500, { error: String(error) });
     }
   });
@@ -341,6 +344,88 @@ const RECORDER = () => {
         d.push(ts[i] - ts[i - 1]);
       }
       return d;
+    },
+  };
+};
+
+// map2_21: recorder for the «zoom out from the maximum» scenario —
+// frame times plus label-layer DOM counters (alive <text>/<textPath>,
+// added/removed nodes via a MutationObserver) and the layout runs the
+// app reports through window.__pgLabelStats.
+const LABELREC = () => {
+  window.__pgLabelStats = [];
+  const group = document.querySelector('g[data-layer="labels"]');
+  const rec = {
+    on: false, ts: [], alive: [], adds: 0, removes: 0, remTags: {},
+    frameAdds: 0, frameRems: 0, lastT: 0, longFrames: [],
+  };
+  const obs = new MutationObserver((muts) => {
+    for (const m of muts) {
+      rec.adds += m.addedNodes.length;
+      rec.removes += m.removedNodes.length;
+      rec.frameAdds += m.addedNodes.length;
+      rec.frameRems += m.removedNodes.length;
+      for (const n of m.removedNodes) {
+        const t = n.nodeName || '?';
+        rec.remTags[t] = (rec.remTags[t] || 0) + 1;
+      }
+    }
+  });
+  const loop = (t) => {
+    if (!rec.on) {
+      return;
+    }
+    const d = t - rec.lastT;
+    if (rec.lastT > 0 && d > 30) {
+      rec.longFrames.push({
+        t: Math.round(t - rec.ts[0]),
+        ms: Math.round(d),
+        adds: rec.frameAdds,
+        rems: rec.frameRems,
+      });
+    }
+    rec.lastT = t;
+    rec.frameAdds = 0;
+    rec.frameRems = 0;
+    rec.ts.push(t);
+    rec.alive.push(
+      group ? group.querySelectorAll('text,textPath').length : 0,
+    );
+    requestAnimationFrame(loop);
+  };
+  window.__pgZout = {
+    start() {
+      rec.ts = [];
+      rec.alive = [];
+      rec.adds = 0;
+      rec.removes = 0;
+      rec.remTags = {};
+      rec.frameAdds = 0;
+      rec.frameRems = 0;
+      rec.lastT = 0;
+      rec.longFrames = [];
+      rec.on = true;
+      if (group) {
+        obs.observe(group, { childList: true, subtree: true });
+      }
+      requestAnimationFrame(loop);
+    },
+    stop() {
+      rec.on = false;
+      obs.disconnect();
+      const d = [];
+      for (let i = 1; i < rec.ts.length; i += 1) {
+        d.push(rec.ts[i] - rec.ts[i - 1]);
+      }
+      return {
+        deltas: d,
+        aliveMax: rec.alive.length ? Math.max(...rec.alive) : 0,
+        adds: rec.adds,
+        removes: rec.removes,
+        remTags: rec.remTags,
+        longFrames: rec.longFrames,
+        layouts: (window.__pgLabelStats ?? []).slice(),
+      };
     },
   };
 };
@@ -439,6 +524,19 @@ async function wheelZoom(page, cx, cy, notches) {
   });
 }
 
+// map2_21: N wheel steps OUT at the zoom-in cadence — returns frame
+// deltas plus the label-layer counters collected by LABELREC.
+async function wheelZoomOut(page, cx, cy, notches) {
+  await page.mouse.move(cx, cy);
+  await page.evaluate(() => window.__pgZout.start());
+  for (let i = 0; i < notches; i += 1) {
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(80);
+  }
+  await page.waitForTimeout(250); // settle tail (final React commit)
+  return page.evaluate(() => window.__pgZout.stop());
+}
+
 async function drag(page, cx, cy) {
   const legs = [
     { dx: 420, dy: 240, steps: 30 },
@@ -517,6 +615,17 @@ async function main() {
       deviceScaleFactor: 1,
     });
     const page = await context.newPage();
+    if (process.env.PG_PAGE_LOG === '1') {
+      page.on('console', (m) =>
+        console.error(`[page:${m.type()}] ${m.text().slice(0, 200)}`),
+      );
+      page.on('pageerror', (e) =>
+        console.error(`[pageerror] ${String(e).slice(0, 400)}`),
+      );
+      page.on('requestfailed', (r) =>
+        console.error(`[reqfail] ${r.url().slice(0, 160)}`),
+      );
+    }
     if (THROTTLE > 1) {
       const cdp = await context.newCDPSession(page);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
@@ -545,6 +654,36 @@ async function main() {
       (all[name] ??= { pan: [], zoom: [] }).pan.push(...p);
       all[name].zoom.push(...z);
     }
+
+    // map2_21: zoom out from the maximum across the province threshold —
+    // reach the clamp first, settle, then 40 steps out while the
+    // frame recorder and the label counters run.
+    await page.evaluate(LABELREC);
+    await wheelZoom(page, cx, cy, 12);
+    // The recorded window must measure a steady-state gesture, not the
+    // one-off bundled-font swap (a real user zooms minutes after the
+    // first paint): wait for every face to finish loading and for the
+    // post-load re-layout commit to land before starting the clock.
+    await page.evaluate(() =>
+      document.fonts.ready.then(
+        () => new Promise((r) => setTimeout(r, 400)),
+      ),
+    );
+    await page.waitForTimeout(400);
+    const zo = await wheelZoomOut(page, cx, cy, 40);
+    await page.waitForTimeout(400);
+    all.zout ??= { zoom: [], aliveMax: 0, adds: 0, removes: 0, layouts: [] };
+    all.zout.zoom.push(...zo.deltas);
+    all.zout.aliveMax = Math.max(all.zout.aliveMax, zo.aliveMax);
+    all.zout.adds += zo.adds;
+    all.zout.removes += zo.removes;
+    all.zout.remTags ??= {};
+    for (const [t, n] of Object.entries(zo.remTags ?? {})) {
+      all.zout.remTags[t] = (all.zout.remTags[t] || 0) + n;
+    }
+    all.zout.longFrames ??= [];
+    all.zout.longFrames.push(...(zo.longFrames ?? []));
+    all.zout.layouts.push(...zo.layouts);
     await context.close();
   }
 
@@ -553,6 +692,24 @@ async function main() {
 
   console.log(`build=${TAG} variant=${VARIANT} throttle=${THROTTLE}x runs=${RUNS}`);
   for (const [name, s] of Object.entries(all)) {
+    if (name === 'zout') {
+      const lay = s.layouts.map((l) => l.ms);
+      console.log(`scenario zout zoom: ${fmt(stats(s.zoom))}`);
+      console.log(
+        `  labels: aliveMax=${s.aliveMax} adds=${s.adds} removes=${s.removes}` +
+          ` layoutRuns=${s.layouts.length}` +
+          (lay.length
+            ? ` layoutMs=${lay.map((x) => x.toFixed(1)).join(',')}`
+            : '') +
+          ` remTags=${JSON.stringify(s.remTags)}`,
+      );
+      for (const f of s.longFrames ?? []) {
+        console.log(
+          `    long t=${f.t}ms frame=${f.ms}ms adds=${f.adds} rems=${f.rems}`,
+        );
+      }
+      continue;
+    }
     console.log(`scenario ${name} pan: ${fmt(stats(s.pan))}`);
     console.log(`scenario ${name} zoom: ${fmt(stats(s.zoom))}`);
   }

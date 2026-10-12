@@ -104,6 +104,8 @@ class MapLabelsRulesDTO(BaseModel):
     """``MapViewRulesDTO.labels`` — label fit/style rules (map2_6)."""
 
     font: str
+    # map2_21: sea labels may use their own face from the font registry.
+    sea_font: str
     land_min_px: int
     land_max_px: int
     sea_min_px: int

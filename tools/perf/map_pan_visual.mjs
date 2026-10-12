@@ -116,9 +116,11 @@ const RULES = {
     strength_playable: 0.55,
     inactive_brightness: 0.14,
   },
-  // Mirrors the `labels` block of configs/01_map.yaml (map2_6 + map2_20).
+  // Mirrors the `labels` block of configs/01_map.yaml (map2_6 + map2_20
+  // + map2_21 font registry).
   labels: {
-    font: 'fira_sans_condensed',
+    font: 'pt_mono',
+    sea_font: 'pt_mono',
     land_min_px: 9,
     land_max_px: 15,
     sea_min_px: 10,
@@ -143,7 +145,7 @@ const RULES = {
   },
   // Mirrors the `states` block of configs/01_map.yaml (map2_7).
   states: {
-    font: 'jetbrains_mono',
+    font: 'pt_mono',
     uppercase: true,
     opacity: 0.4,
     max_angle_deg: 60,

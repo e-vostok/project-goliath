@@ -97,8 +97,9 @@ export interface MapReliefRulesDTO {
 /**
  * `rules.labels` (map2_6): a name is drawn only if it fits its `label`
  * box at the current zoom; collisions resolve by area priority.
- * `font` is one of the three bundled self-hosted families in
- * `/assets/fonts/`. map2_6c: `province_zoom_ratio` of the camera's
+ * `font` (land) and `sea_font` pick from the six bundled self-hosted
+ * faces of the map font registry (map2_21). map2_6c:
+ * `province_zoom_ratio` of the camera's
  * maximum scale is where province names live (sea names below it);
  * `fade_ms` is the appear/disappear transition (0 = off,
  * prefers-reduced-motion forces 0). map2_20: `max_angle_deg`/`max_bend`/
@@ -107,7 +108,20 @@ export interface MapReliefRulesDTO {
  * the same mechanism to sea names (their own style is kept).
  */
 export interface MapLabelsRulesDTO {
-  font: 'fira_sans_condensed' | 'pt_sans_narrow' | 'roboto_condensed';
+  font:
+    | 'share_tech_mono'
+    | 'ibm_plex_mono'
+    | 'pt_mono'
+    | 'fira_sans_condensed'
+    | 'pt_sans_narrow'
+    | 'roboto_condensed';
+  sea_font:
+    | 'share_tech_mono'
+    | 'ibm_plex_mono'
+    | 'pt_mono'
+    | 'fira_sans_condensed'
+    | 'pt_sans_narrow'
+    | 'roboto_condensed';
   land_min_px: number;
   land_max_px: number;
   sea_min_px: number;
@@ -135,11 +149,17 @@ export interface MapLabelsRulesDTO {
  * `rules.states` (map2_7): one rotated inscription per state, fitted
  * inside its territory, visible at every zoom below the maximum (the
  * `labels.province_zoom_ratio` threshold where province names live).
- * `font` is one of the three bundled monospace families in
- * `/assets/fonts/`.
+ * `font` picks from the six bundled faces of the map font registry —
+ * the terminal mono cuts keep the «1960s equipment» look (map2_21).
  */
 export interface MapStatesRulesDTO {
-  font: 'jetbrains_mono' | 'ibm_plex_mono' | 'pt_mono';
+  font:
+    | 'share_tech_mono'
+    | 'ibm_plex_mono'
+    | 'pt_mono'
+    | 'fira_sans_condensed'
+    | 'pt_sans_narrow'
+    | 'roboto_condensed';
   uppercase: boolean;
   opacity: number;
   max_angle_deg: number;
