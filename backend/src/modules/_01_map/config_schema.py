@@ -333,6 +333,12 @@ class LabelsSettings(_Strict):
         description="Прозрачность подписей провинций: применяется ко всему элементу, "
         "обвод и буквы смешиваются вместе (map2_20).",
     )
+    sea_opacity: float = Field(
+        ge=0.2,
+        le=1.0,
+        description="Прозрачность подписей морских зон: применяется ко всему элементу, "
+        "обвод и буквы смешиваются вместе (map2_22).",
+    )
     sea_curved: bool = Field(
         description="Морские зоны тоже повторяют форму по своей спине (map2_20); "
         "false — горизонтальная подпись в боксе, как в map2_6.",
@@ -406,6 +412,12 @@ class StatesSettings(_Strict):
     color_mode: Literal["auto", "light", "dark"] = Field(
         description="Цвет надписи: auto — светлый или тёмный по контрасту с цветом государства.",
     )
+    halo_width_px: float = Field(
+        ge=0.0,
+        le=8.0,
+        description="Толщина тонкой обводки (halo) вокруг букв, px (map2_22).",
+    )
+    halo_color: str = Field(pattern=_HEX_COLOR_RE.pattern)
     min_group_share: float = Field(
         ge=0.0,
         le=1.0,

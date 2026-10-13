@@ -49,6 +49,7 @@ const RULES: MapLabelsRulesDTO = {
   letter_spacing_min_em: -0.02,
   letter_spacing_max_em: 0.3,
   land_opacity: 0.6,
+  sea_opacity: 0.4,
   sea_curved: true,
 };
 

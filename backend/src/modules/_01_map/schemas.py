@@ -127,6 +127,7 @@ class MapLabelsRulesDTO(BaseModel):
     letter_spacing_min_em: float
     letter_spacing_max_em: float
     land_opacity: float
+    sea_opacity: float
     sea_curved: bool
 
 
@@ -144,6 +145,8 @@ class MapStatesRulesDTO(BaseModel):
     min_px: int
     max_px: int
     color_mode: str
+    halo_width_px: float
+    halo_color: str
     min_group_share: float
 
 

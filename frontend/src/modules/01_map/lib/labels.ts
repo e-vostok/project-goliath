@@ -68,6 +68,7 @@ export const SPINE_DEFAULTS = {
   letter_spacing_min_em: -0.02,
   letter_spacing_max_em: 0.3,
   land_opacity: 0.6,
+  sea_opacity: 0.4,
   sea_curved: true,
   sea_font: 'pt_mono',
 } as const;
@@ -299,7 +300,9 @@ function fitCandidate(
     textH,
     path: null,
     letterSpacingEm: spacing,
-    opacity: sea ? 1 : (rules.land_opacity ?? SPINE_DEFAULTS.land_opacity),
+    opacity: sea
+      ? (rules.sea_opacity ?? SPINE_DEFAULTS.sea_opacity)
+      : (rules.land_opacity ?? SPINE_DEFAULTS.land_opacity),
     ux: 1,
     uy: 0,
     hw: textW / 2 / scale,
@@ -431,7 +434,9 @@ function fitSpineCandidate(
     textH,
     path,
     letterSpacingEm: spacing,
-    opacity: sea ? 1 : (rules.land_opacity ?? SPINE_DEFAULTS.land_opacity),
+    opacity: sea
+      ? (rules.sea_opacity ?? SPINE_DEFAULTS.sea_opacity)
+      : (rules.land_opacity ?? SPINE_DEFAULTS.land_opacity),
     ux,
     uy,
     hw,

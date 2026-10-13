@@ -154,6 +154,7 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             letter_spacing_min_em=config.labels.letter_spacing_min_em,
             letter_spacing_max_em=config.labels.letter_spacing_max_em,
             land_opacity=config.labels.land_opacity,
+            sea_opacity=config.labels.sea_opacity,
             sea_curved=config.labels.sea_curved,
         ),
         states=MapStatesRulesDTO(
@@ -168,6 +169,8 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             min_px=config.states.min_px,
             max_px=config.states.max_px,
             color_mode=config.states.color_mode,
+            halo_width_px=config.states.halo_width_px,
+            halo_color=config.states.halo_color,
             min_group_share=config.states.min_group_share,
         ),
         require_connected_start=config.starting_group.require_connected,
