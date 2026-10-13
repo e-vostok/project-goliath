@@ -545,6 +545,12 @@ def build_land_mask(
         ]
     )
     closed = safe_union([p.buffer(eps) for p in excluded]).buffer(-eps)
+    if cfg.smooth.enabled:
+        # map2_18: the sea cut edge along excluded land is drawn too —
+        # smooth it the same way (closed rings, no shared borders).
+        from .smooth import smooth_geometry_solo
+
+        closed = smooth_geometry_solo(closed, cfg)
     return safe_union(_polygon_list(included) + _polygon_list(closed))
 
 

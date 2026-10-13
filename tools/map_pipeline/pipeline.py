@@ -66,6 +66,7 @@ from .patches import apply_geometry_patches
 from .pipeline_config_schema import PipelineConfig, load_pipeline_config
 from .preview import render_map_preview, render_preview
 from .seas import SeaRaster, build_seas, land_label_raster
+from .smooth import SmoothReport, smooth_land_geometries
 from .svg_source import build_geometries, read_province_paths, safe_union
 from .svgpath import build_geometry_doc, dumps, parse_path
 
@@ -845,6 +846,7 @@ def _build_report(
     inputs: dict,
     playable: list,
     borders,
+    smooth_rep: SmoothReport | None = None,
 ) -> str:
     """Deterministic ``build_report.md`` — no timestamps."""
     clip = box(*playable)
@@ -939,6 +941,49 @@ def _build_report(
         + (", ".join(f"`{k}`" for k in repairs) if repairs else "none"),
         "- Seam repairs (map2_11): "
         + ("; ".join(seam_notes) if seam_notes else "none"),
+        *(
+            [
+                "",
+                "## Smoothing (map2_18)",
+                "",
+                f"- Rings: {smooth_rep.rings_smoothed} smoothed, "
+                f"{smooth_rep.rings_partial} partially reverted, "
+                f"{smooth_rep.rings_kept} kept unsmoothed "
+                f"(of {smooth_rep.rings_total})",
+                f"- Chains: {smooth_rep.chains_paired} shared "
+                f"({smooth_rep.reverted_pair_chains} reverted), "
+                f"{smooth_rep.chains_solo} solo, "
+                f"{smooth_rep.pair_arcs_unmatched} unmatched shared arcs",
+                f"- Max displacement: {round(smooth_rep.max_displacement, 4)} "
+                f"(`{smooth_rep.worst_node_disp}`), limit "
+                f"{cfg.smooth.max_displacement}",
+                f"- Max area change: "
+                f"{round(smooth_rep.max_area_change * 100, 3)}% "
+                f"(`{smooth_rep.worst_node_area}`), limit "
+                f"{cfg.smooth.max_area_change * 100}% "
+                "(islets 4x)",
+                "- Worst pair overlaps new (was; limit 0.003): "
+                + (
+                    "; ".join(
+                        f"`{a}`/`{b}` {round(v, 4)} ({round(v0, 4)})"
+                        for a, b, v, v0 in smooth_rep.worst_overlap
+                    )
+                    if smooth_rep.worst_overlap
+                    else "none"
+                ),
+                "- Worst pair gaps new (was; limit 0.05): "
+                + (
+                    "; ".join(
+                        f"`{a}`/`{b}` {round(v, 4)} ({round(v0, 4)})"
+                        for a, b, v, v0 in smooth_rep.worst_gap
+                    )
+                    if smooth_rep.worst_gap
+                    else "none"
+                ),
+            ]
+            if smooth_rep is not None
+            else []
+        ),
         f"- Sea faces: {sea_build.face_count} "
         f"(labelled {sea_build.labelled_faces}), vertices before the cut "
         f"{sea_build.vertices_before_cut}, after the cut "
@@ -1024,6 +1069,29 @@ def run_build(
     land_geoms, land_dev, land_repairs, seam_notes = build_land_geometries(
         prep.nodes, cfg, frozenset(prep.overrides.seam_repair)
     )
+    # map2_18: smooth every ring right after per-node simplification, so
+    # the sea cut, canon serialisation, metrics, borders and manifest all
+    # descend from the smoothed contours. Shared-border stretches are
+    # smoothed once as a canonical midline and inserted identically on
+    # both sides.
+    smooth_rep = None
+    if cfg.smooth.enabled:
+        land_geoms, smooth_rep = smooth_land_geometries(
+            land_geoms,
+            prep.overrides,
+            frozenset(prep.overrides.seam_repair),
+            (0.0, 0.0, float(cfg.view.width), float(cfg.view.height)),
+            cfg,
+        )
+        print(
+            f"smooth: {smooth_rep.rings_smoothed}/{smooth_rep.rings_total}"
+            f" rings smoothed, {smooth_rep.rings_partial} partial,"
+            f" {smooth_rep.rings_kept} kept"
+            f" ({smooth_rep.chains_paired} shared chains,"
+            f" {smooth_rep.pair_arcs_unmatched} unmatched arcs);"
+            f" max displacement {smooth_rep.max_displacement:.3f},"
+            f" max area change {smooth_rep.max_area_change * 100:.2f}%"
+        )
     land_mask = build_land_mask(land_geoms, prep, sea, cfg)
     playable = playable_bbox(land_geoms, prep.overrides, cfg)
     zone_ids = {k: ids[k] for k in sea.zone_keys}
@@ -1058,12 +1126,14 @@ def run_build(
         (k for k in canon if k in land_geoms), key=lambda k: ids[k]
     )
     land_union = safe_union(
-        [p for k in land_keys for p in _polygon_list(canon[k])]
+        [p for k in land_keys for p in _polygon_list(canon[k])],
+        grid_size=cfg.output.grid,
     )
     # 1.10: a water body that touches no node stays dark — windows are cut
     # only for bays/lakes within contact distance of the node union.
     nodes_union = safe_union(
-        [p for k in canon for p in _polygon_list(canon[k])]
+        [p for k in canon for p in _polygon_list(canon[k])],
+        grid_size=cfg.output.grid,
     )
     (
         lake_region, lake_pieces, lake_area, lake_spill,
@@ -1142,6 +1212,7 @@ def run_build(
         prep, sea, graph, land_geoms, sea_build, outside_build, metrics,
         land_dev, land_repairs, seam_notes, paths, outside_d, geom_bytes,
         manifest_bytes, geom_doc["version"], inputs, playable, borders,
+        smooth_rep,
     )
 
     if check:
