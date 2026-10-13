@@ -47,9 +47,9 @@ def _base_config() -> dict:
         },
         "colors": {
             "neutral_province": "#8C8C8C",
-            "sea": "#1E3547",
+            "sea": "#141E26",
             "outside": "#2A2A2A",
-            "inland_water": "#1E3547",
+            "inland_water": "#141E26",
             "province_border": "#3A3A3A",
             "land_underlay": "#8C8C8C",
             "hover": "#FFFFFF",
@@ -334,7 +334,7 @@ class TestCrossFieldRules:
     @pytest.mark.parametrize(
         "field,value",
         [
-            ("neutral_province", "#1E3547"),  # collides with sea
+            ("neutral_province", "#141E26"),  # collides with sea
             ("sea", "#8C8C8C"),               # collides with neutral_province
             ("outside", "#8C8C8C"),           # collides with neutral_province
         ],
