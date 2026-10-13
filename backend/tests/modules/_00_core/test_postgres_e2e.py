@@ -344,8 +344,9 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
         await session.execute(
             text(
                 "INSERT INTO nations "
-                "(id, owner_player_id, name, color_hex, created_at) "
-                "VALUES (:id, :owner, :name, :color, :created_at)"
+                "(id, owner_player_id, name, color_hex, created_at, "
+                " created_turn) "
+                "VALUES (:id, :owner, :name, :color, :created_at, 0)"
             ),
             {
                 "id": nation_id,
@@ -604,8 +605,9 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
             await session.execute(
                 text(
                     "INSERT INTO nations "
-                    "(id, owner_player_id, name, color_hex, created_at) "
-                    "VALUES (:id, :owner, :name, :color, now())"
+                    "(id, owner_player_id, name, color_hex, created_at, "
+                    " created_turn) "
+                    "VALUES (:id, :owner, :name, :color, now(), 0)"
                 ),
                 {
                     "id": str(uuid.uuid4()),

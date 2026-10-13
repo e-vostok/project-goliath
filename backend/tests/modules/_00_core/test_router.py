@@ -111,6 +111,7 @@ async def seed_nation(
         # legacy=True simulates a pre-migration row (NULL profile, INV-7).
         **({} if legacy else VALID_PROFILE),
         created_at=datetime.now(timezone.utc),
+        created_turn=0,
     )
     session.add(nation)
     await session.flush()

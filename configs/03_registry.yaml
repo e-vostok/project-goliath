@@ -1,0 +1,147 @@
+# Описание таблиц и настройки модуля 03_registry (Spec 03_registry, Часть 4).
+# Валидируется backend/src/modules/_03_registry/config_schema.py при старте сервера и в CI.
+# Все ключи обязательны (кроме filter_label, scale_min, scale_max — см. Spec 4.4);
+# неизвестные ключи запрещены (опечатка ломает запуск).
+#
+# Как добавить столбец с уже существующими данными: скопируйте блок столбца,
+# задайте новые id и title, укажите source — ключ значения, который отдаёт
+# поставщик таблицы (список ключей — Spec 3.2). Изменение вступает в силу
+# после деплоя (конфиг читается при запуске сервера).
+
+layout:
+  tabs_position: top             # положение ряда вкладок: top (сверху) или right (справа)
+
+limits:
+  max_rows_per_table: 2000       # предел строк одной таблицы в одном ответе
+
+profiles:                        # имена и малые аватарки профилей ВК (Spec 3.4)
+  enabled: true                  # false — профили не запрашиваются, показывается запасной вид
+  api_base_url: "https://api.vk.ru/method"   # как vk.api_base_url в 02_bot (факт V12)
+  api_version: "5.199"           # версия API ВК (факт V13)
+  photo_field: photo_50          # поле малой аватарки: photo_50 или photo_100 (уточняет REG-0)
+  ttl_hours: 24                  # срок годности сохранённого профиля, ч
+  wake_interval_minutes: 30      # период пробуждения фоновой задачи, мин
+  batch_size: 100                # игроков в одном обращении к ВК (потолок метода уточняет REG-0)
+  batch_pause_seconds: 1         # пауза между пакетами в одном цикле, сек (0 — без паузы)
+  http_timeout_seconds: 10       # предельное ожидание ответа ВК, сек
+  failure_retry_minutes: 15      # пауза перед повтором после неудачного обращения, мин
+  fallback_name_template: "Игрок №{number}"  # запасное имя, пока профиль не получен
+
+tables:
+  - id: players
+    title: "Игроки"
+    icon: players
+    source: players              # поставщик строк, регистрирует модуль 03_registry
+    empty_text: "Игроков пока нет"
+    default_sort: {column: number, direction: asc}
+    columns:
+      - id: number
+        title: "№"
+        type: index
+        source: number
+        width_px: 64
+        sortable: true
+        filters: []
+        searchable: false
+        stub: false
+      - id: player
+        title: "Игрок"
+        type: person
+        source: player
+        width_px: 280
+        sortable: true
+        filters: [text]
+        searchable: true
+        stub: false
+      - id: joined
+        title: "В проекте с"
+        type: date
+        source: joined
+        width_px: 150
+        sortable: true
+        filters: [date_range]
+        searchable: false
+        stub: false
+      - id: level
+        title: "Уровень"
+        type: integer
+        source: level
+        width_px: 100
+        sortable: true
+        filters: [number_range]
+        searchable: false
+        stub: true               # механики уровня нет: у всех игроков 1
+      - id: judge_rating
+        title: "Судейский рейтинг"
+        type: gauge
+        source: judge_rating
+        width_px: 220
+        sortable: true
+        filters: [number_range]
+        searchable: false
+        stub: true               # механики рейтинга нет: у всех игроков 0
+        scale_min: -100          # границы шкалы совпадают с константами 00_core (Spec 0, D1)
+        scale_max: 100
+      - id: nation
+        title: "Государство"
+        type: nation
+        source: nation
+        width_px: 240
+        sortable: true
+        filters: [text, presence]
+        searchable: true
+        stub: false
+
+  - id: nations
+    title: "Государства"
+    icon: nations
+    source: nations
+    empty_text: "Государств пока нет"
+    default_sort: {column: number, direction: asc}
+    columns:
+      - id: number
+        title: "№"
+        type: index
+        source: number
+        width_px: 64
+        sortable: true
+        filters: []
+        searchable: false
+        stub: false
+      - id: name
+        title: "Название"
+        type: text
+        source: name
+        width_px: 280
+        sortable: true
+        filters: [text]
+        searchable: true
+        stub: false
+      - id: flag
+        title: "Флаг"
+        type: flag
+        source: flag
+        width_px: 80
+        sortable: false
+        filters: []
+        searchable: false
+        stub: true               # загрузки флагов нет: квадрат цвета государства
+      - id: formed
+        title: "Дата формирования"
+        type: date
+        source: formed
+        width_px: 200
+        sortable: true
+        filters: [number_range]
+        filter_label: "Ход"      # игровая дата: диапазон задаётся номерами ходов
+        searchable: false
+        stub: false
+      - id: provinces
+        title: "Провинции"
+        type: integer
+        source: provinces
+        width_px: 120
+        sortable: true
+        filters: [number_range]
+        searchable: false
+        stub: false
