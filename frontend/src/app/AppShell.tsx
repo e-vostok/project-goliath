@@ -32,6 +32,8 @@ import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
 import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
 import { MapEntryButton } from '../modules/01_map/components/MapEntryButton';
+import { BotStatusProvider } from '../modules/02_bot/hooks/useBotStatus';
+import { parseStartHash } from '../modules/02_bot/lib/startHash';
 import { AdminBlock } from '../admin/AdminBlock';
 
 export const PANEL_HOME = 'nation-home';
@@ -42,11 +44,18 @@ const MODAL_DELETE_NATION = 'confirm-delete-nation';
 /**
  * The community-menu deep link `https://vk.com/app<APP_ID>#map` arrives
  * as the bare hash `#map`; the hash router expects a path. Call once,
- * before the router is created (main.tsx).
+ * before the router is created (main.tsx). Module 02_bot adds the
+ * `register` start hint from the bot's keyboard button (Spec 5.6) —
+ * it maps to the registration panel, where the consent gate decides
+ * what is actually shown after authentication.
  */
 export function normalizeEntryHash(): void {
   if (window.location.hash === '#map') {
     window.history.replaceState(null, '', '#/map');
+    return;
+  }
+  if (parseStartHash(window.location.hash) === 'register') {
+    window.history.replaceState(null, '', '#/nation/new');
   }
 }
 
@@ -82,7 +91,9 @@ export function AppShell() {
 
   return (
     <SessionProvider session={{ token: auth.token, player: auth.player }}>
-      <AuthedArea />
+      <BotStatusProvider>
+        <AuthedArea />
+      </BotStatusProvider>
     </SessionProvider>
   );
 }

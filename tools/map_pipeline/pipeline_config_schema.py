@@ -90,6 +90,28 @@ class SimplifyConfig(_Strict):
     sea_tolerance: float = Field(ge=0.05, le=1.0)
 
 
+class SmoothConfig(_Strict):
+    """Contour smoothing (map2_18): Gaussian filter along arc length on
+    anchored chains, run between per-node simplification and the sea
+    cut / borders / metrics. ``sigma`` is the Gaussian width in map
+    units, ``step`` the resampling step, ``post_tolerance`` the
+    Douglas-Peucker applied after smoothing. Parts smaller than
+    ``small_part_area`` scale sigma by sqrt(area/small_part_area)
+    (never below 0.02). ``anchor_gap`` is the distance at which ring
+    vertices pinned by overrides patches stay fixed. Guard rails:
+    ``max_area_change`` (relative per node; islets get 4x) and
+    ``max_displacement`` (boundary Hausdorff per node)."""
+
+    enabled: bool = True
+    sigma: float = Field(default=0.10, ge=0.02, le=0.5)
+    step: float = Field(default=0.03, ge=0.01, le=0.2)
+    post_tolerance: float = Field(default=0.008, ge=0.001, le=0.05)
+    max_area_change: float = Field(default=0.02, ge=0.001, le=0.2)
+    max_displacement: float = Field(default=0.12, ge=0.02, le=0.5)
+    small_part_area: float = Field(default=0.05, ge=0.0, le=1.0)
+    anchor_gap: float = Field(default=0.05, ge=0.01, le=0.3)
+
+
 class ViewConfig(_Strict):
     """Source root viewBox the tool expects (MP-3)."""
 
@@ -128,6 +150,30 @@ class OutsideConfig(_Strict):
     lake_near_land: float = Field(ge=0.0, le=2.0)
 
 
+class BordersConfig(_Strict):
+    """Canonical shared borders (map2_1B, reuses borders_proto method)."""
+
+    eps: float = Field(ge=0.02, le=0.5)
+    junction_snap: float = Field(ge=0.0, le=1.0)
+    coverage_warn: float = Field(ge=0.001, le=0.1)
+    coverage_fail: float = Field(ge=0.005, le=0.2)
+
+
+class SpineConfig(_Strict):
+    """Label spine scan (map2_20): the name rides a chord or a gentle
+    parabolic arc inscribed in the node's territory. ``max_angle_deg``
+    and ``max_bend`` mirror the client-side ``labels.*`` rules — the
+    tool never reads ``configs/01_map.yaml``."""
+
+    max_angle_deg: float = Field(ge=0.0, le=89.0)
+    angle_step_deg: float = Field(ge=1.0, le=30.0)
+    offset_step: float = Field(ge=0.01, le=0.5)
+    max_bend: float = Field(ge=0.0, le=0.25)
+    central_share: float = Field(ge=0.3, le=1.0)
+    thickness_samples: int = Field(ge=3, le=15)
+    arc_samples: int = Field(ge=9, le=129)
+
+
 class LimitsConfig(_Strict):
     """Server-side size limits mirrored for the tool (Spec Part 4)."""
 
@@ -135,6 +181,7 @@ class LimitsConfig(_Strict):
     max_edges_per_node: int = Field(ge=4, le=100)
     max_geometry_bytes: int = Field(ge=100_000, le=20_000_000)
     max_manifest_bytes: int = Field(ge=100_000, le=20_000_000)
+    max_borders_bytes: int = Field(ge=100_000, le=5_000_000)
 
 
 class PipelineConfig(_Strict):
@@ -148,11 +195,14 @@ class PipelineConfig(_Strict):
     report: ReportConfig
     preview: PreviewConfig
     simplify: SimplifyConfig
+    smooth: SmoothConfig
     view: ViewConfig
     georef: GeorefConfig
     output: OutputConfig
     sea_cut: SeaCutConfig
     outside: OutsideConfig
+    borders: BordersConfig
+    spine: SpineConfig
     limits: LimitsConfig
 
 

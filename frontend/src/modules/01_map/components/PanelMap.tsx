@@ -29,6 +29,7 @@ import { formatMoscowTime } from '../lib/refresh';
 import { displayName } from '../lib/search';
 import type { MapNodeDTO } from '../types';
 import { useBigWindow } from '../hooks/useBigWindow';
+import { useMapBorders } from '../hooks/useMapBorders';
 import { useMapGeometry } from '../hooks/useMapGeometry';
 import { useMapManifest } from '../hooks/useMapManifest';
 import { useMapSearch } from '../hooks/useMapSearch';
@@ -50,6 +51,10 @@ export function PanelMap() {
     manifestState.status === 'ready' ? manifestState.manifest : null;
   const geometryState = useMapGeometry(
     manifest?.geometry_version ?? null,
+    manifestState.reload,
+  );
+  const bordersState = useMapBorders(
+    manifest?.borders_version ?? null,
     manifestState.reload,
   );
   const mapState = useMapState(manifest?.rules.refresh ?? null);
@@ -308,6 +313,8 @@ export function PanelMap() {
             mode="view"
             manifest={manifest}
             geometry={geometryState.geometry}
+            borders={bordersState.borders}
+            bordersFailed={bordersState.status === 'error'}
             state={mapState.state}
             selectedIds={selectedId === null ? [] : [selectedId]}
             onNodeClick={(id) => setSelectedId(id)}

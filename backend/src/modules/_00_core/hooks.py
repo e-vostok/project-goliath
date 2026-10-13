@@ -21,12 +21,23 @@ core operations through two small registries populated at startup:
 
 2. **Registration checks** — satellite checks injected into
    ``NationService.create`` at named stages of the Spec Part 5 order:
-   ``after_free`` runs right after province existence/freedom, before
-   the province-count check; ``after_count`` runs right after it, before
-   the nation row is written. A check raises a domain error carrying
-   ``code``/``message`` to reject the registration.
+   ``before_all`` runs first, before any write and before the province
+   set is even loaded (its checks receive ``player_id``, not the
+   provinces); ``after_free`` runs right after province
+   existence/freedom, before the province-count check; ``after_count``
+   runs right after it, before the nation row is written. A check
+   raises a domain error carrying ``code``/``message`` to reject the
+   registration.
 
-Both registries are keyed by name; re-registering the same name replaces
+3. **Nation-created hooks** — satellite follow-ups invoked by
+   ``NationService.create`` AFTER all creation writes, still inside the
+   caller's transaction (Spec 02_bot 3.11, Appendix B10). Each hook runs
+   under its own SAVEPOINT: an exception rolls back only that hook's
+   writes, is logged as ``nation_created_hook_failed`` (hook name and
+   exception class, no payload) and never aborts the creation —
+   unlike a registration check, a hook can only observe and append.
+
+All registries are keyed by name; re-registering the same name replaces
 the entry, so application startup stays idempotent across repeated
 lifespan boots in one process. Call order is registration order.
 """
@@ -45,10 +56,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-CheckStage = Literal["after_free", "after_count"]
+CheckStage = Literal["before_all", "after_free", "after_count"]
+STAGE_BEFORE_ALL: CheckStage = "before_all"
 STAGE_AFTER_FREE: CheckStage = "after_free"
 STAGE_AFTER_COUNT: CheckStage = "after_count"
-_CHECK_STAGES: tuple[CheckStage, ...] = (STAGE_AFTER_FREE, STAGE_AFTER_COUNT)
+_CHECK_STAGES: tuple[CheckStage, ...] = (
+    STAGE_BEFORE_ALL,
+    STAGE_AFTER_FREE,
+    STAGE_AFTER_COUNT,
+)
 
 
 @dataclass(frozen=True)
@@ -81,11 +97,19 @@ OwnershipListener = Callable[
 RegistrationCheck = Callable[
     [AsyncSession, Sequence["Province"]], Awaitable[None]
 ]
+# STAGE_BEFORE_ALL checks run before the provinces are loaded, so they
+# see the registering player instead: signature ``(session, player_id)``.
+BeforeAllCheck = Callable[[AsyncSession, str], Awaitable[None]]
+
+# A nation-created hook sees ``(session, player_id, nation_id)`` and
+# runs after all creation writes, inside the caller's transaction.
+NationCreatedHook = Callable[[AsyncSession, str, str], Awaitable[None]]
 
 _ownership_listeners: dict[str, OwnershipListener] = {}
-_registration_checks: dict[CheckStage, dict[str, RegistrationCheck]] = {
-    stage: {} for stage in _CHECK_STAGES
-}
+_registration_checks: dict[
+    CheckStage, dict[str, RegistrationCheck | BeforeAllCheck]
+] = {stage: {} for stage in _CHECK_STAGES}
+_nation_created_hooks: dict[str, NationCreatedHook] = {}
 
 
 def register_ownership_listener(
@@ -107,7 +131,9 @@ def get_ownership_listeners() -> dict[str, OwnershipListener]:
 
 
 def register_registration_check(
-    stage: CheckStage, name: str, check: RegistrationCheck
+    stage: CheckStage,
+    name: str,
+    check: RegistrationCheck | BeforeAllCheck,
 ) -> None:
     """
     Register a nation-registration check for ``stage`` under ``name``;
@@ -119,9 +145,29 @@ def register_registration_check(
     logger.info("Registered registration check '%s' at stage '%s'", name, stage)
 
 
-def get_registration_checks(stage: CheckStage) -> dict[str, RegistrationCheck]:
+def get_registration_checks(
+    stage: CheckStage,
+) -> dict[str, RegistrationCheck | BeforeAllCheck]:
     """Checks of one stage, keyed by name, in registration order."""
     return dict(_registration_checks[stage])
+
+
+def register_nation_created_hook(
+    name: str, hook: NationCreatedHook
+) -> None:
+    """
+    Register ``hook`` under ``name``; the same name re-registers
+    (replaces) instead of raising — startup is re-run per lifespan boot.
+    """
+    if name in _nation_created_hooks:
+        logger.info("Replacing nation-created hook '%s'", name)
+    _nation_created_hooks[name] = hook
+    logger.info("Registered nation-created hook '%s'", name)
+
+
+def get_nation_created_hooks() -> dict[str, NationCreatedHook]:
+    """All nation-created hooks, keyed by name, in registration order."""
+    return dict(_nation_created_hooks)
 
 
 async def notify_ownership_changed(
@@ -148,9 +194,56 @@ async def run_registration_checks(
     session: AsyncSession,
     provinces: Sequence["Province"],
 ) -> None:
-    """Run all checks of one stage, in registration order."""
+    """Run all checks of one province stage, in registration order."""
+    if stage == STAGE_BEFORE_ALL:
+        raise ValueError(
+            "STAGE_BEFORE_ALL checks take (session, player_id) — "
+            "run them via run_before_all_checks"
+        )
     for check in _registration_checks[stage].values():
         await check(session, provinces)
+
+
+async def run_before_all_checks(
+    session: AsyncSession,
+    player_id: str,
+) -> None:
+    """Run all ``before_all`` checks, in registration order.
+
+    These checks receive ``(session, player_id)``: the stage fires
+    before any registration write and before the province set exists.
+    """
+    for check in _registration_checks[STAGE_BEFORE_ALL].values():
+        await check(session, player_id)
+
+
+async def run_nation_created_hooks(
+    session: AsyncSession,
+    player_id: str,
+    nation_id: str,
+) -> None:
+    """
+    Run every nation-created hook, in registration order.
+
+    Called by ``NationService.create`` after all creation writes, still
+    inside the caller's transaction (the nation row and the province
+    claims are already flushed, so hooks can read them). Each hook runs
+    under its own SAVEPOINT: an exception rolls back only that hook's
+    writes, is logged as a WARNING (hook name and exception class —
+    never a payload) and does not stop the remaining hooks or abort the
+    creation. ``asyncio.CancelledError`` and other ``BaseException``s
+    are not caught.
+    """
+    for name, hook in _nation_created_hooks.items():
+        try:
+            async with session.begin_nested():
+                await hook(session, player_id, nation_id)
+        except Exception as exc:
+            logger.warning(
+                "nation_created_hook_failed hook=%s error=%s",
+                name,
+                type(exc).__name__,
+            )
 
 
 def clear_ownership_listeners() -> None:
@@ -164,22 +257,31 @@ def clear_registration_checks() -> None:
         checks.clear()
 
 
+def clear_nation_created_hooks() -> None:
+    """Drop all nation-created hooks — test isolation."""
+    _nation_created_hooks.clear()
+
+
 def snapshot_extension_points() -> tuple[
     dict[str, OwnershipListener],
-    dict[CheckStage, dict[str, RegistrationCheck]],
+    dict[CheckStage, dict[str, RegistrationCheck | BeforeAllCheck]],
+    dict[str, NationCreatedHook],
 ]:
-    """Opaque snapshot of both registries for test isolation fixtures."""
+    """Opaque snapshot of all registries for test isolation fixtures."""
     return (
         dict(_ownership_listeners),
         {stage: dict(checks) for stage, checks in _registration_checks.items()},
+        dict(_nation_created_hooks),
     )
 
 
 def restore_extension_points(snapshot) -> None:
     """Restore a snapshot taken by :func:`snapshot_extension_points`."""
-    listeners, checks = snapshot
+    listeners, checks, created_hooks = snapshot
     _ownership_listeners.clear()
     _ownership_listeners.update(listeners)
     for stage in _CHECK_STAGES:
         _registration_checks[stage].clear()
         _registration_checks[stage].update(checks.get(stage, {}))
+    _nation_created_hooks.clear()
+    _nation_created_hooks.update(created_hooks)

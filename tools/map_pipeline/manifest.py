@@ -74,6 +74,22 @@ def playable_bbox(
     ]
 
 
+def _label_entry(mt: NodeMetrics) -> dict:
+    """``label`` payload: the map2_6 fallback box plus the map2_20 spine
+    baseline the curved name is laid out along."""
+    entry = {
+        "x": mt.label[0],
+        "y": mt.label[1],
+        "w": mt.label[2],
+        "h": mt.label[3],
+    }
+    if mt.spine is not None:
+        entry["spine"] = list(mt.spine.spine)
+        entry["len"] = mt.spine.len
+        entry["thick"] = mt.spine.thick
+    return entry
+
+
 def build_manifest(
     graph: Graph,
     land: dict,  # key -> pipeline _Node
@@ -81,6 +97,7 @@ def build_manifest(
     metrics: dict[str, NodeMetrics],
     inputs: dict,
     geometry_version: str,
+    borders_version: str,
     view_box: list[float],
     playable: list[float],
     cfg: PipelineConfig,
@@ -96,12 +113,16 @@ def build_manifest(
                     "id": gn.id,
                     "key": gn.key,
                     "kind": "LAND",
-                    "name": node.source_name.replace("_", " "),
+                    "name": (
+                        node.display_name
+                        or node.source_name.replace("_", " ")
+                    ),
                     "name_ru": overrides.names_ru.get(gn.key) or None,
                     "source_name": node.source_name,
                     "anchor": [mt.anchor[0], mt.anchor[1]],
                     "bbox": list(mt.bbox),
                     "area": mt.area,
+                    "label": _label_entry(mt),
                 }
             )
         else:
@@ -116,6 +137,7 @@ def build_manifest(
                     "anchor": [mt.anchor[0], mt.anchor[1]],
                     "bbox": list(mt.bbox),
                     "area": mt.area,
+                    "label": _label_entry(mt),
                 }
             )
     edges = []
@@ -142,6 +164,7 @@ def build_manifest(
     return {
         "schema_version": 1,
         "geometry_version": geometry_version,
+        "borders_version": borders_version,
         "view_box": view_box,
         "playable_bbox": playable,
         "georef": {

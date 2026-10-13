@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from conftest import (
+    edges_by_key,
     graph_overrides,
     kind_at,
     label_at,
@@ -429,3 +430,92 @@ def test_lock_key_removed_still_fails(make_data_dir, tmp_path, capsys):
     )
     assert run_nodes(data_dir, tmp_path / "out") == 1
     assert "KEY_REMOVED" in capsys.readouterr().err
+
+
+def test_split_patch_map2_2(make_data_dir, tmp_path, capsys):
+    """map2_2 ``split``: a square halved by a line — both halves are nodes.
+
+    Alpha (10..20 x 10..20) is cut by the vertical line x=15; the keep
+    side (keep_point to the east) stays ``alpha``/1001, the west half
+    becomes ``alpha_west`` with the next free id 1003. A line crossing
+    the outline only once is PATCH_INVALID.
+    """
+    lock = {"version": 1, "ids": {"alpha": 1001, "beta": 1002}}
+    data_dir = make_data_dir(
+        svg_elems=[
+            square("Alpha", 10, 10, 10),
+            square("Beta", 20, 10, 10),
+        ],
+        include=["Alpha", "Beta"],
+        overrides=graph_overrides(
+            sea_zones=[
+                {"key": "sea_a", "name_ru": "A", "seeds": [[8.0, 15.0]]},
+            ],
+            geometry_patches=[
+                {
+                    "split": {
+                        "key": "alpha",
+                        "line": [[15.0, 8.0], [15.0, 22.0]],
+                        "keep_point": [17.0, 15.0],
+                        "new_key": "alpha_west",
+                        "new_name": "Alpha_West",
+                    }
+                }
+            ],
+        ),
+        lock=lock,
+    )
+    out_dir = tmp_path / "out"
+    assert run_graph(data_dir, out_dir) == 0
+
+    nodes = {
+        n["key"]: n
+        for n in json.loads(
+            (out_dir / "land_nodes.json").read_text(encoding="utf-8")
+        )
+    }
+    assert sorted(nodes) == ["alpha", "alpha_west", "beta"]
+    assert nodes["alpha"]["area"] == 50.0
+    assert nodes["alpha_west"]["area"] == 50.0
+
+    edges = edges_by_key(read_graph(out_dir))
+    assert ("alpha", "alpha_west") in edges
+    assert edges[("alpha", "alpha_west")]["type"] == "land"
+    assert ("alpha", "beta") in edges
+
+    new_lock = json.loads(
+        (data_dir / "ids.lock.json").read_text(encoding="utf-8")
+    )
+    assert new_lock["ids"]["alpha"] == 1001  # old key keeps its id
+    assert new_lock["ids"]["beta"] == 1002
+    assert new_lock["ids"]["alpha_west"] == 1003  # appended, not renumbered
+
+    # A line entering the province but never leaving = one crossing.
+    bad_dir = make_data_dir(
+        svg_elems=[
+            square("Alpha", 10, 10, 10),
+            square("Beta", 20, 10, 10),
+        ],
+        include=["Alpha", "Beta"],
+        overrides=graph_overrides(
+            sea_zones=[
+                {"key": "sea_a", "name_ru": "A", "seeds": [[8.0, 15.0]]},
+            ],
+            geometry_patches=[
+                {
+                    "split": {
+                        "key": "alpha",
+                        "line": [[15.0, 15.0], [15.0, 22.0]],
+                        "keep_point": [17.0, 15.0],
+                        "new_key": "alpha_west",
+                        "new_name": "Alpha_West",
+                    }
+                }
+            ],
+        ),
+        lock=lock,
+    )
+    assert run_nodes(bad_dir, tmp_path / "out_bad") == 1
+    err = capsys.readouterr().err
+    assert "PATCH_INVALID" in err
+    assert "exactly two points" in err

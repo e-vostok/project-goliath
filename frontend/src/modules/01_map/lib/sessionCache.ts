@@ -17,11 +17,17 @@
 
 import type { CachedBody } from './cache';
 import { mapApi } from '../api';
-import type { MapGeometryDTO, MapManifestDTO } from '../types';
+import type {
+  MapBordersDTO,
+  MapGeometryDTO,
+  MapManifestDTO,
+} from '../types';
 
 let manifestCache: CachedBody<MapManifestDTO> | null = null;
 const geometryCache = new Map<string, MapGeometryDTO>();
 const geometryInflight = new Map<string, Promise<MapGeometryDTO>>();
+const bordersCache = new Map<string, MapBordersDTO>();
+const bordersInflight = new Map<string, Promise<MapBordersDTO>>();
 
 export function readManifestCache(): CachedBody<MapManifestDTO> | null {
   return manifestCache;
@@ -70,9 +76,47 @@ export function loadGeometryCached(
   return request;
 }
 
+export function readBordersCache(version: string): MapBordersDTO | null {
+  return bordersCache.get(version) ?? null;
+}
+
+/**
+ * Fetch a borders version once per session — same once-per-session
+ * contract as `loadGeometryCached` (map2_4: the payload is cached like
+ * the geometry).
+ */
+export function loadBordersCached(
+  token: string,
+  version: string,
+): Promise<MapBordersDTO> {
+  const hit = bordersCache.get(version);
+  if (hit) {
+    return Promise.resolve(hit);
+  }
+  const inflight = bordersInflight.get(version);
+  if (inflight) {
+    return inflight;
+  }
+  const request = mapApi.getBorders(token, version).then(
+    (borders) => {
+      bordersCache.set(version, borders);
+      bordersInflight.delete(version);
+      return borders;
+    },
+    (error: unknown) => {
+      bordersInflight.delete(version);
+      throw error instanceof Error ? error : new Error(String(error));
+    },
+  );
+  bordersInflight.set(version, request);
+  return request;
+}
+
 /** Forget everything — called by test stubs to isolate test cases. */
 export function clearMapSessionCache(): void {
   manifestCache = null;
   geometryCache.clear();
   geometryInflight.clear();
+  bordersCache.clear();
+  bordersInflight.clear();
 }

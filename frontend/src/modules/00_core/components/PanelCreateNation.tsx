@@ -35,12 +35,20 @@ import {
   Group,
   ModalRoot,
   PanelHeader,
+  Spinner,
 } from '@vkontakte/vkui';
 
 import { api, ApiError } from '../../../shared/api-client';
 import { ErrorCodes, type NationDTO } from '../../../shared/types';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
+import { useBotStatus } from '../../02_bot/hooks/useBotStatus';
+import { PanelBotGate } from '../../02_bot/components/PanelBotGate';
+import {
+  fetchBotStatus,
+  isConsentRequiredError,
+  toBotStatus,
+} from '../../02_bot/api';
 import {
   nationRulesHints,
   type NationField,
@@ -102,6 +110,8 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const rulesState = useNationRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
   const hints = nationRulesHints(rules);
+  const bot = useBotStatus();
+  const [consentRequired, setConsentRequired] = useState(false);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState('');
@@ -162,7 +172,35 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       sendTaptic();
       onCreated(nation);
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (isConsentRequiredError(error)) {
+        // The server enforced consent although the gate let the player
+        // through (stale/failed status) — return to the gate; the form
+        // values stay untouched in this container's state.
+        setConsentRequired(true);
+        try {
+          const fresh =
+            bot.state.status === 'ready'
+              ? bot.state.dto
+              : await fetchBotStatus(token);
+          // The server just denied — treat consent as not allowed even
+          // if the status snapshot still says ALLOWED.
+          const next =
+            fresh.consent === 'ALLOWED'
+              ? { ...fresh, consent: 'UNKNOWN' as const }
+              : fresh;
+          if (toBotStatus(next).status === 'ready') {
+            bot.update(next);
+          } else {
+            // No usable status (bot off / malformed) — keep the
+            // pre-Issue behavior: a generic banner on the form.
+            setConsentRequired(false);
+            setFormError(error.message);
+          }
+        } catch {
+          setConsentRequired(false);
+          setFormError(error.message);
+        }
+      } else if (error instanceof ApiError) {
         const field = mapErrorCodeToField(error.code);
         if (field) {
           setFieldErrors({ [field]: error.message });
@@ -187,6 +225,44 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     clearFieldError('provinces');
     setPickerOpen(false);
   };
+
+  // Spec 5.6 + INV-B15: the consent gate stands before the form only when
+  // a good status explicitly requires consent. Failed requests and the
+  // stale+UNKNOWN combination fall through to the form (fail-open); an
+  // explicit 403 CONSENT_REQUIRED bypasses the stale exemption — the
+  // server's refusal is definitive.
+  const botDto = bot.state.status === 'ready' ? bot.state.dto : null;
+  const showGate =
+    botDto !== null &&
+    botDto.registration_requires_consent &&
+    botDto.consent !== 'ALLOWED' &&
+    !(botDto.stale && botDto.consent === 'UNKNOWN' && !consentRequired);
+
+  if (bot.state.status === 'loading') {
+    // First status request in flight — the container's loading state;
+    // the form must not flash before the gate decision is known.
+    return (
+      <Div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '48px 0',
+        }}
+      >
+        <Spinner size="l" />
+      </Div>
+    );
+  }
+
+  if (showGate && botDto !== null) {
+    return (
+      <PanelBotGate
+        dto={botDto}
+        onAllowed={bot.update}
+        onDisabled={() => bot.update({ ...botDto, enabled: false })}
+      />
+    );
+  }
 
   return (
     <>

@@ -52,12 +52,13 @@ def test_real_map_sanity(real_service):
     data = real_service.map_data
     manifest = data.manifest
 
-    # boundary v2: 1065 active nodes; the 58 retired ids stay in the lock.
-    assert len(data.nodes) == len(manifest.nodes) == 1065
+    # map2_11 detach: 1067 active nodes; the 58 retired ids stay in the lock.
+    assert len(data.nodes) == len(manifest.nodes) == 1067
     assert len(data.retired_ids) == 58
     kinds = {n.kind for n in data.nodes.values()}
     assert kinds == {"LAND", "SEA"}
-    assert len(data.edges) == len(manifest.edges) == 3060
+    # map2_11: 3094 -> 3091 after transfer/detach recompute.
+    assert len(data.edges) == len(manifest.edges) == 3091
 
     # graph connectivity is already enforced by the loader (INV-M3);
     # degrees stay under the config limit (checked at load time too)
@@ -66,13 +67,23 @@ def test_real_map_sanity(real_service):
     assert max_deg <= config_max
     print(f"  max node degree: {max_deg} (limit {config_max})")
 
-    # strait multiplier: the Dover strait carries an explicit value or
-    # falls back to the config default — either way inside [0.05, 1.0]
+    # strait multiplier: explicit value or the config default — either
+    # way inside [0.05, 1.0]. map2_10: 15 legacy + 30 workbook straits.
     straits = [e for e in data.edges.values() if e.type == "strait"]
-    assert len(straits) == 16
+    assert len(straits) == 45
     for e in straits:
         mult = real_service.strait_multiplier(e.a, e.b)
         assert mult is not None and 0.05 <= mult <= 1.0
+
+
+def test_bosphorus_start_group_connected(real_service):
+    """map2_10: a start group across the Bosphorus — constantinople
+    (1211) + kocaeli (1432) — passes the registration contiguity check
+    via the new strait edge."""
+    data = real_service.map_data
+    edge = data.edges.get((1211, 1432))
+    assert edge is not None and edge.type == "strait"
+    assert real_service.is_group_connected([1211, 1432])
 
 
 def test_real_group_and_path_plausible(real_service):

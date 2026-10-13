@@ -6,7 +6,11 @@
 # Cron starts scripts with a minimal PATH — pin it explicitly so docker,
 # git, age and rclone are found the same way from cron and from SSH.
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:${HOME}/.local/bin:${HOME}/bin"
-umask 077
+# DEPLOY-1: a restrictive umask here would make every file that
+# `git checkout` rewrites unreadable for the uid-10001 containers.
+# Scripts set their own default 022; anything that must stay private
+# (DB dumps, .env) is chmod'ed explicitly where it is created.
+umask 022
 
 # Repo root = parent of the directory holding this file. All compose and
 # git commands run from there so relative paths always mean the same thing.

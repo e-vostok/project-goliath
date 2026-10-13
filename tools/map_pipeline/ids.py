@@ -13,16 +13,73 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .errors import KEY_REMOVED, PipelineError, PipelineFailure
+from .errors import (
+    KEY_COLLISION,
+    KEY_REMOVED,
+    PipelineError,
+    PipelineFailure,
+)
 from .models import IdsLock, MIN_NODE_ID, load_ids_lock
 
 _IDS_LOCK_FILE = "ids.lock.json"
 
 
-def canonical_lock(ids: dict[str, int]) -> str:
+def canonical_lock(
+    ids: dict[str, int], previous_keys: dict[str, list[str]] | None = None
+) -> str:
     ordered = {k: v for k, v in sorted(ids.items(), key=lambda kv: kv[1])}
-    doc = {"version": 1, "ids": ordered}
+    doc: dict = {"version": 1, "ids": ordered}
+    if previous_keys:
+        doc["previous_keys"] = {
+            k: previous_keys[k]
+            for k in sorted(previous_keys, key=lambda k: ordered[k])
+        }
     return json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
+
+
+def _apply_renames(
+    existing: dict[str, int],
+    previous: dict[str, list[str]],
+    renames: dict[str, str],
+) -> None:
+    """Move locked ids from old keys to declared new keys (map2_10).
+
+    ``renames`` maps source slugs to current keys. When a node was
+    renamed more than once, its id sits under an intermediate key — the
+    ``previous_keys`` chains locate that holder. In every case the new
+    key's chain gains the superseded key(s), so the rename history stays
+    visible in the lock.
+    """
+    for old_key, new_key in renames.items():
+        holder: str | None = None
+        if old_key in existing:
+            holder = old_key
+        elif new_key not in existing:
+            for k in sorted(existing):
+                if old_key in previous.get(k, []):
+                    holder = k
+                    break
+        if holder is not None:
+            if new_key in existing:
+                raise PipelineFailure(
+                    [
+                        PipelineError(
+                            KEY_COLLISION,
+                            f"rename {old_key!r} -> {new_key!r}: key "
+                            f"{new_key!r} already locks a different id",
+                        )
+                    ]
+                )
+            existing[new_key] = existing.pop(holder)
+            chain = previous.pop(holder, []) + [holder]
+            previous[new_key] = previous.get(new_key, []) + [
+                k for k in chain if k not in previous.get(new_key, [])
+            ]
+        else:
+            # The rename predates the lock (or was already applied):
+            # keep the superseded key in the chain either way.
+            if old_key not in previous.get(new_key, []):
+                previous.setdefault(new_key, []).append(old_key)
 
 
 def assign_ids(
@@ -30,13 +87,17 @@ def assign_ids(
     land_keys: list[str],
     sea_keys: list[str],
     keep_extra: set[str] | frozenset[str] = frozenset(),
+    renames: dict[str, str] | None = None,
 ) -> tuple[dict[str, int], list[int], str, bool]:
     """Load the lock and append new keys.
 
     ``keep_extra`` lists keys that may stay in the lock without producing a
     node — provinces moved to ``boundary.exclude_explicit`` and retired sea
-    zones (INV-M1: a retired node's id is never reused). Every other locked
-    key that disappears from the current key set is still ``KEY_REMOVED``.
+    zones (INV-M1: a retired node's id is never reused). ``renames`` maps
+    source slugs to current node keys: the id of a renamed key transfers
+    to the new key and the superseded key is recorded under
+    ``previous_keys``. Every other locked key that disappears from the
+    current key set is still ``KEY_REMOVED``.
 
     Returns ``(ids, new_ids, canonical_text, changed)``: ``ids`` maps every
     current key (land and sea), ``new_ids`` lists freshly assigned ids in the
@@ -45,11 +106,16 @@ def assign_ids(
     """
     lock_path = data_dir / _IDS_LOCK_FILE
     existing: dict[str, int] = {}
+    previous: dict[str, list[str]] = {}
     old_text: str | None = None
     if lock_path.exists():
         lock: IdsLock = load_ids_lock(lock_path)
         existing = dict(lock.ids)
+        previous = {k: list(v) for k, v in lock.previous_keys.items()}
         old_text = lock_path.read_text(encoding="utf-8")
+
+    if renames:
+        _apply_renames(existing, previous, renames)
 
     key_set = set(land_keys) | set(sea_keys)
     removed = sorted(
@@ -85,5 +151,5 @@ def assign_ids(
         new_ids.append(next_id)
         next_id += 1
 
-    text = canonical_lock({**ids, **retained})
+    text = canonical_lock({**ids, **retained}, previous)
     return ids, new_ids, text, text != old_text

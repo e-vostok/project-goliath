@@ -17,6 +17,11 @@ from lxml import etree
 from shapely import STRtree
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
+from .borders import (
+    build_borders,
+    land_nodes_from,
+    write_coverage_tsv,
+)
 from .errors import (
     BOUNDARY_UNKNOWN_ID,
     DATA_INVALID,
@@ -61,6 +66,7 @@ from .patches import apply_geometry_patches
 from .pipeline_config_schema import PipelineConfig, load_pipeline_config
 from .preview import render_map_preview, render_preview
 from .seas import SeaRaster, build_seas, land_label_raster
+from .smooth import SmoothReport, smooth_land_geometries
 from .svg_source import build_geometries, read_province_paths, safe_union
 from .svgpath import build_geometry_doc, dumps, parse_path
 
@@ -81,6 +87,9 @@ class _Node:
     key: str
     source_name: str
     parts: list[Polygon] = field(default_factory=list)
+    # map2_10: renames give a display ``name`` other than the slugged
+    # source name; ``source_name`` itself never changes.
+    display_name: str | None = None
 
 
 @dataclass
@@ -161,6 +170,17 @@ def _select_nodes(
         key: _Node(key=key, source_name=names[0])
         for key, names in by_key.items()
     }
+    # map2_10: declared renames rewrite key and display name; the id
+    # follows through ``assign_ids`` (previous_keys in the lock).
+    for r in overrides.renames:
+        node = nodes.get(r.from_key)
+        if node is None:
+            continue  # already reported by collect_reference_errors
+        del nodes[r.from_key]
+        node.key = r.to_key
+        node.display_name = r.name
+        nodes[r.to_key] = node
+        info.append(f"renames: {r.from_key} -> {r.to_key} ({r.name})")
     return nodes, info
 
 
@@ -317,8 +337,12 @@ def _prepare(data_dir: Path) -> _Prep:
     # Step 3a (Spec 1.9): manual geometry patches act on the cleaned source
     # geometry before the boundary filter — the donated side may be an
     # excluded province (e.g. Buhayra's coastal notch -> Alexandria).
-    geoms, patch_info = apply_geometry_patches(geoms, overrides)
+    geoms, patch_info, additions = apply_geometry_patches(geoms, overrides)
     info.extend(patch_info)
+    # A ``split`` patch adds a node that has no boundary.yaml entry: the new
+    # province exists only in patched ``geoms`` under its source-style name.
+    for key, name in additions:
+        nodes[key] = _Node(key=key, source_name=name)
     for node in nodes.values():
         node.parts = geoms[node.source_name]
 
@@ -327,8 +351,38 @@ def _prepare(data_dir: Path) -> _Prep:
     return _Prep(cfg, boundary, overrides, paths, nodes, geoms, info, applied)
 
 
+def _metrics_worker(item):
+    """One node's metrics in a worker process. Geometry travels as WKB;
+    the result (a plain dataclass) is keyed by the caller — output order
+    and bytes never depend on scheduling."""
+    from shapely import from_wkb
+
+    _key, wkb, cfg = item
+    return node_metrics(from_wkb(wkb), cfg)
+
+
+def _node_metrics_all(canon: dict, cfg: PipelineConfig) -> dict:
+    """``metrics[k]`` for every node. The map2_20 spine scan is the bulk
+    of the build (~1 s/node), so it fans out across processes; a
+    platform without a usable pool falls back to the serial loop."""
+    keys = sorted(canon)
+    try:
+        from concurrent.futures import ProcessPoolExecutor
+
+        items = [(k, canon[k].wkb, cfg) for k in keys]
+        with ProcessPoolExecutor() as pool:
+            done = list(pool.map(_metrics_worker, items, chunksize=8))
+    except Exception:
+        done = [_metrics_worker((k, canon[k].wkb, cfg)) for k in keys]
+    return dict(zip(keys, done))
+
+
 def _sea_keys(overrides: Overrides) -> list[str]:
     return [z.key for z in overrides.sea_zones]
+
+
+def _renames_map(overrides: Overrides) -> dict[str, str]:
+    return {r.from_key: r.to_key for r in overrides.renames}
 
 
 def _lock_keep_extra(boundary: Boundary) -> set[str]:
@@ -418,6 +472,7 @@ def run_nodes(data_dir: Path, out_dir: Path, check: bool = False) -> int:
     ids, new_ids, lock_text, lock_changed = assign_ids(
         data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
         _lock_keep_extra(prep.boundary),
+        renames=_renames_map(prep.overrides),
     )
     if check:
         return 1 if lock_changed else 0
@@ -676,6 +731,7 @@ def run_graph(
     ids, new_ids, lock_text, lock_changed = assign_ids(
         data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
         _lock_keep_extra(prep.boundary),
+        renames=_renames_map(prep.overrides),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(
@@ -712,6 +768,7 @@ def run_graph(
 
 _MANIFEST_FILE = "manifest.json"
 _GEOMETRY_FILE = "geometry.json"
+_BORDERS_FILE = "borders.json"
 _CROP_RE = re.compile(r"^([A-Za-z0-9_-]+)=(-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)$")
 
 
@@ -780,6 +837,7 @@ def _build_report(
     metrics: dict,
     land_dev: dict,
     repairs: list,
+    seam_notes: list,
     paths: dict,
     outside_d: str,
     geom_bytes: int,
@@ -787,6 +845,8 @@ def _build_report(
     geometry_version: str,
     inputs: dict,
     playable: list,
+    borders,
+    smooth_rep: SmoothReport | None = None,
 ) -> str:
     """Deterministic ``build_report.md`` — no timestamps."""
     clip = box(*playable)
@@ -855,7 +915,23 @@ def _build_report(
         f"- manifest.json: {manifest_bytes} bytes "
         f"({round(100 * manifest_bytes / cfg.limits.max_manifest_bytes, 1)}% "
         f"of the {cfg.limits.max_manifest_bytes} limit)",
+        f"- borders.json: {len(borders.text.encode('utf-8'))} bytes "
+        f"({round(100 * len(borders.text.encode('utf-8')) / cfg.limits.max_borders_bytes, 1)}% "
+        f"of the {cfg.limits.max_borders_bytes} limit)",
         f"- geometry_version: {geometry_version}",
+        "",
+        "## Borders (map2_1B)",
+        "",
+        f"- borders_version: {borders.doc['version']}",
+        f"- Pair entries (land edges): {borders.pair_count}",
+        f"- Coast entries (land nodes): {borders.coast_count}",
+        f"- Junction endpoints snapped: {borders.snapped_endpoints}",
+        f"- Junction residual gap max: "
+        f"{round(borders.junction_gap_max, 3)} units",
+        f"- Coverage worst: `{borders.coverage_worst[0]}` "
+        f"{round(borders.coverage_worst[1] * 100, 2)}%",
+        f"- Nodes outside +-{cfg.borders.coverage_warn * 100}% coverage "
+        f"(see reference/borders_coverage.tsv): {len(borders.outliers)}",
         "",
         "## Simplification",
         "",
@@ -863,6 +939,51 @@ def _build_report(
         f"(`{worst_key}`), mean {round(mean_dev, 4)}",
         "- Land needle-cleanup repairs: "
         + (", ".join(f"`{k}`" for k in repairs) if repairs else "none"),
+        "- Seam repairs (map2_11): "
+        + ("; ".join(seam_notes) if seam_notes else "none"),
+        *(
+            [
+                "",
+                "## Smoothing (map2_18)",
+                "",
+                f"- Rings: {smooth_rep.rings_smoothed} smoothed, "
+                f"{smooth_rep.rings_partial} partially reverted, "
+                f"{smooth_rep.rings_kept} kept unsmoothed "
+                f"(of {smooth_rep.rings_total})",
+                f"- Chains: {smooth_rep.chains_paired} shared "
+                f"({smooth_rep.reverted_pair_chains} reverted), "
+                f"{smooth_rep.chains_solo} solo, "
+                f"{smooth_rep.pair_arcs_unmatched} unmatched shared arcs",
+                f"- Max displacement: {round(smooth_rep.max_displacement, 4)} "
+                f"(`{smooth_rep.worst_node_disp}`), limit "
+                f"{cfg.smooth.max_displacement}",
+                f"- Max area change: "
+                f"{round(smooth_rep.max_area_change * 100, 3)}% "
+                f"(`{smooth_rep.worst_node_area}`), limit "
+                f"{cfg.smooth.max_area_change * 100}% "
+                "(islets 4x)",
+                "- Worst pair overlaps new (was; limit 0.003): "
+                + (
+                    "; ".join(
+                        f"`{a}`/`{b}` {round(v, 4)} ({round(v0, 4)})"
+                        for a, b, v, v0 in smooth_rep.worst_overlap
+                    )
+                    if smooth_rep.worst_overlap
+                    else "none"
+                ),
+                "- Worst pair gaps new (was; limit 0.05): "
+                + (
+                    "; ".join(
+                        f"`{a}`/`{b}` {round(v, 4)} ({round(v0, 4)})"
+                        for a, b, v, v0 in smooth_rep.worst_gap
+                    )
+                    if smooth_rep.worst_gap
+                    else "none"
+                ),
+            ]
+            if smooth_rep is not None
+            else []
+        ),
         f"- Sea faces: {sea_build.face_count} "
         f"(labelled {sea_build.labelled_faces}), vertices before the cut "
         f"{sea_build.vertices_before_cut}, after the cut "
@@ -935,6 +1056,7 @@ def run_build(
     ids, new_ids, lock_text, lock_changed = assign_ids(
         data_dir, sorted(prep.nodes), _sea_keys(prep.overrides),
         _lock_keep_extra(prep.boundary),
+        renames=_renames_map(prep.overrides),
     )
     ordered = sorted(prep.nodes, key=lambda k: ids[k])
     land_labels = land_label_raster(
@@ -944,9 +1066,32 @@ def run_build(
         prep.nodes, sea, ids, prep.overrides, cfg, land_labels
     )
 
-    land_geoms, land_dev, land_repairs = build_land_geometries(
-        prep.nodes, cfg
+    land_geoms, land_dev, land_repairs, seam_notes = build_land_geometries(
+        prep.nodes, cfg, frozenset(prep.overrides.seam_repair)
     )
+    # map2_18: smooth every ring right after per-node simplification, so
+    # the sea cut, canon serialisation, metrics, borders and manifest all
+    # descend from the smoothed contours. Shared-border stretches are
+    # smoothed once as a canonical midline and inserted identically on
+    # both sides.
+    smooth_rep = None
+    if cfg.smooth.enabled:
+        land_geoms, smooth_rep = smooth_land_geometries(
+            land_geoms,
+            prep.overrides,
+            frozenset(prep.overrides.seam_repair),
+            (0.0, 0.0, float(cfg.view.width), float(cfg.view.height)),
+            cfg,
+        )
+        print(
+            f"smooth: {smooth_rep.rings_smoothed}/{smooth_rep.rings_total}"
+            f" rings smoothed, {smooth_rep.rings_partial} partial,"
+            f" {smooth_rep.rings_kept} kept"
+            f" ({smooth_rep.chains_paired} shared chains,"
+            f" {smooth_rep.pair_arcs_unmatched} unmatched arcs);"
+            f" max displacement {smooth_rep.max_displacement:.3f},"
+            f" max area change {smooth_rep.max_area_change * 100:.2f}%"
+        )
     land_mask = build_land_mask(land_geoms, prep, sea, cfg)
     playable = playable_bbox(land_geoms, prep.overrides, cfg)
     zone_ids = {k: ids[k] for k in sea.zone_keys}
@@ -974,21 +1119,21 @@ def run_build(
         )
         for key in all_geoms
     }
-    metrics = {
-        k: node_metrics(canon[k], cfg) for k in sorted(canon)
-    }
+    metrics = _node_metrics_all(canon, cfg)
 
     view_poly = box(0.0, 0.0, float(cfg.view.width), float(cfg.view.height))
     land_keys = sorted(
         (k for k in canon if k in land_geoms), key=lambda k: ids[k]
     )
     land_union = safe_union(
-        [p for k in land_keys for p in _polygon_list(canon[k])]
+        [p for k in land_keys for p in _polygon_list(canon[k])],
+        grid_size=cfg.output.grid,
     )
     # 1.10: a water body that touches no node stays dark — windows are cut
     # only for bays/lakes within contact distance of the node union.
     nodes_union = safe_union(
-        [p for k in canon for p in _polygon_list(canon[k])]
+        [p for k in canon for p in _polygon_list(canon[k])],
+        grid_size=cfg.output.grid,
     )
     (
         lake_region, lake_pieces, lake_area, lake_spill,
@@ -1041,6 +1186,12 @@ def run_build(
         data_dir / _OVERRIDES_FILE,
         lock_text,
     )
+    # map2_1B: canonical shared borders/coasts from the serialised
+    # geometry (never touches the fills); fails on coverage/size.
+    border_nodes, border_pairs = land_nodes_from(graph, canon)
+    borders = build_borders(
+        border_nodes, border_pairs, geom_doc["version"], cfg
+    )
     manifest = build_manifest(
         graph,
         prep.nodes,
@@ -1048,6 +1199,7 @@ def run_build(
         metrics,
         inputs,
         geom_doc["version"],
+        borders.doc["version"],
         [0, 0, cfg.view.width, cfg.view.height],
         playable,
         cfg,
@@ -1058,8 +1210,9 @@ def run_build(
 
     report_text = _build_report(
         prep, sea, graph, land_geoms, sea_build, outside_build, metrics,
-        land_dev, land_repairs, paths, outside_d, geom_bytes,
-        manifest_bytes, geom_doc["version"], inputs, playable,
+        land_dev, land_repairs, seam_notes, paths, outside_d, geom_bytes,
+        manifest_bytes, geom_doc["version"], inputs, playable, borders,
+        smooth_rep,
     )
 
     if check:
@@ -1067,6 +1220,7 @@ def run_build(
         for name, text in (
             (_MANIFEST_FILE, manifest_text),
             (_GEOMETRY_FILE, geom_text),
+            (_BORDERS_FILE, borders.text),
         ):
             target = data_dir / name
             if (
@@ -1108,6 +1262,8 @@ def run_build(
     )
     _write_text(data_dir / _MANIFEST_FILE, manifest_text)
     _write_text(data_dir / _GEOMETRY_FILE, geom_text)
+    _write_text(data_dir / _BORDERS_FILE, borders.text)
+    write_coverage_tsv(borders.outliers)
     _write_text(out_dir / "graph.json", _graph_json(graph))
     np.save(out_dir / "sea_labels.npy", sea.labels)
     np.save(out_dir / "sea_kinds.npy", sea.kinds)

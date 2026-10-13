@@ -10,6 +10,7 @@ import {
   type ConditionalResult,
 } from '../../shared/api-client';
 import type {
+  MapBordersDTO,
   MapGeometryDTO,
   MapManifestDTO,
   MapStateDTO,
@@ -33,6 +34,14 @@ export const mapApi = {
   /** GET /map/geometry/{version} — immutable; 404 MAP_VERSION_UNKNOWN. */
   getGeometry(token: string, version: string, signal?: AbortSignal) {
     return apiFetch<MapGeometryDTO>(`/map/geometry/${version}`, {
+      token,
+      signal,
+    });
+  },
+
+  /** GET /map/borders/{version} — immutable; 404 MAP_VERSION_UNKNOWN. */
+  getBorders(token: string, version: string, signal?: AbortSignal) {
+    return apiFetch<MapBordersDTO>(`/map/borders/${version}`, {
       token,
       signal,
     });

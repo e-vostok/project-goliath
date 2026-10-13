@@ -19,24 +19,56 @@ export const TOOLTIP_OFFSET_PX = 14;
 /** Extra margin when the view is fitted to a node bbox (search result). */
 export const FOCUS_BBOX_MARGIN = 1.2;
 
-/** Node label font size on screen, px (kept constant across zoom). */
-export const LABEL_FONT_PX = 13;
+/** Debounce of the label relayout after the last zoom step (map2_6,
+ *  Spec 3.9): one layout per settled scale, never mid-gesture —
+ *  map2_21 raised the quiet window to 120 ms so a wheel storm can
+ *  never trigger more than one layout per 120 ms. */
+export const LABEL_RELAYOUT_MS = 120;
 
-/** Halo around label text for readability over any fill, px. */
-export const LABEL_HALO_PX = 3;
+/** Minimum interval between label viewport sweeps during a pan
+ *  (map2_6c): re-selects the rendered set when the quarter-screen lead
+ *  is gone and re-evaluates the «mostly in view» fade — cheap enough to
+ *  run this often because only changed labels are written. */
+export const LABEL_SWEEP_MS = 100;
 
-/** Label text colour — fixed UI chrome, not a map colour rule. */
-export const LABEL_TEXT_COLOR = '#F2F3F5';
+/** Exiting label copies unmounted per commit after their fade
+ *  (map2_21): a kind switch can leave ~500 exits under the hidden
+ *  group — dropping them all in one commit produced >33 ms frames, so
+ *  they drain in chunks over a few ticks. */
+export const EXIT_DROP_CHUNK = 60;
 
-/** Label halo colour — fixed UI chrome. */
-export const LABEL_HALO_COLOR = 'rgba(0,0,0,0.75)';
-
-/** Stroke width of hover/selection overlay outlines, px (screen-constant). */
+/** Stroke width of the hover overlay outline, px (screen-constant). */
 export const OVERLAY_STROKE_PX = 2;
 
-/** Fill opacity of the selection overlay in `select` mode — the owner
- *  colour stays readable underneath (Spec Part 5). */
-export const SELECTED_FILL_OPACITY = 0.35;
+/** Width of the per-node seam-cover stroke, in map units (map2_13). */
+export const SEAM_STROKE_W = 0.05;
+
+/**
+ * Width of the seam-cover stroke in the non-scaling band, in device
+ * pixels (map2_14): below SEAM_NSS_MAX_S a hairline device-space
+ * stroke rasterises far faster per frame than a subpixel world-space
+ * one, and ~1 px still covers every crack — they are world-space
+ * voids of at most ~0.05 u, which render well under a pixel there.
+ */
+export const SEAM_STROKE_PX = 1.2;
+
+/**
+ * Scale below which the seam-cover stroke is switched off entirely
+ * (map2_14): the widest crack it can cover is SEAM_STROKE_W map units,
+ * which renders under a third of a pixel below this zoom — invisible
+ * even if uncovered. Gating the stroke off there removes a subpixel
+ * anti-aliased re-stroke of every visible fill each frame.
+ */
+export const SEAM_MIN_S = 6;
+
+/**
+ * Scale above which the seam cover switches from the non-scaling
+ * hairline back to the world-space SEAM_STROKE_W (map2_14): at high
+ * zoom the world width already renders ~a pixel, and the per-frame
+ * device-space re-stroke of ~1000 paths during a zoom costs more
+ * than it saves.
+ */
+export const SEAM_NSS_MAX_S = 12;
 
 /** Node card width, px (Spec Part 5: «около 280 px»). */
 export const NODECARD_WIDTH_PX = 280;

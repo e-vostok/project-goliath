@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Mapping
 
-from .map_files import Geometry, Manifest
+from .map_files import Borders, Geometry, Manifest
 
 KIND_LAND = "LAND"
 KIND_SEA = "SEA"
@@ -41,6 +41,24 @@ EdgeType = Literal["land", "coast", "sea", "strait"]
 
 
 @dataclass(frozen=True)
+class NodeLabel:
+    """``manifest.nodes[].label`` (map2_6): anchor plus the free
+    ``w``/``h`` box the client fits the node name into.
+
+    ``spine``/``len``/``thick`` (map2_20): the inscribed baseline —
+    endpoints plus signed sagitta, chord length and local thickness.
+    """
+
+    x: float
+    y: float
+    w: float
+    h: float
+    spine: tuple[float, float, float, float, float]
+    len: float
+    thick: float
+
+
+@dataclass(frozen=True)
 class MapNode:
     """One map node — a land province or a sea zone."""
 
@@ -53,6 +71,7 @@ class MapNode:
     anchor: tuple[float, float]
     bbox: tuple[float, float, float, float]
     area: float
+    label: NodeLabel
 
     @property
     def display_name(self) -> str:
@@ -84,11 +103,14 @@ class MapData:
         adjacency:       ``id -> tuple[MapEdge, ...]`` sorted by the id of
                          the edge's other end.
         geometry_version: Spec 3.6 version, equals ``geometry.version``.
+        borders_version:  Spec 3.6 version of ``borders.json`` (map2_1B),
+                          equals ``borders.version``.
         manifest_sha256:  normalised SHA-256 of ``manifest.json`` — the
                           future ``ETag`` ingredient of ``/map/manifest``.
         manifest:         the validated ``Manifest`` model, so Issue 4 can
                           build DTOs without re-reading files.
         geometry:         the validated ``Geometry`` model.
+        borders:          the validated ``Borders`` model.
         warnings:         non-fatal notes collected during loading
                           (e.g. ids.lock entries with no manifest node).
         retired_ids:      ids in ``ids.lock.json`` with no manifest node —
@@ -101,9 +123,11 @@ class MapData:
     edges: Mapping[tuple[int, int], MapEdge]
     adjacency: Mapping[int, tuple[MapEdge, ...]]
     geometry_version: str
+    borders_version: str
     manifest_sha256: str
     manifest: Manifest
     geometry: Geometry
+    borders: Borders
     warnings: tuple[str, ...]
     retired_ids: tuple[int, ...] = ()
 

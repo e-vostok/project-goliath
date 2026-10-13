@@ -19,6 +19,7 @@ import type {
 } from '../../../shared/types';
 import { SessionProvider } from '../../00_core/hooks/useAuth';
 import {
+  MINI_BORDERS,
   MINI_GEOMETRY,
   MINI_MANIFEST,
   MINI_STATE,
@@ -26,6 +27,7 @@ import {
 import { CONNECTING_EDGE_TYPES } from '../lib/selection';
 import { clearMapSessionCache } from '../lib/sessionCache';
 import type {
+  MapBordersDTO,
   MapManifestDTO,
   StartingGroupCheckDTO,
 } from '../types';
@@ -88,6 +90,9 @@ export interface MapStubOptions {
   geometry?: typeof MINI_GEOMETRY;
   /** Per-geometry-version overrides: status or a body. */
   onGeometry?: (version: string) => Response | void;
+  borders?: MapBordersDTO;
+  /** Per-borders-version overrides: status or a body. */
+  onBorders?: (version: string) => Response | void;
   state?: typeof MINI_STATE;
   /** Called per state request; may return a Response to override. */
   onState?: () => Response | void;
@@ -104,6 +109,7 @@ export interface MapStub {
   calls: {
     manifest: number;
     geometry: number;
+    borders: number;
     state: number;
     check: number;
   };
@@ -197,10 +203,11 @@ export function stubMapFetch(options: MapStubOptions = {}): MapStub {
 
   const manifest = options.manifest ?? MINI_MANIFEST;
   const geometry = options.geometry ?? MINI_GEOMETRY;
+  const borders = options.borders ?? MINI_BORDERS;
   const state = options.state ?? MINI_STATE;
   const etag = options.manifestEtag ?? '"mini-etag-1"';
   const stub: MapStub = {
-    calls: { manifest: 0, geometry: 0, state: 0, check: 0 },
+    calls: { manifest: 0, geometry: 0, borders: 0, state: 0, check: 0 },
     manifestIfNoneMatch: [],
     checkRequests: [],
   };
@@ -236,6 +243,15 @@ export function stubMapFetch(options: MapStubOptions = {}): MapStub {
         return override;
       }
       return json(geometry);
+    }
+    if (path.startsWith('/api/v1/map/borders/')) {
+      stub.calls.borders += 1;
+      const version = path.split('/').pop() ?? '';
+      const override = options.onBorders?.(version);
+      if (override) {
+        return override;
+      }
+      return json(borders);
     }
     if (path === '/api/v1/map/state') {
       stub.calls.state += 1;

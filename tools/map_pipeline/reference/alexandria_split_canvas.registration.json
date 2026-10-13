@@ -1,0 +1,14 @@
+{
+  "key": "alexandria",
+  "image": "alexandria_split_canvas.png",
+  "image_size": [
+    2800,
+    1281
+  ],
+  "px_per_unit": 104.633782,
+  "origin_x": 641.72,
+  "origin_y": 218.56,
+  "width": 2800,
+  "height": 1281,
+  "_comment": "base -> px: px = (base - origin) * px_per_unit (y down, same orientation as the base space). px -> base: base = origin + px / px_per_unit. origin = the crop corner in base coordinates (units of manifest.view_box)."
+}

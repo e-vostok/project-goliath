@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.config_schema import CoreConfig
@@ -21,6 +21,8 @@ from modules._00_core.hooks import (
     STAGE_AFTER_FREE,
     OwnershipChange,
     notify_ownership_changed,
+    run_before_all_checks,
+    run_nation_created_hooks,
     run_registration_checks,
 )
 from modules._00_core.exceptions import (
@@ -101,6 +103,31 @@ class OwnedProvinceInfo:
     nation_id: str
     nation_name: str
     nation_color: str
+
+
+@dataclass(frozen=True)
+class PlayerNationSummary:
+    """
+    The player's nation as satellites need it (Spec 02_bot Part 1.3):
+    display fields plus the province count — enough for digests and
+    the "has nation" check. ``leader_name``/``leader_title`` may be
+    None for nations predating the profile migration.
+    """
+
+    nation_id: str
+    name: str
+    leader_name: str | None
+    leader_title: str | None
+    province_count: int
+
+
+@dataclass(frozen=True)
+class GameClockSnapshot:
+    """The whole ``game_clock`` row, detached, for satellites."""
+
+    current_turn: int
+    last_tick_at: datetime | None
+    next_tick_at: datetime | None
 
 
 class ProvinceService:
@@ -288,6 +315,25 @@ class PlayerService:
         
         return player
 
+    @staticmethod
+    async def vk_user_ids(
+        session: AsyncSession, player_ids: Iterable[str]
+    ) -> dict[str, int]:
+        """
+        The ``player_id -> vk_user_id`` mapping for a set of players —
+        the public read path for satellites that address VK users by
+        their internal id (Spec 02_bot Part 1.3). Players absent from
+        the table simply have no key in the result. Read-only, never
+        commits.
+        """
+        ids = set(player_ids)
+        if not ids:
+            return {}
+        result = await session.execute(
+            select(Player.id, Player.vk_user_id).where(Player.id.in_(ids))
+        )
+        return {row[0]: row[1] for row in result.all()}
+
 
 async def _current_turn(session: AsyncSession) -> int:
     """
@@ -316,6 +362,26 @@ class GameClockService:
         """
         return await _current_turn(session)
 
+    @staticmethod
+    async def snapshot(session: AsyncSession) -> GameClockSnapshot | None:
+        """
+        The whole ``game_clock`` row as a detached snapshot — the
+        public read path for satellites that need ``last_tick_at`` /
+        ``next_tick_at`` (Spec 02_bot Part 1.3). Returns None when the
+        singleton row is absent (unmigrated schema). Never commits.
+        """
+        result = await session.execute(
+            select(GameClock).where(GameClock.id == 1)
+        )
+        clock = result.scalar_one_or_none()
+        if clock is None:
+            return None
+        return GameClockSnapshot(
+            current_turn=clock.current_turn,
+            last_tick_at=clock.last_tick_at,
+            next_tick_at=clock.next_tick_at,
+        )
+
 
 class NationService:
     """Service for Nation entity operations."""
@@ -338,12 +404,15 @@ class NationService:
         Enforces INV-1 (one nation per player), INV-7 (mandatory profile
         fields), INV-2 (unique name/color), INV-3 (atomic province
         assignment), and province count constraints — in exactly the
-        Spec order (00_core Part 2 extended by 01_map Part 5):
-        INV-1 -> profile fields (leader_name, leader_title,
-        history_url) -> INV-2 -> province existence -> province freedom
-        -> "after_free" satellite checks -> province count ->
-        "after_count" satellite checks -> create. Any failure persists
-        nothing.
+        Spec order (00_core Part 2 extended by 01_map Part 5 and
+        02_bot 3.10/3.11): "before_all" satellite checks (they see the
+        player, run before any write) -> INV-1 -> profile fields
+        (leader_name, leader_title, history_url) -> INV-2 -> province
+        existence -> province freedom -> "after_free" satellite checks
+        -> province count -> "after_count" satellite checks -> create ->
+        "nation_created" satellite hooks (after all writes, each under
+        its own SAVEPOINT — a hook failure can never abort the
+        creation). Any check failure persists nothing.
 
         Args:
             session: The async database session.
@@ -370,6 +439,10 @@ class NationService:
             ProvinceTakenError: If any province is already owned.
             ProvinceCountOutOfRangeError: If province count violates constraints.
         """
+        # Stage "before_all": satellite checks that see the player and
+        # run before any write — first in the Spec Part 5 order.
+        await run_before_all_checks(session, owner_player_id)
+
         # INV-1: Check if player already has a nation
         result = await session.execute(
             select(Nation).where(Nation.owner_player_id == owner_player_id)
@@ -468,7 +541,43 @@ class NationService:
             ],
         )
 
+        # Spec 02_bot 3.11 / Appendix B10: "nation created" satellite
+        # hooks run after all creation writes, still inside the caller's
+        # transaction — each under its own SAVEPOINT so a failing hook
+        # keeps neither its writes nor blocks the registration.
+        await run_nation_created_hooks(session, owner_player_id, nation.id)
+
         return nation
+
+    @staticmethod
+    async def player_nation_summary(
+        session: AsyncSession, player_id: str
+    ) -> PlayerNationSummary | None:
+        """
+        The nation owned by ``player_id`` with its display fields and
+        live province count — the public read path for satellites
+        (Spec 02_bot Part 1.3; also serves the "has nation" check).
+        Returns None when the player owns no nation. Read-only, never
+        commits.
+        """
+        result = await session.execute(
+            select(Nation).where(Nation.owner_player_id == player_id)
+        )
+        nation = result.scalar_one_or_none()
+        if nation is None:
+            return None
+        count_result = await session.execute(
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id == nation.id)
+        )
+        return PlayerNationSummary(
+            nation_id=nation.id,
+            name=nation.name,
+            leader_name=nation.leader_name,
+            leader_title=nation.leader_title,
+            province_count=count_result.scalar_one(),
+        )
 
     @staticmethod
     async def existing_ids(

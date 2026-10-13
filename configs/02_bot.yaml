@@ -1,0 +1,171 @@
+# configs/02_bot.yaml
+# Баланс, лимиты и тексты модуля 02_bot (VK-бот). Версия: v0.1.0
+#
+# Файл валидируется парной схемой backend/src/modules/_02_bot/config_schema.py.
+# Ошибка в любом значении или шаблоне прерывает CI (pytest tests/test_configs_validity.py)
+# и запуск сервера. Правка чисел и текстов — трек «А» (без ТЗ): правите файл,
+# прогоняете тест, коммит с бампом PATCH-версии.
+#
+# Правила шаблонов текста:
+#   * переменные пишутся в фигурных скобках: {nation_name};
+#   * других фигурных скобок в тексте быть не должно;
+#   * в batch_text и line_text дополнительно доступна {count} — число слитых событий;
+#   * эмодзи и управляющие символы не допускаются схемой (штабной тон).
+
+# --- Доступ к API ВКонтакте ----------------------------------------------------
+vk:
+  api_base_url: "https://api.vk.ru/method"   # канонический хост по проверке BOT-0 (V12)
+  api_version: "5.199"          # закрепляется явно; актуальность проверяет задача BOT-0 (Spec, приложение V)
+  http_timeout_seconds: 10
+
+# --- Отправщик очереди ---------------------------------------------------------
+sender:
+  poll_interval_seconds: 5          # опрос очереди, если «звонок» не пришёл
+  claim_batch_size: 20              # игроков с готовыми сообщениями за проход
+  concurrency: 5                    # запросов к ВК одновременно
+  lease_seconds: 120                # «аренда» взятых строк (> ceil(20/5) * 10 = 40)
+  max_requests_per_second: 15       # с запасом под лимит ВК для сообщества
+  max_attempts: 6
+  backoff_base_seconds: 10
+  backoff_cap_seconds: 900
+  backoff_jitter: 0.2
+  purge_after_days: 14              # чистка завершённых строк очереди и журнала событий ВК
+
+# --- Аварийный выключатель при массовых сбоях ВК ---------------------------------
+breaker:
+  window_seconds: 300
+  min_attempts: 10
+  failure_ratio: 0.5
+  open_seconds: 120
+
+# --- Защита от спама -----------------------------------------------------------
+limits:
+  daily_cap_normal: 8               # обычных сообщений игроку за скользящие 24 часа
+  bundle_max_lines: 8               # строк в сводном сообщении сверх потолка
+  variable_max_length: 100          # длина значения одной переменной после очистки
+  message_max_chars: 3000           # предел сообщения (предел ВК — 9000)
+
+# --- Согласие на сообщения -----------------------------------------------------
+consent:
+  required_for_registration: true   # без разрешения на сообщения государство не создаётся (только при BOT_ENABLED=true; при недоступности ВК не блокирует). Выпущено с false, включено на этапе Б (v0.1.1); снять требование - вернуть false (трек «А»)
+  recheck_after_seconds: 3600
+  refresh_min_interval_seconds: 5
+  reconcile_sweep_interval_seconds: 900
+  reconcile_batch_size: 50
+
+# --- Предупреждение о дедлайне -------------------------------------------------
+deadline:
+  offset_minutes: 180               # за 3 часа до расчёта хода
+
+# --- Окно согласия в приложении ------------------------------------------------
+# Системное окно ВК «Разрешить сообщения» из мини-приложения требует модерации
+# приложения, поэтому игрок включает уведомления в чате с сообществом, а окно
+# приложения ждёт подтверждения от сервера.
+client:
+  chat_url_template: "https://vk.com/write-{group_id}"   # формат описан в документации ВК (BOT-0b, V15)
+  consent_poll_interval_seconds: 3
+  consent_poll_timeout_seconds: 90
+
+# --- Диалог с ботом ------------------------------------------------------------
+dialog:
+  plate_cooldown_minutes: 10        # плашка на свободный текст — не чаще раза в 10 минут игроку
+  reply_ttl_minutes: 10
+
+  labels:
+    status: "Статус"
+    help: "Помощь"
+    register_nation: "Создать государство"
+    rules: "Правила"
+    regulations: "Регламент"
+    contact_admin: "Связаться с администрацией"
+
+  texts:
+    start_guest: "Штабной терминал на связи. Уведомления включены. У вас пока нет государства: нажмите «Создать государство»."
+    start_member: "Штабной терминал на связи. Государство «{nation_name}». Команды доступны на кнопках ниже."
+    status: "Штаб. Государство «{nation_name}». {leader_title}: {leader_name}. Провинций: {province_count}. Ход {turn}, игровая дата {game_date}. Следующий расчёт хода: {next_tick_time}."
+    help: "Штабной терминал сообщает о событиях в игре и открывает нужные экраны приложения. Состояние игры через бота не меняется. Правила и регламент, а также связь с администрацией — на кнопках ниже."
+    plate: "Штабной терминал принимает только системные команды через кнопки ниже. Для связи с администрацией нажмите «Помощь»."
+    nation_created: "Государство «{nation_name}» создано. Кнопки внизу обновлены: теперь доступны «Статус» и «Помощь»."
+
+  help:
+    # Допустимые хосты ссылок. Ссылка вне списка прерывает запуск.
+    allowed_hosts:
+      - "vk.com"
+      - "vk.ru"
+    # null — кнопка скрыта. Адреса задаёт владелец проекта.
+    rules_url: "https://vk.ru/@pax_atom-404"   # пока единственная страница; отдельного регламента ещё нет
+    regulations_url: null
+    admin_contact_url: "https://vk.ru/id1046014961"   # личная страница владельца проекта
+
+# --- Каталог типов уведомлений -------------------------------------------------
+# Новый тип добавляется записью здесь и регистрацией в коде модуля-владельца.
+types:
+  TICK_DIGEST:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    counts_toward_cap: true
+    ttl_minutes: 360                # 6 часов
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 1440
+    text: "Штаб. Ход {turn} завершён. Игровая дата: {game_date}. Государство «{nation_name}»: провинций — {province_count}. Следующий расчёт хода: {next_tick_time}."
+    batch_text: null
+    line_text: "Ход {turn} завершён."
+
+  RED_ALERT:
+    enabled: true
+    priority: critical
+    requires_consent: true
+    counts_toward_cap: false
+    ttl_minutes: 1440               # 24 часа
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "БОЕВАЯ ТРЕВОГА. {event_text} Откройте кабинет правителя."
+    batch_text: null
+    line_text: null
+
+  DIPLOMATIC_DISPATCH:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    counts_toward_cap: true
+    ttl_minutes: 2880               # 48 часов
+    hold_seconds: 0
+    merge: over_cap
+    max_per_window: 3               # не более 3 в час, лишние склеиваются
+    window_minutes: 60
+    text: "Дипломатическая депеша от государства «{from_nation}». Прочитайте её в кабинете."
+    batch_text: "Поступило ещё депеш: {count}. Прочитайте их в кабинете."
+    line_text: "Депеш: {count}."
+
+  DIRECTIVE_STATUS:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    counts_toward_cap: true
+    ttl_minutes: 2880               # 48 часов
+    hold_seconds: 120               # выдержка 2 минуты: смены статуса сливаются
+    merge: always
+    max_per_window: 0
+    window_minutes: 60
+    text: "Директива «{directive_title}»: {status_text}."
+    batch_text: "Изменений статуса директив: {count}. Откройте окно директив."
+    line_text: "Статусы директив: {count}."
+
+  DEADLINE_WARNING:
+    enabled: false                  # включить, когда в игре появится первая механика действий игрока
+    priority: normal
+    requires_consent: true
+    counts_toward_cap: true
+    ttl_minutes: 180                # живёт до момента расчёта хода
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 1440
+    text: "До расчёта хода осталось часов: {hours_left}. На этом ходу действий не отдано."
+    batch_text: null
+    line_text: "До расчёта хода осталось часов: {hours_left}."
