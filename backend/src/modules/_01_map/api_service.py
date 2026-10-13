@@ -169,8 +169,6 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             min_px=config.states.min_px,
             max_px=config.states.max_px,
             color_mode=config.states.color_mode,
-            halo_width_px=config.states.halo_width_px,
-            halo_color=config.states.halo_color,
             min_group_share=config.states.min_group_share,
         ),
         require_connected_start=config.starting_group.require_connected,

@@ -412,12 +412,6 @@ class StatesSettings(_Strict):
     color_mode: Literal["auto", "light", "dark"] = Field(
         description="Цвет надписи: auto — светлый или тёмный по контрасту с цветом государства.",
     )
-    halo_width_px: float = Field(
-        ge=0.0,
-        le=8.0,
-        description="Толщина тонкой обводки (halo) вокруг букв, px (map2_22).",
-    )
-    halo_color: str = Field(pattern=_HEX_COLOR_RE.pattern)
     min_group_share: float = Field(
         ge=0.0,
         le=1.0,
