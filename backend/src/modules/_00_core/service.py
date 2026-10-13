@@ -504,7 +504,10 @@ class NationService:
         # Stage "after_count": satellite checks on the sized group.
         await run_registration_checks(STAGE_AFTER_COUNT, session, provinces)
 
-        # INV-3: Atomic transaction - create nation and assign provinces
+        # INV-3: Atomic transaction - create nation and assign provinces.
+        # created_turn stamps the transaction's current turn (Spec
+        # 03_registry 1.4; INV-R9: never changed afterwards).
+        turn = await _current_turn(session)
         nation = Nation(
             id=str(uuid.uuid4()),
             owner_player_id=owner_player_id,
@@ -514,6 +517,7 @@ class NationService:
             leader_title=leader_title,
             history_url=history_url,
             created_at=datetime.now(timezone.utc),
+            created_turn=turn,
         )
         session.add(nation)
         await session.flush()  # Get the nation ID
@@ -522,7 +526,6 @@ class NationService:
         # provinces.nation_id outside the admin world reset. Every such
         # write is announced through notify_ownership_changed in the same
         # transaction (INV-M7).
-        turn = await _current_turn(session)
         ordered = sorted(provinces, key=lambda p: p.id)
         for province in ordered:
             province.nation_id = nation.id
