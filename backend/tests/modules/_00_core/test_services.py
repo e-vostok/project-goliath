@@ -766,6 +766,7 @@ class TestNationProfile:
             name="Legacy Nation",
             color_hex="#123456",
             created_at=datetime.now(timezone.utc),
+            created_turn=0,
         )
         test_db_session.add(legacy)
         await test_db_session.flush()

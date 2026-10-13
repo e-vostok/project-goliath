@@ -14,8 +14,10 @@ import yaml
 from pydantic import ValidationError
 
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.player_stats import JUDGE_RATING_MAX, JUDGE_RATING_MIN
 from modules._01_map.config_schema import MapConfig
 from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
+from modules._03_registry.config_schema import RegistryConfig
 
 
 def _base_config() -> dict:
@@ -120,6 +122,25 @@ def test_02_bot_config_loads():
     assert config.types["DEADLINE_WARNING"].enabled is False
     assert "{group_id}" in config.client.chat_url_template
     assert config.consent.required_for_registration is True
+
+
+def test_03_registry_config_loads():
+    """configs/03_registry.yaml ↔ RegistryConfig (module 03_registry,
+    Issue 1).
+
+    The registration gate proves the real file loads; the gauge scale of
+    the ``judge_rating`` column must equal the 00_core scale constants —
+    the bounds are model properties the config can only repeat for
+    drawing (Spec 03_registry 0/D1)."""
+    config = RegistryConfig.from_yaml(
+        RegistryConfig.get_default_config_path()
+    )
+
+    players = config.table("players")
+    gauge = next(c for c in players.columns if c.id == "judge_rating")
+    assert gauge.type == "gauge"
+    assert gauge.scale_min == JUDGE_RATING_MIN
+    assert gauge.scale_max == JUDGE_RATING_MAX
 
 
 def test_02_bot_nation_created_rejects_unknown_placeholder():

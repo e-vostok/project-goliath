@@ -25,6 +25,10 @@ from modules._00_core.models import (
     TickLog,
     TickLogStatus,
 )
+from modules._00_core.player_stats import (
+    JUDGE_RATING_DEFAULT,
+    LEVEL_DEFAULT,
+)
 from modules._02_bot.models import BotConsent, BotOutbox
 from tests.fixtures.profile import VALID_PROFILE
 
@@ -42,6 +46,8 @@ class PlayerFactory(SQLAlchemyFactory[Player]):
     id = lambda: str(uuid.uuid4())
     vk_user_id = 1234567890
     created_at = utcnow
+    level = LEVEL_DEFAULT
+    judge_rating = JUDGE_RATING_DEFAULT
 
 
 class NationFactory(SQLAlchemyFactory[Nation]):
@@ -57,6 +63,7 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     leader_title = VALID_PROFILE["leader_title"]
     history_url = VALID_PROFILE["history_url"]
     created_at = utcnow
+    created_turn = 0
     __set_foreign_keys__ = False
 
 
