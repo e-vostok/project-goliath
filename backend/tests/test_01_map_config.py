@@ -99,6 +99,7 @@ def _base_config() -> dict:
             "letter_spacing_min_em": -0.02,
             "letter_spacing_max_em": 0.30,
             "land_opacity": 0.6,
+            "sea_opacity": 0.4,
             "sea_curved": True,
         },
         "states": {
@@ -113,6 +114,8 @@ def _base_config() -> dict:
             "min_px": 10,
             "max_px": 72,
             "color_mode": "auto",
+            "halo_width_px": 1.0,
+            "halo_color": "#101014",
             "min_group_share": 0.2,
         },
         "starting_group": {"require_connected": True},
