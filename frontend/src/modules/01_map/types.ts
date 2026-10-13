@@ -171,10 +171,6 @@ export interface MapStatesRulesDTO {
   min_px: number;
   max_px: number;
   color_mode: 'auto' | 'light' | 'dark';
-  /** Thin dark outline around the glyphs (map2_22): `halo_width_px`
-   *  screen px, non-scaling, painted under the fill. */
-  halo_width_px: number;
-  halo_color: string;
   min_group_share: number;
 }
 

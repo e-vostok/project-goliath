@@ -91,8 +91,6 @@ export const MINI_RULES: MapViewRulesDTO = {
     min_px: 10,
     max_px: 72,
     color_mode: 'auto',
-    halo_width_px: 1.0,
-    halo_color: '#101014',
     min_group_share: 0.2,
   },
   require_connected_start: true,

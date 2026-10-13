@@ -1690,10 +1690,6 @@ export function MapView(props: MapViewProps) {
                   fontFamily={stateFontSpec.family}
                   letterSpacing={`${l.letterSpacingEm}em`}
                   fill={l.color}
-                  stroke={rules.states.halo_color}
-                  strokeWidth={rules.states.halo_width_px}
-                  vectorEffect="non-scaling-stroke"
-                  paintOrder="stroke"
                 >
                   <textPath
                     href={`#pg-state-arc-${l.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}

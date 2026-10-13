@@ -145,8 +145,6 @@ class MapStatesRulesDTO(BaseModel):
     min_px: int
     max_px: int
     color_mode: str
-    halo_width_px: float
-    halo_color: str
     min_group_share: float
 
 
