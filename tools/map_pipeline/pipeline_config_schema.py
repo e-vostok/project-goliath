@@ -90,6 +90,28 @@ class SimplifyConfig(_Strict):
     sea_tolerance: float = Field(ge=0.05, le=1.0)
 
 
+class SmoothConfig(_Strict):
+    """Contour smoothing (map2_18): Gaussian filter along arc length on
+    anchored chains, run between per-node simplification and the sea
+    cut / borders / metrics. ``sigma`` is the Gaussian width in map
+    units, ``step`` the resampling step, ``post_tolerance`` the
+    Douglas-Peucker applied after smoothing. Parts smaller than
+    ``small_part_area`` scale sigma by sqrt(area/small_part_area)
+    (never below 0.02). ``anchor_gap`` is the distance at which ring
+    vertices pinned by overrides patches stay fixed. Guard rails:
+    ``max_area_change`` (relative per node; islets get 4x) and
+    ``max_displacement`` (boundary Hausdorff per node)."""
+
+    enabled: bool = True
+    sigma: float = Field(default=0.10, ge=0.02, le=0.5)
+    step: float = Field(default=0.03, ge=0.01, le=0.2)
+    post_tolerance: float = Field(default=0.008, ge=0.001, le=0.05)
+    max_area_change: float = Field(default=0.02, ge=0.001, le=0.2)
+    max_displacement: float = Field(default=0.12, ge=0.02, le=0.5)
+    small_part_area: float = Field(default=0.05, ge=0.0, le=1.0)
+    anchor_gap: float = Field(default=0.05, ge=0.01, le=0.3)
+
+
 class ViewConfig(_Strict):
     """Source root viewBox the tool expects (MP-3)."""
 
@@ -173,6 +195,7 @@ class PipelineConfig(_Strict):
     report: ReportConfig
     preview: PreviewConfig
     simplify: SimplifyConfig
+    smooth: SmoothConfig
     view: ViewConfig
     georef: GeorefConfig
     output: OutputConfig

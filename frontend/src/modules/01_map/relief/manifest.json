@@ -1,19 +1,19 @@
 {
   "source": "GRAY_HR_SR.zip",
   "playable": {
-    "file": "/assets/map/relief.playable.ad3beffde7ad.webp",
+    "file": "/assets/map/relief.playable.6ca9911a512d.webp",
     "rect": [
-      526.85,
-      29.2,
-      212.79999999999995,
-      205.81
+      526.87,
+      29.21,
+      212.72000000000003,
+      205.76
     ],
     "px_per_unit": 17.97,
-    "bytes": 438010,
-    "sha256": "ad3beffde7ad86dc878cb07fa8a088c287add867743dbde9258c01ca103726b8"
+    "bytes": 426822,
+    "sha256": "6ca9911a512df79d038ea83e6ca37856583a0799c3d6b7e437addf412675c80b"
   },
   "inactive": {
-    "file": "/assets/map/relief.inactive.f4047228afbb.webp",
+    "file": "/assets/map/relief.inactive.4280659e6843.webp",
     "rect": [
       -37.42610777921584,
       -109.6630683876279,
@@ -21,7 +21,7 @@
       926.5113800187708
     ],
     "px_per_unit": 5.0,
-    "bytes": 376528,
-    "sha256": "f4047228afbbeaf68cce6c10547d20ad53ef901d84846970d91701b82f1f694a"
+    "bytes": 376662,
+    "sha256": "4280659e684311df34882a24f2545131f931807365cefc3044484cc2aa4b2ae8"
   }
 }
