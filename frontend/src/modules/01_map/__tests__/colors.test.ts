@@ -8,9 +8,9 @@ import type { MapNodeDTO, MapStateDTO } from '../types';
 
 const COLORS = {
   neutral_province: '#8C8C8C',
-  sea: '#1E3547',
+  sea: '#141E26',
   outside: '#2A2A2A',
-  inland_water: '#1E3547',
+  inland_water: '#141E26',
   province_border: '#3A3A3A',
   hover: '#FFFFFF',
 };

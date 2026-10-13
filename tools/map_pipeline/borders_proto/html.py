@@ -116,10 +116,10 @@ function fillRings(rings, color){
 }
 function draw(){
   ctx.setTransform(1,0,0,1,0,0);
-  ctx.fillStyle = '#1E3547'; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.fillStyle = '#141E26'; ctx.fillRect(0,0,cv.width,cv.height);
   ctx.setTransform(scale,0,0,scale,tx,ty);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  fillRings(seaWater, '#1E3547');
+  fillRings(seaWater, '#141E26');
   fillRings(outside, '#2A2A2A');
   for (const [s, rings] of Object.entries(statePaths))
     fillRings(rings, s === '-1' ? '#8C8C8C' : pastel(+s));

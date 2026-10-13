@@ -30,7 +30,7 @@ def test_committed_config_validates():
     assert cfg.preview.crop_pixels_per_unit == 12
     assert cfg.preview.colors.inland_water == "#3E6B84"
     assert cfg.preview.colors.outside == "#2A2A2A"
-    assert cfg.preview.colors.sea == "#1E3547"
+    assert cfg.preview.colors.sea == "#141E26"
     assert cfg.preview.colors.land == "#8C8C8C"
     assert cfg.preview.colors.border == "#3A3A3A"
     assert cfg.preview.colors.sea_border == "#2C4A62"
