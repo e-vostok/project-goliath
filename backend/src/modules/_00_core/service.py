@@ -130,6 +130,37 @@ class GameClockSnapshot:
     next_tick_at: datetime | None
 
 
+@dataclass(frozen=True)
+class PlayerRegistryRow:
+    """
+    One players-table row for module 03_registry (Spec 03_registry 1.4).
+
+    ``player_id``/``vk_user_id`` are read plumbing for the module and the
+    profile worker — they never reach the client (INV-R2).
+    """
+
+    player_id: str
+    vk_user_id: int
+    created_at: datetime
+    level: int
+    judge_rating: int
+    nation_id: str | None
+    nation_name: str | None
+    nation_color: str | None
+
+
+@dataclass(frozen=True)
+class NationRegistryRow:
+    """One nations-table row for module 03_registry (Spec 03_registry 1.4)."""
+
+    nation_id: str
+    name: str
+    color_hex: str
+    created_turn: int
+    created_at: datetime
+    province_count: int
+
+
 class ProvinceService:
     """Service for the provinces table (map nodes)."""
 
@@ -333,6 +364,43 @@ class PlayerService:
             select(Player.id, Player.vk_user_id).where(Player.id.in_(ids))
         )
         return {row[0]: row[1] for row in result.all()}
+
+    @staticmethod
+    async def list_for_registry(
+        session: AsyncSession,
+    ) -> list[PlayerRegistryRow]:
+        """
+        Every player joined to the nation they own (if any), ordered by
+        (created_at, id) — the row-numbering order of Spec 03_registry
+        3.2. Read-only and never commits.
+        """
+        result = await session.execute(
+            select(
+                Player.id,
+                Player.vk_user_id,
+                Player.created_at,
+                Player.level,
+                Player.judge_rating,
+                Nation.id,
+                Nation.name,
+                Nation.color_hex,
+            )
+            .outerjoin(Nation, Nation.owner_player_id == Player.id)
+            .order_by(Player.created_at, Player.id)
+        )
+        return [
+            PlayerRegistryRow(
+                player_id=row[0],
+                vk_user_id=row[1],
+                created_at=row[2],
+                level=row[3],
+                judge_rating=row[4],
+                nation_id=row[5],
+                nation_name=row[6],
+                nation_color=row[7],
+            )
+            for row in result.all()
+        ]
 
 
 async def _current_turn(session: AsyncSession) -> int:
@@ -598,6 +666,47 @@ class NationService:
             select(Nation.id).where(Nation.id.in_(ids))
         )
         return set(result.scalars().all())
+
+    @staticmethod
+    async def list_for_registry(
+        session: AsyncSession,
+    ) -> list[NationRegistryRow]:
+        """
+        Every nation with its live province count, ordered by
+        (created_turn, created_at, id) — the row-numbering order of
+        Spec 03_registry 3.3. The count is a correlated subquery over
+        provinces.nation_id; sea zones can never be owned
+        (ck_provinces_sea_unowned), so they need no special case.
+        Read-only and never commits.
+        """
+        province_count = (
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id == Nation.id)
+            .scalar_subquery()
+        )
+        result = await session.execute(
+            select(
+                Nation.id,
+                Nation.name,
+                Nation.color_hex,
+                Nation.created_turn,
+                Nation.created_at,
+                province_count,
+            )
+            .order_by(Nation.created_turn, Nation.created_at, Nation.id)
+        )
+        return [
+            NationRegistryRow(
+                nation_id=row[0],
+                name=row[1],
+                color_hex=row[2],
+                created_turn=row[3],
+                created_at=row[4],
+                province_count=row[5],
+            )
+            for row in result.all()
+        ]
 
     @staticmethod
     async def update(
