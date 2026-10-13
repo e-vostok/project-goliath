@@ -37,6 +37,15 @@ def test_committed_config_validates():
     assert cfg.simplify.tolerance == 0.03
     assert cfg.simplify.small_part_factor == 0.012
     assert cfg.simplify.sea_tolerance == 0.3
+    # map2_18: contour smoothing guard rails
+    assert cfg.smooth.enabled is True
+    assert cfg.smooth.sigma == 0.10
+    assert cfg.smooth.step == 0.03
+    assert cfg.smooth.post_tolerance == 0.008
+    assert cfg.smooth.max_area_change == 0.02
+    assert cfg.smooth.max_displacement == 0.12
+    assert cfg.smooth.small_part_area == 0.05
+    assert cfg.smooth.anchor_gap == 0.05
     assert cfg.view.width == 1200
     assert cfg.view.height == 680
     assert cfg.georef.x0 == 562.53
@@ -80,6 +89,14 @@ def _committed() -> dict:
         ("preview", "pixels_per_unit", 13),
         ("simplify", "sea_tolerance", 0.01),
         ("simplify", "sea_tolerance", 1.5),
+        ("smooth", "sigma", 0.01),
+        ("smooth", "sigma", 0.6),
+        ("smooth", "step", 0.005),
+        ("smooth", "post_tolerance", 0.0005),
+        ("smooth", "max_area_change", 0.0005),
+        ("smooth", "max_area_change", 0.5),
+        ("smooth", "max_displacement", 0.01),
+        ("smooth", "anchor_gap", 0.005),
         ("view", "width", 50),
         ("georef", "k", 0.0),
         ("georef", "m", -1.0),
@@ -116,8 +133,8 @@ def test_out_of_range_rejected(tmp_path, section, key, value):
 
 @pytest.mark.parametrize(
     "section",
-    ["raster", "sea", "report", "preview", "simplify", "view", "georef",
-     "output", "sea_cut", "outside", "spine", "limits"],
+    ["raster", "sea", "report", "preview", "simplify", "smooth", "view",
+     "georef", "output", "sea_cut", "outside", "spine", "limits"],
 )
 def test_missing_key_rejected(tmp_path, section):
     doc = _committed()

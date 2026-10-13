@@ -362,7 +362,7 @@ def test_real_build(real_data_dir, tmp_path):
     sea_v = sum(_verts(geom["paths"][str(n["id"])]) for n in seas)
     out_v = _verts(geom["outside"])
     print(f"  vertices: land {land_v}, sea {sea_v}, outside {out_v}")
-    assert 80_000 <= land_v <= 130_000  # 87417 after boundary v2
+    assert 80_000 <= land_v <= 140_000  # 134000 after map2_18 smoothing
     assert 15_000 <= sea_v <= 60_000
     assert 15_000 <= out_v <= 60_000
 
@@ -412,7 +412,9 @@ def test_real_build(real_data_dir, tmp_path):
         n = by_id[rec["id"]]
         g = unary_union(node_geoms[n["id"]])
         delta = abs(g.area - rec["area"])
-        limit = max(0.01, 0.02 * rec["area"])
+        # map2_18: cumulative simplify+smoothing drift can reach ~3%
+        # (each stage alone stays inside its own guard)
+        limit = max(0.01, 0.03 * rec["area"])
         worst_area = max(worst_area, delta / max(limit, 1e-9))
         assert delta <= limit, (n["key"], delta, limit)
     print(f"  worst land area drift vs MP-1: {worst_area:.3f} of limit")

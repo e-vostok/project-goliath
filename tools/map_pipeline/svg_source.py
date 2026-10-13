@@ -12,6 +12,7 @@ from itertools import chain
 from pathlib import Path
 
 from lxml import etree
+import shapely
 from shapely import make_valid
 from shapely.errors import GEOSException
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
@@ -89,20 +90,29 @@ def read_province_paths(svg_path: Path) -> dict[str, str]:
     return paths
 
 
-def safe_union(geoms: list):
-    """``unary_union`` with a pairwise fallback for a GEOS noding quirk.
+def safe_union(geoms: list, grid_size: float = 0.0):
+    """``unary_union`` with fallbacks for GEOS noding quirks.
 
-    ``unary_union`` can raise ``TopologyException: side location conflict``
-    on some disjoint inputs (GEOS 3.13); a pairwise union handles them.
+    ``unary_union`` can raise ``TopologyException: side location
+    conflict`` on some disjoint inputs, or ``unable to assign free hole``
+    on near-degenerate tessellation junctions (GEOS 3.13).  A pairwise
+    union handles the first; a fixed-precision ``grid_size`` union
+    handles the second when the inputs sit on that grid already.
     """
     geoms = list(geoms)
     try:
         return unary_union(geoms)
     except GEOSException:
-        out = GeometryCollection()
-        for g in geoms:
-            out = out.union(g)
-        return out
+        pass
+    try:
+        if grid_size > 0:
+            return shapely.union_all(geoms, grid_size=grid_size)
+    except GEOSException:
+        pass
+    out = GeometryCollection()
+    for g in geoms:
+        out = g if out.is_empty else out.union(g)
+    return out
 
 
 def _polygon_parts(geom, min_area: float) -> list[Polygon]:
