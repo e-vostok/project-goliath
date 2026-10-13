@@ -25,7 +25,9 @@ from tools.map_pipeline.svgpath import (
 
 CFG = load_pipeline_config()
 GRID = CFG.output.grid
-BOUND = CFG.simplify.tolerance + GRID
+# map2_18: smoothing runs after simplification; the per-node bound is
+# the smoothing guard rail, which subsumes the simplify tolerance
+BOUND = CFG.smooth.max_displacement + GRID
 
 
 def _ring(prefix, hx, hy, cell=8):
@@ -199,7 +201,11 @@ def test_land_deviation_and_simplification(make_data_dir, tmp_path):
     dev = orig.hausdorff_distance(g)
     assert dev <= BOUND + 1e-9
     total_v = sum(len(p.exterior.coords) for p in parts)
-    assert total_v < len(orig.exterior.coords)
+    # map2_18: smoothing resamples chains at smooth.step before the
+    # post-tolerance simplify, so the vertex count may grow past the
+    # simplified count; it stays far below the resample density
+    # (perimeter / step)
+    assert total_v <= len(orig.exterior.coords) * 2
     assert abs(g.area - orig.area) < 0.5
 
 
@@ -481,6 +487,16 @@ def test_manifest_schema_invariants(make_data_dir, tmp_path):
           MANIFEST_INVALID)
     fails(lambda d: d.pop("nodes"), MANIFEST_INVALID)
     fails(lambda d: d.update(geometry_version="zzzzzzzzzzzz"),
+          MANIFEST_INVALID)
+    # map2_20: spine/len/thick are required, finite and positive
+    fails(lambda d: d["nodes"][0]["label"].pop("spine"),
+          MANIFEST_INVALID)
+    fails(lambda d: d["nodes"][0]["label"].update(len=0.0),
+          MANIFEST_INVALID)
+    fails(lambda d: d["nodes"][0]["label"].update(thick=-1.0),
+          MANIFEST_INVALID)
+    fails(lambda d: d["nodes"][0]["label"].update(
+              spine=[0.0, 0.0, 1.0, 1.0, float("nan")]),
           MANIFEST_INVALID)
 
 
@@ -988,7 +1004,9 @@ def test_small_part_scaled_tolerance(make_data_dir, tmp_path):
     big_part = max(parts, key=lambda p: p.area)
     assert island_part.area < 3.0
     assert len(island_part.exterior.coords) - 1 > 6
-    assert len(big_part.exterior.coords) - 1 <= 8
+    # map2_18: smoothing resamples chains at smooth.step, so the count
+    # sits between the simplify output and the resample density
+    assert len(big_part.exterior.coords) - 1 <= 30
 
 
 def test_sea_cut_exact_land_edge(make_data_dir, tmp_path):

@@ -30,13 +30,22 @@ def test_committed_config_validates():
     assert cfg.preview.crop_pixels_per_unit == 12
     assert cfg.preview.colors.inland_water == "#3E6B84"
     assert cfg.preview.colors.outside == "#2A2A2A"
-    assert cfg.preview.colors.sea == "#1E3547"
+    assert cfg.preview.colors.sea == "#141E26"
     assert cfg.preview.colors.land == "#8C8C8C"
     assert cfg.preview.colors.border == "#3A3A3A"
     assert cfg.preview.colors.sea_border == "#2C4A62"
     assert cfg.simplify.tolerance == 0.03
     assert cfg.simplify.small_part_factor == 0.012
     assert cfg.simplify.sea_tolerance == 0.3
+    # map2_18: contour smoothing guard rails
+    assert cfg.smooth.enabled is True
+    assert cfg.smooth.sigma == 0.10
+    assert cfg.smooth.step == 0.03
+    assert cfg.smooth.post_tolerance == 0.008
+    assert cfg.smooth.max_area_change == 0.02
+    assert cfg.smooth.max_displacement == 0.12
+    assert cfg.smooth.small_part_area == 0.05
+    assert cfg.smooth.anchor_gap == 0.05
     assert cfg.view.width == 1200
     assert cfg.view.height == 680
     assert cfg.georef.x0 == 562.53
@@ -54,6 +63,14 @@ def test_committed_config_validates():
     assert cfg.limits.max_edges_per_node == 60
     assert cfg.limits.max_geometry_bytes == 5_000_000
     assert cfg.limits.max_manifest_bytes == 3_000_000
+    # map2_20: the label-spine scan mirrors the client labels.* rules
+    assert cfg.spine.max_angle_deg == 60
+    assert cfg.spine.max_bend == 0.10
+    assert cfg.spine.offset_step == 0.05
+    assert cfg.spine.angle_step_deg == 5
+    assert cfg.spine.central_share == 0.8
+    assert cfg.spine.thickness_samples == 7
+    assert cfg.spine.arc_samples == 33
 
 
 def _committed() -> dict:
@@ -72,6 +89,14 @@ def _committed() -> dict:
         ("preview", "pixels_per_unit", 13),
         ("simplify", "sea_tolerance", 0.01),
         ("simplify", "sea_tolerance", 1.5),
+        ("smooth", "sigma", 0.01),
+        ("smooth", "sigma", 0.6),
+        ("smooth", "step", 0.005),
+        ("smooth", "post_tolerance", 0.0005),
+        ("smooth", "max_area_change", 0.0005),
+        ("smooth", "max_area_change", 0.5),
+        ("smooth", "max_displacement", 0.01),
+        ("smooth", "anchor_gap", 0.005),
         ("view", "width", 50),
         ("georef", "k", 0.0),
         ("georef", "m", -1.0),
@@ -90,6 +115,10 @@ def _committed() -> dict:
         ("limits", "max_edges_per_node", 3),
         ("limits", "max_geometry_bytes", 10),
         ("limits", "max_manifest_bytes", 99_000_000),
+        ("spine", "max_angle_deg", 90.0),
+        ("spine", "max_bend", 0.5),
+        ("spine", "offset_step", 0.0),
+        ("spine", "thickness_samples", 2),
     ],
 )
 def test_out_of_range_rejected(tmp_path, section, key, value):
@@ -104,8 +133,8 @@ def test_out_of_range_rejected(tmp_path, section, key, value):
 
 @pytest.mark.parametrize(
     "section",
-    ["raster", "sea", "report", "preview", "simplify", "view", "georef",
-     "output", "sea_cut", "outside", "limits"],
+    ["raster", "sea", "report", "preview", "simplify", "smooth", "view",
+     "georef", "output", "sea_cut", "outside", "spine", "limits"],
 )
 def test_missing_key_rejected(tmp_path, section):
     doc = _committed()

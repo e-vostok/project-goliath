@@ -1,15 +1,19 @@
 """
-Polyfactory factories for 00_core models.
+Polyfactory factories for 00_core models and module-02_bot row helpers.
 
-Provides test data factories for Player, Nation, and Province models.
+Provides test data factories for Player, Nation, and Province models,
+plus ``make_consent`` / ``make_outbox_row`` — function-style seeders for
+the 02_bot tables, in the style of ``tests/fixtures/provinces.py``.
 """
 
 from __future__ import annotations
 
+import itertools
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from polyfactory.factories.sqlalchemy_factory import SQLAlchemyFactory
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.models import (
     GameClock,
@@ -21,6 +25,7 @@ from modules._00_core.models import (
     TickLog,
     TickLogStatus,
 )
+from modules._02_bot.models import BotConsent, BotOutbox
 from tests.fixtures.profile import VALID_PROFILE
 
 
@@ -105,3 +110,79 @@ class TickLogFactory(SQLAlchemyFactory[TickLog]):
     finished_at = None
     status = TickLogStatus.RUNNING
     error_message = None
+
+
+# ── Module 02_bot seeders (Spec Part 1.1) ─────────────────────────────
+
+_event_key_seq = itertools.count()
+
+
+async def make_consent(
+    session: AsyncSession,
+    player: Player,
+    *,
+    state: str = "ALLOWED",
+    state_source: str = "INIT",
+    state_changed_at: datetime | None = None,
+    last_checked_at: datetime | None = None,
+    last_plate_at: datetime | None = None,
+    created_at: datetime | None = None,
+) -> BotConsent:
+    """Insert a ``bot_consents`` row for ``player`` and flush it."""
+    now = utcnow()
+    consent = BotConsent(
+        player_id=player.id,
+        state=state,
+        state_source=state_source,
+        state_changed_at=state_changed_at or now,
+        last_checked_at=last_checked_at,
+        last_plate_at=last_plate_at,
+        created_at=created_at or now,
+    )
+    session.add(consent)
+    await session.flush()
+    return consent
+
+
+async def make_outbox_row(
+    session: AsyncSession,
+    player: Player,
+    *,
+    type_key: str = "TICK_DIGEST",
+    event_key: str | None = None,
+    kind: str = "NOTIFICATION",
+    priority: str = "normal",
+    counts_toward_cap: bool = True,
+    payload: dict | None = None,
+    status: str = "PENDING",
+    drop_reason: str | None = None,
+    created_at: datetime | None = None,
+    not_before: datetime | None = None,
+    expires_at: datetime | None = None,
+    next_attempt_at: datetime | None = None,
+) -> BotOutbox:
+    """Insert a ready ``bot_outbox`` row for ``player`` and flush it.
+
+    Defaults describe a fresh queued row: ``PENDING``, zero attempts,
+    a unique ``event_key`` (``uq_bot_outbox_dedup``) and ``expires_at``
+    an hour in the future.
+    """
+    now = utcnow()
+    row = BotOutbox(
+        player_id=player.id,
+        kind=kind,
+        type_key=type_key,
+        event_key=event_key or f"test:{next(_event_key_seq)}:{uuid.uuid4()}",
+        priority=priority,
+        counts_toward_cap=counts_toward_cap,
+        payload=payload if payload is not None else {},
+        status=status,
+        drop_reason=drop_reason,
+        created_at=created_at or now,
+        not_before=not_before or now,
+        expires_at=expires_at or (now + timedelta(hours=1)),
+        next_attempt_at=next_attempt_at or not_before or now,
+    )
+    session.add(row)
+    await session.flush()
+    return row

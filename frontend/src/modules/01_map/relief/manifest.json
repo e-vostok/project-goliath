@@ -1,0 +1,27 @@
+{
+  "source": "GRAY_HR_SR.zip",
+  "playable": {
+    "file": "/assets/map/relief.playable.6ca9911a512d.webp",
+    "rect": [
+      526.87,
+      29.21,
+      212.72000000000003,
+      205.76
+    ],
+    "px_per_unit": 17.97,
+    "bytes": 426822,
+    "sha256": "6ca9911a512df79d038ea83e6ca37856583a0799c3d6b7e437addf412675c80b"
+  },
+  "inactive": {
+    "file": "/assets/map/relief.inactive.4280659e6843.webp",
+    "rect": [
+      -37.42610777921584,
+      -109.6630683876279,
+      1200.7948039547518,
+      926.5113800187708
+    ],
+    "px_per_unit": 5.0,
+    "bytes": 376662,
+    "sha256": "4280659e684311df34882a24f2545131f931807365cefc3044484cc2aa4b2ae8"
+  }
+}

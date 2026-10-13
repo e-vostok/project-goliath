@@ -39,6 +39,7 @@ from modules._00_core.models import GameClock, Province
 from modules._00_core.hooks import OwnershipChange
 from modules._01_map.loader import load_map_data
 from modules._01_map.schemas import (
+    MapBordersDTO,
     MapGeometryDTO,
     MapManifestDTO,
     MapStateDTO,
@@ -61,10 +62,12 @@ from tests.modules._00_core.test_router import (
 )
 from tests.modules._01_map.conftest import (
     FIXTURE_DIR,
+    load_borders,
     load_geometry,
     load_manifest,
     map_config,
     map_config_disconnected,
+    save_manifest,
 )
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -255,8 +258,9 @@ class TestManifest:
             if edge["type"] != "strait":
                 assert edge["multiplier"] is None
         assert edges[(1005, 1006)]["name"]
-        # `len` must not leak into the wire body at all.
-        assert '"len"' not in resp.text
+        # `len` must not leak into EDGE objects (map2_20 uses it as a
+        # legitimate node label field — spine chord length).
+        assert all("len" not in edge for edge in edges.values())
 
     async def test_rules_built_from_config(self, client, map_db_session):
         player = await seed_player(map_db_session)
@@ -280,8 +284,29 @@ class TestManifest:
             config.starting_group.require_connected
         )
         assert rules["big_window_enabled"] == config.big_window.enabled
+        assert rules["hover_fill_opacity"] == config.hover.fill_opacity
+        assert rules["hover_stroke_enabled"] == config.hover.stroke_enabled
         assert rules["colors"]["sea"] == config.colors.sea
-        assert rules["colors"]["selected"] == config.colors.selected
+        assert rules["colors"]["land_underlay"] == config.colors.land_underlay
+        borders = rules["borders"]
+        for key in (
+            "internal_width",
+            "internal_opacity",
+            "internal_color",
+            "state_width",
+            "state_color",
+            "coast_width",
+            "coast_color",
+        ):
+            assert borders[key] == getattr(config.borders, key)
+        selection = rules["selection"]
+        for key in (
+            "pulse_min_opacity",
+            "pulse_max_opacity",
+            "pulse_period_s",
+            "picked_opacity",
+        ):
+            assert selection[key] == getattr(config.selection, key)
         refresh = rules["refresh"]
         for key in (
             "tick_refresh_delay_seconds",
@@ -405,6 +430,28 @@ class TestManifest:
         assert int(zipped.headers["content-length"]) < len(plain.content)
 
 
+def test_names_ru_reach_node_dto(mini_dir, config):
+    """map2_3: ``name_ru`` written by import_names into the manifest is
+    loaded and exposed in ``MapNodeDTO.name_ru`` (the search/picker read
+    it from the manifest payload — nothing else stores names)."""
+    names = {"mini_alpha": "Альфа-Земля", "mini_beta": "Бета Ёлка"}
+    doc = load_manifest(mini_dir)
+    for node in doc["nodes"]:
+        if node["key"] in names:
+            node["name_ru"] = names[node["key"]]
+    save_manifest(mini_dir, doc)
+
+    service = MapService(load_map_data(mini_dir, config), config)
+    body = api_service.build_api_payloads(service).manifest_body
+    dto = MapManifestDTO.model_validate_json(body)
+
+    got = {n.key: n.name_ru for n in dto.nodes}
+    assert got["mini_alpha"] == "Альфа-Земля"
+    assert got["mini_beta"] == "Бета Ёлка"
+    assert got["mini_gamma"] is None
+    assert service.map_data.nodes[1001].name_ru == "Альфа-Земля"
+
+
 class TestGeometry:
     """GET /api/v1/map/geometry/{version} (Spec 5: immutable body)."""
 
@@ -452,6 +499,54 @@ class TestGeometry:
         ).json()
         resp = await client.get(
             f"/api/v1/map/geometry/{manifest['geometry_version']}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+
+class TestBorders:
+    """GET /api/v1/map/borders/{version} (map2_1B: immutable body)."""
+
+    async def test_current_version_semantics(
+        self, client, map_db_session, map_installed
+    ):
+        player = await seed_player(map_db_session)
+        version = map_installed.borders_version
+        resp = await client.get(
+            f"/api/v1/map/borders/{version}",
+            headers=bearer_headers(player.id),
+        )
+
+        assert resp.status_code == 200
+        dto = MapBordersDTO.model_validate(resp.json())
+        assert dto.version == version
+        on_disk = load_borders(FIXTURE_DIR)
+        assert resp.json()["pairs"] == on_disk["pairs"]
+        assert resp.json()["coasts"] == on_disk["coasts"]
+        assert resp.headers["cache-control"] == (
+            "public, max-age=31536000, immutable"
+        )
+        assert resp.headers["etag"] == f'"{version}"'
+
+    async def test_unknown_version_404(self, client, map_db_session):
+        player = await seed_player(map_db_session)
+        resp = await client.get(
+            "/api/v1/map/borders/ffffffffffff",
+            headers=bearer_headers(player.id),
+        )
+        assert resp.status_code == 404
+        assert resp.json()["code"] == "MAP_VERSION_UNKNOWN"
+
+    async def test_version_from_manifest_works_end_to_end(
+        self, client, map_db_session
+    ):
+        player = await seed_player(map_db_session)
+        headers = bearer_headers(player.id)
+        manifest = (
+            await client.get(MANIFEST_URL, headers=headers)
+        ).json()
+        resp = await client.get(
+            f"/api/v1/map/borders/{manifest['borders_version']}",
             headers=headers,
         )
         assert resp.status_code == 200
@@ -814,6 +909,7 @@ class TestContract:
         assert map_paths == {
             "/api/v1/map/manifest",
             "/api/v1/map/geometry/{version}",
+            "/api/v1/map/borders/{version}",
             "/api/v1/map/state",
             "/api/v1/map/starting-group/check",
         }
@@ -839,6 +935,7 @@ class TestContract:
         [
             ("GET", MANIFEST_URL, None),
             ("GET", "/api/v1/map/geometry/dd7d785f4355", None),
+            ("GET", "/api/v1/map/borders/dd7d785f4355", None),
             ("GET", STATE_URL, None),
             ("POST", CHECK_URL, {"province_ids": [1001]}),
         ],
@@ -1025,8 +1122,8 @@ class TestRealMap:
                     )
                     assert plain.status_code == 200
                     body = plain.json()
-                    assert len(body["nodes"]) == 1065
-                    assert len(body["edges"]) == 3060
+                    assert len(body["nodes"]) == 1067
+                    assert len(body["edges"]) == 3091  # map2_11 edge delta
                     version = body["geometry_version"]
                     manifest_plain = len(plain.content)
 

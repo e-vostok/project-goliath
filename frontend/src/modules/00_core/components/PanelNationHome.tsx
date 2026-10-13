@@ -41,6 +41,7 @@ import {
   type EditableNationField,
 } from './CreateNationEditForm';
 import { mapErrorCodeToField } from './PanelCreateNation';
+import { BotConsentRow } from '../../02_bot/components/BotConsentRow';
 
 export interface PanelNationHomeProps {
   nation: NationDTO;
@@ -237,6 +238,7 @@ export function PanelNationHome({
         <SimpleCell disabled subtitle="История государства">
           {historyCell}
         </SimpleCell>
+        <BotConsentRow />
 
         {formError && (
           <FormStatus mode="error" title="Не удалось обновить государство">

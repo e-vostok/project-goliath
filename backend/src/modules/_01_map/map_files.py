@@ -37,6 +37,7 @@ _HEX64 = r"^[0-9a-f]{64}$"
 _HEX12 = r"^[0-9a-f]{12}$"
 _KEY_RE = r"^[a-z0-9_]+$"
 _PATH_KEY_RE = r"^[0-9]+$"
+_PAIR_KEY_RE = r"^[0-9]+-[0-9]+$"
 
 # Conservative SVG path charset: the strings are later inserted into the
 # page, so anything outside commands/numbers/separators is refused.
@@ -75,6 +76,27 @@ class InputsSha256(_Strict):
     ids_lock: str = Field(pattern=_HEX64)
 
 
+class ManifestNodeLabel(_Strict):
+    """``manifest.nodes[].label`` (map2_6): the label anchor ``(x, y)``
+    and the free ``w``/``h`` box the client fits the name into.
+
+    ``spine``/``len``/``thick`` (map2_20): the inscribed baseline the
+    curved name rides — ``[x0, y0, x1, y1, s]`` endpoints plus the
+    signed sagitta (quadratic-Bézier control = chord midpoint + 2·s
+    along the chord's left normal), the chord length and the minimum
+    thickness across the spine's central part."""
+
+    x: FiniteFloat
+    y: FiniteFloat
+    w: FiniteFloat = Field(gt=0.0)
+    h: FiniteFloat = Field(gt=0.0)
+    spine: tuple[
+        FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat
+    ]
+    len: FiniteFloat = Field(gt=0.0)
+    thick: FiniteFloat = Field(gt=0.0)
+
+
 class ManifestNode(_Strict):
     """One node of ``manifest.nodes`` (a land province or a sea zone)."""
 
@@ -87,6 +109,7 @@ class ManifestNode(_Strict):
     anchor: tuple[FiniteFloat, FiniteFloat]
     bbox: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
     area: FiniteFloat = Field(ge=0.0)
+    label: ManifestNodeLabel
 
     @model_validator(mode="after")
     def _kind_fields(self) -> Self:
@@ -126,6 +149,7 @@ class Manifest(_Strict):
 
     schema_version: Literal[1]
     geometry_version: str = Field(pattern=_HEX12)
+    borders_version: str = Field(pattern=_HEX12)
     view_box: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
     playable_bbox: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
     georef: Georef
@@ -166,6 +190,49 @@ class Geometry(_Strict):
         return _svg_path(value) if value else value
 
 
+class Borders(_Strict):
+    """``borders.json`` (map2_1B) — the canonical shared lines.
+
+    ``pairs``: ``"<idA>-<idB>"`` -> SVG path, one per ``land`` edge
+    (``idA < idB`` and the edge correspondence are INV-M6 territory in
+    the loader). ``coasts``: ``"<id>"`` -> SVG path per LAND node;
+    a fully landlocked node legitimately carries ``""``.
+    """
+
+    version: str = Field(pattern=_HEX12)
+    pairs: Mapping[str, str]
+    coasts: Mapping[str, str]
+
+    @field_validator("pairs")
+    @classmethod
+    def _pairs_strict(cls, pairs: Mapping[str, str]) -> Mapping[str, str]:
+        out = dict(pairs)
+        for key, value in out.items():
+            if not re.fullmatch(_PAIR_KEY_RE, key):
+                raise ValueError(
+                    f"borders pair key {key!r} is not an ordered id pair"
+                )
+            if not value:
+                raise ValueError(f"borders pair {key!r} is empty")
+            _svg_path(value)
+        return MappingProxyType(out)
+
+    @field_validator("coasts")
+    @classmethod
+    def _coasts_strict(
+        cls, coasts: Mapping[str, str]
+    ) -> Mapping[str, str]:
+        out = dict(coasts)
+        for key, value in out.items():
+            if not re.fullmatch(_PATH_KEY_RE, key):
+                raise ValueError(
+                    f"coasts key {key!r} is not a node id"
+                )
+            if value:
+                _svg_path(value)
+        return MappingProxyType(out)
+
+
 class IdsLock(_Strict):
     """
     ``ids.lock.json`` — append-only ``key -> id`` map (INV-M1).
@@ -173,10 +240,15 @@ class IdsLock(_Strict):
     Uniqueness of the id values and manifest correspondence are INV-M1
     checks in the loader; entries absent from the manifest are legal
     (the lock only grows) and surface as ``MapData.warnings``.
+
+    ``previous_keys`` (map2_10) records key renames — the superseded
+    slugs of each current key, oldest first; the ids themselves never
+    change, so the server only validates the shape.
     """
 
     version: Literal[1]
     ids: Mapping[str, int]
+    previous_keys: Mapping[str, tuple[str, ...]] = {}
 
     @field_validator("ids")
     @classmethod
@@ -189,4 +261,26 @@ class IdsLock(_Strict):
                 raise ValueError(f"ids.lock key {key!r} is not a key slug")
             if not isinstance(value, int) or isinstance(value, bool) or value < 1:
                 raise ValueError(f"ids.lock id for {key!r} must be a positive int")
+        return MappingProxyType(out)
+
+    @field_validator("previous_keys")
+    @classmethod
+    def _previous_keys_strict(
+        cls, previous_keys: Mapping[str, tuple[str, ...]]
+    ) -> Mapping[str, tuple[str, ...]]:
+        out = dict(previous_keys)
+        for key, chain in out.items():
+            if not re.fullmatch(_KEY_RE, key):
+                raise ValueError(
+                    f"previous_keys key {key!r} is not a key slug"
+                )
+            if not chain:
+                raise ValueError(
+                    f"previous_keys chain for {key!r} is empty"
+                )
+            for old in chain:
+                if not re.fullmatch(_KEY_RE, old):
+                    raise ValueError(
+                        f"previous key {old!r} of {key!r} is not a key slug"
+                    )
         return MappingProxyType(out)

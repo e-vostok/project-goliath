@@ -15,6 +15,22 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class MapNodeLabelDTO(BaseModel):
+    """``MapNodeDTO.label`` (map2_6): anchor plus free ``w``/``h`` box.
+
+    ``spine``/``len``/``thick`` (map2_20): the inscribed baseline the
+    curved name rides — ``[x0, y0, x1, y1, s]`` endpoints plus signed
+    sagitta, chord length and local thickness."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+    spine: list[float]
+    len: float
+    thick: float
+
+
 class MapNodeDTO(BaseModel):
     """One map node in ``MapManifestDTO.nodes``."""
 
@@ -26,6 +42,7 @@ class MapNodeDTO(BaseModel):
     anchor: list[float]
     bbox: list[float]
     area: float
+    label: MapNodeLabelDTO
 
 
 class MapEdgeDTO(BaseModel):
@@ -54,6 +71,83 @@ class MapRefreshRulesDTO(BaseModel):
     stale_after_seconds: int
 
 
+class MapBordersRulesDTO(BaseModel):
+    """``MapViewRulesDTO.borders`` — client border-layer style (map2_4)."""
+
+    internal_width: float
+    internal_opacity: float
+    internal_color: str
+    state_width: float
+    state_color: str
+    coast_width: float
+    coast_color: str
+
+
+class MapSelectionRulesDTO(BaseModel):
+    """``MapViewRulesDTO.selection`` — client selection style (map2_4)."""
+
+    pulse_min_opacity: float
+    pulse_max_opacity: float
+    pulse_period_s: float
+    picked_opacity: float
+
+
+class MapReliefRulesDTO(BaseModel):
+    """``MapViewRulesDTO.relief`` — client relief-underlay style (map2_16)."""
+
+    enabled: bool
+    strength_playable: float
+    inactive_brightness: float
+
+
+class MapLabelsRulesDTO(BaseModel):
+    """``MapViewRulesDTO.labels`` — label fit/style rules (map2_6)."""
+
+    font: str
+    # map2_21: sea labels may use their own face from the font registry.
+    sea_font: str
+    land_min_px: int
+    land_max_px: int
+    sea_min_px: int
+    sea_max_px: int
+    fit_ratio: float
+    collision_padding_px: float
+    halo_width_px: float
+    halo_color: str
+    land_color: str
+    sea_color: str
+    sea_letter_spacing_em: float
+    province_zoom_ratio: float
+    fade_ms: int
+    # map2_20: province names follow the shape (curved spine labels)
+    max_angle_deg: float
+    max_bend: float
+    thickness_ratio: float
+    length_ratio: float
+    letter_spacing_min_em: float
+    letter_spacing_max_em: float
+    land_opacity: float
+    sea_opacity: float
+    sea_curved: bool
+
+
+class MapStatesRulesDTO(BaseModel):
+    """``MapViewRulesDTO.states`` — state-name layer rules (map2_7)."""
+
+    font: str
+    uppercase: bool
+    opacity: float
+    max_angle_deg: float
+    thickness_ratio: float
+    length_ratio: float
+    max_letter_spacing_em: float
+    max_bend: float
+    min_px: int
+    max_px: int
+    color_mode: str
+    min_group_share: float
+
+
 class MapViewRulesDTO(BaseModel):
     """``MapManifestDTO.rules`` — client-side view rules from the config."""
 
@@ -65,6 +159,13 @@ class MapViewRulesDTO(BaseModel):
     search_min_chars: int
     search_max_results: int
     colors: dict[str, str]
+    hover_fill_opacity: float
+    hover_stroke_enabled: bool
+    borders: MapBordersRulesDTO
+    selection: MapSelectionRulesDTO
+    relief: MapReliefRulesDTO
+    labels: MapLabelsRulesDTO
+    states: MapStatesRulesDTO
     require_connected_start: bool
     big_window_enabled: bool
     refresh: MapRefreshRulesDTO
@@ -75,6 +176,7 @@ class MapManifestDTO(BaseModel):
 
     schema_version: int
     geometry_version: str
+    borders_version: str
     view_box: list[float]
     playable_bbox: list[float]
     nodes: list[MapNodeDTO]
@@ -90,6 +192,14 @@ class MapGeometryDTO(BaseModel):
     paths: dict[int, str]
     outside: str
     sea_water: str
+
+
+class MapBordersDTO(BaseModel):
+    """Response for GET /api/v1/map/borders/{version} (map2_1B)."""
+
+    version: str
+    pairs: dict[str, str]
+    coasts: dict[str, str]
 
 
 class MapNationDTO(BaseModel):
@@ -110,6 +220,7 @@ class MapStateDTO(BaseModel):
     """Response for GET /api/v1/map/state."""
 
     geometry_version: str
+    borders_version: str
     turn: int
     nations: list[MapNationDTO]
     # [province_id, index into nations]; free provinces and SEA nodes

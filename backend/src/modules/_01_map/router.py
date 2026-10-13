@@ -22,6 +22,7 @@ from modules._00_core.models import Player
 from modules._01_map import api_service
 from modules._01_map.errors import MapVersionUnknownError
 from modules._01_map.schemas import (
+    MapBordersDTO,
     MapGeometryDTO,
     MapManifestDTO,
     MapStateDTO,
@@ -36,8 +37,9 @@ router = APIRouter(prefix="/api/v1")
 # it must not be cached without a conditional request (3.10).
 _MANIFEST_HEADERS = {"Cache-Control": "no-cache"}
 
-# The geometry body is immutable per version — the version IS the ETag.
-_GEOMETRY_HEADERS = {
+# The geometry and borders bodies are immutable per version — the
+# version IS the ETag.
+_IMMUTABLE_HEADERS = {
     "Cache-Control": "public, max-age=31536000, immutable",
 }
 
@@ -82,8 +84,34 @@ async def get_map_geometry(
         content=payloads.geometry_body,
         media_type="application/json",
         headers={
-            **_GEOMETRY_HEADERS,
+            **_IMMUTABLE_HEADERS,
             "ETag": f'"{payloads.geometry_version}"',
+        },
+    )
+
+
+@router.get(
+    "/map/borders/{version}",
+    response_model=MapBordersDTO,
+)
+async def get_map_borders(
+    version: str,
+    player: Player = Depends(get_current_player),
+) -> Response:
+    """
+    Immutable shared borders/coasts of one version (map2_1B); any
+    other version -> MAP_VERSION_UNKNOWN (the client re-requests the
+    manifest).
+    """
+    payloads = api_service.get_api_payloads()
+    if version != payloads.borders_version:
+        raise MapVersionUnknownError(version)
+    return Response(
+        content=payloads.borders_body,
+        media_type="application/json",
+        headers={
+            **_IMMUTABLE_HEADERS,
+            "ETag": f'"{payloads.borders_version}"',
         },
     )
 

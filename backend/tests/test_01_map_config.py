@@ -47,14 +47,75 @@ def _base_config() -> dict:
         },
         "colors": {
             "neutral_province": "#8C8C8C",
-            "sea": "#1E3547",
+            "sea": "#141E26",
             "outside": "#2A2A2A",
-            "inland_water": "#1E3547",
+            "inland_water": "#141E26",
             "province_border": "#3A3A3A",
+            "land_underlay": "#8C8C8C",
             "hover": "#FFFFFF",
-            "selected": "#FFD24A",
+        },
+        "hover": {"fill_opacity": 0.14, "stroke_enabled": False},
+        "borders": {
+            "internal_width": 0.7,
+            "internal_opacity": 0.55,
+            "internal_color": "#3A3A3A",
+            "state_width": 1.8,
+            "state_color": "#101014",
+            "coast_width": 0.9,
+            "coast_color": "#24262B",
+        },
+        "selection": {
+            "pulse_min_opacity": 0.10,
+            "pulse_max_opacity": 0.32,
+            "pulse_period_s": 2.4,
+            "picked_opacity": 0.28,
         },
         "strait": {"default_crossing_multiplier": 0.5},
+        "relief": {
+            "enabled": True,
+            "strength_playable": 0.55,
+            "inactive_brightness": 0.14,
+        },
+        "labels": {
+            "font": "fira_sans_condensed",
+            "sea_font": "pt_mono",
+            "land_min_px": 9,
+            "land_max_px": 15,
+            "sea_min_px": 10,
+            "sea_max_px": 19,
+            "fit_ratio": 0.9,
+            "collision_padding_px": 3.0,
+            "halo_width_px": 2.5,
+            "halo_color": "#101014",
+            "land_color": "#F2F3F5",
+            "sea_color": "#C4E0F5",
+            "sea_letter_spacing_em": 0.08,
+            "province_zoom_ratio": 0.98,
+            "fade_ms": 120,
+            "max_angle_deg": 60,
+            "max_bend": 0.10,
+            "thickness_ratio": 0.55,
+            "length_ratio": 0.85,
+            "letter_spacing_min_em": -0.02,
+            "letter_spacing_max_em": 0.30,
+            "land_opacity": 0.6,
+            "sea_opacity": 0.4,
+            "sea_curved": True,
+        },
+        "states": {
+            "font": "pt_mono",
+            "uppercase": True,
+            "opacity": 0.4,
+            "max_angle_deg": 60,
+            "thickness_ratio": 0.6,
+            "length_ratio": 0.8,
+            "max_letter_spacing_em": 1.0,
+            "max_bend": 0.1,
+            "min_px": 10,
+            "max_px": 72,
+            "color_mode": "auto",
+            "min_group_share": 0.2,
+        },
         "starting_group": {"require_connected": True},
         "big_window": {"enabled": True},
         "limits": {
@@ -62,6 +123,7 @@ def _base_config() -> dict:
             "max_edges_per_node": 60,
             "max_geometry_bytes": 5_000_000,
             "max_manifest_bytes": 3_000_000,
+            "max_borders_bytes": 2_000_000,
         },
         "attribution": {"text": "Карта: MapChart.net, лицензия CC BY-SA 4.0"},
     }
@@ -92,7 +154,7 @@ class TestRealConfig:
         assert config.view.frame.width > 0
         assert config.view.frame.height > 0
         assert config.view.zoom_max > 1.0
-        assert config.limits.max_nodes >= 1065  # boundary v2 node count
+        assert config.limits.max_nodes >= 1067  # map2_11 node count
 
     @pytest.mark.parametrize(
         "cwd_name",
@@ -201,12 +263,76 @@ class TestFrame:
         assert field in str(exc_info.value)
 
 
+class TestHover:
+    def test_fill_opacity_range(self, tmp_path):
+        """map2_0: hover.fill_opacity stays inside [0.0, 0.6] — the fill
+        must never fully hide the owner colour nor vanish unnoticed."""
+        for bad in (-0.01, 0.61):
+            path = _write_config(
+                tmp_path, {"hover": {"fill_opacity": bad}}
+            )
+            with pytest.raises(ValidationError) as exc_info:
+                MapConfig.from_yaml(path)
+            assert "fill_opacity" in str(exc_info.value)
+        for edge in (0.0, 0.6):
+            path = _write_config(
+                tmp_path, {"hover": {"fill_opacity": edge}}
+            )
+            assert MapConfig.from_yaml(path).hover.fill_opacity == edge
+
+
+class TestRelief:
+    """map2_16: the relief block keeps its strict ranges so a bad value
+    cannot silently reach the client rules DTO; the retired map2_5
+    keys stay rejected as unknown fields."""
+
+    @pytest.mark.parametrize(
+        "key,value",
+        [
+            ("strength_playable", -0.01),
+            ("strength_playable", 1.01),
+            ("inactive_brightness", 0.019),
+            ("inactive_brightness", 1.01),
+        ],
+    )
+    def test_out_of_range_rejected(self, tmp_path, key, value):
+        path = _write_config(tmp_path, {"relief": {key: value}})
+
+        with pytest.raises(ValidationError) as exc_info:
+            MapConfig.from_yaml(path)
+
+        assert key in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "margin_units",
+            "inactive_opacity",
+            "inactive_tint",
+            "edge_fade_units",
+        ],
+    )
+    def test_retired_keys_rejected(self, tmp_path, key):
+        """map2_16 removed the old dimming/fade keys — the strict schema
+        must not silently accept a stale config."""
+        path = _write_config(tmp_path, {"relief": {key: 0.5}})
+
+        with pytest.raises(ValidationError) as exc_info:
+            MapConfig.from_yaml(path)
+
+        assert key in str(exc_info.value)
+
+    def test_disabled_is_valid(self, tmp_path):
+        path = _write_config(tmp_path, {"relief": {"enabled": False}})
+        assert MapConfig.from_yaml(path).relief.enabled is False
+
+
 class TestCrossFieldRules:
 
     @pytest.mark.parametrize(
         "field,value",
         [
-            ("neutral_province", "#1E3547"),  # collides with sea
+            ("neutral_province", "#141E26"),  # collides with sea
             ("sea", "#8C8C8C"),               # collides with neutral_province
             ("outside", "#8C8C8C"),           # collides with neutral_province
         ],
@@ -225,7 +351,7 @@ class TestCrossFieldRules:
             ("colors", "sea", "1E3547"),       # missing '#'
             ("colors", "hover", "#FFF"),       # too short
             ("colors", "outside", "#GGGGGG"),  # not hex
-            ("colors", "selected", "#FF00000"),  # too long
+            ("borders", "state_color", "#FF00000"),  # too long
         ],
     )
     def test_invalid_hex_color_rejected(self, tmp_path, section, key, bad):

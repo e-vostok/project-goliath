@@ -111,14 +111,18 @@ The full production procedure — server setup, `deploy.sh`, backups, rollback, 
 
 ## 7. CI (GitHub Actions)
 
-`.github/workflows/ci.yml` runs four jobs on every pull request and every push to `main`; all must be green to merge:
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`. A first lightweight job `changes` diffs the PR against its base (`git diff --name-only origin/<base>...HEAD`) and runs only the checks the change can affect; all four check names must still report green — a check skipped this way counts as passing for branch protection:
 
-- `backend` — full `pytest` on Python 3.12 against a real `postgres:16` service container (`DATABASE_URL_TEST=…/goliath_test`, `REQUIRE_POSTGRES_TESTS=1`): the `postgres`-marked suite can never silently skip.
-- `frontend` — Node 20: `npm ci`, `npm run typecheck`, `npm test`, `npm run build`.
-- `map_pipeline` — `pytest tools/map_pipeline/tests`, including the `real_data` suite on the committed map inputs.
-- `docker` — validates `docker-compose.prod.yml` against `.env.prod.example`, then runs the DEP-1 runtime acceptance (`deploy/smoke_local.sh`) on the Linux runner.
+- `backend` — runs when the PR touches `backend/**`, `configs/**` or `data/map/**`. Full `pytest` on Python 3.12 against a real `postgres:16` service container (`DATABASE_URL_TEST=…/goliath_test`, `REQUIRE_POSTGRES_TESTS=1`): the `postgres`-marked suite can never silently skip.
+- `frontend` — runs on `frontend/**`, `data/map/**`. Node 20: `npm ci`, `npm run typecheck`, `npm test`, `npm run build`.
+- `map_pipeline` — runs on `tools/map_pipeline/**`, `data/map/**`. `pytest tools/map_pipeline/tests`, including the `real_data` suite on the committed map inputs.
+- `docker` — runs on `deploy/**`, `docker-compose*.yml`, `.env.prod.example`, any `Dockerfile`, `.dockerignore`, `backend/pyproject.toml`, `backend/requirements*.lock`, `backend/alembic/**`, `frontend/package.json`, `frontend/package-lock.json`, `data/map/**`. Validates `docker-compose.prod.yml` against `.env.prod.example`, then runs the DEP-1 runtime acceptance (`deploy/smoke_local.sh`) on the Linux runner.
+
+A change under `.github/workflows/**` runs all four. Docs-only PRs (`docs/**`, `*.md`, `tasks/**`) match nothing: only `changes` runs and the four required checks report as skipped-but-passing. A push to `main` — or any run where the diff cannot be computed — always runs everything.
 
 No secrets are used; the workflow token has `contents: read` only and jobs run under `pull_request`, never `pull_request_target`.
+
+Если джоба упала с ошибкой «The job was not acquired by Runner…» — это сбой на стороне раннеров GitHub, а не дефект кода: откройте PR → вкладка Checks → «Re-run failed jobs». CI на `main` можно запустить вручную: вкладка Actions → workflow CI → «Run workflow». Пуши в `main` никогда не отменяют друг друга — отменяются только старые прогоны внутри того же PR.
 
 ## 8. Как обновить зависимости бэкенда
 

@@ -6,6 +6,7 @@
  */
 
 import type {
+  MapBordersDTO,
   MapGeometryDTO,
   MapManifestDTO,
   MapStateDTO,
@@ -22,12 +23,75 @@ export const MINI_RULES: MapViewRulesDTO = {
   search_max_results: 4,
   colors: {
     neutral_province: '#8C8C8C',
-    sea: '#1E3547',
+    sea: '#141E26',
     outside: '#2A2A2A',
-    inland_water: '#1E3547',
+    inland_water: '#141E26',
     province_border: '#3A3A3A',
+    land_underlay: '#808080',
     hover: '#FFFFFF',
-    selected: '#FFD24A',
+  },
+  hover_fill_opacity: 0.22,
+  hover_stroke_enabled: false,
+  borders: {
+    internal_width: 0.5,
+    internal_opacity: 0.5,
+    internal_color: '#3A3A3A',
+    state_width: 1.6,
+    state_color: '#101014',
+    coast_width: 0.8,
+    coast_color: '#24262B',
+  },
+  selection: {
+    pulse_min_opacity: 0.12,
+    pulse_max_opacity: 0.3,
+    pulse_period_s: 2.0,
+    picked_opacity: 0.25,
+  },
+  relief: {
+    enabled: false,
+    strength_playable: 0.55,
+    inactive_brightness: 0.14,
+  },
+  labels: {
+    font: 'pt_mono',
+    sea_font: 'pt_mono',
+    land_min_px: 9,
+    land_max_px: 15,
+    sea_min_px: 10,
+    sea_max_px: 19,
+    fit_ratio: 0.9,
+    collision_padding_px: 3,
+    halo_width_px: 2.5,
+    halo_color: '#101014',
+    land_color: '#F2F3F5',
+    sea_color: '#C4E0F5',
+    sea_letter_spacing_em: 0.08,
+    province_zoom_ratio: 0.98,
+    fade_ms: 120,
+    // map2_20: curved province/sea names along the node spine.
+    max_angle_deg: 60,
+    max_bend: 0.1,
+    thickness_ratio: 0.55,
+    length_ratio: 0.85,
+    letter_spacing_min_em: -0.02,
+    letter_spacing_max_em: 0.3,
+    land_opacity: 0.6,
+    sea_opacity: 0.4,
+    sea_curved: true,
+  },
+  states: {
+    font: 'pt_mono',
+    uppercase: true,
+    opacity: 0.4,
+    max_angle_deg: 60,
+    thickness_ratio: 0.6,
+    length_ratio: 0.8,
+    max_letter_spacing_em: 1.0,
+    max_bend: 0.1,
+    min_px: 10,
+    max_px: 72,
+    color_mode: 'auto',
+    min_group_share: 0.2,
   },
   require_connected_start: true,
   big_window_enabled: true,
@@ -43,19 +107,20 @@ export const MINI_RULES: MapViewRulesDTO = {
 export const MINI_MANIFEST: MapManifestDTO = {
   schema_version: 1,
   geometry_version: 'mini01',
+  borders_version: 'minib01',
   view_box: [0, 0, 100, 80],
   playable_bbox: [0, 0, 85, 75],
   nodes: [
-    { id: 1001, key: 'mini_alpha', kind: 'LAND', name: 'Mini Alpha', name_ru: 'Альфа', anchor: [5, 25], bbox: [0, 20, 10, 30], area: 100 },
-    { id: 1002, key: 'mini_beta', kind: 'LAND', name: 'Mini Beta', name_ru: 'Бета', anchor: [15, 25], bbox: [10, 20, 20, 30], area: 100 },
-    { id: 1003, key: 'mini_gamma', kind: 'LAND', name: 'Mini Gamma', name_ru: 'Гамма', anchor: [25, 25], bbox: [20, 20, 30, 30], area: 100 },
-    { id: 1004, key: 'mini_delta', kind: 'LAND', name: 'Mini Delta', name_ru: 'Дельта', anchor: [35, 25], bbox: [30, 20, 40, 30], area: 100 },
-    { id: 1005, key: 'mini_epsilon', kind: 'LAND', name: 'Mini Epsilon', name_ru: 'Эпсилон', anchor: [55, 45], bbox: [50, 40, 60, 50], area: 100 },
-    { id: 1006, key: 'mini_zeta', kind: 'LAND', name: 'Mini Zeta', name_ru: 'Дзета', anchor: [66, 45], bbox: [62, 40, 70, 50], area: 80 },
-    { id: 1007, key: 'mini_eta', kind: 'LAND', name: 'Mini Eta', name_ru: 'Эта', anchor: [76, 64], bbox: [72, 60, 80, 68], area: 64 },
-    { id: 1008, key: 'mini_yolkino', kind: 'LAND', name: 'Mini Yolkino', name_ru: 'Ёлкино', anchor: [37, 9], bbox: [34, 6, 40, 12], area: 36 },
-    { id: 2001, key: 'sea_mini_north', kind: 'SEA', name: 'Mini North Sea', name_ru: 'Северное мини-море', anchor: [37, 7], bbox: [28, 0, 46, 14], area: 252 },
-    { id: 2002, key: 'sea_mini_south', kind: 'SEA', name: 'Mini South Sea', name_ru: 'Южное мини-море', anchor: [64, 54], bbox: [46, 36, 82, 72], area: 1296 },
+    { id: 1001, key: 'mini_alpha', kind: 'LAND', name: 'Mini Alpha', name_ru: 'Альфа', anchor: [5, 25], bbox: [0, 20, 10, 30], area: 100, label: { x: 5, y: 25, w: 8, h: 8, spine: [1.8, 25, 8.2, 25, 0], len: 6.4, thick: 7.2 } },
+    { id: 1002, key: 'mini_beta', kind: 'LAND', name: 'Mini Beta', name_ru: 'Бета', anchor: [15, 25], bbox: [10, 20, 20, 30], area: 100, label: { x: 15, y: 25, w: 8, h: 8, spine: [11.8, 25, 18.2, 25, 0], len: 6.4, thick: 7.2 } },
+    { id: 1003, key: 'mini_gamma', kind: 'LAND', name: 'Mini Gamma', name_ru: 'Гамма', anchor: [25, 25], bbox: [20, 20, 30, 30], area: 100, label: { x: 25, y: 25, w: 8, h: 8, spine: [21.8, 25, 28.2, 25, 0], len: 6.4, thick: 7.2 } },
+    { id: 1004, key: 'mini_delta', kind: 'LAND', name: 'Mini Delta', name_ru: 'Дельта', anchor: [35, 25], bbox: [30, 20, 40, 30], area: 100, label: { x: 35, y: 25, w: 8, h: 8, spine: [31.8, 25, 38.2, 25, 0], len: 6.4, thick: 7.2 } },
+    { id: 1005, key: 'mini_epsilon', kind: 'LAND', name: 'Mini Epsilon', name_ru: 'Эпсилон', anchor: [55, 45], bbox: [50, 40, 60, 50], area: 100, label: { x: 55, y: 45, w: 8, h: 8, spine: [51.8, 45, 58.2, 45, 0], len: 6.4, thick: 7.2 } },
+    { id: 1006, key: 'mini_zeta', kind: 'LAND', name: 'Mini Zeta', name_ru: 'Дзета', anchor: [66, 45], bbox: [62, 40, 70, 50], area: 80, label: { x: 66, y: 45, w: 6.4, h: 8, spine: [63.44, 45, 68.56, 45, 0], len: 5.12, thick: 7.2 } },
+    { id: 1007, key: 'mini_eta', kind: 'LAND', name: 'Mini Eta', name_ru: 'Эта', anchor: [76, 64], bbox: [72, 60, 80, 68], area: 64, label: { x: 76, y: 64, w: 6.4, h: 6.4, spine: [73.44, 64, 78.56, 64, 0], len: 5.12, thick: 5.76 } },
+    { id: 1008, key: 'mini_yolkino', kind: 'LAND', name: 'Mini Yolkino', name_ru: 'Ёлкино', anchor: [37, 9], bbox: [34, 6, 40, 12], area: 36, label: { x: 37, y: 9, w: 4.8, h: 4.8, spine: [35.08, 9, 38.92, 9, 0], len: 3.84, thick: 4.32 } },
+    { id: 2001, key: 'sea_mini_north', kind: 'SEA', name: 'Mini North Sea', name_ru: 'Северное мини-море', anchor: [37, 7], bbox: [28, 0, 46, 14], area: 252, label: { x: 37, y: 7, w: 14.4, h: 11.2, spine: [31.24, 7, 42.76, 7, 0], len: 11.52, thick: 10.08 } },
+    { id: 2002, key: 'sea_mini_south', kind: 'SEA', name: 'Mini South Sea', name_ru: 'Южное мини-море', anchor: [64, 54], bbox: [46, 36, 82, 72], area: 1296, label: { x: 64, y: 54, w: 28.8, h: 28.8, spine: [52.48, 54, 75.52, 54, 0], len: 23.04, thick: 25.92 } },
   ],
   edges: [
     { a: 1001, b: 1002, type: 'land', name: null, multiplier: null },
@@ -91,8 +156,29 @@ export const MINI_GEOMETRY: MapGeometryDTO = {
   },
 };
 
+/** Mirrors backend/tests/fixtures/map_mini/borders.json (map2_1B). */
+export const MINI_BORDERS: MapBordersDTO = {
+  version: 'minib01',
+  pairs: {
+    '1001-1002': 'M 9.96 20 10 20 10 30 9.96 30',
+    '1002-1003': 'M 19.95 20 20 20 20 30 19.97 30',
+    '1003-1004': 'M 29.95 20 30 20 30 30 29.97 30',
+  },
+  coasts: {
+    '1001': 'M 9.96 30 0 30 0 20 9.96 20',
+    '1002': 'M 10.13 20 19.95 20M 19.97 30 10.13 30',
+    '1003': 'M 20.11 20 29.95 20M 29.97 30 20.13 30',
+    '1004': 'M 30.11 20 40 20 40 30 30.13 30',
+    '1005': 'M 50 40 60 40 60 50 50 50 Z',
+    '1006': 'M 62 40 70 40 70 50 62 50 Z',
+    '1007': 'M 72 60 80 60 80 68 72 68 Z',
+    '1008': 'M 34 6 40 6 40 12 34 12 Z',
+  },
+};
+
 export const MINI_STATE: MapStateDTO = {
   geometry_version: 'mini01',
+  borders_version: 'minib01',
   turn: 7,
   nations: [
     {
@@ -109,6 +195,7 @@ export const MINI_STATE: MapStateDTO = {
 
 export const MINI_STATE_EMPTY: MapStateDTO = {
   geometry_version: 'mini01',
+  borders_version: 'minib01',
   turn: 7,
   nations: [],
   owners: [],

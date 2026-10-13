@@ -301,9 +301,9 @@ def client_colors():
     """Post-map_polish_3b palette (configs/01_map.yaml: one water colour)."""
     return PreviewColors.model_validate(
         {
-            "inland_water": "#1E3547",
+            "inland_water": "#141E26",
             "outside": "#2A2A2A",
-            "sea": "#1E3547",
+            "sea": "#141E26",
             "land": "#8C8C8C",
             "border": "#3A3A3A",
             "sea_border": "#2C4A62",

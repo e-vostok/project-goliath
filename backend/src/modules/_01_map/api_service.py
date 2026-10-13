@@ -42,12 +42,19 @@ from modules._01_map.errors import (
     TurnOutOfRangeError,
 )
 from modules._01_map.schemas import (
+    MapBordersDTO,
+    MapBordersRulesDTO,
     MapEdgeDTO,
+    MapLabelsRulesDTO,
     MapManifestDTO,
     MapNationDTO,
     MapNodeDTO,
+    MapNodeLabelDTO,
     MapRefreshRulesDTO,
+    MapReliefRulesDTO,
+    MapSelectionRulesDTO,
     MapStateDTO,
+    MapStatesRulesDTO,
     MapViewRulesDTO,
     StartingGroupCheckResponse,
 )
@@ -73,6 +80,8 @@ class MapApiPayloads:
     manifest_body: bytes
     geometry_version: str
     geometry_body: bytes
+    borders_version: str
+    borders_body: bytes
     node_count: int
 
 
@@ -97,9 +106,71 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
             "outside": config.colors.outside,
             "inland_water": config.colors.inland_water,
             "province_border": config.colors.province_border,
+            "land_underlay": config.colors.land_underlay,
             "hover": config.colors.hover,
-            "selected": config.colors.selected,
         },
+        hover_fill_opacity=config.hover.fill_opacity,
+        hover_stroke_enabled=config.hover.stroke_enabled,
+        borders=MapBordersRulesDTO(
+            internal_width=config.borders.internal_width,
+            internal_opacity=config.borders.internal_opacity,
+            internal_color=config.borders.internal_color,
+            state_width=config.borders.state_width,
+            state_color=config.borders.state_color,
+            coast_width=config.borders.coast_width,
+            coast_color=config.borders.coast_color,
+        ),
+        selection=MapSelectionRulesDTO(
+            pulse_min_opacity=config.selection.pulse_min_opacity,
+            pulse_max_opacity=config.selection.pulse_max_opacity,
+            pulse_period_s=config.selection.pulse_period_s,
+            picked_opacity=config.selection.picked_opacity,
+        ),
+        relief=MapReliefRulesDTO(
+            enabled=config.relief.enabled,
+            strength_playable=config.relief.strength_playable,
+            inactive_brightness=config.relief.inactive_brightness,
+        ),
+        labels=MapLabelsRulesDTO(
+            font=config.labels.font,
+            sea_font=config.labels.sea_font,
+            land_min_px=config.labels.land_min_px,
+            land_max_px=config.labels.land_max_px,
+            sea_min_px=config.labels.sea_min_px,
+            sea_max_px=config.labels.sea_max_px,
+            fit_ratio=config.labels.fit_ratio,
+            collision_padding_px=config.labels.collision_padding_px,
+            halo_width_px=config.labels.halo_width_px,
+            halo_color=config.labels.halo_color,
+            land_color=config.labels.land_color,
+            sea_color=config.labels.sea_color,
+            sea_letter_spacing_em=config.labels.sea_letter_spacing_em,
+            province_zoom_ratio=config.labels.province_zoom_ratio,
+            fade_ms=config.labels.fade_ms,
+            max_angle_deg=config.labels.max_angle_deg,
+            max_bend=config.labels.max_bend,
+            thickness_ratio=config.labels.thickness_ratio,
+            length_ratio=config.labels.length_ratio,
+            letter_spacing_min_em=config.labels.letter_spacing_min_em,
+            letter_spacing_max_em=config.labels.letter_spacing_max_em,
+            land_opacity=config.labels.land_opacity,
+            sea_opacity=config.labels.sea_opacity,
+            sea_curved=config.labels.sea_curved,
+        ),
+        states=MapStatesRulesDTO(
+            font=config.states.font,
+            uppercase=config.states.uppercase,
+            opacity=config.states.opacity,
+            max_angle_deg=config.states.max_angle_deg,
+            thickness_ratio=config.states.thickness_ratio,
+            length_ratio=config.states.length_ratio,
+            max_letter_spacing_em=config.states.max_letter_spacing_em,
+            max_bend=config.states.max_bend,
+            min_px=config.states.min_px,
+            max_px=config.states.max_px,
+            color_mode=config.states.color_mode,
+            min_group_share=config.states.min_group_share,
+        ),
         require_connected_start=config.starting_group.require_connected,
         big_window_enabled=config.big_window.enabled,
         refresh=MapRefreshRulesDTO(
@@ -157,6 +228,15 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
             anchor=list(node.anchor),
             bbox=list(node.bbox),
             area=node.area,
+            label=MapNodeLabelDTO(
+                x=node.label.x,
+                y=node.label.y,
+                w=node.label.w,
+                h=node.label.h,
+                spine=list(node.label.spine),
+                len=node.label.len,
+                thick=node.label.thick,
+            ),
         )
         for node in data.nodes.values()  # already ascending id order
     ]
@@ -175,6 +255,7 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
     dto = MapManifestDTO(
         schema_version=manifest.schema_version,
         geometry_version=data.geometry_version,
+        borders_version=data.borders_version,
         view_box=list(manifest.view_box),
         playable_bbox=list(manifest.playable_bbox),
         nodes=nodes,
@@ -192,6 +273,15 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
         },
         ensure_ascii=False,
     ).encode("utf-8")
+    borders = data.borders
+    borders_body = json.dumps(
+        {
+            "version": borders.version,
+            "pairs": dict(borders.pairs),
+            "coasts": dict(borders.coasts),
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
     return MapApiPayloads(
         manifest_etag=_manifest_etag(
             data.geometry_version, data.manifest_sha256, rules
@@ -199,6 +289,8 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
         manifest_body=dto.model_dump_json().encode("utf-8"),
         geometry_version=data.geometry_version,
         geometry_body=geometry_body,
+        borders_version=data.borders_version,
+        borders_body=borders_body,
         node_count=len(data.nodes),
     )
 
@@ -322,6 +414,7 @@ async def build_state(
 
     return MapStateDTO(
         geometry_version=service.geometry_version,
+        borders_version=service.borders_version,
         turn=described,
         nations=nations,
         owners=owners,

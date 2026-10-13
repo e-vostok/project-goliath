@@ -8,12 +8,11 @@ import type { MapNodeDTO, MapStateDTO } from '../types';
 
 const COLORS = {
   neutral_province: '#8C8C8C',
-  sea: '#1E3547',
+  sea: '#141E26',
   outside: '#2A2A2A',
-  inland_water: '#1E3547',
+  inland_water: '#141E26',
   province_border: '#3A3A3A',
   hover: '#FFFFFF',
-  selected: '#FFD24A',
 };
 
 const land: MapNodeDTO = {
@@ -25,6 +24,15 @@ const land: MapNodeDTO = {
   anchor: [0, 0],
   bbox: [0, 0, 1, 1],
   area: 1,
+  label: {
+    x: 0,
+    y: 0,
+    w: 1,
+    h: 1,
+    spine: [-0.4, 0, 0.4, 0, 0],
+    len: 0.8,
+    thick: 1,
+  },
 };
 const sea: MapNodeDTO = { ...land, id: 2, key: 'sea_x', kind: 'SEA' };
 
@@ -46,6 +54,7 @@ describe('nodeFill', () => {
 describe('buildOwnerMap', () => {
   const state: MapStateDTO = {
     geometry_version: 'v1',
+    borders_version: 'b1',
     turn: 3,
     nations: [NATION, { id: 'n2', name: 'Другия', color_hex: '#00ff00' }],
     owners: [

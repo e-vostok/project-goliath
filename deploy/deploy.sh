@@ -213,6 +213,31 @@ predeploy_backup() {
   fi
 }
 
+normalize_tree_permissions() {
+  # DEPLOY-1: контейнеры работают под uid 10001 и читают файлы только
+  # по праву «для всех» (o+r). Если файлы репозитория оказались с
+  # правами 600 (например, записаны под чужим umask), чиним всё дерево.
+  # .env должен оставаться 600 — его не трогаем.
+  if ! find . -path ./.git -prune -o ! -name .env -exec chmod go+rX {} +; then
+    deploy_fail "не удалось нормализовать права на файлы репозитория (chmod go+rX). Старый backend ещё работает."
+  fi
+}
+
+check_tree_readable() {
+  # Контрольные файлы, без которых сборка/миграции падают с
+  # Permission denied. Проверяем ДО остановки старого backend: при
+  # сбое деплой прервётся, а сайт продолжит отвечать.
+  local f
+  for f in backend/pyproject.toml backend/requirements.lock backend/alembic.ini; do
+    if [ ! -f "$f" ]; then
+      deploy_fail "после checkout не найден файл $f — дерево репозитория неполное."
+    fi
+    if [ "$(find "$f" -perm -o=r -print -quit)" != "$f" ]; then
+      deploy_fail "файл $f нечитаем для контейнеров (права $(stat -c '%a' "$f"), нет права чтения «для всех»). Исправьте: chmod go+r $f — и запустите деплой снова."
+    fi
+  done
+}
+
 checkout_ref() {
   local target
   git fetch --tags --prune origin
@@ -221,6 +246,9 @@ checkout_ref() {
   fi
   git checkout --detach "$target"
   git log -1 --format='==> обновляемся на %h — %s'
+  echo "==> нормализуем права на файлы репозитория (go+rX; .env не трогаем)"
+  normalize_tree_permissions
+  check_tree_readable
 }
 
 rebuild_stack() {

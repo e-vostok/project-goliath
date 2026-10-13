@@ -23,8 +23,14 @@ from shapely import (
     points as _points,
     set_precision,
 )
-from shapely.geometry import MultiPolygon, Point, Polygon, box
-from shapely.ops import polygonize, unary_union
+from shapely.geometry import (
+    LineString,
+    MultiPolygon,
+    Point,
+    Polygon,
+    box,
+)
+from shapely.ops import polygonize, polylabel, unary_union
 
 from .errors import (
     GEOMETRY_EMPTY,
@@ -40,7 +46,7 @@ from .seas import (
     SeaRaster,
     mask_from_geometry,
 )
-from .svgpath import polygons_of
+from .svgpath import dumps, parse_path, polygons_of
 from .svg_source import safe_union
 
 # ``outside`` parts smaller than this are the "small isolated fragments"
@@ -50,11 +56,16 @@ _FRAGMENT_MAX_AREA = 5.0
 
 @dataclass
 class NodeMetrics:
-    """Per-node ``anchor``, ``bbox`` and ``area`` for the manifest."""
+    """Per-node ``anchor``, ``bbox``, ``area`` and ``label`` for the manifest."""
 
     anchor: tuple[float, float]
     bbox: tuple[float, float, float, float]
     area: float
+    # map2_6: label box ``(x, y, w, h)`` — anchor plus free width/height
+    # the client fits the node name into.
+    label: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    # map2_20: spine baseline the curved name is laid out along.
+    spine: "NodeSpine | None" = None
 
 
 @dataclass
@@ -263,20 +274,128 @@ def _finalize_land(
     return _union_polygons(parts)
 
 
+# Seam repair (map2_11): rings of one node whose boundaries coincide or run
+# parallel within ``_SEAM_EPS`` along at least ``_SEAM_MIN_LEN`` are fused
+# into ONE outer ring — the map2_9 seam-scan definition. Plain union first
+# (covers exactly coincident edges); when a sliver gap or a needle hole
+# remains, morphological closing with the smallest step that yields a
+# single hole-free polygon is applied. Runs only on the node keys listed
+# in ``overrides.seam_repair`` and only on the final (simplified) geometry.
+_SEAM_EPS = 0.03
+_SEAM_MIN_LEN = 0.05
+_SEAM_CLOSING_STEPS = (0.02, 0.03, 0.045)
+_SEAM_MAX_DRIFT = 0.005  # repaired group may change node area by <= 0.5 %
+
+
+def _seam_length(a: Polygon, b: Polygon) -> float:
+    """Length of ``b``'s boundary within ``_SEAM_EPS`` of ``a``'s."""
+    return b.boundary.intersection(a.boundary.buffer(_SEAM_EPS)).length
+
+
+def _seam_groups(parts: list[Polygon]) -> list[list[int]]:
+    """Index groups of parts connected by seam runs (transitive closure)."""
+    parent = list(range(len(parts)))
+
+    def _find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(parts)):
+        for j in range(i + 1, len(parts)):
+            if (
+                _seam_length(parts[i], parts[j]) >= _SEAM_MIN_LEN
+                or _seam_length(parts[j], parts[i]) >= _SEAM_MIN_LEN
+            ):
+                pi, pj = _find(i), _find(j)
+                if pi != pj:
+                    parent[pi] = pj
+    groups: dict[int, list[int]] = {}
+    for i in range(len(parts)):
+        groups.setdefault(_find(i), []).append(i)
+    return [g for g in groups.values() if len(g) > 1]
+
+
+def _fuse_seam_group(group: list[Polygon], where: str) -> Polygon:
+    """One outer ring for a seam group: union, else the smallest closing."""
+    merged = safe_union(group)
+    polys = _polygon_list(merged)
+    if len(polys) == 1 and not polys[0].interiors:
+        return polys[0]
+    for step in _SEAM_CLOSING_STEPS:
+        closed = _polygon_list(merged.buffer(step).buffer(-step))
+        if len(closed) == 1 and not closed[0].interiors:
+            return closed[0]
+    raise PipelineError(
+        GEOMETRY_INVALID,
+        f"seam_repair {where}: the seam group cannot be fused into a "
+        "single hole-free ring",
+    )
+
+
+def repair_seams(
+    geom, key: str
+) -> tuple[Polygon | MultiPolygon, list[str]] | None:
+    """Fuse seam-joined rings of one node's final geometry.
+
+    ``geom`` is the canonical (serialised-roundtrip) shape: stray interior
+    rings that serialise as separate parts — the western_upper_swabia case —
+    are real parts here, which is what the map2_9 seam scan measures.
+    Returns ``(repaired_geometry, notes)`` or ``None`` when nothing was
+    merged. Notes are report lines (parts fused, area drift).
+    """
+    parts = _polygon_list(geom)
+    groups = _seam_groups(parts)
+    if not groups:
+        return None
+    replaced: set[int] = set()
+    fused: list[Polygon] = []
+    notes: list[str] = []
+    for group in groups:
+        merged = _fuse_seam_group([parts[i] for i in group], key)
+        drift = abs(
+            merged.area - sum(parts[i].area for i in group)
+        ) / max(geom.area, 1e-9)
+        notes.append(
+            f"{key}: fused {len(group)} rings "
+            f"(area drift {drift * 100:.3f}%)"
+        )
+        fused.append(merged)
+        replaced.update(group)
+    kept = [p for i, p in enumerate(parts) if i not in replaced]
+    out = _polygon_list(safe_union([*fused, *kept]))
+    return (
+        out[0] if len(out) == 1 else MultiPolygon(out),
+        notes,
+    )
+
+
 def build_land_geometries(
-    nodes: dict, cfg: PipelineConfig
-) -> tuple[dict[str, Polygon | MultiPolygon], dict[str, float], list[str]]:
+    nodes: dict, cfg: PipelineConfig, seam_keys: frozenset[str] = frozenset()
+) -> tuple[
+    dict[str, Polygon | MultiPolygon],
+    dict[str, float],
+    list[str],
+    list[str],
+]:
     """Union, simplify and snap each land node (interior rings preserved).
 
     Source provinces can carry interior rings — lakes enclosed by a single
     province. They are water, not land (Spec 1.4), so the rings are kept;
     on the map they show the ``inland_water`` background through the hole.
 
-    Returns ``(geometries, deviation, repairs)`` keyed by node key; the
-    deviation maps the effective input (after needle cleanup, if it ran) to
-    the final geometry and is bounded by ``simplify.tolerance +
+    ``seam_keys`` lists the nodes of ``overrides.seam_repair`` (map2_11):
+    after the simplify/snap guard passes, seam-joined rings of the final
+    geometry are fused into one outer ring and re-checked against the same
+    deviation and area guard.
+
+    Returns ``(geometries, deviation, repairs, seam_notes)`` keyed by node
+    key; the deviation maps the effective input (after needle cleanup, if
+    it ran) to the final geometry and is bounded by ``simplify.tolerance +
     output.grid``. ``repairs`` lists node keys whose source contour needed
-    degenerate-needle cleanup before the guard could pass.
+    degenerate-needle cleanup before the guard could pass; ``seam_notes``
+    holds one report line per fused seam group.
     """
     tol = cfg.simplify.tolerance
     grid = cfg.output.grid
@@ -284,6 +403,7 @@ def build_land_geometries(
     geoms: dict[str, Polygon | MultiPolygon] = {}
     deviations: dict[str, float] = {}
     repairs: list[str] = []
+    seam_notes: list[str] = []
     errors: list[PipelineError] = []
     for key in sorted(nodes):
         node = nodes[key]
@@ -334,11 +454,48 @@ def build_land_geometries(
                     )
                 )
                 continue
+        if key in seam_keys:
+            canon_parts = parse_path(dumps(final))
+            canon = (
+                canon_parts[0]
+                if len(canon_parts) == 1
+                else MultiPolygon(canon_parts)
+            )
+            res = repair_seams(canon, key)
+            if res is not None:
+                repaired, notes = res
+                rep_dev = deviation(cleaned, repaired)
+                drift = abs(repaired.area - final.area) / max(
+                    final.area, 1e-9
+                )
+                if drift > _SEAM_MAX_DRIFT:
+                    errors.append(
+                        PipelineError(
+                            GEOMETRY_INVALID,
+                            f"seam_repair {key!r}: area drift "
+                            f"{drift * 100:.3f}% exceeds 0.5%",
+                        )
+                    )
+                    continue
+                if not _ok(repaired, rep_dev):
+                    errors.append(
+                        PipelineError(
+                            GEOMETRY_INVALID,
+                            f"seam_repair {key!r}: repaired geometry "
+                            f"fails the guard (deviation {rep_dev:.4f}, "
+                            f"limit {bound}; area drift "
+                            f"{abs(repaired.area - cleaned.area):.4f}, "
+                            f"limit {area_limit})",
+                        )
+                    )
+                    continue
+                final, dev = repaired, rep_dev
+                seam_notes.extend(notes)
         geoms[key] = final
         deviations[key] = float(dev)
     if errors:
         raise PipelineFailure(errors)
-    return geoms, deviations, repairs
+    return geoms, deviations, repairs, seam_notes
 
 
 def build_land_mask(
@@ -388,6 +545,12 @@ def build_land_mask(
         ]
     )
     closed = safe_union([p.buffer(eps) for p in excluded]).buffer(-eps)
+    if cfg.smooth.enabled:
+        # map2_18: the sea cut edge along excluded land is drawn too —
+        # smooth it the same way (closed rings, no shared borders).
+        from .smooth import smooth_geometry_solo
+
+        closed = smooth_geometry_solo(closed, cfg)
     return safe_union(_polygon_list(included) + _polygon_list(closed))
 
 
@@ -706,8 +869,488 @@ def _nearest_grid_point_inside(
     return None
 
 
+# map2_6: a part holding this share of the node's area is "dominant" —
+# the label anchors inside it; below it the label spans the whole group
+# (island groups such as the Cyclades).
+_LABEL_DOMINANT_SHARE = 0.6
+# The multi-part label box covers this share of the group bounding box.
+_LABEL_GROUP_SHARE = 0.9
+
+
+def _chord_span(
+    part: Polygon, x: float, y: float, axis: str
+) -> tuple[float, float] | None:
+    """Extent ``(lo, hi)`` of ``part``'s chord through ``(x, y)`` along
+    ``axis`` — the segment of the y=const (``"x"``) or x=const (``"y"``)
+    line inside ``part`` that contains the anchor coordinate. A
+    non-convex part may cross the line in several segments; only the one
+    holding the anchor is the box the label can actually sit in."""
+    minx, miny, maxx, maxy = part.bounds
+    if axis == "x":
+        line = LineString([(minx - 1.0, y), (maxx + 1.0, y)])
+        anchor = x
+    else:
+        line = LineString([(x, miny - 1.0), (x, maxy + 1.0)])
+        anchor = y
+    inter = part.intersection(line)
+    if inter.is_empty:
+        return None
+    best: tuple[float, float] | None = None
+    for seg in shapely.get_parts(inter):
+        if seg.is_empty or seg.geom_type != "LineString":
+            continue
+        # Coordinate range of the segment along the axis.
+        lo, hi = (
+            (seg.bounds[0], seg.bounds[2])
+            if axis == "x"
+            else (seg.bounds[1], seg.bounds[3])
+        )
+        if lo - 1e-9 <= anchor <= hi + 1e-9:
+            if best is None or hi - lo > best[1] - best[0]:
+                best = (lo, hi)
+    return best
+
+
+def _centred_chord(
+    part: Polygon, x: float, y: float, axis: str
+) -> float:
+    """Width of the chord containing the anchor, clipped symmetric
+    around it: text centred on the pole can only occupy
+    ``2 × min(anchor − lo, hi − anchor)`` without crossing the shore."""
+    anchor = x if axis == "x" else y
+    span = _chord_span(part, x, y, axis)
+    if span is None:
+        return 0.0
+    lo, hi = span
+    return max(0.0, 2.0 * min(anchor - lo, hi - anchor))
+
+
+def label_box(geom, grid: float) -> tuple[float, float, float, float]:
+    """``(x, y, w, h)`` label box of one final node geometry (map2_6).
+
+    Dominant part (>= ``_LABEL_DOMINANT_SHARE`` of the node area):
+    ``x, y`` is the pole of inaccessibility of that part and ``w``/``h``
+    are the horizontal/vertical chords of the part through it — the
+    widest free span the name may occupy inside one landmass. Otherwise
+    (a true island group) the anchor is the area-weighted centre of the
+    parts — it may lie over the water between them — and ``w``/``h`` are
+    ``_LABEL_GROUP_SHARE`` of the group bounding box.
+    """
+    parts = _polygon_list(geom)
+    total = float(sum(p.area for p in parts))
+    largest = max(parts, key=lambda p: (p.area, tuple(-b for b in p.bounds)))
+    if total > 0 and largest.area >= _LABEL_DOMINANT_SHARE * total:
+        pole = polylabel(largest, tolerance=grid)
+        x, y = round(pole.x, 2), round(pole.y, 2)
+        if not largest.covers(Point(x, y)):
+            rp = largest.representative_point()
+            x, y = round(rp.x, 2), round(rp.y, 2)
+        # Single-part and dominant-part anchors must sit inside the
+        # polygon — a label never starts over water.
+        assert largest.covers(Point(x, y)), (
+            f"label anchor ({x}, {y}) outside its dominant part"
+        )
+        # The rendered box is centred on the anchor, so the usable
+        # span is the chord clipped to its shorter side — a centred
+        # label can never cross the shore (map2_6).
+        w = _centred_chord(largest, x, y, "x")
+        h = _centred_chord(largest, x, y, "y")
+    else:
+        cx = sum(p.area * p.centroid.x for p in parts) / total
+        cy = sum(p.area * p.centroid.y for p in parts) / total
+        x, y = round(cx, 2), round(cy, 2)
+        minx, miny, maxx, maxy = geom.bounds
+        # The box is centred on the weighted centre; when that centre
+        # sits near a group-bbox edge (one big island on one side) the
+        # full 0.9 share would spill over the edge — clip it symmetric
+        # just like a single-part chord.
+        w = _LABEL_GROUP_SHARE * 2.0 * min(cx - minx, maxx - cx)
+        h = _LABEL_GROUP_SHARE * 2.0 * min(cy - miny, maxy - cy)
+    # The loader contract is w, h > 0 — a degenerate sliver still gets
+    # one grid cell rather than a zero the backend would reject.
+    return (x, y, round(max(w, grid), 2), round(max(h, grid), 2))
+
+
+# map2_20: the label spine — the name rides a straight or gently bent
+# baseline inscribed in the territory (the dominant part by rule 5 of
+# map2_6, or the group's convex hull when no part dominates). Chord
+# candidates are scanned in the (u, v) frame: u along the chord
+# direction, v along its left normal; every test is a ray crossing over
+# the rotated edge arrays.
+
+
+@dataclass
+class NodeSpine:
+    """``spine`` (x0, y0, x1, y1 + signed sagitta ``s`` in map units —
+    the quadratic-Bézier control point is the chord midpoint moved by
+    2·s along the chord's left normal), ``len`` (chord length) and
+    ``thick`` (minimum thickness across the spine over its central
+    share)."""
+
+    spine: tuple[float, float, float, float, float]
+    len: float
+    thick: float
+
+
+def _spine_territory(geom):
+    """The polygon the spine must stay inside: the dominant part, or
+    the group convex hull when no part dominates (rule 5 of map2_6)."""
+    parts = _polygon_list(geom)
+    total = float(sum(p.area for p in parts))
+    largest = max(parts, key=lambda p: (p.area, tuple(-b for b in p.bounds)))
+    dominant = total > 0 and largest.area >= _LABEL_DOMINANT_SHARE * total
+    if len(parts) > 1 and not dominant:
+        hull = geom.convex_hull
+        if hull.area <= 0:
+            return largest
+        return hull
+    return largest
+
+
+def _spine_rings(geom) -> list:
+    """All rings (exterior + holes) of the territory as Nx2 arrays."""
+    rings = []
+    for p in _polygon_list(geom):
+        rings.append(np.asarray(p.exterior.coords, dtype=float))
+        rings.extend(
+            np.asarray(r.coords, dtype=float) for r in p.interiors
+        )
+    return rings
+
+
+def _edges_uv(rings, du: np.ndarray) -> np.ndarray:
+    """Edges as (u1, v1, u2, v2) rows in the frame with u along ``du``
+    and v along its left normal (-du.y, du.x)."""
+    dn = np.array([-du[1], du[0]])
+    rows = []
+    for ring in rings:
+        us = ring @ du
+        vs = ring @ dn
+        rows.append(
+            np.stack((us[:-1], vs[:-1], us[1:], vs[1:]), axis=1)
+        )
+    return np.concatenate(rows)
+
+
+def _ray_crossings(
+    edges: np.ndarray, pu: float, pv: float, d: np.ndarray
+) -> np.ndarray:
+    """Sorted signed distances along direction ``d`` where the line
+    through (pu, pv) crosses the edges. Vertex hits count once via the
+    half-open edge parameter."""
+    ex = edges[:, 2] - edges[:, 0]
+    ey = edges[:, 3] - edges[:, 1]
+    den = d[0] * ey - d[1] * ex
+    good = np.abs(den) > 1e-12
+    wx = edges[:, 0] - pu
+    wy = edges[:, 1] - pv
+    t = np.where(good, (wx * ey - wy * ex) / np.where(good, den, 1.0), 0.0)
+    s = np.where(good, (wx * d[1] - wy * d[0]) / np.where(good, den, 1.0), -1.0)
+    hits = good & (s >= 0.0) & (s < 1.0)
+    return np.sort(t[hits])
+
+
+def _inside_uv(edges: np.ndarray, pu: float, pv: float) -> bool:
+    """Point-in-polygon via a +u ray: odd number of crossings ahead.
+    Parity needs no sort — just the count of crossings with t > 0."""
+    ex = edges[:, 2] - edges[:, 0]
+    ey = edges[:, 3] - edges[:, 1]
+    den = ey  # d = (1, 0): den = 1*ey - 0*ex
+    good = np.abs(den) > 1e-12
+    wx = edges[:, 0] - pu
+    wy = edges[:, 1] - pv
+    t = np.where(good, (wx * ey - wy * ex) / np.where(good, den, 1.0), 0.0)
+    s = np.where(good, -wy / np.where(good, den, 1.0), -1.0)
+    hits = good & (s >= 0.0) & (s < 1.0) & (t > 1e-9)
+    return int(hits.sum()) % 2 == 1
+
+
+def _dist_to_edges(edges: np.ndarray, pu: float, pv: float) -> float:
+    """Euclidean distance from (pu, pv) to the nearest edge."""
+    ax = edges[:, 0] - pu
+    ay = edges[:, 1] - pv
+    ex = edges[:, 2] - edges[:, 0]
+    ey = edges[:, 3] - edges[:, 1]
+    ee = ex * ex + ey * ey
+    t = np.clip(
+        np.divide(-(ax * ex + ay * ey), ee, out=np.zeros_like(ee),
+                  where=ee > 0.0),
+        0.0, 1.0,
+    )
+    dx = ax + t * ex
+    dy = ay + t * ey
+    return float(np.sqrt((dx * dx + dy * dy).min()))
+
+
+def _thickness_at(
+    edges: np.ndarray, pu: float, pv: float, d: np.ndarray
+) -> float:
+    """Thickness at a spine point: twice the distance from the point to
+    the boundary, bounded by the width of the polygon across the chord
+    (direction ``d``). A chord sitting on the boundary itself scores
+    ~0 here, so the scan prefers centred baselines."""
+    ex = edges[:, 2] - edges[:, 0]
+    ey = edges[:, 3] - edges[:, 1]
+    den = d[0] * ey - d[1] * ex
+    good = np.abs(den) > 1e-12
+    wx = edges[:, 0] - pu
+    wy = edges[:, 1] - pv
+    t = np.where(good, (wx * ey - wy * ex) / np.where(good, den, 1.0), 0.0)
+    s = np.where(good, (wx * d[1] - wy * d[0]) / np.where(good, den, 1.0), -1.0)
+    t = t[good & (s >= 0.0) & (s < 1.0)]
+    fwd = t[t > 1e-9]
+    bwd = t[t < -1e-9]
+    if not fwd.size or not bwd.size:
+        return 0.0
+    # nearest crossings only — the sorted _ray_crossings would do more
+    # work than this min/max pair.
+    width = float(fwd.min() - bwd.max())
+    return min(2.0 * _dist_to_edges(edges, pu, pv), width)
+
+
+_UV_U = np.array([1.0, 0.0])
+_UV_V = np.array([0.0, 1.0])
+
+
+def _chords_at_offsets(
+    edges: np.ndarray, offsets: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Longest inside segment on every scanline v=offsets[i].
+
+    Returns ``(t0, t1, lens, mid_bound, found)`` — u-coordinates of the
+    longest inside chord per scanline (``lens`` 0 where the line misses
+    the territory) and ``mid_bound``, the length of the polygon segment
+    containing the chord midpoint (an upper bound on its thickness).
+    """
+    lo = np.minimum(edges[:, 1], edges[:, 3])
+    hi = np.maximum(edges[:, 1], edges[:, 3])
+    mask = (lo[:, None] <= offsets[None, :]) & (
+        offsets[None, :] < hi[:, None]
+    )
+    du_e = edges[:, 2] - edges[:, 0]
+    dv_e = edges[:, 3] - edges[:, 1]
+    slope = np.divide(
+        du_e, dv_e, out=np.zeros_like(du_e), where=dv_e != 0.0
+    )
+    u_cross = np.where(
+        mask,
+        edges[:, 0][:, None]
+        + (offsets[None, :] - edges[:, 1][:, None]) * slope[:, None],
+        np.inf,
+    )
+    u_sorted = np.sort(u_cross, axis=0)
+    if u_sorted.shape[0] % 2:
+        # odd edge count → pad so every pair row exists
+        u_sorted = np.concatenate(
+            [u_sorted, np.full((1, u_sorted.shape[1]), np.inf)]
+        )
+    starts = u_sorted[0::2]
+    ends = u_sorted[1::2]
+    both = np.isfinite(starts) & np.isfinite(ends)
+    seg_len = np.subtract(
+        ends, starts, out=np.zeros_like(ends), where=both
+    )
+    i = np.argmax(seg_len, axis=0)
+    col = np.arange(offsets.shape[0])
+    t0 = starts[i, col]
+    t1 = ends[i, col]
+    lens = np.subtract(
+        t1, t0, out=np.zeros_like(t0), where=np.isfinite(t0 + t1)
+    )
+
+    # the segment containing each chord's midpoint bounds its thickness
+    mid = (t0 + t1) * 0.5
+    covers_mid = (starts <= mid[None, :]) & (mid[None, :] < ends) & both
+    mid_bound = np.where(covers_mid, seg_len, 0.0).max(axis=0)
+    return t0, t1, lens, mid_bound, lens > 0.0
+
+
+def _thickness_samples(
+    edges: np.ndarray,
+    t0: float,
+    t1: float,
+    o: float,
+    sag: float,
+    cfg: PipelineConfig,
+) -> float:
+    """Min thickness across the spine over the chord's central share,
+    measured along the straight chord (sag=0) or the arc normals."""
+    sc = cfg.spine
+    margin = 0.5 * (1.0 - sc.central_share)
+    best = math.inf
+    for i in range(sc.thickness_samples):
+        t = margin + sc.central_share * i / (sc.thickness_samples - 1)
+        u = t0 + t * (t1 - t0)
+        v = o + 4.0 * sag * t * (1.0 - t)
+        if sag == 0.0:
+            d = _UV_V
+        else:
+            tx = t1 - t0
+            ty = 4.0 * sag * (1.0 - 2.0 * t)
+            n = math.hypot(tx, ty)
+            d = np.array([-ty / n, tx / n])
+        best = min(best, _thickness_at(edges, u, v, d))
+    return 0.0 if not math.isfinite(best) else best
+
+
+def _arc_inside(
+    edges: np.ndarray, t0: float, t1: float, o: float, sag: float,
+    cfg: PipelineConfig,
+) -> bool:
+    """Fast containment of the arc's interior samples (endpoints sit on
+    the boundary and are verified exactly on the winner)."""
+    n = cfg.spine.arc_samples
+    for i in range(1, n - 1):
+        t = i / (n - 1)
+        u = t0 + t * (t1 - t0)
+        v = o + 4.0 * sag * t * (1.0 - t)
+        if not _inside_uv(edges, u, v):
+            return False
+    return True
+
+
+def _arc_linestring(t0: float, t1: float, o: float, sag: float, cfg) -> LineString:
+    """The full arc (endpoints included) as a LineString in (u, v)."""
+    n = cfg.spine.arc_samples
+    pts = [
+        (t0 + (i / (n - 1)) * (t1 - t0),
+         o + 4.0 * sag * (i / (n - 1)) * (1.0 - i / (n - 1)))
+        for i in range(n)
+    ]
+    return LineString(pts)
+
+
+def spine_of_node(geom, cfg: PipelineConfig) -> NodeSpine:
+    """Scan inscribed chords/arcs and keep the one maximising
+    ``len × thick``; the spine never leaves the territory.
+
+    Per angle the chords of all scanlines are found in one vectorised
+    pass; the expensive thickness/arc measurements only run for chords
+    whose ``len × mid-bound`` could still beat the current best, and
+    arc variants only for the four best straight chords of the angle.
+    The eight best candidates overall get an exact shapely containment
+    check (the fast parity test treats boundary points loosely)."""
+    sc = cfg.spine
+    grid = cfg.output.grid
+    territory = _spine_territory(geom)
+    rings = _spine_rings(territory)
+
+    top: list[tuple] = []  # (score, order, ang, t0, t1, o, sag)
+    order = 0
+    best = 0.0
+
+    def consider(score: float, ang, t0, t1, o, sag):
+        nonlocal order, best
+        if score > best:
+            best = score
+        top.append((score, order, ang, t0, t1, o, sag))
+        order += 1
+        top.sort(key=lambda r: (-r[0], r[1]))
+        del top[8:]
+
+    k_max = int(math.floor(sc.max_angle_deg / sc.angle_step_deg))
+    for k in range(0, k_max + 1):
+        for sign in ((1,) if k == 0 else (1, -1)):
+            ang = math.radians(k * sc.angle_step_deg * sign)
+            du = np.array([math.cos(ang), math.sin(ang)])
+            edges = _edges_uv(rings, du)
+            v_lo = float(np.minimum(edges[:, 1], edges[:, 3]).min())
+            v_hi = float(np.maximum(edges[:, 1], edges[:, 3]).max())
+            o0 = math.floor(v_lo / sc.offset_step + 0.5) * sc.offset_step
+            offs = np.arange(o0, v_hi + 1e-9, sc.offset_step)
+            if not offs.size:
+                continue
+            straights: list[tuple] = []
+            # chunk the E×O crossing matrix for very large territories
+            step = max(1, int(2_000_000 / max(edges.shape[0], 1)))
+            for c0 in range(0, offs.size, step):
+                t0s, t1s, lens, midb, found = _chords_at_offsets(
+                    edges, offs[c0 : c0 + step]
+                )
+                live = np.nonzero(found & (lens * midb > best))[0]
+                # only the most promising chords are measured —
+                # len × mid_bound is an upper bound on the score;
+                # ties keep offset order so a bound plateau is sampled
+                # spread out (the centred chord is always reached)
+                rank = np.argsort(-(lens * midb)[live], kind="stable")
+                if live.size > 12:
+                    pick = np.unique(np.concatenate((
+                        np.arange(6),
+                        np.linspace(5, live.size - 1, 7).astype(int),
+                    )))
+                    live = live[rank[pick]]
+                else:
+                    live = live[rank]
+                for j in live:
+                    t0, t1, o = (
+                        float(t0s[j]), float(t1s[j]), float(offs[c0 + j])
+                    )
+                    thick = _thickness_samples(
+                        edges, t0, t1, o, 0.0, cfg
+                    )
+                    score = float(lens[j]) * thick
+                    if score > 0.0:
+                        straights.append((score, ang, t0, t1, o))
+            straights.sort(key=lambda r: -r[0])
+            for score, ang, t0, t1, o in straights:
+                consider(score, ang, t0, t1, o, 0.0)
+            # arcs: only the most promising chords bend worth testing
+            for score, ang, t0, t1, o in straights[:4]:
+                if score * 4.0 <= best:
+                    continue
+                for frac in (0.5, -0.5, 1.0, -1.0):
+                    sag = frac * sc.max_bend * (t1 - t0)
+                    if not _arc_inside(edges, t0, t1, o, sag, cfg):
+                        continue
+                    thick = _thickness_samples(
+                        edges, t0, t1, o, sag, cfg
+                    )
+                    score = (t1 - t0) * thick
+                    if score > 0.0:
+                        consider(score, ang, t0, t1, o, sag)
+
+    tol = territory.buffer(grid * 0.5)
+    for _, _, ang, t0, t1, o, sag in top:
+        du = np.array([math.cos(ang), math.sin(ang)])
+        dn = np.array([-du[1], du[0]])
+        edges = _edges_uv(rings, du)
+        arc_uv = _arc_linestring(t0, t1, o, sag, cfg)
+        pts = np.asarray(arc_uv.coords)  # (u, v)
+        xy = pts[:, :1] * du + pts[:, 1:] * dn
+        arc_xy = LineString(xy)
+        if not tol.covers(arc_xy):
+            continue
+        p0 = np.asarray(arc_xy.coords[0])
+        p1 = np.asarray(arc_xy.coords[-1])
+        thick = _thickness_samples(edges, t0, t1, o, sag, cfg)
+        len_out = max(round(t1 - t0, 2), grid)
+        # the emitted pair must satisfy |s|/len <= max_bend even after
+        # the 0.01 rounding — clamp the sagitta to the rounded limit
+        cap = math.floor(sc.max_bend * len_out * 100 + 1e-6) / 100
+        sag_out = max(-cap, min(cap, round(sag, 2)))
+        spine = (
+            float(round(p0[0], 2)), float(round(p0[1], 2)),
+            float(round(p1[0], 2)), float(round(p1[1], 2)),
+            float(sag_out),
+        )
+        return NodeSpine(
+            spine=spine,
+            len=len_out,
+            thick=max(round(thick, 2), grid),
+        )
+
+    # Degenerate territory: a grid-long horizontal stub at the
+    # representative point keeps the manifest fields present.
+    p = geom.representative_point()
+    spine = (
+        round(p.x - grid, 2), round(p.y, 2),
+        round(p.x + grid, 2), round(p.y, 2), 0.0,
+    )
+    return NodeSpine(spine=spine, len=2 * grid, thick=grid)
+
+
 def node_metrics(geom, cfg: PipelineConfig) -> NodeMetrics:
-    """``anchor``, ``bbox`` and ``area`` of one final node geometry."""
+    """``anchor``, ``bbox``, ``area`` and ``label`` of one final node geometry."""
     grid = cfg.output.grid
     parts = _polygon_list(geom)
     largest = max(parts, key=lambda p: (p.area, tuple(-b for b in p.bounds)))
@@ -733,7 +1376,13 @@ def node_metrics(geom, cfg: PipelineConfig) -> NodeMetrics:
         round(math.ceil(maxx / grid - 1e-9) * grid, 2),
         round(math.ceil(maxy / grid - 1e-9) * grid, 2),
     )
-    return NodeMetrics(anchor=(ax, ay), bbox=bbox, area=round(geom.area, 2))
+    return NodeMetrics(
+        anchor=(ax, ay),
+        bbox=bbox,
+        area=round(geom.area, 2),
+        label=label_box(geom, grid),
+        spine=spine_of_node(geom, cfg),
+    )
 
 
 # ---------------------------------------------------------------- step 9
