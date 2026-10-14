@@ -10,6 +10,7 @@
 
 layout:
   tabs_position: top             # положение ряда вкладок: top (сверху) или right (справа)
+  table_max_width_px: 870        # ширина под таблицу в окне 910 px; сумма width_px столбцов таблицы не больше
 
 limits:
   max_rows_per_table: 2000       # предел строк одной таблицы в одном ответе
@@ -39,7 +40,7 @@ tables:
         title: "№"
         type: index
         source: number
-        width_px: 64
+        width_px: 52
         sortable: true
         filters: []
         searchable: false
@@ -48,7 +49,7 @@ tables:
         title: "Игрок"
         type: person
         source: player
-        width_px: 280
+        width_px: 210
         sortable: true
         filters: [text]
         searchable: true
@@ -57,7 +58,7 @@ tables:
         title: "В проекте с"
         type: date
         source: joined
-        width_px: 150
+        width_px: 140
         sortable: true
         filters: [date_range]
         searchable: false
@@ -66,7 +67,7 @@ tables:
         title: "Уровень"
         type: integer
         source: level
-        width_px: 100
+        width_px: 80
         sortable: true
         filters: [number_range]
         searchable: false
@@ -75,7 +76,7 @@ tables:
         title: "Судейский рейтинг"
         type: gauge
         source: judge_rating
-        width_px: 220
+        width_px: 170
         sortable: true
         filters: [number_range]
         searchable: false
@@ -86,7 +87,7 @@ tables:
         title: "Государство"
         type: nation
         source: nation
-        width_px: 240
+        width_px: 218
         sortable: true
         filters: [text, presence]
         searchable: true
@@ -103,7 +104,7 @@ tables:
         title: "№"
         type: index
         source: number
-        width_px: 64
+        width_px: 52
         sortable: true
         filters: []
         searchable: false
@@ -112,7 +113,7 @@ tables:
         title: "Название"
         type: text
         source: name
-        width_px: 280
+        width_px: 340
         sortable: true
         filters: [text]
         searchable: true
@@ -121,7 +122,7 @@ tables:
         title: "Флаг"
         type: flag
         source: flag
-        width_px: 80
+        width_px: 70
         sortable: false
         filters: []
         searchable: false
@@ -130,7 +131,7 @@ tables:
         title: "Дата формирования"
         type: date
         source: formed
-        width_px: 200
+        width_px: 210
         sortable: true
         filters: [number_range]
         filter_label: "Ход"      # игровая дата: диапазон задаётся номерами ходов

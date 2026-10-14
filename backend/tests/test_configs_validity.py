@@ -143,6 +143,22 @@ def test_03_registry_config_loads():
     assert gauge.scale_max == JUDGE_RATING_MAX
 
 
+def test_03_registry_table_over_table_max_width_rejected():
+    """03_registry Issue 3b: a table whose ``width_px`` columns sum above
+    ``layout.table_max_width_px`` fails validation — the 910 px window
+    rule is enforced before the server starts (Spec 03_registry 4.1)."""
+    with open(
+        RegistryConfig.get_default_config_path(), encoding="utf-8"
+    ) as f:
+        data = yaml.safe_load(f)
+    data["tables"][0]["columns"][1]["width_px"] = 600
+
+    with pytest.raises(ValidationError) as exc_info:
+        RegistryConfig.model_validate(data)
+
+    assert "table_max_width_px" in str(exc_info.value)
+
+
 def test_02_bot_nation_created_rejects_unknown_placeholder():
     """02_bot Issue 7: ``dialog.texts.nation_created`` allows only
     ``{nation_name}`` — an unknown placeholder must fail config loading
