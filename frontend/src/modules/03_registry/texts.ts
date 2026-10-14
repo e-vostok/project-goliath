@@ -9,6 +9,7 @@ export const REGISTRY_TEXTS = {
   back: 'Назад',
 
   searchPlaceholder: 'Поиск…',
+  filtersButton: 'Фильтры',
   refresh: 'Обновить',
   reset: 'Сбросить',
   retry: 'Повторить',
@@ -20,9 +21,8 @@ export const REGISTRY_TEXTS = {
   shownCounter: (shown: number, total: number) =>
     `Показано ${shown} из ${total}`,
 
-  filterButtonAriaLabel: (columnTitle: string) =>
-    `Фильтр столбца «${columnTitle}»`,
   filterContainsLabel: 'Содержит',
+  filterContainsPlaceholder: 'содержит…',
   filterFromLabel: 'от',
   filterToLabel: 'до',
   filterPresenceLabel: 'Признак',

@@ -55,27 +55,27 @@ export const TABLES: RegistryTablesDTO = {
       default_sort: { column: 'number', direction: 'asc' },
       columns: [
         {
-          id: 'number', title: '№', type: 'index', width_px: 52,
+          id: 'number', title: '№', type: 'index', width_px: 48,
           sortable: true, filters: [], filter_label: null,
           searchable: false, stub: false, scale_min: null, scale_max: null,
         },
         {
-          id: 'player', title: 'Игрок', type: 'person', width_px: 210,
+          id: 'player', title: 'Игрок', type: 'person', width_px: 190,
           sortable: true, filters: ['text'], filter_label: null,
           searchable: true, stub: false, scale_min: null, scale_max: null,
         },
         {
-          id: 'joined', title: 'В проекте с', type: 'date', width_px: 140,
+          id: 'joined', title: 'В проекте с', type: 'date', width_px: 136,
           sortable: true, filters: ['date_range'], filter_label: null,
           searchable: false, stub: false, scale_min: null, scale_max: null,
         },
         {
-          id: 'level', title: 'Уровень', type: 'integer', width_px: 80,
+          id: 'level', title: 'Уровень', type: 'integer', width_px: 92,
           sortable: true, filters: ['number_range'], filter_label: null,
           searchable: false, stub: true, scale_min: null, scale_max: null,
         },
         {
-          id: 'nation', title: 'Государство', type: 'nation', width_px: 218,
+          id: 'nation', title: 'Государство', type: 'nation', width_px: 292,
           sortable: true, filters: ['text', 'presence'], filter_label: null,
           searchable: true, stub: false, scale_min: null, scale_max: null,
         },
@@ -89,18 +89,18 @@ export const TABLES: RegistryTablesDTO = {
       default_sort: { column: 'number', direction: 'asc' },
       columns: [
         {
-          id: 'number', title: '№', type: 'index', width_px: 52,
+          id: 'number', title: '№', type: 'index', width_px: 48,
           sortable: true, filters: [], filter_label: null,
           searchable: false, stub: false, scale_min: null, scale_max: null,
         },
         {
-          id: 'name', title: 'Название', type: 'text', width_px: 340,
+          id: 'name', title: 'Название', type: 'text', width_px: 430,
           sortable: true, filters: ['text'], filter_label: null,
           searchable: true, stub: false, scale_min: null, scale_max: null,
         },
         {
           id: 'formed', title: 'Дата формирования', type: 'date',
-          width_px: 210, sortable: true, filters: ['number_range'],
+          width_px: 176, sortable: true, filters: ['number_range'],
           filter_label: 'Ход',
           searchable: false, stub: false, scale_min: null, scale_max: null,
         },

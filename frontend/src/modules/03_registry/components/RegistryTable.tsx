@@ -1,22 +1,22 @@
 /**
  * RegistryTable — the config-driven table of the «Реестр» (Spec 5.5).
- * Header cells offer tri-state sort (sortable columns) and the filter
- * dropdown (filterable columns). The table is `table-layout: fixed` at
- * `width: 100%`; a <colgroup> gives each column its `width_px` share of
- * the row as a percentage, so the table stretches or shrinks to the
- * block width and never scrolls sideways (910 px window rule).
+ * Header cells hold only the column title and the 14 px sort arrow
+ * (sortable columns); a column with an active filter is marked by a
+ * small accent dot — filters live in the panel above the table, never
+ * in the header. The table is `table-layout: fixed` at `width: 100%`;
+ * a <colgroup> gives each column its `width_px` share of the row as a
+ * percentage, so the table stretches or shrinks to the block width and
+ * never scrolls sideways (910 px window rule).
  * Rows arrive already filtered+sorted by lib/tableView.applyView.
  */
 
 import {
   Icon16SortArrowDown,
   Icon16SortArrowUp,
+  Icon16SortOutline,
 } from '@vkontakte/icons';
 
-import type {
-  ColumnFilterValue,
-  TableView,
-} from '../lib/tableView';
+import { isFilterActive, type TableView } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
 import type {
   RegistryCell,
@@ -24,7 +24,6 @@ import type {
   RegistryRowDTO,
   RegistryTableDTO,
 } from '../types';
-import { ColumnFilter } from './ColumnFilter';
 import { DateCell } from './cells/DateCell';
 import { FlagCell } from './cells/FlagCell';
 import { GaugeCell } from './cells/GaugeCell';
@@ -34,16 +33,52 @@ import { NationCell } from './cells/NationCell';
 import { PersonCell } from './cells/PersonCell';
 import { TextCell } from './cells/TextCell';
 
-/** Column titles wrap onto a second line instead of widening the column
- * (910 px window rule, Spec 5.5). */
+/** A column title never breaks inside a word and wraps only at spaces,
+ * at most two lines (Spec 5.5). */
 const HEADER_TITLE_STYLE: React.CSSProperties = {
   display: '-webkit-box',
   WebkitLineClamp: 2,
   WebkitBoxOrient: 'vertical',
   overflow: 'hidden',
   whiteSpace: 'normal',
-  overflowWrap: 'break-word',
+  wordBreak: 'keep-all',
+  overflowWrap: 'normal',
+  hyphens: 'none',
+  minWidth: 0,
 };
+
+const NUMERIC_TYPES = new Set(['index', 'integer', 'gauge']);
+
+const SORT_ICON_PROPS = { width: 14, height: 14 } as const;
+
+function SortIcon({
+  column,
+  view,
+}: {
+  column: RegistryColumnDTO;
+  view: TableView;
+}) {
+  const sorted = view.sort?.columnId === column.id;
+  if (!sorted) {
+    return (
+      <Icon16SortOutline
+        {...SORT_ICON_PROPS}
+        fill="var(--vkui--color_icon_secondary)"
+      />
+    );
+  }
+  return view.sort!.direction === 'asc' ? (
+    <Icon16SortArrowUp
+      {...SORT_ICON_PROPS}
+      fill="var(--vkui--color_icon_accent)"
+    />
+  ) : (
+    <Icon16SortArrowDown
+      {...SORT_ICON_PROPS}
+      fill="var(--vkui--color_icon_accent)"
+    />
+  );
+}
 
 function Cell({ column, value }: { column: RegistryColumnDTO; value: RegistryCell }) {
   switch (column.type) {
@@ -77,13 +112,11 @@ export function RegistryTable({
   rows,
   view,
   onSortClick,
-  onFiltersChange,
 }: {
   table: RegistryTableDTO;
   rows: RegistryRowDTO[];
   view: TableView;
   onSortClick: (columnId: string) => void;
-  onFiltersChange: (columnId: string, filters: ColumnFilterValue[]) => void;
 }) {
   const totalWidth = table.columns.reduce((sum, col) => sum + col.width_px, 0);
   return (
@@ -93,6 +126,7 @@ export function RegistryTable({
         borderCollapse: 'collapse',
         tableLayout: 'fixed',
         width: '100%',
+        fontSize: 13,
       }}
     >
       <colgroup>
@@ -106,7 +140,9 @@ export function RegistryTable({
       <thead>
         <tr>
           {table.columns.map((col) => {
-            const sorted = view.sort?.columnId === col.id;
+            const hasActiveFilter = (view.filters[col.id] ?? []).some(
+              isFilterActive,
+            );
             return (
               <th
                 key={col.id}
@@ -115,9 +151,12 @@ export function RegistryTable({
                   position: 'sticky',
                   top: 0,
                   zIndex: 5,
+                  height: 40,
+                  fontSize: 12,
+                  fontWeight: 600,
                   textAlign: 'left',
-                  padding: '8px 12px',
-                  verticalAlign: 'bottom',
+                  padding: '0 8px',
+                  verticalAlign: 'middle',
                   overflow: 'hidden',
                   background: 'var(--vkui--color_background_content)',
                   borderBottom:
@@ -154,21 +193,22 @@ export function RegistryTable({
                       }}
                     >
                       <span style={HEADER_TITLE_STYLE}>{col.title}</span>
-                      {sorted &&
-                        (view.sort!.direction === 'asc' ? (
-                          <Icon16SortArrowUp />
-                        ) : (
-                          <Icon16SortArrowDown />
-                        ))}
+                      <SortIcon column={col} view={view} />
                     </button>
                   ) : (
                     <span style={HEADER_TITLE_STYLE}>{col.title}</span>
                   )}
-                  {col.filters.length > 0 && (
-                    <ColumnFilter
-                      column={col}
-                      filters={view.filters[col.id] ?? []}
-                      onChange={(next) => onFiltersChange(col.id, next)}
+                  {hasActiveFilter && (
+                    <span
+                      data-testid={`filter-dot-${col.id}`}
+                      aria-hidden
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                        background: 'var(--vkui--color_icon_accent)',
+                      }}
                     />
                   )}
                 </span>
@@ -184,11 +224,15 @@ export function RegistryTable({
               <td
                 key={col.id}
                 style={{
-                  padding: '6px 12px',
+                  height: 34,
+                  padding: '0 8px',
                   borderBottom:
                     '1px solid var(--vkui--color_separator_primary)',
                   verticalAlign: 'middle',
                   overflow: 'hidden',
+                  fontVariantNumeric: NUMERIC_TYPES.has(col.type)
+                    ? 'tabular-nums'
+                    : undefined,
                 }}
               >
                 <Cell column={col} value={row.cells[col.id] ?? null} />
