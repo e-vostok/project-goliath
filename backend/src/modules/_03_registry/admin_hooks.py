@@ -3,8 +3,9 @@ Admin hooks of module 03_registry (Spec 5.4).
 
 - State view ``"03_registry"``: a JSON-able snapshot — the configured
   table ids, player and nation counts, profile counts per FSM status,
-  the profile worker mode (``OFF`` until Issue 4) and the moment of the
-  worker's last cycle. No names, photo urls or VK ids (INV-R2).
+  the real profile worker mode (``OFF``/``NO_TOKEN``/``RUNNING``) and
+  the moment of the worker's last finished cycle (in memory, ``None``
+  before the first). No names, photo urls or VK ids (INV-R2).
 - No reset hook (D9): VK profiles describe people, not world state — a
   world reset keeps them.
 
@@ -20,6 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.admin.registry import AdminRegistry
 from modules._00_core.service import NationService, PlayerService
 from modules._03_registry.models import RegistryVkProfile
+from modules._03_registry.profile_worker import (
+    get_last_cycle_at,
+    get_worker_mode,
+)
 
 MODULE_SLUG = "03_registry"
 
@@ -48,15 +53,16 @@ async def registry_state_view(session: AsyncSession) -> dict:
         {status: count for status, count in profile_rows.all()}
     )
 
+    last_cycle = get_last_cycle_at()
     return {
         "tables": [table.id for table in config.tables],
         "players_total": players_total,
         "nations_total": nations_total,
         "profiles": profiles,
-        # The profile worker is Issue 4 — until then the module reports
-        # a fixed OFF and no cycle has ever run.
-        "profile_worker_mode": "OFF",
-        "profile_worker_last_cycle_at": None,
+        "profile_worker_mode": get_worker_mode().value,
+        "profile_worker_last_cycle_at": (
+            last_cycle.isoformat() if last_cycle is not None else None
+        ),
     }
 
 

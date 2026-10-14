@@ -3,7 +3,7 @@ Built-in table sources of module 03_registry (Spec 3.2, 3.3, Appendix A).
 
 ``players`` and ``nations`` read only the public functions of 00_core
 (INV-R1) plus the module's own ``registry_vk_profiles`` table (read-only;
-the profile worker of Issue 4 owns the writes). Every row is a
+``profile_worker.py`` owns the writes). Every row is a
 ``RegistryRow`` whose key carries no ``vk_user_id`` and no player uuid
 (INV-R2): ``p<number>`` for players, the nation id for nations.
 
@@ -13,6 +13,8 @@ grow with the number of players.
 """
 
 from __future__ import annotations
+
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +33,7 @@ from modules._03_registry.cells import (
 )
 from modules._03_registry.dates import game_date_text, real_date_parts
 from modules._03_registry.models import RegistryVkProfile
+from modules._03_registry.profile_worker import aware_utc, request_wake
 from modules._03_registry.registry import RegistryRow, register_table_source
 
 # The value keys each source promises (Spec 3.2, 3.3) — a config column's
@@ -77,6 +80,19 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
             )
         )
         profiles = {p.player_id: p for p in result.scalars().all()}
+
+    # Spec 2.4 wake-up: a player without a profile row or with a due
+    # retry rings the background worker's bell. Rows with a deferred
+    # retry (next_attempt_at in the future) never do — an unreachable
+    # VK adds no load from table opens. A plain function call: a no-op
+    # while the worker is not running.
+    now = datetime.now(timezone.utc)
+    if any(
+        (profile := profiles.get(row.player_id)) is None
+        or aware_utc(profile.next_attempt_at) <= now
+        for row in rows
+    ):
+        request_wake()
 
     out: list[RegistryRow] = []
     for number, row in enumerate(rows, start=1):
