@@ -328,8 +328,9 @@ class TestAdminState:
 
         assert response.status_code == 200
         modules = response.json()["modules"]
-        # 02_bot registers its state view in the lifespan since Issue 2.
-        assert list(modules) == ["00_core", "02_bot"]
+        # 02_bot registers its state view in the lifespan since Issue 2;
+        # 03_registry registers its own since its Issue 2.
+        assert list(modules) == ["00_core", "02_bot", "03_registry"]
         core = modules["00_core"]
         assert core["clock"]["current_turn"] == 0
         assert core["clock"]["next_tick_at"] is not None

@@ -30,6 +30,7 @@ from modules._00_core.player_stats import (
     LEVEL_DEFAULT,
 )
 from modules._02_bot.models import BotConsent, BotOutbox
+from modules._03_registry.models import RegistryVkProfile
 from tests.fixtures.profile import VALID_PROFILE
 
 
@@ -117,6 +118,33 @@ class TickLogFactory(SQLAlchemyFactory[TickLog]):
     finished_at = None
     status = TickLogStatus.RUNNING
     error_message = None
+
+
+async def make_vk_profile(
+    session: AsyncSession,
+    player: Player,
+    *,
+    status: str = "OK",
+    first_name: str | None = "Иван",
+    last_name: str | None = "Петров",
+    photo_url: str | None = None,
+    fetched_at: datetime | None = None,
+    next_attempt_at: datetime | None = None,
+) -> RegistryVkProfile:
+    """Insert a ``registry_vk_profiles`` row for ``player`` and flush it."""
+    now = utcnow()
+    row = RegistryVkProfile(
+        player_id=player.id,
+        status=status,
+        first_name=first_name,
+        last_name=last_name,
+        photo_url=photo_url,
+        fetched_at=fetched_at or now,
+        next_attempt_at=next_attempt_at or now,
+    )
+    session.add(row)
+    await session.flush()
+    return row
 
 
 # ── Module 02_bot seeders (Spec Part 1.1) ─────────────────────────────

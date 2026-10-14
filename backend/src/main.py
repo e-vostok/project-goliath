@@ -37,6 +37,8 @@ from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
 from modules._02_bot.router import router as bot_router
 from modules._02_bot.startup import start_runtime_if_ready, startup_bot
+from modules._03_registry.router import router as registry_router
+from modules._03_registry.startup import startup_registry
 
 
 @asynccontextmanager
@@ -83,6 +85,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # are built once here, never per request.
     get_api_payloads()
 
+    # Spec 03_registry 2.5: config validation + source-registry wiring —
+    # after every other startup_* so future modules can register their
+    # sources first. No background tasks yet (the profile worker is
+    # Issue 4).
+    startup_registry()
+
     # Stamp the heartbeat so a fresh process reports scheduler "ok" on
     # /api/v1/health before the loop's first wake instead of "never".
     heartbeat.touch()
@@ -105,7 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.6.1",
+    version="0.6.2",
     lifespan=lifespan,
 )
 
@@ -118,6 +126,7 @@ app.include_router(admin_router)
 app.include_router(health_router)
 app.include_router(map_router)
 app.include_router(bot_router)
+app.include_router(registry_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
 # UNAUTHORIZED and GAME_CLOCK_NOT_FOUND are additions to the spec's
@@ -149,6 +158,8 @@ _ERROR_CODE_STATUS = {
     "STARTING_GROUP_NOT_CONNECTED": 422,
     "TURN_OUT_OF_RANGE": 422,
     "MAP_VERSION_UNKNOWN": 404,
+    "REGISTRY_TABLE_NOT_FOUND": 404,
+    "REGISTRY_PROVIDER_FAILED": 500,
 }
 
 
