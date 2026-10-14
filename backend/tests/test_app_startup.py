@@ -47,6 +47,9 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+    # A real VK_GROUP_TOKEN in .env would start the 03_registry profile
+    # worker — tests must never reach the live VK API.
+    monkeypatch.delenv("VK_GROUP_TOKEN", raising=False)
     # The lifespan startup syncs the map into provinces — the mini-map
     # fixture keeps that fast and self-contained.
     monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))

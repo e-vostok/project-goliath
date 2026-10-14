@@ -73,6 +73,10 @@ class FakeVk:
         """isMessagesFromGroupAllowed answer (``is_allowed`` 1/0)."""
         self.respond_json({"response": {"is_allowed": 1 if allowed else 0}})
 
+    def respond_users_get(self, users: list[dict]) -> None:
+        """A well-formed users.get answer (``response`` user list)."""
+        self.respond_json({"response": users})
+
     def respond_raw(self, content: bytes | str, status: int = 200) -> None:
         """A non-JSON or arbitrary body (parse failure path)."""
         if isinstance(content, str):
@@ -90,6 +94,15 @@ class FakeVk:
     def send_requests(self) -> list[httpx.Request]:
         """Calls to ``messages.send`` only."""
         return [r for r in self.requests if r.url.path.endswith("messages.send")]
+
+    def users_get_requests(self) -> list[httpx.Request]:
+        """Calls to ``users.get`` only."""
+        return [r for r in self.requests if r.url.path.endswith("users.get")]
+
+    def form_of(self, request: httpx.Request) -> dict[str, str]:
+        """The urlencoded form fields of one recorded request."""
+        parsed = parse_qs(request.content.decode())
+        return {key: values[0] for key, values in parsed.items()}
 
     def last_form(self) -> dict[str, str]:
         """The urlencoded form fields of the most recent request."""
