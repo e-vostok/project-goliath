@@ -30,7 +30,6 @@ vi.mock('@vkontakte/vk-bridge', () => ({
 import { server } from '../../../../vitest.setup';
 import { PanelRegistry } from '../components/PanelRegistry';
 import {
-  PLAYERS_ROWS,
   registerRegistryHandlers,
   renderWithSession,
   TABLES,
