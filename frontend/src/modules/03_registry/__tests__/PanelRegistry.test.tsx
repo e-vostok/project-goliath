@@ -2,9 +2,11 @@
  * PanelRegistry tests (jsdom; network via msw).
  *
  * Covered: sort+filter survive a tab switch and the view resets on
- * «Назад»; a failed reload keeps the old rows with «Повторить»; the
- * table block is the scroll container with a sticky header;
- * tabs_position: right renders the vertical tab column.
+ * «Назад»; the in-flow filter panel under the toolbar (badge count,
+ * text and range inputs filtering the rows); a failed reload keeps
+ * the old rows with «Повторить»; the table block is the scroll
+ * container with a sticky header whose titles never break inside a
+ * word; tabs_position: right renders the vertical tab column.
  */
 
 import { screen, waitFor, within } from '@testing-library/react';
@@ -64,9 +66,11 @@ describe('PanelRegistry — view state', () => {
     // Sort by player name (asc) + text filter «смир» on the player column.
     await user.click(screen.getByTestId('sort-btn-player'));
     await waitFor(() => expect(rowKeys()).toEqual(['p2', 'p1', 'p3']));
-    await user.click(screen.getByTestId('filter-btn-player'));
+    await user.click(screen.getByTestId('filters-toggle'));
     await user.type(
-      await screen.findByLabelText('Содержит'),
+      within(await screen.findByTestId('filter-item-player')).getByPlaceholderText(
+        'содержит…',
+      ),
       'смир',
     );
     await waitFor(() => expect(rowKeys()).toEqual(['p2']));
@@ -107,6 +111,85 @@ describe('PanelRegistry — view state', () => {
     expect(screen.getByTestId('registry-counter')).toHaveTextContent(
       'Показано 3 из 3',
     );
+  });
+});
+
+describe('PanelRegistry — filter panel', () => {
+  it('opens under the toolbar in normal flow and the badge counts active filters', async () => {
+    const user = userEvent.setup();
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+
+    await user.click(screen.getByTestId('filters-toggle'));
+    const panel = await screen.findByTestId('registry-filter-panel');
+    const toolbar = screen.getByTestId('registry-toolbar');
+    // in-flow: sits right after the toolbar — no portal, no positioning
+    expect(toolbar.nextElementSibling).toBe(panel);
+    expect(panel.closest('[data-testid="panel-registry"]')).not.toBeNull();
+    expect(['', 'static']).toContain(panel.style.position);
+
+    await user.type(
+      within(screen.getByTestId('filter-item-player')).getByPlaceholderText(
+        'содержит…',
+      ),
+      'смир',
+    );
+    expect(
+      await screen.findByTestId('filters-count'),
+    ).toHaveTextContent('1');
+  });
+
+  it('filters rows by a text filter and a range filter entered in the panel', async () => {
+    const user = userEvent.setup();
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+    await user.click(screen.getByTestId('filters-toggle'));
+
+    await user.type(
+      within(screen.getByTestId('filter-item-player')).getByPlaceholderText(
+        'содержит…',
+      ),
+      'смир',
+    );
+    await waitFor(() => expect(rowKeys()).toEqual(['p2']));
+
+    await user.clear(
+      within(screen.getByTestId('filter-item-player')).getByPlaceholderText(
+        'содержит…',
+      ),
+    );
+    await user.type(
+      within(screen.getByTestId('filter-item-level')).getByLabelText(
+        'Уровень: от',
+      ),
+      '2',
+    );
+    await waitFor(() => expect(rowKeys()).toEqual(['p2']));
+  });
+
+  it('marks a filtered column with a header dot and never breaks a title inside a word', async () => {
+    const user = userEvent.setup();
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+
+    const titleSpan = document.querySelector(
+      'thead th button span',
+    ) as HTMLElement;
+    expect(titleSpan).not.toBeNull();
+    expect(titleSpan.style.wordBreak).toBe('keep-all');
+    expect(titleSpan.style.hyphens).toBe('none');
+    expect(screen.queryByTestId('filter-dot-player')).toBeNull();
+
+    await user.click(screen.getByTestId('filters-toggle'));
+    await user.type(
+      within(screen.getByTestId('filter-item-player')).getByPlaceholderText(
+        'содержит…',
+      ),
+      'смир',
+    );
+    expect(
+      await screen.findByTestId('filter-dot-player'),
+    ).toBeInTheDocument();
   });
 });
 

@@ -31,7 +31,14 @@ export function GaugeCell({
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ minWidth: 36, textAlign: 'right', flexShrink: 0 }}>
+      <span
+        style={{
+          width: 36,
+          textAlign: 'right',
+          flexShrink: 0,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
         {num === null
           ? REGISTRY_TEXTS.emptyValue
           : num > 0

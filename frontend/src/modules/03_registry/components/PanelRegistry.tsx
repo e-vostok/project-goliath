@@ -2,17 +2,19 @@
  * PanelRegistry — the «Реестр» window (Spec 5.5).
  *
  * A column as tall as the app window: title row («Реестр» + «Назад»)
- * → tab row → toolbar (search, «Показано N из M», «Обновить»,
- * «Сбросить») → table block (flex:1; min-height:0; overflow-x:hidden,
+ * → tab row → toolbar (search, «Показано N из M», «Фильтры»,
+ * «Обновить», «Сбросить») → the in-flow filter panel (toggled by
+ * «Фильтры», normal document flow across the window width) → table
+ * block (flex:1; min-height:0; overflow-x:hidden,
  * overflow-y:auto, sticky header — the 910 px window rule: no
  * horizontal scrollbar, Spec 5.5). With layout.tabs_position = right the tab row becomes
  * a vertical column to the right of the table block. The page height
  * never depends on the row count.
  *
- * Sort, filters and search of each tab live in this component's state
- * and survive tab switches; leaving the panel («Назад») resets them
- * (Bible 2.7 — VKUI View keeps panels mounted, so the reset is done
- * explicitly, not by unmount).
+ * Sort, filters, search and the filter-panel toggle of each tab live
+ * in this component's state and survive tab switches; leaving the
+ * panel («Назад») resets them (Bible 2.7 — VKUI View keeps panels
+ * mounted, so the reset is done explicitly, not by unmount).
  */
 
 import { useMemo, useState } from 'react';
@@ -25,10 +27,12 @@ import {
   applyView,
   EMPTY_VIEW,
   hasActiveFilters,
+  isFilterActive,
   nextSort,
   type TableView,
 } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
+import { FilterPanel } from './FilterPanel';
 import { RegistryTable } from './RegistryTable';
 import { TableToolbar } from './TableToolbar';
 import { TabStrip } from './TabStrip';
@@ -65,6 +69,15 @@ export function PanelRegistry() {
         ? applyView(activeTable, rows.data.rows, view)
         : [],
     [activeTable, rows.data, view],
+  );
+
+  const activeFilterCount = useMemo(
+    () =>
+      Object.values(view.filters).reduce(
+        (sum, list) => sum + list.filter(isFilterActive).length,
+        0,
+      ),
+    [view.filters],
   );
 
   const goBack = () => {
@@ -156,12 +169,6 @@ export function PanelRegistry() {
             onSortClick={(columnId) =>
               updateView((v) => ({ ...v, sort: nextSort(v.sort, columnId) }))
             }
-            onFiltersChange={(columnId, filters) =>
-              updateView((v) => ({
-                ...v,
-                filters: { ...v.filters, [columnId]: filters },
-              }))
-            }
           />
         ) : rows.data.rows.length === 0 ? (
           <div style={{ padding: 24 }}>{activeTable.empty_text}</div>
@@ -220,10 +227,28 @@ export function PanelRegistry() {
           onSearchChange={(search) => updateView((v) => ({ ...v, search }))}
           shown={rows.data ? shownRows.length : null}
           total={rows.data?.total ?? null}
+          filtersOpen={view.filtersOpen}
+          activeFilterCount={activeFilterCount}
+          onToggleFilters={() =>
+            updateView((v) => ({ ...v, filtersOpen: !v.filtersOpen }))
+          }
           onRefresh={rows.reload}
           refreshing={rows.refreshing}
           onReset={resetView}
           resetDisabled={!hasActiveFilters(view)}
+        />
+      )}
+
+      {activeTable && view.filtersOpen && (
+        <FilterPanel
+          table={activeTable}
+          filters={view.filters}
+          onFiltersChange={(columnId, filters) =>
+            updateView((v) => ({
+              ...v,
+              filters: { ...v.filters, [columnId]: filters },
+            }))
+          }
         />
       )}
 

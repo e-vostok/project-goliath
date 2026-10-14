@@ -40,7 +40,7 @@ tables:
         title: "№"
         type: index
         source: number
-        width_px: 52
+        width_px: 48
         sortable: true
         filters: []
         searchable: false
@@ -49,7 +49,7 @@ tables:
         title: "Игрок"
         type: person
         source: player
-        width_px: 210
+        width_px: 190
         sortable: true
         filters: [text]
         searchable: true
@@ -58,7 +58,7 @@ tables:
         title: "В проекте с"
         type: date
         source: joined
-        width_px: 140
+        width_px: 136
         sortable: true
         filters: [date_range]
         searchable: false
@@ -67,7 +67,7 @@ tables:
         title: "Уровень"
         type: integer
         source: level
-        width_px: 80
+        width_px: 92
         sortable: true
         filters: [number_range]
         searchable: false
@@ -76,7 +76,7 @@ tables:
         title: "Судейский рейтинг"
         type: gauge
         source: judge_rating
-        width_px: 170
+        width_px: 112
         sortable: true
         filters: [number_range]
         searchable: false
@@ -87,7 +87,7 @@ tables:
         title: "Государство"
         type: nation
         source: nation
-        width_px: 218
+        width_px: 292
         sortable: true
         filters: [text, presence]
         searchable: true
@@ -104,7 +104,7 @@ tables:
         title: "№"
         type: index
         source: number
-        width_px: 52
+        width_px: 48
         sortable: true
         filters: []
         searchable: false
@@ -113,7 +113,7 @@ tables:
         title: "Название"
         type: text
         source: name
-        width_px: 340
+        width_px: 430
         sortable: true
         filters: [text]
         searchable: true
@@ -122,7 +122,7 @@ tables:
         title: "Флаг"
         type: flag
         source: flag
-        width_px: 70
+        width_px: 64
         sortable: false
         filters: []
         searchable: false
@@ -131,7 +131,7 @@ tables:
         title: "Дата формирования"
         type: date
         source: formed
-        width_px: 210
+        width_px: 176
         sortable: true
         filters: [number_range]
         filter_label: "Ход"      # игровая дата: диапазон задаётся номерами ходов
@@ -141,7 +141,7 @@ tables:
         title: "Провинции"
         type: integer
         source: provinces
-        width_px: 120
+        width_px: 112
         sortable: true
         filters: [number_range]
         searchable: false

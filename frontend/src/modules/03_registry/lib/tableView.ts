@@ -50,14 +50,21 @@ export type ColumnFilterValue =
   | DateRangeFilter
   | PresenceFilter;
 
-/** View state of one tab: sort, per-column filters and the shared search. */
+/** View state of one tab: sort, per-column filters, the shared search
+ * and whether the filter panel is open. */
 export interface TableView {
   sort: SortState | null;
   filters: Record<string, ColumnFilterValue[]>;
   search: string;
+  filtersOpen: boolean;
 }
 
-export const EMPTY_VIEW: TableView = { sort: null, filters: {}, search: '' };
+export const EMPTY_VIEW: TableView = {
+  sort: null,
+  filters: {},
+  search: '',
+  filtersOpen: false,
+};
 
 const ruCollator = new Intl.Collator('ru', { sensitivity: 'base' });
 
