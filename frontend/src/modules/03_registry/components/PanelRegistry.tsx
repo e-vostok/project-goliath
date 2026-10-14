@@ -3,8 +3,9 @@
  *
  * A column as tall as the app window: title row («Реестр» + «Назад»)
  * → tab row → toolbar (search, «Показано N из M», «Обновить»,
- * «Сбросить») → table block (flex:1; min-height:0; overflow:auto,
- * sticky header). With layout.tabs_position = right the tab row becomes
+ * «Сбросить») → table block (flex:1; min-height:0; overflow-x:hidden,
+ * overflow-y:auto, sticky header — the 910 px window rule: no
+ * horizontal scrollbar, Spec 5.5). With layout.tabs_position = right the tab row becomes
  * a vertical column to the right of the table block. The page height
  * never depends on the row count.
  *
@@ -233,7 +234,8 @@ export function PanelRegistry() {
             flex: 1,
             minHeight: 0,
             minWidth: 0,
-            overflow: 'auto',
+            overflowX: 'hidden',
+            overflowY: 'auto',
             position: 'relative',
           }}
         >

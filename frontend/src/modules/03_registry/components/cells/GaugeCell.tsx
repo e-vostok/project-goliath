@@ -42,6 +42,7 @@ export function GaugeCell({
         style={{
           position: 'relative',
           flex: 1,
+          minWidth: 0,
           height: 8,
           background: 'var(--vkui--color_background_secondary)',
           borderRadius: 4,

@@ -8,5 +8,17 @@ import { REGISTRY_TEXTS } from '../../texts';
 
 export function DateCell({ value }: { value: RegistryCell }) {
   const date = isDateCell(value) ? value : null;
-  return <span>{date ? date.text : REGISTRY_TEXTS.emptyValue}</span>;
+  return (
+    <span
+      title={date?.text}
+      style={{
+        display: 'block',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {date ? date.text : REGISTRY_TEXTS.emptyValue}
+    </span>
+  );
 }

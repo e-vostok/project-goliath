@@ -55,6 +55,7 @@ export function TabStrip({
       style={{
         display: 'flex',
         flexDirection: vertical ? 'column' : 'row',
+        flexWrap: vertical ? 'nowrap' : 'wrap',
         gap: 4,
         padding: vertical ? '0 12px 0 4px' : '0 12px 8px',
       }}
