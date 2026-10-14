@@ -6,9 +6,18 @@ import type { RegistryCell } from '../../types';
 import { REGISTRY_TEXTS } from '../../texts';
 
 export function IntegerCell({ value }: { value: RegistryCell }) {
+  const num = typeof value === 'number' ? value : null;
   return (
-    <div style={{ textAlign: 'right' }}>
-      {typeof value === 'number' ? value : REGISTRY_TEXTS.emptyValue}
+    <div
+      title={num === null ? undefined : String(num)}
+      style={{
+        textAlign: 'right',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {num === null ? REGISTRY_TEXTS.emptyValue : num}
     </div>
   );
 }

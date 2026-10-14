@@ -103,6 +103,10 @@ class LayoutConfig(_Strict):
     # Положение ряда вкладок-иконок. Решение Project Owner 13.10.2026: сверху;
     # перенос вправо — смена одного значения.
     tabs_position: Literal["top", "right"]
+    # Правило Project Owner 14.10.2026: окна приложения, кроме карты, умещаются
+    # в 910 px по ширине. Это ширина, отведённая таблице внутри окна (910 минус
+    # поля); сумма width_px столбцов каждой таблицы не может её превышать.
+    table_max_width_px: int = Field(ge=400, le=910)
 
 
 class LimitsConfig(_Strict):
@@ -351,6 +355,18 @@ class RegistryConfig(_Strict):
         ids = [t.id for t in self.tables]
         if len(set(ids)) != len(ids):
             raise ValueError("tables: идентификаторы таблиц должны быть уникальны")
+        return self
+
+    @model_validator(mode="after")
+    def _tables_fit_window(self) -> Self:
+        limit = self.layout.table_max_width_px
+        for t in self.tables:
+            total = sum(c.width_px for c in t.columns)
+            if total > limit:
+                raise ValueError(
+                    f"tables.{t.id}: сумма width_px столбцов ({total}) больше "
+                    f"layout.table_max_width_px ({limit}): таблица не умещается в окно"
+                )
         return self
 
     def table(self, table_id: str) -> TableConfig:

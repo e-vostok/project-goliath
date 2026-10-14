@@ -1,7 +1,10 @@
 /**
  * RegistryTable — the config-driven table of the «Реестр» (Spec 5.5).
  * Header cells offer tri-state sort (sortable columns) and the filter
- * dropdown (filterable columns); column widths come from `width_px`.
+ * dropdown (filterable columns). The table is `table-layout: fixed` at
+ * `width: 100%`; a <colgroup> gives each column its `width_px` share of
+ * the row as a percentage, so the table stretches or shrinks to the
+ * block width and never scrolls sideways (910 px window rule).
  * Rows arrive already filtered+sorted by lib/tableView.applyView.
  */
 
@@ -30,6 +33,17 @@ import { IntegerCell } from './cells/IntegerCell';
 import { NationCell } from './cells/NationCell';
 import { PersonCell } from './cells/PersonCell';
 import { TextCell } from './cells/TextCell';
+
+/** Column titles wrap onto a second line instead of widening the column
+ * (910 px window rule, Spec 5.5). */
+const HEADER_TITLE_STYLE: React.CSSProperties = {
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  whiteSpace: 'normal',
+  overflowWrap: 'break-word',
+};
 
 function Cell({ column, value }: { column: RegistryColumnDTO; value: RegistryCell }) {
   switch (column.type) {
@@ -71,18 +85,22 @@ export function RegistryTable({
   onSortClick: (columnId: string) => void;
   onFiltersChange: (columnId: string, filters: ColumnFilterValue[]) => void;
 }) {
+  const totalWidth = table.columns.reduce((sum, col) => sum + col.width_px, 0);
   return (
     <table
       data-testid="registry-table"
       style={{
         borderCollapse: 'collapse',
-        width: 'max-content',
-        minWidth: '100%',
+        tableLayout: 'fixed',
+        width: '100%',
       }}
     >
       <colgroup>
         {table.columns.map((col) => (
-          <col key={col.id} style={{ width: col.width_px }} />
+          <col
+            key={col.id}
+            style={{ width: `${(col.width_px / totalWidth) * 100}%` }}
+          />
         ))}
       </colgroup>
       <thead>
@@ -99,7 +117,8 @@ export function RegistryTable({
                   zIndex: 5,
                   textAlign: 'left',
                   padding: '8px 12px',
-                  whiteSpace: 'nowrap',
+                  verticalAlign: 'bottom',
+                  overflow: 'hidden',
                   background: 'var(--vkui--color_background_content)',
                   borderBottom:
                     '1px solid var(--vkui--color_separator_primary)',
@@ -107,9 +126,10 @@ export function RegistryTable({
               >
                 <span
                   style={{
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
                     gap: 4,
+                    minWidth: 0,
                   }}
                 >
                   {col.sortable ? (
@@ -122,6 +142,7 @@ export function RegistryTable({
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 4,
+                        minWidth: 0,
                         border: 0,
                         background: 'transparent',
                         padding: 0,
@@ -129,9 +150,10 @@ export function RegistryTable({
                         fontWeight: 'inherit',
                         color: 'inherit',
                         cursor: 'pointer',
+                        textAlign: 'left',
                       }}
                     >
-                      {col.title}
+                      <span style={HEADER_TITLE_STYLE}>{col.title}</span>
                       {sorted &&
                         (view.sort!.direction === 'asc' ? (
                           <Icon16SortArrowUp />
@@ -140,7 +162,7 @@ export function RegistryTable({
                         ))}
                     </button>
                   ) : (
-                    col.title
+                    <span style={HEADER_TITLE_STYLE}>{col.title}</span>
                   )}
                   {col.filters.length > 0 && (
                     <ColumnFilter
@@ -166,6 +188,7 @@ export function RegistryTable({
                   borderBottom:
                     '1px solid var(--vkui--color_separator_primary)',
                   verticalAlign: 'middle',
+                  overflow: 'hidden',
                 }}
               >
                 <Cell column={col} value={row.cells[col.id] ?? null} />

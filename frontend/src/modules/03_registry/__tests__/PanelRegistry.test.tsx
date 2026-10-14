@@ -140,7 +140,7 @@ describe('PanelRegistry — load states', () => {
     await screen.findByText('Борис Иванов');
 
     const block = screen.getByTestId('registry-table-block');
-    expect(block.style.overflow).toBe('auto');
+    expect(block.style.overflowY).toBe('auto');
     expect(block.style.flex).toContain('1');
     expect(block.style.minHeight).toBe('0');
 
@@ -150,6 +150,33 @@ describe('PanelRegistry — load states', () => {
     expect(headCell).not.toBeNull();
     expect(headCell.style.position).toBe('sticky');
     expect(headCell.style.top).toBe('0px');
+  });
+});
+
+describe('PanelRegistry — 910 px window rule (Spec 5.5)', () => {
+  it('renders a fixed-layout table whose colgroup shares follow width_px, and the block never scrolls sideways', async () => {
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+
+    const block = screen.getByTestId('registry-table-block');
+    expect(block.style.overflowX).toBe('hidden');
+    expect(block.style.overflowY).toBe('auto');
+
+    const table = screen.getByTestId('registry-table');
+    expect(table.style.tableLayout).toBe('fixed');
+    expect(table.style.width).toBe('100%');
+
+    const cols = [
+      ...table.querySelectorAll<HTMLElement>('colgroup col'),
+    ];
+    const players = TABLES.tables[0].columns;
+    const totalPx = players.reduce((s, c) => s + c.width_px, 0);
+    const shares = cols.map((c) => parseFloat(c.style.width));
+    expect(cols).toHaveLength(players.length);
+    shares.forEach((share, i) => {
+      expect(share).toBeCloseTo((players[i].width_px / totalPx) * 100, 6);
+    });
+    expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
   });
 });
 

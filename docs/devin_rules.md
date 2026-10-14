@@ -19,6 +19,7 @@ Tests: scope by what you touched
 Guard rails (unchanged)
 - Foreign keys only to `00_core` tables; no direct SQL mutation of another module's tables (use its `service.py`); all balance numbers live in `configs/<slug>.yaml` and are validated by `config_schema.py`; tick calculations are registered only through `TickOrchestrator` in one of the 5 `TickPhase` values; map ids are never reused or renumbered (`ids.lock.json` is append-only in spirit).
 - No new Alembic revision, environment variable or dependency unless the TZ says so.
+- UI: every app window except the map fits exactly into 910 px of width — no horizontal scrollbar, nothing sticking out; design columns and controls to shrink and wrap, not to scroll sideways.
 - Forbidden paths unless the TZ explicitly allows them: `deploy/`, `docker*`, `Dockerfile*`, `.env*`, `*.lock`, `backend/pyproject.toml` (except the version line), `frontend/package.json` and its lock (except the version line), `.github/`.
 - Commit messages: `<type>(<slug>): <summary>`.
 Audit (one command, one line in the report) `git diff --stat origin/main...HEAD -- deploy docker* Dockerfile* '.env*' '*.lock' backend/pyproject.toml frontend/package.json frontend/package-lock.json .github` Report `audit: clean` or list the files. Version-line-only changes in the pyproject/package files are fine.
