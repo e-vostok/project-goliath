@@ -1,6 +1,6 @@
 # 02_SYSTEM_SPECS / 03_registry
 
-> Версия Spec: 1.0 (13.10.2026; учтены итоги REG-0 из `docs/02_SYSTEM_SPECS/03_registry_vk_facts.md`). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
+> Версия Spec: 1.1 (14.10.2026; приведён к фактической реализации). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
 > Артефакты шага: этот файл, `configs/03_registry.yaml`, `backend/src/modules/_03_registry/config_schema.py`.
 > Зависимость: `00_core`. Модули `01_map` и `02_bot` не требуются и не импортируются.
 > Релиз модуля: 0.7.0.
@@ -319,7 +319,7 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
       "empty_text": "Игроков пока нет",
       "default_sort": {"column": "number", "direction": "asc"},
       "columns": [
-        {"id": "number", "title": "№", "type": "index", "width_px": 64,
+        {"id": "number", "title": "№", "type": "index", "width_px": 52,
          "sortable": true, "filters": [], "filter_label": null,
          "searchable": false, "stub": false, "scale_min": null, "scale_max": null}
       ]
@@ -364,7 +364,9 @@ DTO и эндпоинты `00_core`, `01_map`, `02_bot` не меняются. �
 
 ### 5.5. Клиент (VKUI, только desktop)
 
-**Файлы** (`frontend/src/modules/03_registry/`): `api.ts`, `types.ts`, `hooks/useRegistryTables.ts`, `hooks/useRegistryRows.ts`, `lib/tableView.ts` (сортировка, фильтры, поиск — 3.7, чистые функции), `components/PanelRegistry.tsx`, `TabStrip.tsx`, `RegistryTable.tsx`, `TableToolbar.tsx`, `ColumnFilter.tsx`, `cells/*` (по одной на тип), `RegistryEntryButton.tsx`.
+**Файлы** (`frontend/src/modules/03_registry/`): `api.ts`, `types.ts`, `texts.ts` (тексты интерфейса), `hooks/useRegistryTables.ts`, `hooks/useRegistryRows.ts`, `lib/tableView.ts` (сортировка, фильтры, поиск — 3.7, чистые функции), `components/PanelRegistry.tsx`, `TabStrip.tsx`, `RegistryTable.tsx`, `TableToolbar.tsx`, `ColumnFilter.tsx`, `cells/*` (по одной на тип), `RegistryEntryButton.tsx`.
+
+**Иконки вкладок.** Имя `icon` таблицы разворачивается в иконку VKUI в `TabStrip.tsx` (таблица `TAB_ICONS`): `players` → `Icon28UsersOutline`, `nations` → `Icon28FlagOutline`, `map` → `Icon28LocationMapOutline`, `economy` → `Icon28CoinsOutline`, `army` → `Icon28CheckShieldOutline`, `diplomacy` → `Icon28MessagesOutline`, `table` → `Icon28TablecellsOutline`; неизвестное имя — общая иконка `Icon28TablecellsOutline`.
 
 **Интеграция в `AppShell`:** константа `PANEL_REGISTRY = 'registry'`; маршрут `{ path: '/registry', panel: PANEL_REGISTRY, view: 'main' }`; панель исключается из правила перенаправления по наличию государства (как `PANEL_MAP`), чтобы игрок без государства мог открыть окно; временная кнопка `RegistryEntryButton` («Реестр») показывается на тех же панелях, что `MapEntryButton`, фиксированно над ней (`right: 12`, выше кнопки «Карта»), скрыта на самой панели Реестра; в `normalizeEntryHash` добавляется `#registry` → `#/registry` (как `#map`).
 
@@ -428,6 +430,8 @@ def register_table_source(
 ---
 
 ## ПРИЛОЖЕНИЕ T: Тестовая матрица (Anti-Mock Guard)
+
+**Статус (14.10.2026): выполнено — перечень отражает фактический состав тестов** (`backend/tests/`: `test_configs_validity.py`, модули `_00_core`, `_03_registry`, `__tests__` клиента).
 
 Реальная БД через фабрики `backend/tests/fixtures/`. Подменяется только внешняя граница ВК: `FakeVk` (`httpx.MockTransport`).
 
