@@ -3,7 +3,8 @@ Startup wiring of module 03_registry (Spec 2.5).
 
 ``startup_registry()`` runs from the app lifespan after every other
 ``startup_*`` — synchronous (no database, no network, no background
-tasks; the profile worker arrives with Issue 4) and idempotent:
+tasks; the profile worker lives in ``profile_worker.py`` and starts
+separately via ``start_profile_worker_if_ready``) and idempotent:
 
 1. load and validate ``configs/03_registry.yaml`` — always, even with
    ``profiles.enabled = false``: a broken YAML must stop the server;

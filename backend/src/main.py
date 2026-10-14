@@ -37,6 +37,7 @@ from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
 from modules._02_bot.router import router as bot_router
 from modules._02_bot.startup import start_runtime_if_ready, startup_bot
+from modules._03_registry.profile_worker import start_profile_worker_if_ready
 from modules._03_registry.router import router as registry_router
 from modules._03_registry.startup import startup_registry
 
@@ -87,8 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Spec 03_registry 2.5: config validation + source-registry wiring —
     # after every other startup_* so future modules can register their
-    # sources first. No background tasks yet (the profile worker is
-    # Issue 4).
+    # sources first.
     startup_registry()
 
     # Stamp the heartbeat so a fresh process reports scheduler "ok" on
@@ -100,6 +100,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # the tick scheduler; OFF/MISCONFIGURED start nothing (INV-B10).
     bot_runtime = await start_runtime_if_ready(get_session_context)
 
+    # Spec 03_registry 2.4: the profile worker starts right after the
+    # bot runtime; OFF/NO_TOKEN start nothing and never affect boot
+    # (INV-R6).
+    profile_worker = await start_profile_worker_if_ready(
+        get_session_context
+    )
+
     yield
 
     scheduler_task.cancel()
@@ -107,13 +114,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await scheduler_task
     if bot_runtime is not None:
         await bot_runtime.stop()
+    if profile_worker is not None:
+        await profile_worker.stop()
     await get_engine().dispose()
 
 
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.6.4",
+    version="0.6.5",
     lifespan=lifespan,
 )
 

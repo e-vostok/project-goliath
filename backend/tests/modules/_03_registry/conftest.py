@@ -15,8 +15,9 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import modules._03_registry.profile_worker as profile_worker_module
 import modules._03_registry.registry as registry_module
 import modules._03_registry.startup as startup_module
 from core.admin.registry import AdminRegistry
@@ -39,8 +40,20 @@ def registry_isolation(monkeypatch):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     monkeypatch.setattr(startup_module, "_registry_config", None)
+    # Profile-worker globals: mode, last-cycle stamp, the one-shot
+    # warnings and the installed wake bell.
+    monkeypatch.setattr(
+        profile_worker_module, "_mode", profile_worker_module.WorkerMode.OFF
+    )
+    monkeypatch.setattr(profile_worker_module, "_last_cycle_at", None)
+    monkeypatch.setattr(profile_worker_module, "_no_token_warned", False)
+    monkeypatch.setattr(
+        profile_worker_module, "_invalid_token_logged", False
+    )
+    profile_worker_module.install_wake_event(None)
     yield
     registry_module.clear_registry()
+    profile_worker_module.install_wake_event(None)
     for source in saved_sources.values():
         registry_module.register_table_source(
             source.key, source.provides, source.load
@@ -61,6 +74,21 @@ def registry_config(registry_isolation) -> RegistryConfig:
 def registry_started(registry_isolation) -> RegistryConfig:
     """``startup_registry()`` — the real wiring; returns the config."""
     return startup_registry()
+
+
+@pytest.fixture
+def session_factory(test_db_engine):
+    """
+    A ``get_session_context``-shaped factory over the test engine.
+
+    The shared ``:memory:`` pool serialises every session on one
+    connection — sequential transactions work, but tests must seed and
+    assert through ``session_factory()`` sessions, never hold
+    ``test_db_session`` open while ``run_cycle`` opens its own.
+    """
+    return async_sessionmaker(
+        test_db_engine, class_=AsyncSession, expire_on_commit=False
+    )
 
 
 @pytest.fixture(autouse=True)
