@@ -29,6 +29,7 @@ import {
   PANEL_CREATE,
   PANEL_HOME,
   PANEL_MAP,
+  PANEL_REGISTRY,
 } from './app/AppShell';
 
 import '@vkontakte/vkui/dist/vkui.css';
@@ -41,6 +42,7 @@ const router = createHashRouter([
   { path: '/', panel: PANEL_HOME, view: 'main' },
   { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
   { path: '/map', panel: PANEL_MAP, view: 'main' },
+  { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
 ]);
 
 function App() {
