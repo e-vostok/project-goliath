@@ -32,6 +32,8 @@ import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
 import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
 import { MapEntryButton } from '../modules/01_map/components/MapEntryButton';
+import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
+import { RegistryEntryButton } from '../modules/03_registry/components/RegistryEntryButton';
 import { BotStatusProvider } from '../modules/02_bot/hooks/useBotStatus';
 import { parseStartHash } from '../modules/02_bot/lib/startHash';
 import { AdminBlock } from '../admin/AdminBlock';
@@ -39,6 +41,7 @@ import { AdminBlock } from '../admin/AdminBlock';
 export const PANEL_HOME = 'nation-home';
 export const PANEL_CREATE = 'nation-create';
 export const PANEL_MAP = 'map';
+export const PANEL_REGISTRY = 'registry';
 const MODAL_DELETE_NATION = 'confirm-delete-nation';
 
 /**
@@ -52,6 +55,10 @@ const MODAL_DELETE_NATION = 'confirm-delete-nation';
 export function normalizeEntryHash(): void {
   if (window.location.hash === '#map') {
     window.history.replaceState(null, '', '#/map');
+    return;
+  }
+  if (window.location.hash === '#registry') {
+    window.history.replaceState(null, '', '#/registry');
     return;
   }
   if (parseStartHash(window.location.hash) === 'register') {
@@ -129,7 +136,8 @@ function AuthedArea() {
   };
 
   // The panel is a function of nation existence — keep the route in sync.
-  // The map screen is open to everyone, so it is exempt from the redirect.
+  // The map and registry screens are open to everyone, so they are exempt
+  // from the redirect.
   useEffect(() => {
     if (status !== 'ready') {
       return;
@@ -137,14 +145,16 @@ function AuthedArea() {
     if (
       nation === null &&
       activePanel !== PANEL_CREATE &&
-      activePanel !== PANEL_MAP
+      activePanel !== PANEL_MAP &&
+      activePanel !== PANEL_REGISTRY
     ) {
       void navigator.push('/nation/new');
     }
     if (
       nation !== null &&
       activePanel !== PANEL_HOME &&
-      activePanel !== PANEL_MAP
+      activePanel !== PANEL_MAP &&
+      activePanel !== PANEL_REGISTRY
     ) {
       void navigator.push('/');
     }
@@ -204,10 +214,17 @@ function AuthedArea() {
           <Panel id={PANEL_MAP}>
             <PanelMap />
           </Panel>
+          <Panel id={PANEL_REGISTRY}>
+            <PanelRegistry />
+          </Panel>
         </View>
-        {/* Temporary service entry «Карта» — Issue 5; remove with the
-            real navigation. One component, one import. */}
+        {/* Temporary service entries «Карта»/«Реестр» — remove with the
+            real navigation. One component, one import each. «Реестр»
+            sits directly above «Карта», hidden on its own panel. */}
         {activePanel !== PANEL_MAP && <MapEntryButton />}
+        {activePanel !== PANEL_MAP && activePanel !== PANEL_REGISTRY && (
+          <RegistryEntryButton />
+        )}
       </SplitCol>
     </SplitLayout>
   );
