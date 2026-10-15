@@ -51,7 +51,7 @@ class TestTablesEndpoint:
             "id": "number",
             "title": "№",
             "type": "index",
-            "width_px": 52,
+            "width_px": 48,
             "sortable": True,
             "filters": [],
             "filter_label": None,
