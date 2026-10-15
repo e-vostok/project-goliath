@@ -171,11 +171,20 @@ class NationSettings(BaseModel):
 
 class CalendarSettings(BaseModel):
     epoch_start_date: date
-    days_per_turn: int = Field(
+    months_per_turn: int = Field(
         ge=1,
-        le=365,
-        description="Количество игровых суток, проходящих за один ход.",
+        le=12,
+        description="Количество игровых календарных месяцев, "
+        "проходящих за один ход.",
     )
+
+    @model_validator(mode="after")
+    def check_epoch_is_month_start(self) -> Self:
+        if self.epoch_start_date.day != 1:
+            raise ValueError(
+                "epoch_start_date обязан указывать на первое число месяца"
+            )
+        return self
 
 
 class CoreConfig(BaseModel):

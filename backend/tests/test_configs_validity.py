@@ -49,8 +49,8 @@ def _base_config() -> dict:
             "history_url_allowed_hosts": ["vk.com", "vk.ru"],
         },
         "calendar": {
-            "epoch_start_date": "0001-01-01",
-            "days_per_turn": 7,
+            "epoch_start_date": "2040-01-01",
+            "months_per_turn": 3,
         },
     }
 
@@ -94,8 +94,8 @@ def test_valid_config_loads():
     assert config.nation.leader_title_max_length == 60
     assert config.nation.history_url_max_length == 200
     assert config.nation.history_url_allowed_hosts == ["vk.com", "vk.ru"]
-    assert str(config.calendar.epoch_start_date) == "0001-01-01"
-    assert config.calendar.days_per_turn == 7
+    assert str(config.calendar.epoch_start_date) == "2040-01-01"
+    assert config.calendar.months_per_turn == 3
 
 
 def test_map_config_loads():
@@ -320,12 +320,53 @@ def test_health_max_heartbeat_age_must_exceed_retry_plus_interval(tmp_path):
 
 def test_missing_required_field(tmp_path):
     """Test that missing required field raises ValidationError."""
-    path = _write_config(tmp_path, drop=[("calendar", "days_per_turn")])
+    path = _write_config(tmp_path, drop=[("calendar", "months_per_turn")])
 
     with pytest.raises(ValidationError) as exc_info:
         CoreConfig.from_yaml(path)
 
-    assert "days_per_turn" in str(exc_info.value)
+    assert "months_per_turn" in str(exc_info.value)
+
+
+def test_calendar_epoch_must_be_first_of_month(tmp_path):
+    """epoch_start_date with a day other than 1 is rejected (CAL-1)."""
+    path = _write_config(
+        tmp_path, {"calendar": {"epoch_start_date": "2040-01-15"}}
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "epoch_start_date" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("bad_months", [0, 13])
+def test_calendar_months_per_turn_out_of_bounds_rejected(
+    tmp_path, bad_months
+):
+    """months_per_turn outside [1, 12] raises ValidationError."""
+    path = _write_config(
+        tmp_path, {"calendar": {"months_per_turn": bad_months}}
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "months_per_turn" in str(exc_info.value)
+
+
+def test_calendar_legacy_days_per_turn_config_rejected(tmp_path):
+    """An old-style calendar with only days_per_turn fails validation."""
+    path = _write_config(
+        tmp_path,
+        {"calendar": {"days_per_turn": 7}},
+        drop=[("calendar", "months_per_turn")],
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "months_per_turn" in str(exc_info.value)
 
 
 # --- Nation profile keys (Spec 1.1) ---------------------------------------

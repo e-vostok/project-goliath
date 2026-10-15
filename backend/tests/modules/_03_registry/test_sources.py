@@ -211,9 +211,9 @@ class TestNationsTable:
         assert rows[n1.id]["provinces"] == 2
         assert rows[n2.id]["provinces"] == 0
         # formed: key = created_turn; text on the game calendar
-        # (epoch 0001-01-01 + 2 turns * 7 days = 15 января 1 г.).
+        # (epoch 2040-01-01 + 2 turns * 3 months = 1 июля 2040 г.).
         assert rows[n1.id]["formed"] == {
-            "text": "15 января 1 г.",
+            "text": "1 июля 2040 г.",
             "key": 2,
         }
         assert rows[n1.id]["flag"] == {"color": "#AA0001", "image_url": None}
