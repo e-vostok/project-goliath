@@ -18,6 +18,9 @@ from modules._00_core.player_stats import JUDGE_RATING_MAX, JUDGE_RATING_MIN
 from modules._01_map.config_schema import MapConfig
 from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
 from modules._03_registry.config_schema import RegistryConfig
+import modules._04_orders.config_schema as orders_schema
+from modules._04_orders.config_schema import OrdersConfig
+from modules._04_orders.models import Order
 
 
 def _base_config() -> dict:
@@ -148,6 +151,69 @@ def test_03_registry_config_loads():
     assert gauge.type == "gauge"
     assert gauge.scale_min == JUDGE_RATING_MIN
     assert gauge.scale_max == JUDGE_RATING_MAX
+
+
+def test_04_orders_config_loads():
+    """configs/04_orders.yaml ↔ OrdersConfig (module 04_orders, Issue 1).
+
+    The registration gate proves the real file loads; the schema's
+    judge-rating bounds must equal the 00_core scale constants — they
+    are model properties the config can only repeat as the allowed
+    threshold range (Spec 04_orders 4.1, Appendix T)."""
+    config = OrdersConfig.from_yaml(OrdersConfig.get_default_config_path())
+
+    assert config.judge.min_rating == 0
+    assert config.judge.max_pending_verdicts == 5
+    assert config.judge.require_reachable is True
+    assert config.judge.verdict_deadline_hours == 72
+    assert config.judge.reminder_percent == 75
+    assert config.author.max_unresolved_orders == 5
+    assert config.distribution.retry_interval_seconds == 60
+    assert config.distribution.batch_size == 50
+    assert config.limits.title_min_length == 3
+    assert config.limits.title_max_length == 100
+    assert config.limits.summary_min_length == 10
+    assert config.limits.summary_max_length == 500
+    assert config.limits.url_max_length == 200
+
+    # The min_rating Field bounds repeat the 00_core scale exactly.
+    assert orders_schema.JUDGE_RATING_MIN == JUDGE_RATING_MIN
+    assert orders_schema.JUDGE_RATING_MAX == JUDGE_RATING_MAX
+    field_meta = orders_schema.JudgeSettings.model_fields[
+        "min_rating"
+    ].metadata
+    assert any(
+        getattr(m, "ge", None) == JUDGE_RATING_MIN for m in field_meta
+    )
+    assert any(
+        getattr(m, "le", None) == JUDGE_RATING_MAX for m in field_meta
+    )
+
+
+def test_04_orders_column_lengths_match_schema():
+    """``orders`` column lengths equal the schema constants — any valid
+    config limit fits the column without a new migration (Spec 04_orders
+    Part 1: «Длины колонок равны верхним границам схемы конфига»)."""
+    columns = Order.__table__.columns
+    assert columns["title"].type.length == orders_schema.TITLE_COLUMN_LENGTH
+    assert (
+        columns["verdict_title"].type.length
+        == orders_schema.TITLE_COLUMN_LENGTH
+    )
+    assert (
+        columns["summary"].type.length == orders_schema.SUMMARY_COLUMN_LENGTH
+    )
+    assert (
+        columns["verdict_summary"].type.length
+        == orders_schema.SUMMARY_COLUMN_LENGTH
+    )
+    assert (
+        columns["article_url"].type.length
+        == orders_schema.URL_COLUMN_LENGTH
+    )
+    assert (
+        columns["verdict_url"].type.length == orders_schema.URL_COLUMN_LENGTH
+    )
 
 
 def test_03_registry_table_over_table_max_width_rejected():
