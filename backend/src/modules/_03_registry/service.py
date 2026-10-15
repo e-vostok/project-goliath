@@ -56,7 +56,11 @@ def _sort_value(column_type: str, cell: Cell):
         return cell
     if column_type == "text":
         return cell.casefold()
+    if column_type == "action_text":
+        return cell["text"].casefold()
     if column_type == "date":
+        return cell["key"]
+    if column_type == "datetime":
         return cell["key"]
     if column_type in ("person", "nation"):
         return cell["name"].casefold()

@@ -29,6 +29,7 @@ class RegistryColumnDTO(BaseModel):
     sortable: bool
     filters: list[str]
     filter_label: str | None
+    header_icon: str | None
     searchable: bool
     stub: bool
     scale_min: int | None

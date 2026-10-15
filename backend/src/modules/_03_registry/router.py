@@ -63,6 +63,7 @@ async def list_registry_tables(
                         sortable=column.sortable,
                         filters=list(column.filters),
                         filter_label=column.filter_label,
+                        header_icon=column.header_icon,
                         searchable=column.searchable,
                         stub=column.stub,
                         scale_min=column.scale_min,
