@@ -198,9 +198,12 @@ $$
 
 **Игровая дата:**
 $$
-D_{game} = D_{epoch} + \lfloor N_{turn} \times R_{days} \rfloor
+M_{total} = Y_{epoch} \times 12 + (m_{epoch} - 1) + N_{turn} \times R_{months}
 $$
-где $D_{epoch}$ = `calendar_epoch_start_date`, $N_{turn}$ = `game_clock.current_turn`, $R_{days}$ = `calendar_days_per_turn`. Округление вниз — защитный паттерн на случай, если `R_days` станет дробным в будущих ревизиях; при целочисленном конфиге эффекта не даёт.
+$$
+D_{game} = \mathrm{date}\bigl(\lfloor M_{total} / 12 \rfloor,\; M_{total} \bmod 12 + 1,\; 1\bigr)
+$$
+где $D_{epoch}$ = `calendar_epoch_start_date` (схема требует первое число месяца, поэтому день результата всегда 1), $N_{turn}$ = `game_clock.current_turn`, $R_{months}$ = `calendar_months_per_turn`. Округление не нужно — все операнды целые; отрицательный $N_{turn}$ — `ValueError`, а итог за пределами `date.max` прижимается к `9999-12-01` вместо ошибки. Первый ход ($N_{turn} = 0$, в том числе сразу после сброса мира) — январь 2040 года.
 
 **Свежесть `vk_ts` (Session Auth):**
 $$
@@ -259,8 +262,8 @@ $$
 | `nation.leader_title_max_length`      | int             | символы       | 1   | 100  | **60**           |
 | `nation.history_url_max_length`       | int             | символы       | 30  | 2000 | **200**          |
 | `nation.history_url_allowed_hosts`    | list[str]       | имена хостов  | 1 элемент | 10 элементов | **["vk.com", "vk.ru"]** |
-| `calendar.epoch_start_date`           | date (ISO 8601) | —             | —   | —    | **"0001-01-01"** |
-| `calendar.days_per_turn`              | int             | игровые сутки | 1   | 365  | **7**            |
+| `calendar.epoch_start_date`           | date (ISO 8601, день = 1) | —   | —   | —    | **"2040-01-01"** |
+| `calendar.months_per_turn`            | int             | игровые месяцы | 1  | 12   | **3**            |
 
 `tick_interval_hours=24` и `vk_ts_freshness_window_minutes=30` — не мои предположения, а уже зафиксированные в `README.md` («суточный ход») и `development_workflow.md` («свежестью ≤ 30 минут») значения; я их перенёс без изменений. С переходом на суточный тик в фиксированное локальное время `tick_interval_hours` остаётся в конфиге только для миграции 0001 (посев первого `next_tick_at` на свежей БД) — планировщик и `finalize_tick()` используют `tick_time`/`tick_timezone`. `tick.retry_delay_seconds` — пауза перед повторной попыткой тика после сбоя.
 
