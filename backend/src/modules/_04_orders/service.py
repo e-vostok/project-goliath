@@ -123,16 +123,21 @@ def _is_number_conflict(exc: IntegrityError) -> bool:
     """
     True when the failed insert violated ``uq_orders_number``.
 
-    asyncpg exposes ``constraint_name`` on the driver error; sqlite3 has
-    no such attribute, so the message's ``orders.number`` column list is
-    the marker there. A violation of any other constraint (e.g. the
-    idempotency key) is re-raised by the caller.
+    asyncpg exposes ``constraint_name`` on the driver error; drivers
+    without it fall back to the message — sqlite3 names the
+    ``orders.number`` column list, PostgreSQL names the
+    ``uq_orders_number`` constraint. A violation of any other
+    constraint (e.g. the idempotency key) is re-raised by the caller.
     """
     orig = exc.orig
     constraint = getattr(orig, "constraint_name", None)
     if constraint is not None:
         return constraint == "uq_orders_number"
-    return "orders.number" in str(orig)
+    # Message fallback: sqlite3 names the column list ("orders.number"),
+    # PostgreSQL drivers without ``constraint_name`` name the constraint
+    # itself ("uq_orders_number") — both markers identify the same
+    # unique-number violation.
+    return "orders.number" in str(orig) or "uq_orders_number" in str(orig)
 
 
 class OrderService:
