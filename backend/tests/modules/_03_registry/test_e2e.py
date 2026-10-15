@@ -175,10 +175,12 @@ class TestScenarioA:
         assert p_rows[0]["cells"]["nation"] == {
             "name": "Северная Марка",
             "color": "#AA1111",
+            "flag_url": None,
         }
         assert p_rows[1]["cells"]["nation"] == {
             "name": "Ладожский Союз",
             "color": "#22BB33",
+            "flag_url": None,
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)
@@ -223,6 +225,7 @@ class TestScenarioA:
         assert p_rows[1]["cells"]["nation"] == {
             "name": "Ладожский Союз",
             "color": "#22BB33",
+            "flag_url": None,
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)
