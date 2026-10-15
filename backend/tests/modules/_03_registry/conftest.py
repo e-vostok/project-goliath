@@ -28,6 +28,7 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Nation, Player
 from modules._03_registry.config_schema import RegistryConfig
 from modules._03_registry.startup import startup_registry
+from modules._04_orders.startup import register_orders_extensions
 from tests.fixtures.factories import NationFactory, PlayerFactory
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
@@ -40,6 +41,10 @@ def registry_isolation(monkeypatch):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     monkeypatch.setattr(startup_module, "_registry_config", None)
+    # The real config now lists the ``orders`` table — its source is
+    # registered by 04_orders strictly before startup_registry()
+    # (Spec 04_orders D11), so the fixture wires it the same way.
+    register_orders_extensions()
     # Profile-worker globals: mode, last-cycle stamp, the one-shot
     # warnings and the installed wake bell.
     monkeypatch.setattr(

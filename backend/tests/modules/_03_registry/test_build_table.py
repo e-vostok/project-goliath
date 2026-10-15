@@ -240,7 +240,9 @@ class TestAdminStateView:
         view = AdminRegistry.get_state_view_hooks()["03_registry"]
         snapshot = await view(test_db_session)
 
-        assert snapshot["tables"] == ["players", "nations"]
+        # ``orders`` joined the configured tables with 04_orders
+        # Issue 4 (configs/03_registry.yaml, Spec 04_orders App. D).
+        assert snapshot["tables"] == ["players", "nations", "orders"]
         assert snapshot["players_total"] == 1
         assert snapshot["nations_total"] == 1
         assert snapshot["profiles"] == {
