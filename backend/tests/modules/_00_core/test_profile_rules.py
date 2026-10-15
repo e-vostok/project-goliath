@@ -19,9 +19,11 @@ from modules._00_core.exceptions import (
     LeaderTitleInvalidError,
 )
 from modules._00_core.profile_rules import (
+    history_url_allowed_hosts,
     validate_history_url,
     validate_leader_name,
     validate_leader_title,
+    validate_vk_article_url,
 )
 from tests.fixtures.profile import VALID_PROFILE
 
@@ -147,3 +149,32 @@ class TestHistoryUrl:
     def test_invalid_urls_rejected(self, value):
         with pytest.raises(HistoryUrlInvalidError):
             validate_history_url(value, CORE_CONFIG)
+
+
+class TestVkArticleUrl:
+    """
+    The shared article-link check behind ``validate_history_url``
+    (Spec 04_orders, Appendix B1): the wrapper keeps the nation
+    profile's limits, the shared function takes its own.
+    """
+
+    def test_wrapper_and_shared_rules(self):
+        url = "https://vk.ru/@orders-check"
+        # The wrapper passes through the config's hosts: vk.ru allowed.
+        assert validate_history_url(url, CORE_CONFIG) == url
+        # The public accessor exposes exactly that list.
+        assert history_url_allowed_hosts() == tuple(
+            CORE_CONFIG.nation.history_url_allowed_hosts
+        )
+        # A narrower host list and a tighter cap bind the caller's own
+        # limits instead (same error texts).
+        with pytest.raises(HistoryUrlInvalidError, match="allowed list"):
+            validate_vk_article_url(
+                url, max_length=200, allowed_hosts=["vk.com"]
+            )
+        with pytest.raises(HistoryUrlInvalidError, match="at most 10"):
+            validate_vk_article_url(
+                "https://vk.com/@ok",
+                max_length=10,
+                allowed_hosts=["vk.com"],
+            )
