@@ -39,7 +39,24 @@ class TestTablesEndpoint:
         assert resp.headers["cache-control"] == "no-cache"
         body = resp.json()
         assert body["layout"] == {"tabs_position": "top"}
-        assert [t["id"] for t in body["tables"]] == ["players", "nations"]
+        assert [t["id"] for t in body["tables"]] == [
+            "players",
+            "nations",
+            "orders",
+        ]
+        orders = body["tables"][2]
+        assert orders["icon"] == "orders"
+        assert orders["default_sort"] == {
+            "column": "number",
+            "direction": "desc",
+        }
+        order_columns = {c["id"]: c for c in orders["columns"]}
+        assert order_columns["title"]["type"] == "action_text"
+        assert order_columns["submitted"]["header_icon"] == "stage_submitted"
+        assert order_columns["verdict"]["filters"] == [
+            "date_range",
+            "presence",
+        ]
         players = body["tables"][0]
         assert players["title"] == "Игроки"
         assert players["default_sort"] == {

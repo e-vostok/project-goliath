@@ -40,6 +40,11 @@ from modules._02_bot.startup import start_runtime_if_ready, startup_bot
 from modules._03_registry.profile_worker import start_profile_worker_if_ready
 from modules._03_registry.router import router as registry_router
 from modules._03_registry.startup import startup_registry
+from modules._04_orders.router import router as orders_router
+from modules._04_orders.startup import (
+    register_orders_extensions,
+    startup_orders,
+)
 
 
 @asynccontextmanager
@@ -77,6 +82,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # request) can fire while the extension points are half-wired.
     await startup_map()
 
+    # Spec 04_orders D11: the module's extension points (Registry table
+    # source; bot notification types from Issue 6) must exist strictly
+    # before startup_bot() and startup_registry() validate their
+    # registries against their configs.
+    register_orders_extensions()
+
     # Spec 02_bot 2.5: config validation + registry/hook wiring only —
     # no background tasks or routes yet (Issues 3–4). Runs even with
     # BOT_ENABLED=false: a broken YAML must still stop the server.
@@ -90,6 +101,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # after every other startup_* so future modules can register their
     # sources first.
     startup_registry()
+
+    # Spec 04_orders D11: after all other startup_* — loads and keeps
+    # OrdersConfig (a broken YAML stops the boot) and the VK-article
+    # allowed hosts snapshot; registers the admin hooks.
+    startup_orders()
 
     # Stamp the heartbeat so a fresh process reports scheduler "ok" on
     # /api/v1/health before the loop's first wake instead of "never".
@@ -122,7 +138,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.6.10",
+    version="0.6.11",
     lifespan=lifespan,
 )
 
@@ -136,6 +152,7 @@ app.include_router(health_router)
 app.include_router(map_router)
 app.include_router(bot_router)
 app.include_router(registry_router)
+app.include_router(orders_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
 # UNAUTHORIZED and GAME_CLOCK_NOT_FOUND are additions to the spec's
@@ -169,6 +186,15 @@ _ERROR_CODE_STATUS = {
     "MAP_VERSION_UNKNOWN": 404,
     "REGISTRY_TABLE_NOT_FOUND": 404,
     "REGISTRY_PROVIDER_FAILED": 500,
+    "ORDER_NATION_REQUIRED": 403,
+    "ORDER_AUTHOR_LIMIT_REACHED": 409,
+    "ORDER_TITLE_INVALID": 422,
+    "ORDER_SUMMARY_INVALID": 422,
+    "ORDER_URL_INVALID": 422,
+    "ORDER_NOT_FOUND": 404,
+    "ORDER_VERDICT_FORBIDDEN": 403,
+    "ORDER_VERDICT_EXISTS": 409,
+    "ORDER_NUMBER_CONFLICT": 500,
 }
 
 
