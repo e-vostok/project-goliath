@@ -77,6 +77,7 @@ export interface ProvinceDTO {
 export interface GameClockDTO {
   current_turn: number;
   game_date: string;
+  game_date_text: string;
   next_tick_at: string;
 }
 
