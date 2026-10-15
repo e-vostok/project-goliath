@@ -363,7 +363,7 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 4. Замена `[` и `]` на `(` и `)` (разметка упоминаний ВК `[id1|имя]`).
 5. Обрезка до `limits.variable_max_length` символов с заменой последнего на `…`.
 
-Игровая дата `{game_date}` — формат ISO `ГГГГ-ММ-ДД` из `compute_game_date(turn, config)`; `{next_tick_time}` — строка, которую выдаёт форматирование времени ядра для `game_clock.next_tick_at`; `{leader_title}`/`{leader_name}` при `NULL` (государства до миграции профиля) — `—`. Если после подстановки длина превышает `limits.message_max_chars` — строка `DROPPED / TOO_LONG` (схема гарантирует, что по умолчанию этого не бывает). Недостающая переменная → `DROPPED / TEMPLATE_ERROR`.
+Игровая дата `{game_date}` — строка `дд.месяц.гггг` (месяц словом, например `01.январь.2040`) из `format_game_date(compute_game_date(turn, config), config)`; `{next_tick_time}` — строка, которую выдаёт форматирование времени ядра для `game_clock.next_tick_at`; `{leader_title}`/`{leader_name}` при `NULL` (государства до миграции профиля) — `—`. Если после подстановки длина превышает `limits.message_max_chars` — строка `DROPPED / TOO_LONG` (схема гарантирует, что по умолчанию этого не бывает). Недостающая переменная → `DROPPED / TEMPLATE_ERROR`.
 
 Всегда передаются `disable_mentions=1` и `dont_parse_links=1`.
 

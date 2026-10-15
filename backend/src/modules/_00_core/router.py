@@ -19,7 +19,7 @@ from core.db import get_session
 from core.security.dependencies import get_current_player
 from core.security.jwt import issue_token
 from core.security.vk_signature import validate_launch_params
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError, NationNotFoundError
 from modules._00_core.models import GameClock, Nation, Player, Province
@@ -240,8 +240,10 @@ async def get_game_clock(
     clock = result.scalar_one_or_none()
     if clock is None:
         raise GameClockNotFoundError()
+    game_date = compute_game_date(clock.current_turn, CORE_CONFIG)
     return GameClockDTO(
         current_turn=clock.current_turn,
-        game_date=compute_game_date(clock.current_turn, CORE_CONFIG).isoformat(),
+        game_date=game_date.isoformat(),
+        game_date_text=format_game_date(game_date, CORE_CONFIG),
         next_tick_at=clock.next_tick_at,
     )

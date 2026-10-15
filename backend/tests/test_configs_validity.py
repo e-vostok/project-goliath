@@ -50,7 +50,12 @@ def _base_config() -> dict:
         },
         "calendar": {
             "epoch_start_date": "2040-01-01",
-            "months_per_turn": 3,
+            "months_per_turn": 1,
+            "month_names": [
+                "январь", "февраль", "март", "апрель", "май", "июнь",
+                "июль", "август", "сентябрь", "октябрь", "ноябрь",
+                "декабрь",
+            ],
         },
     }
 
@@ -95,7 +100,9 @@ def test_valid_config_loads():
     assert config.nation.history_url_max_length == 200
     assert config.nation.history_url_allowed_hosts == ["vk.com", "vk.ru"]
     assert str(config.calendar.epoch_start_date) == "2040-01-01"
-    assert config.calendar.months_per_turn == 3
+    assert config.calendar.months_per_turn == 1
+    assert config.calendar.month_names[0] == "январь"
+    assert config.calendar.month_names[11] == "декабрь"
 
 
 def test_map_config_loads():

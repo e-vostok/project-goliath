@@ -203,7 +203,9 @@ $$
 $$
 D_{game} = \mathrm{date}\bigl(\lfloor M_{total} / 12 \rfloor,\; M_{total} \bmod 12 + 1,\; 1\bigr)
 $$
-где $D_{epoch}$ = `calendar_epoch_start_date` (схема требует первое число месяца, поэтому день результата всегда 1), $N_{turn}$ = `game_clock.current_turn`, $R_{months}$ = `calendar_months_per_turn`. Округление не нужно — все операнды целые; отрицательный $N_{turn}$ — `ValueError`, а итог за пределами `date.max` прижимается к `9999-12-01` вместо ошибки. Первый ход ($N_{turn} = 0$, в том числе сразу после сброса мира) — январь 2040 года.
+где $D_{epoch}$ = `calendar.epoch_start_date` (схема требует первое число месяца, поэтому день результата всегда 1), $N_{turn}$ = `game_clock.current_turn`, $R_{months}$ = `calendar.months_per_turn`. Округление не нужно — все операнды целые; отрицательный $N_{turn}$ — `ValueError`, а итог за пределами `date.max` прижимается к `9999-12-01` вместо ошибки. Первый ход ($N_{turn} = 0$, в том числе сразу после сброса мира) — январь 2040 года.
+
+Игроку дата показывается как `дд.месяц.гггг` с месяцем словом: `format_game_date` подставляет название из `calendar.month_names` (ровно 12 имён, январь первым, без дублей) — `01.январь.2040`, `01.февраль.2040`, `01.январь.2041` (ход 12). В JSON дата остаётся ISO в `game_date`, текстовая форма приезжает отдельным полем `game_date_text`.
 
 **Свежесть `vk_ts` (Session Auth):**
 $$
@@ -305,7 +307,8 @@ NationRulesDTO    = { name_min_length: int, name_max_length: int,
                       history_url_max_length: int, history_url_allowed_hosts: list[str],
                       min_provinces: int, max_provinces: int }                                      # значения из конфига, для подсказок в форме
 ProvinceDTO       = { id: int, nation_id: UUID | None }
-GameClockDTO      = { current_turn: int, game_date: str, next_tick_at: datetime }
+GameClockDTO      = { current_turn: int, game_date: str, game_date_text: str, next_tick_at: datetime }
+                                                                                             # game_date — ISO; game_date_text — «дд.месяц.гггг»
 ErrorResponse      = { detail: str, code: str }
 ```
 

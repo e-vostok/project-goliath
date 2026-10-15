@@ -196,7 +196,7 @@ export function PanelNationHome({
   );
 
   const headerText = clock
-    ? `Ход ${clock.current_turn} · ${clock.game_date}`
+    ? `Ход ${clock.current_turn} · ${clock.game_date_text}`
     : 'Ваше государство';
 
   return (

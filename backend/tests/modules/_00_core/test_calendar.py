@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
@@ -23,10 +23,23 @@ def test_first_turn_is_january_2040():
 
 
 def test_turn_advances_by_months_per_turn():
-    """One turn = three game months; the sequence crosses the year."""
-    assert compute_game_date(1, CORE_CONFIG) == date(2040, 4, 1)
-    assert compute_game_date(3, CORE_CONFIG) == date(2040, 10, 1)
-    assert compute_game_date(4, CORE_CONFIG) == date(2041, 1, 1)
+    """One turn = one game month; the sequence crosses the year."""
+    assert compute_game_date(1, CORE_CONFIG) == date(2040, 2, 1)
+    assert compute_game_date(11, CORE_CONFIG) == date(2040, 12, 1)
+    assert compute_game_date(12, CORE_CONFIG) == date(2041, 1, 1)
+
+
+def test_format_game_date_renders_dotted_month_name():
+    """дд.месяц.гггг for the shipped calendar: turns 0, 1 and 12."""
+    assert format_game_date(
+        compute_game_date(0, CORE_CONFIG), CORE_CONFIG
+    ) == "01.январь.2040"
+    assert format_game_date(
+        compute_game_date(1, CORE_CONFIG), CORE_CONFIG
+    ) == "01.февраль.2040"
+    assert format_game_date(
+        compute_game_date(12, CORE_CONFIG), CORE_CONFIG
+    ) == "01.январь.2041"
 
 
 def test_far_future_turn_clamps_to_date_max():
