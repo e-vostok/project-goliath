@@ -119,6 +119,7 @@ class PlayerNationSummary:
     leader_name: str | None
     leader_title: str | None
     province_count: int
+    color_hex: str
 
 
 @dataclass(frozen=True)
@@ -648,6 +649,7 @@ class NationService:
             leader_name=nation.leader_name,
             leader_title=nation.leader_title,
             province_count=count_result.scalar_one(),
+            color_hex=nation.color_hex,
         )
 
     @staticmethod

@@ -271,7 +271,7 @@ async def claim_batch(
 
     for player_id in player_ids:
         surviving = await _apply_player_checks(
-            session, player_id, rows_by_player.get(player_id, [])
+            session, player_id, rows_by_player.get(player_id, []), config
         )
         kept, ungrouped = await _split_kept_groups(
             session, player_id, surviving, now
@@ -294,17 +294,30 @@ async def _apply_player_checks(
     session: AsyncSession,
     player_id: str,
     rows: list[BotOutbox],
+    config: BotConfig,
 ) -> list[BotOutbox]:
-    """Step 6 (INV-B3): NOTIFICATION rows need ALLOWED consent and a
-    nation; REPLY rows need neither. Drop reasons per Spec 2.4."""
+    """Step 6 (INV-B3): NOTIFICATION rows need ALLOWED consent and — for
+    types with ``requires_nation`` — a nation; REPLY rows need neither.
+    Drop reasons per Spec 2.4."""
     if not rows:
         return []
     if not any(row.kind == "NOTIFICATION" for row in rows):
         return list(rows)
+
+    def _needs_nation(row: BotOutbox) -> bool:
+        # A row of a type absent from the config cannot exist (enqueue
+        # rejects it); defaulting to True keeps the old gate anyway.
+        type_cfg = config.types.get(row.type_key)
+        return type_cfg is None or type_cfg.requires_nation
+
     allowed = await consent_mod.is_allowed(session, player_id)
     nation = (
         await NationService.player_nation_summary(session, player_id)
         if allowed
+        and any(
+            row.kind == "NOTIFICATION" and _needs_nation(row)
+            for row in rows
+        )
         else None
     )
     surviving: list[BotOutbox] = []
@@ -314,7 +327,7 @@ async def _apply_player_checks(
         elif not allowed:
             row.status = "DROPPED"
             row.drop_reason = "NO_CONSENT"
-        elif nation is None:
+        elif nation is None and _needs_nation(row):
             row.status = "DROPPED"
             row.drop_reason = "NO_NATION"
         else:

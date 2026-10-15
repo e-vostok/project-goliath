@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Collection
 from urllib.parse import urlsplit
 
 from modules._00_core.config_schema import CoreConfig
@@ -72,16 +73,20 @@ def validate_leader_title(value: str, config: CoreConfig) -> str:
     )
 
 
-def validate_history_url(value: str, config: CoreConfig) -> str:
+def validate_vk_article_url(
+    value: str,
+    *,
+    max_length: int,
+    allowed_hosts: Collection[str],
+) -> str:
     """
-    Normalize and check `history_url`; returns the stripped input.
-
-    Part 3 contract: https scheme only, host from the configured allow
-    list (lowercased compare), no port/userinfo/query/fragment, and the
-    path must be a VK article address `/@slug`.
+    The shared VK-article link check (Spec 04_orders, Appendix B1):
+    https scheme only, host from ``allowed_hosts`` (lowercased
+    compare), no port/userinfo/query/fragment, and the path must be a
+    VK article address `/@slug`. Returns the stripped input; raises
+    HistoryUrlInvalidError on the first violated rule.
     """
     url = value.strip()
-    max_length = config.nation.history_url_max_length
     if len(url) > max_length:
         raise HistoryUrlInvalidError(
             f"must be at most {max_length} characters, got {len(url)}"
@@ -102,7 +107,7 @@ def validate_history_url(value: str, config: CoreConfig) -> str:
         raise HistoryUrlInvalidError("cannot be parsed") from exc
     if parsed.scheme != "https":
         raise HistoryUrlInvalidError("scheme must be https")
-    if host is None or host not in config.nation.history_url_allowed_hosts:
+    if host is None or host not in allowed_hosts:
         raise HistoryUrlInvalidError("host is not in the allowed list")
     # netloc == hostname rejects credentials, ports and case tricks.
     if parsed.netloc.lower() != host:
@@ -110,3 +115,28 @@ def validate_history_url(value: str, config: CoreConfig) -> str:
     if _HISTORY_PATH_RE.fullmatch(parsed.path) is None:
         raise HistoryUrlInvalidError("path must look like '/@article-name'")
     return url
+
+
+def validate_history_url(value: str, config: CoreConfig) -> str:
+    """
+    Normalize and check `history_url`; returns the stripped input.
+
+    Part 3 contract — a thin wrapper over :func:`validate_vk_article_url`
+    carrying the nation profile's own length limit and host list.
+    """
+    return validate_vk_article_url(
+        value,
+        max_length=config.nation.history_url_max_length,
+        allowed_hosts=config.nation.history_url_allowed_hosts,
+    )
+
+
+def history_url_allowed_hosts() -> tuple[str, ...]:
+    """
+    The ``nation.history_url_allowed_hosts`` list of the shipped core
+    config — the public read path for satellite modules (Spec
+    04_orders, Appendix B1) that validate a VK article link against the
+    same allow list without importing ``CoreConfig`` themselves.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    return tuple(config.nation.history_url_allowed_hosts)

@@ -7,7 +7,10 @@ is literal text. Values pass :func:`sanitize_value` before they can
 reach a message — control/invisible characters are dropped, whitespace
 collapses, ``[``/``]`` become ``(``/``)`` so VK mention markup
 (``[id1|name]``) cannot be smuggled in, and the result is truncated to
-``limits.variable_max_length``.
+``limits.variable_max_length``. The exception is ``*_link`` variables:
+they carry URLs, are re-validated here against
+``dialog.help.allowed_hosts`` (a failure raises ``LinkVariableError``,
+dropped as ``TEMPLATE_ERROR``) and substituted verbatim.
 
 Failures map to queue drop reasons: a missing variable raises
 ``TemplateError`` (``TEMPLATE_ERROR``), an oversize result raises
@@ -18,11 +21,46 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
+from urllib.parse import urlsplit
 
 from modules._00_core.exceptions import CoreDomainError
 from modules._02_bot.composer import ComposedMessage, RowView, _utc
 from modules._02_bot.config_schema import _PLACEHOLDER_RE, BotConfig
+
+# A template variable whose name ends in ``_link`` carries a URL (deep
+# link into the Mini App or a VK page, Spec 04_orders Appendix B2): it
+# is validated against ``dialog.help.allowed_hosts`` at enqueue and
+# AGAIN here, and is substituted verbatim — ``sanitize_value`` would
+# remap brackets and collapse whitespace inside the address.
+LINK_VARIABLE_SUFFIX = "_link"
+LINK_VARIABLE_MAX_LENGTH = 300
+
+
+def is_valid_link_value(value: object, allowed_hosts: Collection[str]) -> bool:
+    """
+    The ``*_link`` contract: a non-empty https URL of at most
+    LINK_VARIABLE_MAX_LENGTH characters, on a host from
+    ``allowed_hosts``, without whitespace or control characters.
+    """
+    if not isinstance(value, str) or not value:
+        return False
+    if len(value) > LINK_VARIABLE_MAX_LENGTH:
+        return False
+    if any(
+        ch.isspace() or unicodedata.category(ch) in ("Cc", "Cf")
+        for ch in value
+    ):
+        return False
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname is not None
+        and parsed.hostname in allowed_hosts
+    )
 
 
 class TemplateError(CoreDomainError):
@@ -31,6 +69,17 @@ class TemplateError(CoreDomainError):
     def __init__(self, name: str):
         super().__init__(
             f"template variable '{name}' has no value", "TEMPLATE_ERROR"
+        )
+
+
+class LinkVariableError(TemplateError):
+    """A ``*_link`` variable failed the URL rules at render time."""
+
+    def __init__(self, name: str):
+        CoreDomainError.__init__(
+            self,
+            f"link variable '{name}' is not an allowed https URL",
+            "TEMPLATE_ERROR",
         )
 
 
@@ -77,10 +126,20 @@ def render(template: str, variables: Mapping[str, object]) -> str:
 
 
 def _sanitized(payload: Mapping[str, object], config: BotConfig) -> dict:
-    return {
-        key: sanitize_value(value, config.limits.variable_max_length)
-        for key, value in payload.items()
-    }
+    allowed_hosts = config.dialog.help.allowed_hosts
+    result: dict[str, object] = {}
+    for key, value in payload.items():
+        if key.endswith(LINK_VARIABLE_SUFFIX):
+            # Re-validated at render so a bad value never reaches a
+            # message; substituted verbatim, never sanitized.
+            if not is_valid_link_value(value, allowed_hosts):
+                raise LinkVariableError(key)
+            result[key] = value
+        else:
+            result[key] = sanitize_value(
+                value, config.limits.variable_max_length
+            )
+    return result
 
 
 def _newest(rows: Sequence[RowView]) -> RowView:
