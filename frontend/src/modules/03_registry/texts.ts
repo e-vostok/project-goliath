@@ -33,5 +33,7 @@ export const REGISTRY_TEXTS = {
   sortAriaLabel: (columnTitle: string) =>
     `Сортировка по «${columnTitle}»`,
 
+  overdueMark: 'срок вышел',
+
   emptyValue: '—',
 };

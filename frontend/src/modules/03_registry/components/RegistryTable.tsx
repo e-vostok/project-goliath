@@ -24,7 +24,9 @@ import type {
   RegistryRowDTO,
   RegistryTableDTO,
 } from '../types';
+import { ActionTextCell } from './cells/ActionTextCell';
 import { DateCell } from './cells/DateCell';
+import { DatetimeCell } from './cells/DatetimeCell';
 import { FlagCell } from './cells/FlagCell';
 import { GaugeCell } from './cells/GaugeCell';
 import { IndexCell } from './cells/IndexCell';
@@ -32,6 +34,7 @@ import { IntegerCell } from './cells/IntegerCell';
 import { NationCell } from './cells/NationCell';
 import { PersonCell } from './cells/PersonCell';
 import { TextCell } from './cells/TextCell';
+import { HeaderIcon } from './HeaderIcon';
 
 /** A column title never breaks inside a word and wraps only at spaces,
  * at most two lines (Spec 5.5). */
@@ -96,6 +99,10 @@ function Cell({ column, value }: { column: RegistryColumnDTO; value: RegistryCel
       );
     case 'date':
       return <DateCell value={value} />;
+    case 'datetime':
+      return <DatetimeCell value={value} />;
+    case 'action_text':
+      return <ActionTextCell value={value} />;
     case 'person':
       return <PersonCell value={value} />;
     case 'nation':
@@ -175,6 +182,7 @@ export function RegistryTable({
                     <button
                       type="button"
                       aria-label={REGISTRY_TEXTS.sortAriaLabel(col.title)}
+                      title={col.header_icon ? col.title : undefined}
                       data-testid={`sort-btn-${col.id}`}
                       onClick={() => onSortClick(col.id)}
                       style={{
@@ -192,9 +200,18 @@ export function RegistryTable({
                         textAlign: 'left',
                       }}
                     >
-                      <span style={HEADER_TITLE_STYLE}>{col.title}</span>
+                      {col.header_icon ? (
+                        <HeaderIcon
+                          name={col.header_icon}
+                          title={col.title}
+                        />
+                      ) : (
+                        <span style={HEADER_TITLE_STYLE}>{col.title}</span>
+                      )}
                       <SortIcon column={col} view={view} />
                     </button>
+                  ) : col.header_icon ? (
+                    <HeaderIcon name={col.header_icon} title={col.title} />
                   ) : (
                     <span style={HEADER_TITLE_STYLE}>{col.title}</span>
                   )}

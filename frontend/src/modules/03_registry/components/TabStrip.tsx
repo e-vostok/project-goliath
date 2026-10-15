@@ -10,6 +10,7 @@ import type { ComponentType } from 'react';
 import {
   Icon28CheckShieldOutline,
   Icon28CoinsOutline,
+  Icon28DocumentListOutline,
   Icon28FlagOutline,
   Icon28LocationMapOutline,
   Icon28MessagesOutline,
@@ -30,6 +31,7 @@ const TAB_ICONS: Record<string, IconComponent> = {
   army: Icon28CheckShieldOutline,
   diplomacy: Icon28MessagesOutline,
   table: Icon28TablecellsOutline,
+  orders: Icon28DocumentListOutline,
 };
 
 const GENERIC_ICON = Icon28TablecellsOutline;
