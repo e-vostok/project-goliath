@@ -32,6 +32,14 @@ vi.mock('@vkontakte/vk-bridge', () => ({
 import { server } from '../../../../vitest.setup';
 import { PanelRegistry } from '../components/PanelRegistry';
 import {
+  clearCellActions,
+  registerCellAction,
+} from '../lib/cellActions';
+import type {
+  RegistryRowsDTO,
+  RegistryTableDTO,
+} from '../types';
+import {
   registerRegistryHandlers,
   renderWithSession,
   TABLES,
@@ -279,5 +287,86 @@ describe('PanelRegistry — tabs_position', () => {
     const strip = screen.getByTestId('registry-tabstrip');
     expect(strip).toHaveAttribute('data-orientation', 'vertical');
     expect(within(strip).getAllByRole('tab')).toHaveLength(2);
+  });
+});
+
+describe('PanelRegistry — entry request (Spec 04_orders 5.5)', () => {
+  const ORDERS_TABLE: RegistryTableDTO = {
+    id: 'orders',
+    title: 'Приказы',
+    icon: 'orders',
+    empty_text: 'Приказов пока нет',
+    default_sort: { column: 'number', direction: 'desc' },
+    columns: [
+      {
+        id: 'number', title: '№', type: 'index', width_px: 56,
+        sortable: true, filters: [], filter_label: null,
+        header_icon: null, searchable: false, stub: false,
+        scale_min: null, scale_max: null,
+      },
+      {
+        id: 'title', title: 'Название', type: 'action_text',
+        width_px: 236, sortable: true, filters: ['text'],
+        filter_label: null, header_icon: null, searchable: true,
+        stub: false, scale_min: null, scale_max: null,
+      },
+    ],
+  };
+  const ORDERS_ROWS: RegistryRowsDTO = {
+    table_id: 'orders',
+    total: 1,
+    truncated: false,
+    generated_at: '2026-10-15T10:00:00Z',
+    rows: [
+      {
+        key: 'o7',
+        cells: {
+          number: 7,
+          title: { text: 'Мобилизация', action: 'order:7' },
+        },
+      },
+    ],
+  };
+
+  afterEach(clearCellActions);
+
+  it('selects the requested tab and runs the action once its rows load', async () => {
+    server.use(
+      http.get('*/api/v1/registry/tables', () =>
+        HttpResponse.json({
+          ...TABLES,
+          tables: [...TABLES.tables, ORDERS_TABLE],
+        }),
+      ),
+      http.get('*/api/v1/registry/tables/orders', () =>
+        HttpResponse.json(ORDERS_ROWS),
+      ),
+    );
+    const spy = vi.fn();
+    registerCellAction('order', spy);
+
+    window.location.hash = '#/registry';
+    const router = createHashRouter([
+      { path: '/', panel: 'home', view: 'main' },
+      { path: '/registry', panel: 'registry', view: 'main' },
+    ]);
+    renderWithSession(
+      <RouterProvider router={router}>
+        <PanelRegistry
+          entryRequest={{ tab: 'orders', action: 'order:7' }}
+        />
+      </RouterProvider>,
+    );
+
+    // The «Приказы» tab becomes active…
+    await waitFor(() =>
+      expect(
+        screen.getByRole('tab', { name: 'Приказы' }),
+      ).toHaveAttribute('aria-selected', 'true'),
+    );
+    // …and once its rows arrived the action ran like a cell click.
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('7'));
+    await screen.findByText('Мобилизация');
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

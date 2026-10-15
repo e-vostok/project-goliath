@@ -55,6 +55,7 @@ class TestTablesEndpoint:
             "sortable": True,
             "filters": [],
             "filter_label": None,
+            "header_icon": None,
             "searchable": False,
             "stub": False,
             "scale_min": None,

@@ -64,6 +64,103 @@ describe('tableView — sort', () => {
     ).toEqual(['p3', 'p1', 'p2']);
   });
 
+  it('sorts datetime cells by key; empty cells — including the marked empty dict — last', () => {
+    const ordersTable: RegistryTableDTO = {
+      id: 'orders',
+      title: 'Приказы',
+      icon: 'orders',
+      empty_text: 'Приказов пока нет',
+      default_sort: { column: 'number', direction: 'desc' },
+      columns: [
+        {
+          id: 'number', title: '№', type: 'index', width_px: 56,
+          sortable: true, filters: [], filter_label: null,
+          header_icon: null, searchable: false, stub: false,
+          scale_min: null, scale_max: null,
+        },
+        {
+          id: 'submitted', title: 'Подача', type: 'datetime',
+          width_px: 136, sortable: true,
+          filters: ['date_range', 'presence'], filter_label: null,
+          header_icon: 'stage_submitted', searchable: false, stub: false,
+          scale_min: null, scale_max: null,
+        },
+      ],
+    };
+    const rows = [
+      {
+        key: 'o1',
+        cells: {
+          number: 1,
+          submitted: {
+            date: '15.10.2026', time: '21:21', key: 2000, day: 20741,
+            mark: null,
+          },
+        },
+      },
+      { key: 'o2', cells: { number: 2, submitted: null } },
+      {
+        key: 'o3',
+        cells: {
+          number: 3,
+          submitted: {
+            date: '14.10.2026', time: '10:00', key: 1000, day: 20740,
+            mark: null,
+          },
+        },
+      },
+      {
+        // The overdue "empty" dict carries no moment — sorts with nulls.
+        key: 'o4',
+        cells: {
+          number: 4,
+          submitted: {
+            date: null, time: null, key: null, day: null,
+            mark: 'overdue',
+          },
+        },
+      },
+    ];
+
+    expect(
+      applyView(ordersTable, rows, {
+        ...EMPTY_VIEW,
+        sort: { columnId: 'submitted', direction: 'asc' },
+      }).map((r) => r.key),
+    ).toEqual(['o3', 'o1', 'o2', 'o4']);
+    expect(
+      applyView(ordersTable, rows, {
+        ...EMPTY_VIEW,
+        sort: { columnId: 'submitted', direction: 'desc' },
+      }).map((r) => r.key),
+    ).toEqual(['o1', 'o3', 'o2', 'o4']);
+
+    // date_range on a datetime column compares the calendar `day`.
+    expect(
+      applyView(ordersTable, rows, {
+        ...EMPTY_VIEW,
+        filters: {
+          submitted: [
+            { kind: 'date_range', from: '2026-10-15', to: '2026-10-15' },
+          ],
+        },
+      }).map((r) => r.key),
+    ).toEqual(['o1']);
+    // presence: the marked-but-empty dict still counts as «нет».
+    expect(
+      applyView(ordersTable, rows, {
+        ...EMPTY_VIEW,
+        filters: { submitted: [{ kind: 'presence', value: 'has' }] },
+      }).map((r) => r.key),
+    ).toEqual(['o1', 'o3']);
+    expect(
+      applyView(ordersTable, rows, {
+        ...EMPTY_VIEW,
+        filters: { submitted: [{ kind: 'presence', value: 'none' }] },
+      }).map((r) => r.key),
+    ).toEqual(['o2', 'o4']);
+  });
+
   it('sorts strings with the Russian collation (ё ≈ е), stable on ties', () => {
     const table: RegistryTableDTO = {
       ...nationsTable,

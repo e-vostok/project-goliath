@@ -37,14 +37,16 @@ _API_VERSION_RE = re.compile(r"^5\.\d{1,3}$")
 _API_BASE_URL_RE = re.compile(r"^https://[a-z0-9.-]+(?:/[a-z0-9._-]+)*$")
 
 ColumnType = Literal[
-    "index",     # порядковый номер: целое число
-    "integer",   # целое число
-    "text",      # строка
-    "date",      # дата: {text, key}; key — целое число для сортировки и фильтра
-    "person",    # аватарка и имя игрока
-    "gauge",     # целое на знаковой шкале (судейский рейтинг)
-    "flag",      # малый флаг: цвет-заглушка или изображение
-    "nation",    # цветовая метка и название государства
+    "index",        # порядковый номер: целое число
+    "integer",      # целое число
+    "text",         # строка
+    "date",         # дата: {text, key}; key — целое число для сортировки и фильтра
+    "datetime",     # дата и время: {date, time, key, day, mark}
+    "action_text",  # кликабельный текст: {text, action}
+    "person",       # аватарка и имя игрока
+    "gauge",        # целое на знаковой шкале (судейский рейтинг)
+    "flag",         # малый флаг: цвет-заглушка или изображение
+    "nation",       # цветовая метка и название государства
 ]
 
 FilterKind = Literal[
@@ -56,6 +58,13 @@ FilterKind = Literal[
 
 IconKey = Literal[
     "players", "nations", "map", "economy", "army", "diplomacy", "table",
+    "orders",
+]
+
+# Иконка вместо текста заголовка столбца (Spec 5.5): три этапа приказа.
+# Текст title остаётся обязательным — он подсказка и подпись для доступности.
+HeaderIcon = Literal[
+    "stage_submitted", "stage_distributed", "stage_verdict",
 ]
 
 # Какие фильтры допустимы для какого типа столбца. Пустой набор — фильтра нет.
@@ -64,6 +73,8 @@ ALLOWED_FILTERS: dict[str, frozenset[str]] = {
     "integer": frozenset({"number_range"}),
     "text": frozenset({"text"}),
     "date": frozenset({"number_range", "date_range"}),
+    "datetime": frozenset({"date_range", "presence"}),
+    "action_text": frozenset({"text"}),
     "person": frozenset({"text"}),
     "gauge": frozenset({"number_range"}),
     "flag": frozenset(),
@@ -71,7 +82,9 @@ ALLOWED_FILTERS: dict[str, frozenset[str]] = {
 }
 
 # Типы, которые можно искать общим полем поиска.
-SEARCHABLE_TYPES: frozenset[str] = frozenset({"text", "person", "nation"})
+SEARCHABLE_TYPES: frozenset[str] = frozenset(
+    {"text", "person", "nation", "action_text"}
+)
 
 # Типы, по которым нельзя сортировать (нет осмысленного порядка).
 UNSORTABLE_TYPES: frozenset[str] = frozenset({"flag"})
@@ -208,6 +221,9 @@ class ColumnConfig(_Strict):
     filters: list[FilterKind] = Field(max_length=4)
     # Подпись полей диапазона («Ход» вместо «от — до» по умолчанию), необязательна.
     filter_label: str | None = Field(default=None, min_length=1, max_length=20)
+    # Иконка этапа вместо текста заголовка; title остаётся обязательным
+    # (подсказка и подпись для доступности). null — обычный текстовый заголовок.
+    header_icon: HeaderIcon | None = Field(default=None)
     # Участвует ли столбец в общем поле поиска.
     searchable: bool
     # Заглушка: столбец показывает временное значение (Bible, раздел 0).

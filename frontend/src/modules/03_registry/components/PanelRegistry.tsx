@@ -17,12 +17,14 @@
  * mounted, so the reset is done explicitly, not by unmount).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import { Button, FormStatus, Spinner, Title } from '@vkontakte/vkui';
 
 import { useRegistryRows } from '../hooks/useRegistryRows';
 import { useRegistryTables } from '../hooks/useRegistryTables';
+import { runCellAction } from '../lib/cellActions';
+import type { RegistryEntryRequest } from '../lib/entryRequest';
 import {
   applyView,
   EMPTY_VIEW,
@@ -37,11 +39,22 @@ import { RegistryTable } from './RegistryTable';
 import { TableToolbar } from './TableToolbar';
 import { TabStrip } from './TabStrip';
 
-export function PanelRegistry() {
+export function PanelRegistry({
+  entryRequest = null,
+}: {
+  /**
+   * Deep-link request from AppShell (Spec 04_orders 5.5): select `tab`
+   * if it exists and, once its rows are loaded, run `action` exactly
+   * like a click on an `action_text` cell would.
+   */
+  entryRequest?: RegistryEntryRequest | null;
+}) {
   const navigator = useRouteNavigator();
   const tablesState = useRegistryTables();
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [views, setViews] = useState<Record<string, TableView>>({});
+  const [pendingRequest, setPendingRequest] =
+    useState<RegistryEntryRequest | null>(entryRequest);
 
   const tables = tablesState.data?.tables ?? [];
   const tabsPosition = tablesState.data?.layout.tabs_position ?? 'top';
@@ -49,6 +62,35 @@ export function PanelRegistry() {
   const activeTable = tables.find((t) => t.id === activeTableId) ?? null;
 
   const rows = useRegistryRows(activeTableId);
+
+  // Select the requested tab once the table list is known; a request
+  // for a table that does not exist is dropped — the panel opens the
+  // first tab as usual.
+  useEffect(() => {
+    if (!pendingRequest || tablesState.status !== 'ready') {
+      return;
+    }
+    if (!tables.some((t) => t.id === pendingRequest.tab)) {
+      setPendingRequest(null);
+      return;
+    }
+    setSelectedTab(pendingRequest.tab);
+  }, [pendingRequest, tablesState.status, tables]);
+
+  // Once the requested tab's rows are on screen, run the action — the
+  // same call a cell click makes. `table_id` must match: on a tab
+  // switch the hook still shows the previous table's rows for a beat.
+  // A failed load leaves the request pending, so «Повторить» can run it.
+  useEffect(() => {
+    if (
+      pendingRequest &&
+      activeTableId === pendingRequest.tab &&
+      rows.data?.table_id === pendingRequest.tab
+    ) {
+      runCellAction(pendingRequest.action);
+      setPendingRequest(null);
+    }
+  }, [pendingRequest, activeTableId, rows.data]);
 
   const view =
     (activeTableId ? views[activeTableId] : undefined) ?? EMPTY_VIEW;
@@ -83,6 +125,7 @@ export function PanelRegistry() {
   const goBack = () => {
     setViews({});
     setSelectedTab(null);
+    setPendingRequest(null);
     navigator.push('/');
   };
 

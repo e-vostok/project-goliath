@@ -106,8 +106,8 @@ class TestBuildTable:
 
         nations = [row.cells["nation"] for row in built.rows]
         assert nations == [
-            {"name": "Beta", "color": "#AA0102"},
-            {"name": "Alpha", "color": "#AA0101"},
+            {"name": "Beta", "color": "#AA0102", "flag_url": None},
+            {"name": "Alpha", "color": "#AA0101", "flag_url": None},
             None,
         ]
 

@@ -1,6 +1,6 @@
 # 02_SYSTEM_SPECS / 03_registry
 
-> Версия Spec: 1.1 (14.10.2026; приведён к фактической реализации). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
+> Версия Spec: 1.2 (15.10.2026; расширения для `04_orders`: типы `datetime` и `action_text`, `header_icon`, иконка `orders`, `flag_url` у ячейки `nation`, реестр действий ячеек и вход по хэшу `#registry/order-N`; прежние таблицы не меняются). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
 > Артефакты шага: этот файл, `configs/03_registry.yaml`, `backend/src/modules/_03_registry/config_schema.py`.
 > Зависимость: `00_core`. Модули `01_map` и `02_bot` не требуются и не импортируются.
 > Релиз модуля: 0.7.0.
@@ -192,7 +192,7 @@ $$number(p) = 1 + \#\{\, q : (created\_at_q,\ id_q) < (created\_at_p,\ id_p) \,\
 
 - `player` — ячейка `person`. Профиль берётся из `registry_vk_profiles` одним запросом для всех игроков. Имя: `"{first_name} {last_name}"` без краевых пробелов; пустое или нет профиля — `fallback_name_template.format(number=number)`. `avatar_url` — `photo_url` при `status = OK`, иначе `None`. `is_fallback = true`, когда имя запасное.
 - `joined` — ячейка `date` (3.5).
-- `level`, `judge_rating` — числа; `nation` — `{name, color}` либо `null`.
+- `level`, `judge_rating` — числа; `nation` — `{name, color, flag_url}` либо `null` (`flag_url = null`, пока загрузки флагов государств нет).
 
 ### 3.3. Источник `nations`
 
@@ -233,18 +233,22 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
 | `index`, `integer`, `gauge` | целое число или `null` |
 | `text` | строка или `null` |
 | `date` | `{"text": str, "key": int}` или `null` |
+| `datetime` | `{"date": "дд.мм.гггг", "time": "чч:мм", "key": int, "day": int, "mark": null \| "overdue"}` или `null`; пустая ячейка — все четыре поля `null`, `mark` сохраняется (просроченный этап без момента времени) |
+| `action_text` | `{"text": str, "action": "<обработчик>:<аргумент>"}` или `null` |
 | `person` | `{"name": str, "avatar_url": str \| null, "is_fallback": bool}` |
 | `flag` | `{"color": "#RRGGBB", "image_url": str \| null}` |
-| `nation` | `{"name": str, "color": "#RRGGBB"}` или `null` |
+| `nation` | `{"name": str, "color": "#RRGGBB", "flag_url": str \| null}` или `null` |
+
+Форма точная: лишних ключей в ячейке нет, `cell_matches` проверяет набор ключей целиком. `date`/`time` ячейки `datetime` — текст в зоне `tz` (конструктор берёт зону параметром, источники передают `tick.tick_timezone`); `key` — Unix-секунды момента для сортировки; `day` — целые сутки от 1970-01-01 в той же зоне для фильтра `date_range`. Наивный `datetime` читается как UTC (соглашение хранения). `action` — строка вида `"order:12"`: клиент вызывает обработчик, зарегистрированный под именем до двоеточия, с остатком как аргументом (5.5).
 
 ### 3.7. Правила упорядочения, фильтров и поиска (выполняет клиент; Spec задаёт семантику)
 
-- **Ключ сортировки:** `index`/`integer`/`gauge` — число; `text` — строка; `date` — `key`; `person` — `name`; `nation` — `name`. Пустое значение (`null`) всегда в конце, при любом направлении. Строки — сравнение русской локали без учёта регистра (`Intl.Collator('ru', {sensitivity: 'base'})`). Сортировка устойчива; равные ключи сохраняют порядок по умолчанию.
-- **`text`:** «содержит»; регистр не важен; `ё` и `е` равны; краевые пробелы отбрасываются; пустое условие не фильтрует.
+- **Ключ сортировки:** `index`/`integer`/`gauge` — число; `text` — строка; `date` — `key`; `datetime` — `key`; `action_text` — `text`; `person` — `name`; `nation` — `name`. Пустое значение (`null`, а для `datetime` — и ячейка с `key = null`) всегда в конце, при любом направлении. Строки — сравнение русской локали без учёта регистра (`Intl.Collator('ru', {sensitivity: 'base'})`). Сортировка устойчива; равные ключи сохраняют порядок по умолчанию.
+- **`text`:** «содержит»; регистр не важен; `ё` и `е` равны; краевые пробелы отбрасываются; пустое условие не фильтрует. Для `action_text` сравнивается `text`.
 - **`number_range`:** границы включительно; пустая граница не ограничивает; применяется к числу или `date.key`.
-- **`date_range`:** границы — календарные даты, переводятся в число суток от 1970-01-01 (арифметика по компонентам Y-M-D без часовых поясов) и сравниваются с `date.key`.
-- **`presence`:** «есть» — ячейка не `null`; «нет» — `null`.
-- **Общий поиск:** строка подходит, если условие `text` выполняется хотя бы для одного столбца с `searchable = true` (для `person` и `nation` — по `name`). Результаты фильтров, поиска и условий столбцов объединяются по «И». Счётчик «Показано N из M»: N — после фильтрации, M — `total` ответа.
+- **`date_range`:** границы — календарные даты, переводятся в число суток от 1970-01-01 (арифметика по компонентам Y-M-D без часовых поясов) и сравниваются с `date.key`; для `datetime` — с `day`.
+- **`presence`:** «есть» — ячейка не `null` (для `datetime` — ещё и `key` не `null`: пустая ячейка с отметкой считается «нет»); «нет» — наоборот.
+- **Общий поиск:** строка подходит, если условие `text` выполняется хотя бы для одного столбца с `searchable = true` (для `person` и `nation` — по `name`, для `action_text` — по `text`). Результаты фильтров, поиска и условий столбцов объединяются по «И». Счётчик «Показано N из M»: N — после фильтрации, M — `total` ответа.
 
 ---
 
@@ -283,9 +287,9 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
 
 ### 4.4. `tables[]` и `tables[].columns[]`
 
-Таблица: `id` (идентификатор `[a-z][a-z0-9_]{1,29}`, уникален), `title` (1…40), `icon` (`players`, `nations`, `map`, `economy`, `army`, `diplomacy`, `table`), `source` (идентификатор источника), `empty_text` (1…120), `default_sort` (`column`, `direction`: `asc`/`desc`), `columns` (1…20). Таблиц — 1…12. Столбец сортировки по умолчанию должен существовать и иметь `sortable: true`.
+Таблица: `id` (идентификатор `[a-z][a-z0-9_]{1,29}`, уникален), `title` (1…40), `icon` (`players`, `nations`, `map`, `economy`, `army`, `diplomacy`, `table`, `orders`), `source` (идентификатор источника), `empty_text` (1…120), `default_sort` (`column`, `direction`: `asc`/`desc`), `columns` (1…20). Таблиц — 1…12. Столбец сортировки по умолчанию должен существовать и иметь `sortable: true`.
 
-Столбец: `id` (уникален в таблице), `title` (1…40), `type`, `source` (ключ значения источника), `width_px` (40…600; задаёт пропорцию столбца: клиент растягивает или сжимает столбцы под ширину блока, горизонтальной прокрутки нет), `sortable`, `filters` (список), `filter_label` (1…20, необязателен; только при диапазонном фильтре), `searchable`, `stub`, `scale_min`/`scale_max` (−10000…10000; обязательны для `gauge`, запрещены для остальных; `scale_min < scale_max`).
+Столбец: `id` (уникален в таблице), `title` (1…40), `type`, `source` (ключ значения источника), `width_px` (40…600; задаёт пропорцию столбца: клиент растягивает или сжимает столбцы под ширину блока, горизонтальной прокрутки нет), `sortable`, `filters` (список), `filter_label` (1…20, необязателен; только при диапазонном фильтре), `header_icon` (`stage_submitted`, `stage_distributed`, `stage_verdict`, по умолчанию `null`: иконка вместо текста заголовка — 5.5; `title` остаётся обязательным и становится подсказкой и подписью для доступности), `searchable`, `stub`, `scale_min`/`scale_max` (−10000…10000; обязательны для `gauge`, запрещены для остальных; `scale_min < scale_max`).
 
 Допустимые сочетания:
 
@@ -294,6 +298,8 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
 | `index`, `integer`, `gauge` | `number_range` | нет | да |
 | `text` | `text` | да | да |
 | `date` | `number_range`, `date_range` | нет | да |
+| `datetime` | `date_range`, `presence` | нет | да |
+| `action_text` | `text` | да | да |
 | `person` | `text` | да | да |
 | `nation` | `text`, `presence` | да | да |
 | `flag` | — | нет | нет |
@@ -321,6 +327,7 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
       "columns": [
         {"id": "number", "title": "№", "type": "index", "width_px": 52,
          "sortable": true, "filters": [], "filter_label": null,
+         "header_icon": null,
          "searchable": false, "stub": false, "scale_min": null, "scale_max": null}
       ]
     }
@@ -346,7 +353,7 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
       "player": {"name": "Иван Петров", "avatar_url": "https://…", "is_fallback": false},
       "joined": {"text": "28 сентября 2026", "key": 20724},
       "level": 1, "judge_rating": 0,
-      "nation": {"name": "Новгород", "color": "#C0392B"}
+      "nation": {"name": "Новгород", "color": "#C0392B", "flag_url": null}
     }}
   ]
 }
@@ -364,11 +371,13 @@ DTO и эндпоинты `00_core`, `01_map`, `02_bot` не меняются. �
 
 ### 5.5. Клиент (VKUI, только desktop)
 
-**Файлы** (`frontend/src/modules/03_registry/`): `api.ts`, `types.ts`, `texts.ts` (тексты интерфейса), `hooks/useRegistryTables.ts`, `hooks/useRegistryRows.ts`, `lib/tableView.ts` (сортировка, фильтры, поиск — 3.7, чистые функции), `components/PanelRegistry.tsx`, `TabStrip.tsx`, `RegistryTable.tsx`, `TableToolbar.tsx`, `FilterPanel.tsx`, `cells/*` (по одной на тип), `RegistryEntryButton.tsx`.
+**Файлы** (`frontend/src/modules/03_registry/`): `api.ts`, `types.ts`, `texts.ts` (тексты интерфейса), `hooks/useRegistryTables.ts`, `hooks/useRegistryRows.ts`, `lib/tableView.ts` (сортировка, фильтры, поиск — 3.7, чистые функции), `lib/cellActions.ts` (реестр действий ячеек), `lib/entryRequest.ts` (разбор `#registry/order-N` и хранение запроса), `components/PanelRegistry.tsx`, `TabStrip.tsx`, `RegistryTable.tsx`, `TableToolbar.tsx`, `FilterPanel.tsx`, `HeaderIcon.tsx` (иконки `header_icon`), `cells/*` (по одной на тип), `RegistryEntryButton.tsx`.
 
-**Иконки вкладок.** Имя `icon` таблицы разворачивается в иконку VKUI в `TabStrip.tsx` (таблица `TAB_ICONS`): `players` → `Icon28UsersOutline`, `nations` → `Icon28FlagOutline`, `map` → `Icon28LocationMapOutline`, `economy` → `Icon28CoinsOutline`, `army` → `Icon28CheckShieldOutline`, `diplomacy` → `Icon28MessagesOutline`, `table` → `Icon28TablecellsOutline`; неизвестное имя — общая иконка `Icon28TablecellsOutline`.
+**Иконки вкладок.** Имя `icon` таблицы разворачивается в иконку VKUI в `TabStrip.tsx` (таблица `TAB_ICONS`): `players` → `Icon28UsersOutline`, `nations` → `Icon28FlagOutline`, `map` → `Icon28LocationMapOutline`, `economy` → `Icon28CoinsOutline`, `army` → `Icon28CheckShieldOutline`, `diplomacy` → `Icon28MessagesOutline`, `table` → `Icon28TablecellsOutline`, `orders` → `Icon28DocumentListOutline`; неизвестное имя — общая иконка `Icon28TablecellsOutline`.
 
-**Интеграция в `AppShell`:** константа `PANEL_REGISTRY = 'registry'`; маршрут `{ path: '/registry', panel: PANEL_REGISTRY, view: 'main' }`; панель исключается из правила перенаправления по наличию государства (как `PANEL_MAP`), чтобы игрок без государства мог открыть окно; временная кнопка `RegistryEntryButton` («Реестр») показывается на тех же панелях, что `MapEntryButton`, фиксированно над ней (`right: 12`, выше кнопки «Карта»), скрыта на самой панели Реестра; в `normalizeEntryHash` добавляется `#registry` → `#/registry` (как `#map`).
+**Иконка заголовка (`header_icon`).** Когда у столбца задан `header_icon`, в шапке вместо текста рисуется маленькая встроенная SVG-иконка этапа (`stage_submitted` — подача, `stage_distributed` — распределение, `stage_verdict` — вердикт); текст `title` остаётся в `title` (подсказка) и в `aria-label` (доступность). У сортируемого столбца иконка внутри кнопки сортировки, подсказка и подпись сохраняются.
+
+**Интеграция в `AppShell`:** константа `PANEL_REGISTRY = 'registry'`; маршрут `{ path: '/registry', panel: PANEL_REGISTRY, view: 'main' }`; панель исключается из правила перенаправления по наличию государства (как `PANEL_MAP`), чтобы игрок без государства мог открыть окно; временная кнопка `RegistryEntryButton` («Реестр») показывается на тех же панелях, что `MapEntryButton`, фиксированно над ней (`right: 12`, выше кнопки «Карта»), скрыта на самой панели Реестра; в `normalizeEntryHash` добавляется `#registry` → `#/registry` (как `#map`) и `#registry/order-N` → запрос входа (ниже, «Вход по хэшу»).
 
 **Раскладка панели:** колонка высотой окна приложения: строка заголовка («Реестр», «Назад») → ряд вкладок → строка управления таблицей (поиск, «Показано N из M», «Фильтры», «Обновить», «Сбросить») → панель фильтров (в потоке документа, открывается кнопкой «Фильтры») → блок таблицы (`flex: 1; min-height: 0; overflow: auto`, шапка `position: sticky; top: 0`). Высота страницы приложения не зависит от числа строк. **Ширина (правило Project Owner 14.10.2026): окно умещается в 910 px, горизонтальной полосы прокрутки нет ни у окна, ни у блока таблицы.** Таблица — `table-layout: fixed; width: 100%`, ширины столбцов — доли `width_px` от их суммы в процентах (`colgroup`): `width_px` в конфиге — пропорции бюджета `layout.table_max_width_px` (870 px), а не абсолютная ширина. Блок таблицы `overflow-x: hidden`, `overflow-y: auto`; поля окна по бокам не больше 20 px; длинный текст ячейки обрезается многоточием (полный текст в `title`). `tabs_position = right` переворачивает ряд вкладок в вертикальную колонку справа от блока таблицы без изменения остального.
 
@@ -380,7 +389,11 @@ DTO и эндпоинты `00_core`, `01_map`, `02_bot` не меняются. �
 
 **Состояние:** сортировка, фильтры, поиск и открытость панели фильтров каждой вкладки хранятся в состоянии `PanelRegistry` и сохраняются при переключении вкладок; при уходе с панели («Назад») сбрасываются (Bible, 2.7). Открытие вкладки и «Обновить» запрашивают строки заново; описание таблиц запрашивается один раз при открытии панели.
 
-**Ячейки:** `person` — круглая аватарка 24 px с запасным нейтральным кружком при `avatar_url = null` или ошибке загрузки, зазор 8 px и имя с обрезкой по ширине (полное название в `title`); `nation` — точка цвета 10 px, зазор 8 px и название с обрезкой (полное в `title`) либо прочерк; `gauge` — число со знаком в фиксированные 36 px, выровненное вправо, и шкала на остаток ячейки с нулём в центре, отрицательная сторона слева, положительная справа (различие формой, не только цветом); `flag` — квадрат цвета или изображение; `date` — поле `text`; `index`/`integer` — выровнены вправо; ячейки `date` и `integer` не переносятся (`white-space: nowrap`).
+**Ячейки:** `person` — круглая аватарка 24 px с запасным нейтральным кружком при `avatar_url = null` или ошибке загрузки, зазор 8 px и имя с обрезкой по ширине (полное название в `title`); `nation` — при заданном `flag_url` изображение флага (при ошибке загрузки — та же точка цвета), иначе точка цвета 10 px; зазор 8 px и название с обрезкой (полное в `title`) либо прочерк; `gauge` — число со знаком в фиксированные 36 px, выровненное вправо, и шкала на остаток ячейки с нулём в центре, отрицательная сторона слева, положительная справа (различие формой, не только цветом); `flag` — квадрат цвета или изображение; `date` — поле `text`; `datetime` — две строки: `date` над `time`, при `mark = "overdue"` текст в цвете ошибки (у пустой ячейки с отметкой вместо времени — подпись «срок вышел»); `action_text` — текст как кнопка-ссылка акцентного цвета; клик вызывает `runCellAction(action)`; `index`/`integer` — выровнены вправо; ячейки `date`, `datetime` и `integer` не переносятся (`white-space: nowrap`).
+
+**Действия ячеек (`lib/cellActions.ts`).** Модуль-владелец данных регистрирует обработчик `registerCellAction(handler, fn)`; `runCellAction("handler:arg")` вызывает `fn(arg)`. Обработчик не зарегистрирован — клик ничего не делает. Реестр не знает о модулях-владельцах: строка `action` — весь контракт.
+
+**Вход по хэшу (`lib/entryRequest.ts`, `AppShell.normalizeEntryHash`).** Хэш `#registry/order-<от 1 до 9 цифр>` — подсказка стартового экрана: `normalizeEntryHash` переписывает его на маршрут `#/registry` и сохраняет запрос `{tab: 'orders', action: 'order:<N>'}`. Больше девяти цифр или нецифровой номер — хэш игнорируется целиком. Панель получает запрос пропом `entryRequest`, выбирает вкладку `tab`, если такая таблица существует (нет — обычная первая вкладка), и после загрузки её строк вызывает `action` так же, как клик по ячейке `action_text`. Существующий `#registry` работает без изменений.
 
 **Состояния:** загрузка — спиннер в блоке таблицы; ошибка — сообщение и «Повторить» (ранее показанные строки остаются); пустая таблица — `empty_text`; фильтр без результата — «Ничего не найдено» и «Сбросить». Тексты интерфейса (кнопки, подсказки) — константы клиента; тексты таблиц и столбцов — из ответа 5.1.
 
@@ -411,9 +424,11 @@ def register_table_source(
 
 # Конструкторы ячеек (backend/src/modules/_03_registry/cells.py):
 # cell_date(text: str, key: int) -> dict
+# cell_datetime(moment: datetime | None, tz: str, mark: str | None = None) -> dict
+# cell_action_text(text: str, action: str) -> dict
 # cell_person(name: str, avatar_url: str | None, is_fallback: bool) -> dict
 # cell_flag(color: str, image_url: str | None) -> dict
-# cell_nation(name: str, color: str) -> dict
+# cell_nation(name: str, color: str, flag_url: str | None = None) -> dict
 ```
 
 Источник читает только публичные функции своего модуля и не пишет в БД. Новый вид данных в существующей таблице: модуль-владелец добавляет ключ в `provides` своего источника (для встроенных `players` и `nations` — в `_03_registry`), затем столбец с этим `source` добавляется в конфиг.

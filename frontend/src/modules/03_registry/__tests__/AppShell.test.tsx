@@ -36,11 +36,13 @@ vi.mock('@vkontakte/vk-bridge', () => ({
 import { server } from '../../../../vitest.setup';
 import {
   AppShell,
+  normalizeEntryHash,
   PANEL_CREATE,
   PANEL_HOME,
   PANEL_MAP,
   PANEL_REGISTRY,
 } from '../../../app/AppShell';
+import { takeRegistryEntryRequest } from '../lib/entryRequest';
 import {
   MINI_BORDERS,
   MINI_GEOMETRY,
@@ -129,6 +131,34 @@ function registerAppHandlers() {
     ),
   );
 }
+
+describe('normalizeEntryHash — #registry/order-N (Spec 04_orders 5.5)', () => {
+  afterEach(() => {
+    takeRegistryEntryRequest(); // never leak a stored request between tests
+  });
+
+  it('rewrites a 1-9 digit order hash to the registry route with a stored request; anything else is ignored', () => {
+    window.location.hash = '#registry/order-12';
+    normalizeEntryHash();
+    expect(window.location.hash).toBe('#/registry');
+    expect(takeRegistryEntryRequest()).toEqual({
+      tab: 'orders',
+      action: 'order:12',
+    });
+
+    // More than nine digits — ignored, the hash stays untouched.
+    window.location.hash = '#registry/order-1234567890';
+    normalizeEntryHash();
+    expect(window.location.hash).toBe('#registry/order-1234567890');
+    expect(takeRegistryEntryRequest()).toBeNull();
+
+    // Non-digits — ignored.
+    window.location.hash = '#registry/order-abc';
+    normalizeEntryHash();
+    expect(window.location.hash).toBe('#registry/order-abc');
+    expect(takeRegistryEntryRequest()).toBeNull();
+  });
+});
 
 describe('AppShell — /registry route', () => {
   it('a player without a nation opens /registry and is not redirected; the «Реестр» button is hidden on the registry panel', async () => {

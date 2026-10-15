@@ -9,6 +9,8 @@ single place instead of every test.
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -214,6 +216,66 @@ def test_04_orders_column_lengths_match_schema():
     assert (
         columns["verdict_url"].type.length == orders_schema.URL_COLUMN_LENGTH
     )
+
+
+def test_03_registry_accepts_new_types_and_rejects_bad_combos():
+    """04_orders Issue 3 (Spec 03_registry 1.2): the schema accepts the
+    ``datetime`` and ``action_text`` column types, the ``header_icon``
+    key and the ``orders`` table icon — and still rejects an
+    ``action_text`` column with ``date_range`` and an unknown
+    ``header_icon`` value."""
+    with open(
+        RegistryConfig.get_default_config_path(), encoding="utf-8"
+    ) as f:
+        data = yaml.safe_load(f)
+
+    data["tables"] = [
+        {
+            "id": "orders",
+            "title": "Приказы",
+            "icon": "orders",
+            "source": "orders",
+            "empty_text": "Приказов пока нет",
+            "default_sort": {"column": "number", "direction": "desc"},
+            "columns": [
+                {
+                    "id": "number", "title": "№", "type": "index",
+                    "source": "number", "width_px": 56, "sortable": True,
+                    "filters": [], "searchable": False, "stub": False,
+                },
+                {
+                    "id": "title", "title": "Название",
+                    "type": "action_text", "source": "title",
+                    "width_px": 236, "sortable": True,
+                    "filters": ["text"], "searchable": True, "stub": False,
+                },
+                {
+                    "id": "submitted", "title": "Подача",
+                    "header_icon": "stage_submitted", "type": "datetime",
+                    "source": "submitted", "width_px": 136,
+                    "sortable": True,
+                    "filters": ["date_range", "presence"],
+                    "searchable": False, "stub": False,
+                },
+            ],
+        }
+    ]
+    config = RegistryConfig.model_validate(data)
+    orders = config.table("orders")
+    assert orders.icon == "orders"
+    assert orders.columns[1].type == "action_text"
+    assert orders.columns[2].type == "datetime"
+    assert orders.columns[2].header_icon == "stage_submitted"
+
+    bad_filters = copy.deepcopy(data)
+    bad_filters["tables"][0]["columns"][1]["filters"] = ["date_range"]
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_filters)
+
+    bad_icon = copy.deepcopy(data)
+    bad_icon["tables"][0]["columns"][2]["header_icon"] = "stage_magic"
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_icon)
 
 
 def test_03_registry_table_over_table_max_width_rejected():

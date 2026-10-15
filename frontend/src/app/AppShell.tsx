@@ -7,7 +7,7 @@
  * kept in sync with the hash router.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useActiveVkuiLocation,
   useRouteNavigator,
@@ -34,6 +34,11 @@ import { PanelMap } from '../modules/01_map/components/PanelMap';
 import { MapEntryButton } from '../modules/01_map/components/MapEntryButton';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
 import { RegistryEntryButton } from '../modules/03_registry/components/RegistryEntryButton';
+import {
+  parseRegistryOrderHash,
+  setRegistryEntryRequest,
+  takeRegistryEntryRequest,
+} from '../modules/03_registry/lib/entryRequest';
 import { BotStatusProvider } from '../modules/02_bot/hooks/useBotStatus';
 import { parseStartHash } from '../modules/02_bot/lib/startHash';
 import { AdminBlock } from '../admin/AdminBlock';
@@ -53,6 +58,15 @@ const MODAL_DELETE_NATION = 'confirm-delete-nation';
  * what is actually shown after authentication.
  */
 export function normalizeEntryHash(): void {
+  // `#registry/order-<1-9 digits>` (a bot message link, Spec 04_orders
+  // 5.5): open the Registry and hand it the order request — the hash
+  // itself is only a start hint and carries no access.
+  const orderRequest = parseRegistryOrderHash(window.location.hash);
+  if (orderRequest) {
+    setRegistryEntryRequest(orderRequest);
+    window.history.replaceState(null, '', '#/registry');
+    return;
+  }
   if (window.location.hash === '#map') {
     window.history.replaceState(null, '', '#/map');
     return;
@@ -124,6 +138,9 @@ function AuthedArea() {
   const navigator = useRouteNavigator();
   const nationState = useNation();
   const [activeModal, setActiveModal] = useState<string | null>(null);
+  // The entry request is consumed once — the first read wins, later
+  // renders get null (takeRegistryEntryRequest clears the store).
+  const registryRequest = useRef(takeRegistryEntryRequest()).current;
 
   const { status, nation, refresh } = nationState;
   const activePanel = panel ?? PANEL_HOME;
@@ -215,7 +232,7 @@ function AuthedArea() {
             <PanelMap />
           </Panel>
           <Panel id={PANEL_REGISTRY}>
-            <PanelRegistry />
+            <PanelRegistry entryRequest={registryRequest} />
           </Panel>
         </View>
         {/* Temporary service entries «Карта»/«Реестр» — remove with the

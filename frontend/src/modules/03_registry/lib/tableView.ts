@@ -91,7 +91,12 @@ export function cellSortKey(
       return typeof cell === 'number' ? cell : null;
     case 'text':
       return typeof cell === 'string' ? cell : null;
-    case 'date': {
+    case 'action_text': {
+      const text = cellProp(cell, 'text');
+      return typeof text === 'string' ? text : null;
+    }
+    case 'date':
+    case 'datetime': {
       const key = cellProp(cell, 'key');
       return typeof key === 'number' ? key : null;
     }
@@ -117,7 +122,7 @@ function cellText(
     const name = cellProp(cell, 'name');
     return typeof name === 'string' ? name : null;
   }
-  if (column.type === 'date') {
+  if (column.type === 'date' || column.type === 'action_text') {
     const text = cellProp(cell, 'text');
     return typeof text === 'string' ? text : null;
   }
@@ -243,15 +248,27 @@ export function matchColumnFilter(
       );
     }
     case 'date_range': {
-      const key = cellSortKey(column, cell);
+      // `datetime` cells are filtered by the calendar `day`; `date`
+      // cells already carry days-since-epoch in `key`.
+      const key =
+        column.type === 'datetime'
+          ? cellProp(cell, 'day')
+          : cellSortKey(column, cell);
       return matchDateRange(
         typeof key === 'number' ? key : null,
         filter.from,
         filter.to,
       );
     }
-    case 'presence':
-      return filter.value === 'has' ? cell != null : cell == null;
+    case 'presence': {
+      // An empty `datetime` dict (all-null values + mark) still counts
+      // as «нет» — it carries no moment.
+      const present =
+        cell != null &&
+        (column.type !== 'datetime' ||
+          typeof cellProp(cell, 'key') === 'number');
+      return filter.value === 'has' ? present : !present;
+    }
     default:
       return true;
   }

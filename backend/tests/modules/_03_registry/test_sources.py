@@ -59,9 +59,13 @@ class TestPlayersTable:
             "is_fallback": True,
         }
         # The nationless player's nation cell is null; the owner's
-        # carries {name, color} (Spec 3.6).
+        # carries {name, color, flag_url} (Spec 3.6).
         assert first["nation"] is None
-        assert second["nation"] == {"name": "Второе", "color": "#112233"}
+        assert second["nation"] == {
+            "name": "Второе",
+            "color": "#112233",
+            "flag_url": None,
+        }
         assert first["level"] == 1
         assert first["judge_rating"] == 0
 
