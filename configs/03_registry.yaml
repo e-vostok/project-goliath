@@ -146,3 +146,19 @@ tables:
         filters: [number_range]
         searchable: false
         stub: false
+
+  # Таблица «Приказы» — Spec 04_orders, Приложение D (04_orders Issue 4).
+  # Поставщик строк orders регистрирует модуль 04_orders.
+  - id: orders
+    title: "Приказы"
+    icon: orders
+    source: orders
+    empty_text: "Приказов пока нет"
+    default_sort: {column: number, direction: desc}   # новые приказы сверху
+    columns:
+      - {id: number, title: "№", type: index, source: number, width_px: 56, sortable: true, filters: [], searchable: false, stub: false}
+      - {id: nation, title: "Государство", type: nation, source: nation, width_px: 168, sortable: true, filters: [text], searchable: true, stub: false}
+      - {id: title, title: "Название", type: action_text, source: title, width_px: 236, sortable: true, filters: [text], searchable: true, stub: false}
+      - {id: submitted, title: "Подача", header_icon: stage_submitted, type: datetime, source: submitted, width_px: 136, sortable: true, filters: [date_range], searchable: false, stub: false}
+      - {id: distributed, title: "Распределение", header_icon: stage_distributed, type: datetime, source: distributed, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
+      - {id: verdict, title: "Вердикт", header_icon: stage_verdict, type: datetime, source: verdict, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
