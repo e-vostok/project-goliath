@@ -9,8 +9,9 @@ Pydantic-схема валидации баланса модуля 00_core.
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import date
-from typing import Self
+from typing import Annotated, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -177,6 +178,29 @@ class CalendarSettings(BaseModel):
         description="Количество игровых календарных месяцев, "
         "проходящих за один ход.",
     )
+    month_names: list[Annotated[str, Field(min_length=1, max_length=20)]] = (
+        Field(
+            min_length=12,
+            max_length=12,
+            description="Названия месяцев для формата «дд.месяц.гггг» "
+            "(ровно 12, январь первым), без управляющих символов и дублей.",
+        )
+    )
+
+    @field_validator("month_names")
+    @classmethod
+    def check_month_names(cls, names: list[str]) -> list[str]:
+        for name in names:
+            if any(
+                unicodedata.category(c) in ("Cc", "Cf") for c in name
+            ):
+                raise ValueError(
+                    f"month_names: '{name}' содержит управляющий или "
+                    "невидимый символ (категории Cc/Cf недопустимы)"
+                )
+        if len(set(names)) != len(names):
+            raise ValueError("month_names: дубли недопустимы")
+        return names
 
     @model_validator(mode="after")
     def check_epoch_is_month_start(self) -> Self:

@@ -31,7 +31,7 @@ from core.db import Base
 from core.tick.orchestrator import TickOrchestrator, TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.admin_hooks import register_admin_hooks
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Nation, Province
 from modules._00_core.tick_handler import finalize_tick
@@ -349,7 +349,9 @@ async def test_e1_allow_register_digest_sent(
         config.types["TICK_DIGEST"].text,
         {
             "turn": 1,
-            "game_date": compute_game_date(1, CORE_CONFIG).isoformat(),
+            "game_date": format_game_date(
+                compute_game_date(1, CORE_CONFIG), CORE_CONFIG
+            ),
             "nation_name": "Государство Тестовое",
             "province_count": 2,
             "next_tick_time": format_game_time(
@@ -809,7 +811,9 @@ async def test_e6_dialog_round_trip(
             "leader_name": VALID_PROFILE["leader_name"],
             "province_count": 2,
             "turn": 7,
-            "game_date": compute_game_date(7, CORE_CONFIG).isoformat(),
+            "game_date": format_game_date(
+                compute_game_date(7, CORE_CONFIG), CORE_CONFIG
+            ),
             "next_tick_time": format_game_time(next_tick, TZ_NAME),
         },
         config,

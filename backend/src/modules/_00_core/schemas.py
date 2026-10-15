@@ -140,6 +140,7 @@ class GameClockDTO(BaseModel):
 
     current_turn: int
     game_date: str
+    game_date_text: str
     next_tick_at: datetime
 
 
