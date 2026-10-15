@@ -27,6 +27,7 @@ import {
 import { server } from '../../../../../vitest.setup';
 import type { NationRulesDTO } from '../../../../shared/types';
 import { SessionProvider } from '../../hooks/useAuth';
+import { OrdersUiProvider } from '../../../04_orders/OrdersUiProvider';
 import {
   MINI_GEOMETRY,
   MINI_MANIFEST,
@@ -188,7 +189,13 @@ export function renderWithProviders(ui: ReactElement) {
     <ConfigProvider platform={Platform.VKCOM}>
       <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
         <AppRoot>
-          <SessionProvider session={SESSION}>{ui}</SessionProvider>
+          <SessionProvider session={SESSION}>
+            {/* PanelNationHome hosts the orders block — the provider
+                must exist; these tests never open its windows. */}
+            <OrdersUiProvider activeModal={null} onActiveModal={() => {}}>
+              {ui}
+            </OrdersUiProvider>
+          </SessionProvider>
         </AppRoot>
       </AdaptivityProvider>
     </ConfigProvider>,

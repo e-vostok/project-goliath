@@ -35,6 +35,15 @@ import { MapEntryButton } from '../modules/01_map/components/MapEntryButton';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
 import { RegistryEntryButton } from '../modules/03_registry/components/RegistryEntryButton';
 import {
+  MODAL_ORDER_COMPOSER,
+  MODAL_ORDER_CONFIRM,
+  MODAL_ORDER_DETAIL,
+  OrdersUiProvider,
+} from '../modules/04_orders/OrdersUiProvider';
+import { OrderComposer } from '../modules/04_orders/OrderComposer';
+import { ConfirmSubmitModal } from '../modules/04_orders/ConfirmSubmitModal';
+import { OrderDetailModal } from '../modules/04_orders/OrderDetailModal';
+import {
   parseRegistryOrderHash,
   setRegistryEntryRequest,
   takeRegistryEntryRequest,
@@ -191,11 +200,20 @@ function AuthedArea() {
           refresh();
         }}
       />
+      {/* 04_orders windows live inside the same ModalRoot; the
+          provider below owns which of them is open. */}
+      <OrderComposer id={MODAL_ORDER_COMPOSER} />
+      <ConfirmSubmitModal id={MODAL_ORDER_CONFIRM} />
+      <OrderDetailModal id={MODAL_ORDER_DETAIL} />
     </ModalRoot>
   );
 
   return (
-    <SplitLayout modal={modal}>
+    <OrdersUiProvider
+      activeModal={activeModal}
+      onActiveModal={setActiveModal}
+    >
+      <SplitLayout modal={modal}>
       <SplitCol>
         <View activePanel={activePanel}>
           <Panel id={PANEL_CREATE}>
@@ -243,7 +261,8 @@ function AuthedArea() {
           <RegistryEntryButton />
         )}
       </SplitCol>
-    </SplitLayout>
+      </SplitLayout>
+    </OrdersUiProvider>
   );
 }
 

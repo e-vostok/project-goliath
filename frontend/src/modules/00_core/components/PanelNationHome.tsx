@@ -42,6 +42,7 @@ import {
 } from './CreateNationEditForm';
 import { mapErrorCodeToField } from './PanelCreateNation';
 import { BotConsentRow } from '../../02_bot/components/BotConsentRow';
+import { OrdersBlock } from '../../04_orders/components/OrdersBlock';
 
 export interface PanelNationHomeProps {
   nation: NationDTO;
@@ -288,6 +289,7 @@ export function PanelNationHome({
           </Div>
         )}
       </Group>
+      <OrdersBlock />
     </>
   );
 }
