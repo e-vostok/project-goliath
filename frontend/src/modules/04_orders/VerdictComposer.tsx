@@ -299,6 +299,10 @@ export function ConfirmVerdictModal({ id, ...navIdProps }: NavIdProps) {
       setError(
         e instanceof ApiError ? e.message : ORDERS_TEXTS.networkError,
       );
+    } finally {
+      // This component never unmounts (it is a permanent child of the
+      // ModalRoot — only VKUI's inner card hides), so the flag must be
+      // released on every settled request or the next window freezes.
       setSubmitting(false);
     }
   };
