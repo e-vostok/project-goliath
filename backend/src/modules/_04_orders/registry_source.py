@@ -14,13 +14,13 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._00_core.config_schema import CoreConfig
 from modules._03_registry.cells import (
     cell_action_text,
     cell_datetime,
     cell_nation,
 )
 from modules._03_registry.registry import RegistryRow
+from modules._03_registry.startup import get_core_config
 from modules._04_orders.service import OrderService
 
 # The value keys the source promises (Spec Appendix A) — a config column's
@@ -45,9 +45,7 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
     ``tick.tick_timezone``; a still-empty ``verdict`` cell of an order
     past its deadline carries ``mark = "overdue"``.
     """
-    tz = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).tick.tick_timezone
+    tz = get_core_config().tick.tick_timezone
     now = datetime.now(timezone.utc)
     rows = await OrderService.list_for_registry(session)
     return [

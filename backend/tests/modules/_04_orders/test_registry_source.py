@@ -16,6 +16,7 @@ from datetime import timedelta
 import pytest
 
 import modules._03_registry.registry as registry_module
+from modules._00_core.config_schema import CoreConfig
 from modules._03_registry.errors import RegistryConfigError
 from modules._03_registry.service import build_table
 from modules._03_registry.startup import startup_registry
@@ -138,6 +139,37 @@ class TestOrdersSource:
         assert cell["key"] is not None
         assert cell["day"] is not None
         assert cell["mark"] is None
+
+
+class TestCoreConfigInjection:
+    """The ``orders`` source uses the CoreConfig captured by
+    ``startup_registry`` — a table request must never re-open
+    ``00_core.yaml`` (same guard as the built-in sources)."""
+
+    async def test_source_uses_injected_config_without_disk_read(
+        self, test_db_session, orders_started, monkeypatch
+    ):
+        core_config = CoreConfig.from_yaml(
+            CoreConfig.get_default_config_path()
+        )
+        monkeypatch.setattr(
+            CoreConfig,
+            "from_yaml",
+            classmethod(
+                lambda cls, path: pytest.fail(
+                    "CoreConfig.from_yaml called during a table request"
+                )
+            ),
+        )
+        register_orders_extensions()
+        startup_registry(core_config=core_config)
+        await _submit_one(test_db_session)
+
+        built = await build_table(test_db_session, "orders")
+
+        assert built.total == 1
+        assert built.rows[0].key == "o1"
+        assert built.rows[0].cells["submitted"]["date"] is not None
 
 
 class TestStartupCheck:
