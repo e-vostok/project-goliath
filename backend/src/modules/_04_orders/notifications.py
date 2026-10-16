@@ -4,8 +4,9 @@ Bot notifications of module 04_orders (Spec D9, Appendix C).
 The four ORDER_* types are registered with the bot module by
 ``register_orders_extensions()``. Issue 6 produces the assignment
 pair — ``ORDER_JUDGE_ASSIGNED`` to the judge and ``ORDER_DISTRIBUTED``
-to the author; Issue 7 adds ``ORDER_VERDICT_READY`` to the author; the
-reminder producer arrives in Issue 9.
+to the author; Issue 7 adds ``ORDER_VERDICT_READY`` to the author;
+Issue 9 adds the ``ORDER_JUDGE_REMINDER`` producer in the worker's
+retry pass.
 
 Player privacy (Spec 0, D9): the texts carry the order number, the
 author-nation name and the order link — never the player-written title
@@ -15,12 +16,13 @@ or summary, and the judge's identity is revealed to no player.
 from __future__ import annotations
 
 import logging
+import math
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._02_bot.service import BotService
+from modules._02_bot.service import BotService, EnqueueResult
 from modules._04_orders.models import Order
 
 logger = logging.getLogger(__name__)
@@ -133,4 +135,52 @@ async def notify_verdict(
             "order_link": link,
         },
         event_at=verdict_at,
+    )
+
+
+async def notify_reminder(
+    session: AsyncSession,
+    *,
+    order: Order,
+    judge_player_id: str,
+    now: datetime,
+) -> EnqueueResult | None:
+    """
+    Enqueue the ORDER_JUDGE_REMINDER for the judge (Spec 2.3 step 2),
+    stamped ``event_at = now`` so TTL counts from the reminder pass.
+    ``hours_left`` is the Spec 3.4 expression evaluated at ``now`` —
+    ``max(1, ceil((deadline_at - now) / 3600 s))``.
+
+    Without VK_APP_ID there is no link to send: enqueue nothing and
+    log one warning — the same rule as the assignment pair (Appendix
+    C). Returns the enqueue result; ``None`` on the missing-app-id
+    skip. ``judge_player_id`` goes into the enqueue call only — never
+    into a log line (INV-O5).
+    """
+    link = order_app_link(order.number)
+    if link is None:
+        logger.warning(
+            "order_notification_skipped_no_app_id: reminder due for "
+            "order %s — VK_APP_ID is not set, notification not "
+            "enqueued",
+            order.id,
+        )
+        return None
+    deadline = order.deadline_at
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    hours_left = max(
+        1, math.ceil((deadline - now).total_seconds() / 3600)
+    )
+    return await BotService.enqueue(
+        session,
+        type_key=ORDER_JUDGE_REMINDER,
+        player_id=judge_player_id,
+        event_key=f"order_reminder:{order.id}",
+        variables={
+            "order_number": order.number,
+            "hours_left": hours_left,
+            "order_link": link,
+        },
+        event_at=now,
     )

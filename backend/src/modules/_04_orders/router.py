@@ -39,6 +39,7 @@ from modules._04_orders.service import (
     OrderDetailView,
     OrderService,
 )
+from modules._04_orders.worker import request_orders_wake
 
 router = APIRouter(prefix="/api/v1/orders")
 
@@ -139,6 +140,9 @@ async def submit_order(
         article_url=body.article_url,
     )
     await session.commit()
+    # Spec 2.3: a fresh order may wait for a judge — wake the worker;
+    # a no-op while none runs.
+    request_orders_wake()
     if not outcome.created:
         response.status_code = 200
     return _detail_dto(outcome.view)
@@ -185,6 +189,8 @@ async def write_verdict(
         article_url=body.article_url,
     )
     await session.commit()
+    # Spec 2.3: a verdict frees a judge's load slot — wake the worker.
+    request_orders_wake()
     return _detail_dto(view)
 
 
