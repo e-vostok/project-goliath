@@ -1,31 +1,42 @@
 """
-Public service API of module 04_orders (Spec 2.5, 3.5, 5.1).
+Public service API of module 04_orders (Spec 2.5, 3.3, 3.5, 5.1).
 
 ``submit`` runs the Spec 5.1 check order: module advisory lock
 (PostgreSQL) -> idempotent repeat on ``(author, client_request_id)``
 (INV-O9) -> author owns a nation (snapshot source, INV-O6) -> author's
 unresolved-orders limit (INV-O15) -> field rules -> insert with the
 public number ``1 + max(0, max(number))`` retried under a SAVEPOINT on a
-unique violation (Spec 3.5). The service never commits — the caller owns
-the transaction boundary.
+unique violation (Spec 3.5) -> a best-effort distribution attempt under
+its own SAVEPOINT, logged and swallowed on failure (INV-O8). The service
+never commits — the caller owns the transaction boundary.
+
+``distribute`` runs the Spec 3.3 steps on one order: the same advisory
+lock (re-entrant, so ``submit`` can call it), a re-read under the lock,
+candidates via ``PlayerService`` and ``BotService``, one aggregating
+workload query, the injected selector, a conditional ``UPDATE ... WHERE
+judge_player_id IS NULL`` and the two assignment notifications.
 
 Nothing here exposes the judge: no view carries ``judge_player_id`` or
 any player identifier of the judge (INV-O5); ``can_write_verdict`` is
-computed per viewer and stays ``False`` until the verdict endpoint
-exists (Issue 7).
+computed per viewer — true only for the assigned judge while no verdict
+exists.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from enum import Enum
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._00_core.service import NationService
+from modules._00_core.service import NationService, PlayerService
+from modules._02_bot.service import BotService
+from modules._04_orders import distribution
+from modules._04_orders.distribution import JudgeCandidate
 from modules._04_orders.exceptions import (
     OrderAuthorLimitReachedError,
     OrderNationRequiredError,
@@ -33,6 +44,7 @@ from modules._04_orders.exceptions import (
     OrderNumberConflictError,
 )
 from modules._04_orders.models import Order, is_overdue
+from modules._04_orders.notifications import notify_assignment
 from modules._04_orders.rules import (
     validate_article_url,
     validate_summary,
@@ -99,7 +111,35 @@ class RegistryOrderView:
     verdict_at: datetime | None
 
 
-def _detail_view(order: Order, *, now: datetime) -> OrderDetailView:
+class DistributeResult(str, Enum):
+    """The outcome of one distribution attempt (Spec 2.5, 3.3)."""
+
+    ASSIGNED = "ASSIGNED"
+    NO_CANDIDATES = "NO_CANDIDATES"  # приказ остаётся без судьи
+    ALREADY_ASSIGNED = "ALREADY_ASSIGNED"
+
+
+@dataclass(frozen=True)
+class AssignedOrderView:
+    """
+    One order awaiting the caller's verdict (Spec 2.5) — the judge's
+    queue. ``deadline_at`` is never NULL: the assignment columns are
+    all-or-none (INV-O4). No judge fields (INV-O5).
+    """
+
+    number: int
+    nation_name: str
+    nation_color: str
+    title: str
+    summary: str
+    article_url: str
+    deadline_at: datetime
+    overdue: bool
+
+
+def _detail_view(
+    order: Order, *, now: datetime, viewer_player_id: str
+) -> OrderDetailView:
     """The detail DTO payload for a loaded row."""
     return OrderDetailView(
         number=order.number,
@@ -113,9 +153,13 @@ def _detail_view(order: Order, *, now: datetime) -> OrderDetailView:
         verdict_summary=order.verdict_summary,
         verdict_url=order.verdict_url,
         overdue=is_overdue(order, now),
-        # Issue 4 scope: nobody can write a verdict yet (INV-O5 keeps
-        # the judge invisible; the real check arrives with Issue 7).
-        can_write_verdict=False,
+        # Spec 5.2: the button is offered to the assigned judge alone,
+        # and only while no verdict exists (INV-O5 hides who that is).
+        can_write_verdict=(
+            order.judge_player_id is not None
+            and order.judge_player_id == viewer_player_id
+            and order.verdict_at is None
+        ),
     )
 
 
@@ -190,7 +234,10 @@ class OrderService:
         ).scalar_one_or_none()
         now = datetime.now(timezone.utc)
         if existing is not None:
-            return SubmitOutcome(_detail_view(existing, now=now), False)
+            return SubmitOutcome(
+                _detail_view(existing, now=now, viewer_player_id=player_id),
+                False,
+            )
 
         # 3. The author must own a nation; its id/name/colour are stored
         # as the immutable snapshot (INV-O6).
@@ -231,10 +278,24 @@ class OrderService:
             article_url=article_url,
             submitted_at=now,
         )
-        # The distribution attempt under its own SAVEPOINT arrives with
-        # Issue 6 (Spec 5.1 final step); a submission always succeeds or
-        # fails on the order itself (INV-O8).
-        return SubmitOutcome(_detail_view(order, now=now), True)
+
+        # 7. Distribution attempt under its own SAVEPOINT (Spec 5.1
+        # final step): any failure — the order's, the selector's or a
+        # notification's — is logged and swallowed; the submission
+        # stands on its own (INV-O8).
+        try:
+            async with session.begin_nested():
+                await OrderService.distribute(session, order.id, now=now)
+        except Exception:
+            logger.exception(
+                "distribution attempt failed for order %s", order.id
+            )
+        # The stored row is the truth for the response — the attempt may
+        # have assigned the judge or rolled its writes back entirely.
+        await session.refresh(order)
+        return SubmitOutcome(
+            _detail_view(order, now=now, viewer_player_id=player_id), True
+        )
 
     @staticmethod
     async def _insert_numbered(
@@ -284,8 +345,8 @@ class OrderService:
     ) -> OrderDetailView:
         """
         The order's public detail by number — 404 ``ORDER_NOT_FOUND``
-        when absent. ``viewer_player_id`` selects ``can_write_verdict``;
-        until the verdict endpoint exists it is always ``False``.
+        when absent. ``viewer_player_id`` selects ``can_write_verdict``:
+        true only for the assigned judge while no verdict exists.
         """
         order = (
             await session.execute(
@@ -294,7 +355,11 @@ class OrderService:
         ).scalar_one_or_none()
         if order is None:
             raise OrderNotFoundError(number)
-        return _detail_view(order, now=datetime.now(timezone.utc))
+        return _detail_view(
+            order,
+            now=datetime.now(timezone.utc),
+            viewer_player_id=viewer_player_id,
+        )
 
     @staticmethod
     async def list_for_registry(
@@ -329,6 +394,166 @@ class OrderService:
                 verdict_at=row[7],
             )
             for row in result.all()
+        ]
+
+    @staticmethod
+    async def distribute(
+        session: AsyncSession,
+        order_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> DistributeResult:
+        """
+        Give one order its anonymous judge, if a candidate exists
+        (Spec 3.3, steps 1–8).
+
+        The module advisory lock serializes the attempt with submissions
+        and other attempts; ``pg_advisory_xact_lock`` is re-entrant
+        inside one transaction, so ``submit`` calling us never
+        deadlocks. SQLite's single writer needs no lock. Called inside
+        the caller's SAVEPOINT — never commits, and a failure rolls back
+        only this attempt (INV-O8): an order without a judge simply
+        waits for the next attempt.
+        """
+        from modules._04_orders.startup import get_orders_config
+
+        judge = get_orders_config().judge
+
+        # 1. Module lock — same key as submit.
+        if session.bind.dialect.name == "postgresql":
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"),
+                {"key": ORDERS_ADVISORY_LOCK_KEY},
+            )
+
+        # 2. Re-read under the lock; a judge already present means the
+        # assignment is done — nothing to do.
+        order = (
+            await session.execute(
+                select(Order).where(Order.id == order_id)
+            )
+        ).scalar_one()
+        if order.judge_player_id is not None:
+            return DistributeResult.ALREADY_ASSIGNED
+
+        # 3. Candidates: every player with rating and nation ownership —
+        # through PlayerService only, never a direct read (INV-O7).
+        players = await PlayerService.list_for_registry(session)
+
+        # 4. Reachability (only when the config asks for it): a nation
+        # counts on its own; players without one must have consented to
+        # bot messages — otherwise the judge could never be told.
+        consented: set[str] = set()
+        if judge.require_reachable:
+            consented = await BotService.consented_player_ids(
+                session,
+                [r.player_id for r in players if r.nation_id is None],
+            )
+
+        # 5. One aggregating query — pending verdicts P and the latest
+        # assignment τ for every judge (Spec 3.1).
+        stats = await session.execute(
+            select(
+                Order.judge_player_id,
+                func.count().filter(Order.verdict_at.is_(None)),
+                func.max(Order.distributed_at),
+            )
+            .where(Order.judge_player_id.is_not(None))
+            .group_by(Order.judge_player_id)
+        )
+        pending_by: dict[str, int] = {}
+        last_by: dict[str, datetime] = {}
+        for judge_id, pending, last_at in stats.all():
+            pending_by[judge_id] = pending
+            last_by[judge_id] = last_at
+
+        # 6. Build candidates and let the selector pick (the module-
+        # level reference is the injection point for tests).
+        candidates = [
+            JudgeCandidate(
+                player_id=row.player_id,
+                rating=row.judge_rating,
+                has_nation=row.nation_id is not None,
+                consented=row.player_id in consented,
+                pending=pending_by.get(row.player_id, 0),
+                last_assigned_at=last_by.get(row.player_id),
+            )
+            for row in players
+        ]
+        judge_player_id = distribution.judge_selector(
+            order.author_player_id, candidates, judge
+        )
+        if judge_player_id is None:
+            return DistributeResult.NO_CANDIDATES
+
+        # 7. Conditional assignment (INV-O1): the row is only claimed
+        # while judge_player_id IS NULL. The deadline and reminder
+        # timestamps are fixed now by integer arithmetic (Spec 3.4) and
+        # never move, whatever the config becomes later.
+        distributed_at = (
+            now if now is not None else datetime.now(timezone.utc)
+        )
+        result = await session.execute(
+            update(Order)
+            .where(
+                Order.id == order_id,
+                Order.judge_player_id.is_(None),
+            )
+            .values(
+                judge_player_id=judge_player_id,
+                distributed_at=distributed_at,
+                deadline_at=distributed_at
+                + timedelta(seconds=judge.deadline_seconds),
+                reminder_at=distributed_at
+                + timedelta(seconds=judge.reminder_seconds),
+            )
+        )
+        if result.rowcount == 0:
+            # A racing attempt claimed the row between the re-read and
+            # the update — treat it like an already-assigned order.
+            return DistributeResult.ALREADY_ASSIGNED
+
+        # 8. The assignment pair — judge and author — stamped with the
+        # assignment moment, not the enqueue moment (Spec 3.3 step 8).
+        # The texts never carry the player-written title or summary.
+        await notify_assignment(
+            session,
+            order=order,
+            judge_player_id=judge_player_id,
+            distributed_at=distributed_at,
+        )
+        return DistributeResult.ASSIGNED
+
+    @staticmethod
+    async def list_assigned(
+        session: AsyncSession, *, player_id: str
+    ) -> list[AssignedOrderView]:
+        """
+        The caller's orders still awaiting a verdict, soonest deadline
+        first — the judge's queue (Spec 5.2). No judge fields are ever
+        read out; the judge is the caller. Read-only, never commits.
+        """
+        result = await session.execute(
+            select(Order)
+            .where(
+                Order.judge_player_id == player_id,
+                Order.verdict_at.is_(None),
+            )
+            .order_by(Order.deadline_at)
+        )
+        now = datetime.now(timezone.utc)
+        return [
+            AssignedOrderView(
+                number=order.number,
+                nation_name=order.nation_name,
+                nation_color=order.nation_color,
+                title=order.title,
+                summary=order.summary,
+                article_url=order.article_url,
+                deadline_at=order.deadline_at,
+                overdue=is_overdue(order, now),
+            )
+            for order in result.scalars()
         ]
 
     @staticmethod

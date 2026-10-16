@@ -3,11 +3,12 @@ Admin hooks of module 04_orders (Spec 5.7).
 
 - State view ``"04_orders"``: counts total and per derived stage, the
   overdue count, the unassigned count and the oldest unassigned age in
-  minutes, plus the overdue orders list ``[{number, deadline_at}]``
-  (up to 50). No judge fields yet — the judge's ``vk_user_id`` joins the
-  overdue entries with the distribution Issue (INV-O5 relaxes only for
-  the admin endpoint). Times are ``YYYY-MM-DD HH:MM:SS`` strings in
-  ``tick.tick_timezone`` via ``format_game_time``.
+  minutes, plus the overdue orders list
+  ``[{number, judge_vk_user_id, deadline_at}]`` (up to 50). The judge's
+  ``vk_user_id`` lives **only here** — the admin endpoints are for the
+  administrator alone, so INV-O5 relaxes just for this view (Spec 5.7).
+  Times are ``YYYY-MM-DD HH:MM:SS`` strings in ``tick.tick_timezone``
+  via ``format_game_time``.
 - Reset ``"04_orders"``: deletes every order (INV-O14); players and
   ratings live in 00_core and survive — numbering restarts at 1 because
   the number is ``max(number) + 1`` of an empty table.
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.registry import AdminRegistry
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.service import PlayerService
 from modules._00_core.tick_schedule import format_game_time
 from modules._04_orders.models import Order, OrderStage
 
@@ -65,7 +67,7 @@ async def orders_state_view(session: AsyncSession) -> dict:
     verdicts, distributed, submitted = stage_rows.one()
 
     overdue_rows = await session.execute(
-        select(Order.number, Order.deadline_at)
+        select(Order.number, Order.deadline_at, Order.judge_player_id)
         .where(
             Order.verdict_at.is_(None),
             Order.deadline_at.is_not(None),
@@ -74,6 +76,12 @@ async def orders_state_view(session: AsyncSession) -> dict:
         .order_by(Order.deadline_at)
     )
     overdue_all = overdue_rows.all()
+
+    # The judge's VK id is resolved through the core service — the only
+    # view allowed to expose it (Spec 5.7).
+    judge_vk_ids = await PlayerService.vk_user_ids(
+        session, {row[2] for row in overdue_all if row[2] is not None}
+    )
 
     oldest_unassigned_at = (
         await session.execute(
@@ -102,9 +110,12 @@ async def orders_state_view(session: AsyncSession) -> dict:
         "overdue_orders": [
             {
                 "number": number,
+                "judge_vk_user_id": judge_vk_ids.get(judge_player_id),
                 "deadline_at": format_game_time(deadline_at, tz),
             }
-            for number, deadline_at in overdue_all[:OVERDUE_LIST_CAP]
+            for number, deadline_at, judge_player_id in overdue_all[
+                :OVERDUE_LIST_CAP
+            ]
         ],
         "overdue_truncated": len(overdue_all) > OVERDUE_LIST_CAP,
     }

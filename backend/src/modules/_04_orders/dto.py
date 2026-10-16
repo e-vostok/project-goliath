@@ -70,3 +70,26 @@ class OrderDetailDTO(_Strict):
     verdict: VerdictDTO | None
     overdue: bool
     can_write_verdict: bool
+
+
+class AssignedOrderDTO(_Strict):
+    """One item of ``GET /orders/assigned`` — the caller's queue."""
+
+    number: int
+    nation: NationMarkDTO
+    title: str
+    summary: str
+    article_url: str
+    # The deadline as shown to the judge: «15.10.2026 21:21» in
+    # tick.tick_timezone (Spec 5.2).
+    deadline_text: str
+    overdue: bool
+
+
+class AssignedOrdersDTO(_Strict):
+    """
+    ``GET /orders/assigned`` payload (Spec 5.2): every order of the
+    current player without a verdict, soonest deadline first.
+    """
+
+    items: list[AssignedOrderDTO]

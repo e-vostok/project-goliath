@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     CHAR,
@@ -204,9 +204,17 @@ def stage_of(order: Order) -> OrderStage:
 
 
 def is_overdue(order: Order, now: datetime) -> bool:
-    """Deadline passed and no verdict written yet (Spec Part 1)."""
+    """Deadline passed and no verdict written yet (Spec Part 1).
+
+    Naive datetimes are read as UTC — the storage convention; SQLite
+    returns naive values even for timezone=True columns, so a refreshed
+    row must compare cleanly against an aware ``now``.
+    """
+    deadline_at = order.deadline_at
+    if deadline_at is not None and deadline_at.tzinfo is None:
+        deadline_at = deadline_at.replace(tzinfo=timezone.utc)
     return (
         order.verdict_at is None
-        and order.deadline_at is not None
-        and now > order.deadline_at
+        and deadline_at is not None
+        and now > deadline_at
     )
