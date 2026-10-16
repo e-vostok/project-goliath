@@ -518,6 +518,8 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 
 Ключ — заглавные латинские буквы, цифры, `_` (3–40 символов). Обязательны пять встроенных: `TICK_DIGEST`, `RED_ALERT`, `DIPLOMATIC_DISPATCH`, `DIRECTIVE_STATUS`, `DEADLINE_WARNING`.
 
+Каталог допускает типы модулей-сателлитов. Модуль `04_orders` регистрирует четыре типа в `register_orders_extensions()` — `ORDER_JUDGE_ASSIGNED`, `ORDER_JUDGE_REMINDER`, `ORDER_DISTRIBUTED`, `ORDER_VERDICT_READY` (все с `requires_nation = false`: судья может быть игроком без государства, если у него есть согласие на сообщения бота). Их тексты и переменные заданы в Spec `04_orders`, Приложение C.
+
 | Ключ | Тип | Диапазон / правило |
 | :-- | :-- | :-- |
 | `enabled` | bool | выключенный тип не создаёт сообщений |
@@ -537,7 +539,7 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 ### 4.9. Правила шаблонов
 
 - Плейсхолдеры только `{имя}` из списка типа; других фигурных скобок нет.
-- Допустимые переменные: `TICK_DIGEST` — `turn, game_date, nation_name, province_count, next_tick_time`; `RED_ALERT` — `event_text`; `DIPLOMATIC_DISPATCH` — `from_nation`; `DIRECTIVE_STATUS` — `directive_title, status_text`; `DEADLINE_WARNING` — `hours_left`; в `batch_text`/`line_text` дополнительно `count`.
+- Допустимые переменные: `TICK_DIGEST` — `turn, game_date, nation_name, province_count, next_tick_time`; `RED_ALERT` — `event_text`; `DIPLOMATIC_DISPATCH` — `from_nation`; `DIRECTIVE_STATUS` — `directive_title, status_text`; `DEADLINE_WARNING` — `hours_left`; типы модуля `04_orders`: `ORDER_JUDGE_ASSIGNED` — `order_number, nation_name, order_link`; `ORDER_JUDGE_REMINDER` — `order_number, hours_left, order_link`; `ORDER_DISTRIBUTED` — `order_number, order_link`; `ORDER_VERDICT_READY` — `order_number, order_link`; в `batch_text`/`line_text` дополнительно `count`.
 - Диалоговые тексты: `start_member` — `nation_name`; `status` — `nation_name, leader_title, leader_name, province_count, turn, game_date, next_tick_time`; прочие — без переменных.
 - Шаблон ≤ 1000 символов; без управляющих и невидимых символов (кроме перевода строки); худший случай (каждая переменная максимальной длины) помещается в `limits.message_max_chars`.
 - Переменная с суффиксом `_link` — ссылка: значение обязано быть `https`-адресом на хосте из `dialog.help.allowed_hosts` длиной ≤ 300 символов. Проверяется при постановке (`REJECTED_INVALID`) и повторно при отрисовке (нарушение → `DROPPED / TEMPLATE_ERROR`); подставляется в текст как есть, без очистки `sanitize_value` (п. 3.6).

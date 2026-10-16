@@ -174,3 +174,61 @@ types:
     text: "До расчёта хода осталось часов: {hours_left}. На этом ходу действий не отдано."
     batch_text: null
     line_text: "До расчёта хода осталось часов: {hours_left}."
+
+  # --- Типы модуля 04_orders (Spec 04_orders, Приложение C) ------------
+  ORDER_JUDGE_ASSIGNED:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Вам поручено рассмотреть приказ №{order_number} государства «{nation_name}». Откройте окно приказа и напишите вердикт: {order_link} Найти приказ можно также в Реестре, вкладка «Приказы»."
+    batch_text: null
+    line_text: null
+  ORDER_JUDGE_REMINDER:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 720
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Срок вердикта по приказу №{order_number} истекает примерно через {hours_left} ч. Окно приказа: {order_link}"
+    batch_text: null
+    line_text: null
+  ORDER_DISTRIBUTED:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Приказ №{order_number} передан на рассмотрение: {order_link}"
+    batch_text: null
+    line_text: null
+  ORDER_VERDICT_READY:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "По приказу №{order_number} получен вердикт: {order_link}"
+    batch_text: null
+    line_text: null

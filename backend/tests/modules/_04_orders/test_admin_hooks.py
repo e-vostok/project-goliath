@@ -64,11 +64,12 @@ async def test_reset_empties_orders_and_restarts_numbering(
     assert outcome.view.number == 1
 
 
-async def test_state_view_counts_and_no_judge_fields(
+async def test_state_view_counts_and_overdue_judge_vk(
     test_db_session, orders_started
 ):
-    """The state view reports per-stage counts and overdue rows;
-    judge fields are absent until the distribution Issue."""
+    """The state view reports per-stage counts and overdue rows; the
+    judge's ``vk_user_id`` rides along in the overdue entries — the
+    only place where a judge is identifiable (Spec 5.7)."""
     register_orders_admin_hooks()
     author, nation = await seed_author(test_db_session, 770402)
     judge = PlayerFactory.build(vk_user_id=770403, nations=[])
@@ -110,4 +111,9 @@ async def test_state_view_counts_and_no_judge_fields(
     assert view["unassigned_total"] == 1
     assert view["oldest_unassigned_age_minutes"] >= 0
     assert [entry["number"] for entry in view["overdue_orders"]] == [2]
-    assert set(view["overdue_orders"][0]) == {"number", "deadline_at"}
+    assert set(view["overdue_orders"][0]) == {
+        "number",
+        "judge_vk_user_id",
+        "deadline_at",
+    }
+    assert view["overdue_orders"][0]["judge_vk_user_id"] == 770403

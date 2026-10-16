@@ -4,11 +4,14 @@ Startup wiring of module 04_orders (Spec D11, 2.5).
 Two entry points, deliberately split:
 
 - ``register_orders_extensions()`` — registers the Registry table
-  source ``orders`` (the four bot notification types join it in
-  Issue 6). Called in ``lifespan`` strictly before ``startup_bot()``
-  and ``startup_registry()``: both validate their registries against
-  their configs at boot, so the extensions must exist first.
-  Idempotent — ``register_table_source`` replaces a repeated key.
+  source ``orders`` and the four bot notification types (Appendix C:
+  the two produced by the assignment now, the reminder and the verdict
+  announcement for Issues 7 and 9). Called in ``lifespan`` strictly
+  before ``startup_bot()`` and ``startup_registry()``: both validate
+  their registries against their configs at boot, so the extensions
+  must exist first. Idempotent — ``register_table_source`` replaces a
+  repeated key and ``register_notification_type`` accepts a repeated
+  identical set.
 - ``startup_orders()`` — after every other ``startup_*``: loads and
   validates ``configs/04_orders.yaml`` (a broken YAML stops the boot),
   snapshots the VK-article allowed hosts of ``00_core`` once (Spec D7)
@@ -25,9 +28,11 @@ from __future__ import annotations
 import logging
 
 from modules._00_core.profile_rules import history_url_allowed_hosts
+from modules._02_bot.registry import register_notification_type
 from modules._03_registry.registry import register_table_source
 from modules._04_orders.admin_hooks import register_orders_admin_hooks
 from modules._04_orders.config_schema import OrdersConfig
+from modules._04_orders.notifications import NOTIFICATION_VARIABLES
 from modules._04_orders.registry_source import (
     ORDERS_PROVIDES,
     load_orders_rows,
@@ -60,10 +65,14 @@ def get_orders_allowed_hosts() -> tuple[str, ...]:
 def register_orders_extensions() -> None:
     """
     Register the module's extension points before the owning modules'
-    startups validate them (Spec D11). For now — the Registry table
-    source; Issue 6 adds the four bot notification types here.
+    startups validate them (Spec D11): the Registry table source and the
+    four ORDER_* bot notification types with their variable sets
+    (Appendix C). Reminder and verdict types are registration-only for
+    now — their producers arrive with Issues 7 and 9.
     """
     register_table_source("orders", ORDERS_PROVIDES, load_orders_rows)
+    for key, variables in NOTIFICATION_VARIABLES.items():
+        register_notification_type(key, variables)
 
 
 def startup_orders() -> OrdersConfig:
