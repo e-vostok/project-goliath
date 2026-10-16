@@ -33,6 +33,7 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.router import router as core_router
 from modules._00_core.tick_handler import register_tick_handlers
+from modules._00_core.tick_recovery import recover_interrupted_ticks
 from modules._01_map.api_service import get_api_payloads
 from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
@@ -107,6 +108,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         raise
 
     init_engine(os.environ["DATABASE_URL"])
+
+    # Deploy backlog: a container killed mid-tick leaves RUNNING
+    # tick_log rows forever. Under the tick's own advisory lock, mark
+    # them FAILED before the scheduler can start — a tick alive on
+    # another instance holds the lock and nothing is touched.
+    await recover_interrupted_ticks(get_session_context)
 
     # Handlers must be registered before the scheduler fires its first tick.
     register_tick_handlers()
