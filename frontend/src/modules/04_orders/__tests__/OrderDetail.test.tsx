@@ -20,6 +20,7 @@ import { OrdersBlock } from '../components/OrdersBlock';
 import {
   ORDERS_ROWS,
   ORDERS_TABLE,
+  registerAssignedHandler,
   registerOrderDetailHandler,
   registerRulesHandler,
   renderWithOrders,
@@ -69,6 +70,7 @@ function RegistryWithRouter({
 beforeEach(() => {
   registerRulesHandler();
   registerOrderDetailHandler();
+  registerAssignedHandler({ items: [] });
 });
 
 describe('OrderDetailModal — open and content', () => {

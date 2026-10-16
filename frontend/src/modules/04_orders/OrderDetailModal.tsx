@@ -4,9 +4,9 @@
  * Nation colour mark and name next to the number; blocks: title,
  * «Краткая суть приказа», link «Статья приказа»; the verdict block
  * when a verdict exists; «Срок вердикта вышел» when overdue; the
- * «Написать вердикт» button only when `can_write_verdict` (wired in
- * Issue 8 — a no-op for now). The judge is never shown (INV-O5).
- * A 404 renders «Приказ не найден».
+ * «Написать вердикт» button only when `can_write_verdict` — it opens
+ * the verdict composer for this order. The judge is never shown
+ * (INV-O5). A 404 renders «Приказ не найден».
  */
 
 import {
@@ -22,38 +22,13 @@ import {
 } from '@vkontakte/vkui';
 
 import { useOrderDetail } from './hooks/useOrderDetail';
+import { NationMark } from './components/NationMark';
 import { ORDERS_TEXTS } from './texts';
 import type { OrderDetailDTO } from './types';
 import { useOrdersUi } from './OrdersUiProvider';
 
 /** Fits inside the 910 px window budget like every other window. */
 const MODAL_SIZE = 'min(880px, calc(100vw - 64px))';
-
-/** The author-nation snapshot: colour dot + name (INV-O6). */
-function NationMark({ name, color }: { name: string; color: string }) {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 8,
-        minWidth: 0,
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: '50%',
-          flexShrink: 0,
-          background: color,
-        }}
-      />
-      <span>{name}</span>
-    </span>
-  );
-}
 
 export function OrderDetailModal({ id, ...navIdProps }: NavIdProps) {
   const { orderWindow, closeWindow } = useOrdersUi();
@@ -132,6 +107,7 @@ function ArticleLink({ url, label }: { url: string; label: string }) {
 }
 
 function OrderDetailBody({ order }: { order: OrderDetailDTO }) {
+  const { openVerdictComposer } = useOrdersUi();
   return (
     <Div>
       {order.overdue && (
@@ -189,8 +165,12 @@ function OrderDetailBody({ order }: { order: OrderDetailDTO }) {
 
       {order.can_write_verdict && (
         <div style={{ marginTop: 24 }}>
-          {/* Wired to the verdict composer in Issue 8 — a no-op for now. */}
-          <Button size="l" stretched mode="primary" onClick={() => {}}>
+          <Button
+            size="l"
+            stretched
+            mode="primary"
+            onClick={() => openVerdictComposer(order.number)}
+          >
             {ORDERS_TEXTS.writeVerdict}
           </Button>
         </div>

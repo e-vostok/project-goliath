@@ -23,12 +23,22 @@ import {
   MODAL_ORDER_COMPOSER,
   MODAL_ORDER_CONFIRM,
   MODAL_ORDER_DETAIL,
+  MODAL_VERDICT_COMPOSER,
+  MODAL_VERDICT_CONFIRM,
   OrdersUiProvider,
 } from '../OrdersUiProvider';
 import { OrderComposer } from '../OrderComposer';
 import { ConfirmSubmitModal } from '../ConfirmSubmitModal';
 import { OrderDetailModal } from '../OrderDetailModal';
-import type { OrderDetailDTO, OrderRulesDTO } from '../types';
+import {
+  ConfirmVerdictModal,
+  VerdictComposer,
+} from '../VerdictComposer';
+import type {
+  AssignedOrdersDTO,
+  OrderDetailDTO,
+  OrderRulesDTO,
+} from '../types';
 import type { RegistryRowsDTO, RegistryTableDTO } from '../../03_registry/types';
 
 // jsdom's AbortSignal fails undici's brand check inside `new Request`
@@ -74,6 +84,30 @@ export const ORDER: OrderDetailDTO = {
   verdict: null,
   overdue: false,
   can_write_verdict: false,
+};
+
+/** The judge's queue: one fresh order and one past its deadline. */
+export const ASSIGNED: AssignedOrdersDTO = {
+  items: [
+    {
+      number: 7,
+      nation: { name: 'Автория', color: '#336699' },
+      title: 'Приказ о перебазировании',
+      summary: 'Перевести вторую армию к северной границе.',
+      article_url: 'https://vk.com/@order-seven',
+      deadline_text: '18.10.2026 21:21',
+      overdue: false,
+    },
+    {
+      number: 3,
+      nation: { name: 'Северия', color: '#993366' },
+      title: 'Очень длинное название приказа, которое не влезает в строку',
+      summary: 'Сводить гарнизоны.',
+      article_url: 'https://vk.com/@order-three',
+      deadline_text: '14.10.2026 09:00',
+      overdue: true,
+    },
+  ],
 };
 
 /** The Registry's orders table as Spec Appendix D describes it. */
@@ -180,9 +214,19 @@ export function registerOrderDetailHandler(
   );
 }
 
+export function registerAssignedHandler(
+  assigned: AssignedOrdersDTO = ASSIGNED,
+) {
+  server.use(
+    http.get('*/api/v1/orders/assigned', () =>
+      HttpResponse.json(assigned),
+    ),
+  );
+}
+
 /**
  * The same wiring AppShell has: OrdersUiProvider drives the single
- * ModalRoot that hosts the three order windows.
+ * ModalRoot that hosts all order windows.
  */
 function OrdersHarness({ children }: { children?: ReactNode }) {
   const [activeModal, setActiveModal] = useState<string | null>(null);
@@ -196,6 +240,8 @@ function OrdersHarness({ children }: { children?: ReactNode }) {
         <OrderComposer id={MODAL_ORDER_COMPOSER} />
         <ConfirmSubmitModal id={MODAL_ORDER_CONFIRM} />
         <OrderDetailModal id={MODAL_ORDER_DETAIL} />
+        <VerdictComposer id={MODAL_VERDICT_COMPOSER} />
+        <ConfirmVerdictModal id={MODAL_VERDICT_CONFIRM} />
       </ModalRoot>
     </OrdersUiProvider>
   );

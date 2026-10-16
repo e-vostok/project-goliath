@@ -15,6 +15,7 @@ import { server } from '../../../../vitest.setup';
 import { OrdersBlock } from '../components/OrdersBlock';
 import {
   ORDER,
+  registerAssignedHandler,
   registerRulesHandler,
   renderWithOrders,
   RULES,
@@ -47,7 +48,10 @@ async function fillComposer(
   );
 }
 
-beforeEach(() => registerRulesHandler());
+beforeEach(() => {
+  registerRulesHandler();
+  registerAssignedHandler({ items: [] });
+});
 
 describe('OrderComposer — author limit', () => {
   it('disables «Отправить приказ» at the author limit with the Spec explanation', async () => {

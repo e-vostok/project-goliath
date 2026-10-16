@@ -7,6 +7,15 @@ export const ORDERS_TEXTS = {
   blockTitle: 'Приказы',
   submitButton: 'Подать приказ',
 
+  /* «Мне на отсуд» list */
+  assignedTitle: 'Мне на отсуд',
+  assignedEmpty: 'Приказов на рассмотрении нет',
+  assignedLoadError: 'Не удалось загрузить',
+  assignedDeadline: (deadlineText: string) => `до ${deadlineText}`,
+  assignedOverdueMark: 'срок вышел',
+  refreshButton: 'Обновить',
+  openOrderLink: 'Открыть приказ',
+
   /* OrderComposer */
   composerTitle: 'Подать приказ',
   fieldTitle: 'Название',
@@ -35,6 +44,18 @@ export const ORDERS_TEXTS = {
   networkError: 'Ошибка сети — попробуйте ещё раз.',
 
   submittedNotice: (number: number) => `Приказ №${number} подан`,
+
+  /* VerdictComposer + ConfirmVerdictModal */
+  verdictComposerTitle: (number: number) => `Вердикт по приказу №${number}`,
+  verdictFieldSummary: 'Краткая суть вердикта',
+  verdictSendButton: 'Отправить вердикт',
+  verdictConfirmTitle: 'Отправить вердикт?',
+  verdictConfirmWarning:
+    'Уверены ли вы, всё ли проверили: изменить вердикт после отправки нельзя',
+  verdictSubmitErrorTitle: 'Не удалось записать вердикт',
+  verdictNotice: (number: number) => `Вердикт по приказу №${number} записан`,
+  effectsBlockTitle: 'Изменение показателей и модификаторы',
+  effectsBlockHint: 'Раздел станет доступен позже',
 
   /* OrderDetailModal */
   detailTitle: (number: number) => `Приказ №${number}`,

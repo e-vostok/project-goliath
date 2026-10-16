@@ -13,6 +13,12 @@ export interface OrderCreateRequest {
   client_request_id: string;
 }
 
+export interface VerdictCreateRequest {
+  title: string;
+  summary: string;
+  article_url: string;
+}
+
 export interface OrderRulesDTO {
   title_min_length: number;
   title_max_length: number;
@@ -51,6 +57,22 @@ export interface OrderDetailDTO {
   can_write_verdict: boolean;
 }
 
+export interface AssignedOrderDTO {
+  number: number;
+  nation: NationMarkDTO;
+  title: string;
+  summary: string;
+  article_url: string;
+  /** «15.10.2026 21:21» in tick_timezone — shown to the judge as-is. */
+  deadline_text: string;
+  overdue: boolean;
+}
+
+/** The caller's orders awaiting their verdict, soonest deadline first. */
+export interface AssignedOrdersDTO {
+  items: AssignedOrderDTO[];
+}
+
 /** Error codes this module maps to fields/banners (Spec 5.3). */
 export const OrderErrorCodes = {
   ORDER_NATION_REQUIRED: 'ORDER_NATION_REQUIRED',
@@ -59,4 +81,6 @@ export const OrderErrorCodes = {
   ORDER_SUMMARY_INVALID: 'ORDER_SUMMARY_INVALID',
   ORDER_URL_INVALID: 'ORDER_URL_INVALID',
   ORDER_NOT_FOUND: 'ORDER_NOT_FOUND',
+  ORDER_VERDICT_FORBIDDEN: 'ORDER_VERDICT_FORBIDDEN',
+  ORDER_VERDICT_EXISTS: 'ORDER_VERDICT_EXISTS',
 } as const;
