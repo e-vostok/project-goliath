@@ -237,6 +237,33 @@ async def make_order(
 _event_key_seq = itertools.count()
 
 
+async def make_player(
+    session: AsyncSession,
+    *,
+    vk_user_id: int | None = None,
+    judge_rating: int | None = None,
+    consent_state: str | None = None,
+) -> Player:
+    """Insert a ``players`` row and flush it.
+
+    ``judge_rating`` overrides the registry rating default (the judge
+    threshold tests need values both sides of ``judge.min_rating``);
+    ``consent_state`` seeds the ``bot_consents`` row that decides the
+    reachability of a nationless player (Spec 04_orders 3.2).
+    """
+    build_kwargs: dict = {"nations": []}
+    if vk_user_id is not None:
+        build_kwargs["vk_user_id"] = vk_user_id
+    if judge_rating is not None:
+        build_kwargs["judge_rating"] = judge_rating
+    player = PlayerFactory.build(**build_kwargs)
+    session.add(player)
+    await session.flush()
+    if consent_state is not None:
+        await make_consent(session, player, state=consent_state)
+    return player
+
+
 async def make_consent(
     session: AsyncSession,
     player: Player,
