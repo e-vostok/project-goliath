@@ -6,10 +6,13 @@
  * so it can never float over the table or push the window sideways.
  * Filter kinds per column come from `column.filters`: text (one input
  * «содержит…»), number_range and date_range («от»/«до» pair, labelled
- * by `filter_label`) and presence («Все / Есть / Нет»).
+ * by `filter_label`), presence («Все / Есть / Нет») and
+ * select_or_contains — a dropdown of the nations the Registry knows
+ * (`nationOptions`) plus the same free-text «содержит…» input; the
+ * two can be used independently.
  */
 
-import { Input, SegmentedControl } from '@vkontakte/vkui';
+import { Input, NativeSelect, SegmentedControl } from '@vkontakte/vkui';
 
 import type { ColumnFilterValue } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
@@ -86,10 +89,13 @@ export function FilterPanel({
   table,
   filters,
   onFiltersChange,
+  nationOptions = [],
 }: {
   table: RegistryTableDTO;
   filters: Record<string, ColumnFilterValue[]>;
   onFiltersChange: (columnId: string, filters: ColumnFilterValue[]) => void;
+  /** Dropdown options of `select_or_contains` columns (Spec 3.7). */
+  nationOptions?: string[];
 }) {
   const filterable = table.columns.filter((col) => col.filters.length > 0);
   if (filterable.length === 0) {
@@ -118,6 +124,7 @@ export function FilterPanel({
         const range = fieldOf(list, 'number_range');
         const dates = fieldOf(list, 'date_range');
         const presence = fieldOf(list, 'presence');
+        const selectOrContains = fieldOf(list, 'select_or_contains');
 
         return (
           <div key={col.id} data-testid={`filter-item-${col.id}`}>
@@ -154,6 +161,44 @@ export function FilterPanel({
                   range={dates}
                   onChange={(next) => onChange(upsert(list, next))}
                 />
+              )}
+              {col.filters.includes('select_or_contains') && (
+                <>
+                  <NativeSelect
+                    aria-label={`${label}: ${REGISTRY_TEXTS.filterSelectLabel}`}
+                    value={selectOrContains?.selected ?? ''}
+                    onChange={(e) =>
+                      onChange(
+                        upsert(list, {
+                          kind: 'select_or_contains',
+                          selected: e.target.value,
+                          contains: selectOrContains?.contains ?? '',
+                        }),
+                      )
+                    }
+                  >
+                    <option value="">{REGISTRY_TEXTS.filterSelectAll}</option>
+                    {nationOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <Input
+                    aria-label={`${label}: ${REGISTRY_TEXTS.filterContainsLabel}`}
+                    placeholder={REGISTRY_TEXTS.filterContainsPlaceholder}
+                    value={selectOrContains?.contains ?? ''}
+                    onChange={(e) =>
+                      onChange(
+                        upsert(list, {
+                          kind: 'select_or_contains',
+                          selected: selectOrContains?.selected ?? '',
+                          contains: e.target.value,
+                        }),
+                      )
+                    }
+                  />
+                </>
               )}
               {col.filters.includes('presence') && (
                 <SegmentedControl

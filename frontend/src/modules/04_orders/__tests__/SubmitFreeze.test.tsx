@@ -18,7 +18,6 @@ import { OrdersBlock } from '../components/OrdersBlock';
 import {
   ORDER,
   registerAssignedHandler,
-  registerOrderDetailHandler,
   registerRulesHandler,
   renderWithOrders,
 } from './helpers';
