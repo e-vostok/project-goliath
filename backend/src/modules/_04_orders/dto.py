@@ -31,6 +31,19 @@ class OrderCreateRequest(_Strict):
     client_request_id: uuid.UUID
 
 
+class VerdictCreateRequest(_Strict):
+    """
+    ``POST /orders/{number}/verdict`` body (Spec 5.2).
+
+    ``extra="forbid"`` rejects an ``effects`` field with 422 — verdict
+    effects do not exist in v1 (INV-O13).
+    """
+
+    title: str
+    summary: str
+    article_url: str
+
+
 class OrderRulesDTO(_Strict):
     """``GET /orders/rules`` — form limits plus the author's counter."""
 

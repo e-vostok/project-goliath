@@ -2,10 +2,10 @@
 Bot notifications of module 04_orders (Spec D9, Appendix C).
 
 The four ORDER_* types are registered with the bot module by
-``register_orders_extensions()``. Issue 6 produces only the assignment
+``register_orders_extensions()``. Issue 6 produces the assignment
 pair — ``ORDER_JUDGE_ASSIGNED`` to the judge and ``ORDER_DISTRIBUTED``
-to the author; the reminder and verdict producers arrive in Issues 7
-and 9.
+to the author; Issue 7 adds ``ORDER_VERDICT_READY`` to the author; the
+reminder producer arrives in Issue 9.
 
 Player privacy (Spec 0, D9): the texts carry the order number, the
 author-nation name and the order link — never the player-written title
@@ -95,4 +95,42 @@ async def notify_assignment(
             "order_link": link,
         },
         event_at=distributed_at,
+    )
+
+
+async def notify_verdict(
+    session: AsyncSession,
+    *,
+    order: Order,
+    verdict_at: datetime,
+) -> None:
+    """
+    Enqueue the ORDER_VERDICT_READY announcement to the author
+    (Spec 5.1), stamped with ``event_at = verdict_at`` so TTL counts
+    from the verdict moment. The text never carries the verdict's
+    title or summary — only the number and the link.
+
+    Without VK_APP_ID there is no link to send: enqueue nothing and
+    log one warning (Appendix C). Skip results are ignored on
+    purpose — an unreachable recipient is the bot's business, not
+    the verdict's.
+    """
+    link = order_app_link(order.number)
+    if link is None:
+        logger.warning(
+            "order_notification_skipped_no_app_id: verdict written on "
+            "order %s — VK_APP_ID is not set, notification not enqueued",
+            order.id,
+        )
+        return
+    await BotService.enqueue(
+        session,
+        type_key=ORDER_VERDICT_READY,
+        player_id=order.author_player_id,
+        event_key=f"order_verdict:{order.id}",
+        variables={
+            "order_number": order.number,
+            "order_link": link,
+        },
+        event_at=verdict_at,
     )

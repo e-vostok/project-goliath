@@ -4,8 +4,9 @@ HTTP routes of module 04_orders (Spec 5.1).
 Endpoints under ``/api/v1/orders`` behind the shared Bearer JWT
 dependency: the field rules for the composer, order submission (201 on
 a new order, 200 on an idempotent repeat of the same
-``client_request_id``, INV-O9), the judge's assigned queue and the
-order's public detail. All responses are ``Cache-Control: no-store`` —
+``client_request_id``, INV-O9), the judge's assigned queue, the
+order's public detail and the verdict write. All responses are
+``Cache-Control: no-store`` —
 player data is never cached. The order number in the path is an
 integer >= 1.
 """
@@ -30,6 +31,7 @@ from modules._04_orders.dto import (
     OrderCreateRequest,
     OrderDetailDTO,
     OrderRulesDTO,
+    VerdictCreateRequest,
     VerdictDTO,
 )
 from modules._04_orders.service import (
@@ -157,6 +159,33 @@ async def list_assigned_orders(
     return AssignedOrdersDTO(
         items=[_assigned_dto(view) for view in views]
     )
+
+
+@router.post(
+    "/{number}/verdict", response_model=OrderDetailDTO, status_code=201
+)
+async def write_verdict(
+    number: Annotated[int, Path(ge=1)],
+    body: VerdictCreateRequest,
+    response: Response,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> OrderDetailDTO:
+    """
+    Spec 5.1 — the assigned judge writes the verdict; every other
+    caller gets one and the same ``ORDER_VERDICT_FORBIDDEN`` (INV-O5).
+    """
+    response.headers["Cache-Control"] = "no-store"
+    view = await OrderService.write_verdict(
+        session,
+        player_id=player.id,
+        number=number,
+        title=body.title,
+        summary=body.summary,
+        article_url=body.article_url,
+    )
+    await session.commit()
+    return _detail_dto(view)
 
 
 @router.get("/{number}", response_model=OrderDetailDTO)
