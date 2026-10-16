@@ -26,7 +26,7 @@
  * Anything else surfaces as a generic FormStatus banner.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import bridge from '@vkontakte/vk-bridge';
 import {
   Button,
@@ -39,6 +39,7 @@ import {
 } from '@vkontakte/vkui';
 
 import { api, ApiError } from '../../../shared/api-client';
+import { useFormDraft } from '../../../shared/formDraft';
 import { ErrorCodes, type NationDTO } from '../../../shared/types';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
@@ -104,6 +105,17 @@ export interface PanelCreateNationProps {
 }
 
 const MODAL_PROVINCE_PICKER = 'province-picker';
+const CREATE_DRAFT_KEY = 'nation-create';
+
+/** The wizard's six fields, mirrored into the session draft. */
+interface CreateNationDraft {
+  name: string;
+  color: string;
+  chips: ChipOption[];
+  leaderName: string;
+  leaderTitle: string;
+  historyUrl: string;
+}
 
 export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const { token } = useSession();
@@ -113,14 +125,30 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const bot = useBotStatus();
   const [consentRequired, setConsentRequired] = useState(false);
 
+  // Draft memory: reopening the registration screen restores whatever
+  // was typed; a successful creation deletes it (see handleSubmit).
+  const {
+    draft: storedDraft,
+    setDraft: setStoredDraft,
+    clearDraft,
+  } = useFormDraft<CreateNationDraft>(CREATE_DRAFT_KEY);
+
   const [step, setStep] = useState<1 | 2>(1);
-  const [name, setName] = useState('');
-  const [color, setColor] = useState('#e64545');
-  const [chips, setChips] = useState<ChipOption[]>([]);
+  const [name, setName] = useState(storedDraft?.name ?? '');
+  const [color, setColor] = useState(storedDraft?.color ?? '#e64545');
+  const [chips, setChips] = useState<ChipOption[]>(
+    storedDraft?.chips ?? [],
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [leaderName, setLeaderName] = useState('');
-  const [leaderTitle, setLeaderTitle] = useState('');
-  const [historyUrl, setHistoryUrl] = useState('');
+  const [leaderName, setLeaderName] = useState(
+    storedDraft?.leaderName ?? '',
+  );
+  const [leaderTitle, setLeaderTitle] = useState(
+    storedDraft?.leaderTitle ?? '',
+  );
+  const [historyUrl, setHistoryUrl] = useState(
+    storedDraft?.historyUrl ?? '',
+  );
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<NationField, string>>
@@ -141,6 +169,37 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   for (const field of Object.keys(fieldErrors) as NationField[]) {
     stepErrors[fieldToStep(field)] = true;
   }
+
+  // Mirror the fields into the session draft; a pristine form drops it.
+  useEffect(() => {
+    if (
+      name === '' &&
+      chips.length === 0 &&
+      leaderName === '' &&
+      leaderTitle === '' &&
+      historyUrl === ''
+    ) {
+      clearDraft();
+    } else {
+      setStoredDraft({
+        name,
+        color,
+        chips,
+        leaderName,
+        leaderTitle,
+        historyUrl,
+      });
+    }
+  }, [
+    name,
+    color,
+    chips,
+    leaderName,
+    leaderTitle,
+    historyUrl,
+    setStoredDraft,
+    clearDraft,
+  ]);
 
   const trimmedName = name.trim();
   const canSubmit =
@@ -170,6 +229,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
         history_url: historyUrl.trim(),
       });
       sendTaptic();
+      clearDraft();
       onCreated(nation);
     } catch (error) {
       if (isConsentRequiredError(error)) {

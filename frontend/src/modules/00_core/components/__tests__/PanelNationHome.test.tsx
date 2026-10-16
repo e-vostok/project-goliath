@@ -234,3 +234,53 @@ describe('PanelNationHome — edit form', () => {
     expect(screen.getByText(/Province 3 is taken/i)).toBeInTheDocument();
   });
 });
+
+describe('PanelNationHome — edit draft memory', () => {
+  it('restores typed values on remount and deletes them on «Отмена»', async () => {
+    const user = userEvent.setup();
+    const first = renderWithProviders(
+      <PanelNationHome
+        nation={NATION}
+        onChanged={() => {}}
+        onDeleteRequest={() => {}}
+      />,
+    );
+
+    // Type, leave (the panel unmounts like a screen switch) — the
+    // draft must survive.
+    await openEdit(user);
+    await user.type(screen.getByLabelText('Имя лидера'), 'X');
+    expect(screen.getByLabelText('Имя лидера')).toHaveValue(
+      'Иван ГрозныйX',
+    );
+    first.unmount();
+
+    const second = renderWithProviders(
+      <PanelNationHome
+        nation={NATION}
+        onChanged={() => {}}
+        onDeleteRequest={() => {}}
+      />,
+    );
+    await openEdit(user);
+    expect(screen.getByLabelText('Имя лидера')).toHaveValue(
+      'Иван ГрозныйX',
+    );
+
+    // «Отмена» deletes the draft — the next visit shows the nation.
+    await user.click(screen.getByRole('button', { name: 'Отмена' }));
+    second.unmount();
+
+    renderWithProviders(
+      <PanelNationHome
+        nation={NATION}
+        onChanged={() => {}}
+        onDeleteRequest={() => {}}
+      />,
+    );
+    await openEdit(user);
+    expect(screen.getByLabelText('Имя лидера')).toHaveValue(
+      'Иван Грозный',
+    );
+  });
+});

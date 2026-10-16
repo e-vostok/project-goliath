@@ -30,6 +30,7 @@ import {
 import { Snackbar } from '@vkontakte/vkui';
 
 import { registerCellAction } from '../03_registry/lib/cellActions';
+import { clearFormDraft } from '../../shared/formDraft';
 import { ORDERS_TEXTS } from './texts';
 
 export const MODAL_ORDER_COMPOSER = 'order-composer';
@@ -37,6 +38,11 @@ export const MODAL_ORDER_CONFIRM = 'order-confirm';
 export const MODAL_ORDER_DETAIL = 'order-detail';
 export const MODAL_VERDICT_COMPOSER = 'verdict-composer';
 export const MODAL_VERDICT_CONFIRM = 'verdict-confirm';
+
+/** formDraft keys — one per form, verdicts additionally per order. */
+export const ORDER_DRAFT_KEY = 'order-composer';
+export const verdictDraftKey = (orderNumber: number): string =>
+  `verdict-composer:${orderNumber}`;
 
 /** The values the composer hands to the confirmation window. */
 export interface OrderDraft {
@@ -216,6 +222,8 @@ export function OrdersUiProvider({
 
   const notifySubmitted = useCallback(
     (number: number) => {
+      // The send succeeded — the composer's stored draft is spent.
+      clearFormDraft(ORDER_DRAFT_KEY);
       setOrderWindow(null);
       onActiveModal(null);
       setNotice(ORDERS_TEXTS.submittedNotice(number));
@@ -287,8 +295,11 @@ export function OrdersUiProvider({
   );
 
   const notifyVerdictSubmitted = useCallback(
-    (number: number) =>
-      finishVerdict(number, ORDERS_TEXTS.verdictNotice(number)),
+    (number: number) => {
+      // The verdict send succeeded — that order's draft is spent.
+      clearFormDraft(verdictDraftKey(number));
+      finishVerdict(number, ORDERS_TEXTS.verdictNotice(number));
+    },
     [finishVerdict],
   );
 

@@ -11,7 +11,7 @@
  * here: field codes at their field, the rest as a banner.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   Div,
@@ -25,6 +25,7 @@ import {
   type NavIdProps,
 } from '@vkontakte/vkui';
 
+import { useFormDraft } from '../../shared/formDraft';
 import { useOrderRules } from './hooks/useOrderRules';
 import { ORDERS_TEXTS } from './texts';
 import {
@@ -32,6 +33,7 @@ import {
   type OrderRulesDTO,
 } from './types';
 import {
+  ORDER_DRAFT_KEY,
   useOrdersUi,
   type ComposerServerError,
   type OrderDraft,
@@ -110,9 +112,29 @@ function ComposerForm({
   const rulesState = useOrderRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
 
-  const [title, setTitle] = useState(draft.title);
-  const [summary, setSummary] = useState(draft.summary);
-  const [articleUrl, setArticleUrl] = useState(draft.articleUrl);
+  // Draft memory: a session-stored draft wins over the window's empty
+  // one on reopen; a bounce back from the confirmation carries the
+  // same values, so either source agrees.
+  const {
+    draft: storedDraft,
+    setDraft: setStoredDraft,
+    clearDraft,
+  } = useFormDraft<OrderDraft>(ORDER_DRAFT_KEY);
+  const initial = storedDraft ?? draft;
+
+  const [title, setTitle] = useState(initial.title);
+  const [summary, setSummary] = useState(initial.summary);
+  const [articleUrl, setArticleUrl] = useState(initial.articleUrl);
+
+  // Mirror the fields into the session draft; a fully emptied form
+  // drops it (the provider deletes it on a successful send).
+  useEffect(() => {
+    if (title === '' && summary === '' && articleUrl === '') {
+      clearDraft();
+    } else {
+      setStoredDraft({ title, summary, articleUrl });
+    }
+  }, [title, summary, articleUrl, setStoredDraft, clearDraft]);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<OrderField, string>>
   >(() => {

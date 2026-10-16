@@ -20,7 +20,7 @@
  * network and unknown errors stay here with a retry.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   ButtonGroup,
@@ -38,6 +38,7 @@ import {
 } from '@vkontakte/vkui';
 
 import { ApiError } from '../../shared/api-client';
+import { useFormDraft } from '../../shared/formDraft';
 import { useSession } from '../00_core/hooks/useAuth';
 import { ordersApi } from './api';
 import { useOrderRules } from './hooks/useOrderRules';
@@ -46,6 +47,7 @@ import { ORDERS_TEXTS } from './texts';
 import { OrderErrorCodes, type OrderRulesDTO } from './types';
 import {
   useOrdersUi,
+  verdictDraftKey,
   type ComposerServerError,
   type OrderDraft,
 } from './OrdersUiProvider';
@@ -74,6 +76,7 @@ export function VerdictComposer({ id, ...navIdProps }: NavIdProps) {
     >
       {win !== null && (
         <VerdictForm
+          draftKey={verdictDraftKey(win.number)}
           draft={win.draft}
           serverError={win.error}
           onSend={toVerdictConfirm}
@@ -101,10 +104,13 @@ function fieldCounter(
 }
 
 function VerdictForm({
+  draftKey,
   draft,
   serverError,
   onSend,
 }: {
+  /** formDraft key — verdict drafts are per form AND per order number. */
+  draftKey: string;
   draft: OrderDraft;
   serverError: ComposerServerError | null;
   onSend: (draft: OrderDraft) => void;
@@ -112,9 +118,25 @@ function VerdictForm({
   const rulesState = useOrderRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
 
-  const [title, setTitle] = useState(draft.title);
-  const [summary, setSummary] = useState(draft.summary);
-  const [articleUrl, setArticleUrl] = useState(draft.articleUrl);
+  // Draft memory, keyed by this order — see OrderComposer.
+  const {
+    draft: storedDraft,
+    setDraft: setStoredDraft,
+    clearDraft,
+  } = useFormDraft<OrderDraft>(draftKey);
+  const initial = storedDraft ?? draft;
+
+  const [title, setTitle] = useState(initial.title);
+  const [summary, setSummary] = useState(initial.summary);
+  const [articleUrl, setArticleUrl] = useState(initial.articleUrl);
+
+  useEffect(() => {
+    if (title === '' && summary === '' && articleUrl === '') {
+      clearDraft();
+    } else {
+      setStoredDraft({ title, summary, articleUrl });
+    }
+  }, [title, summary, articleUrl, setStoredDraft, clearDraft]);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<VerdictField, string>>
   >(() => {
