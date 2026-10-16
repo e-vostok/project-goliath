@@ -403,6 +403,18 @@ class PlayerService:
             for row in result.all()
         ]
 
+    @staticmethod
+    async def count(session: AsyncSession) -> int:
+        """
+        ``SELECT count(*)`` on players — the public read path for
+        satellites that need the total without the rows (Spec
+        03_registry 5.4). Read-only and never commits.
+        """
+        result = await session.execute(
+            select(func.count()).select_from(Player)
+        )
+        return result.scalar_one()
+
 
 async def _current_turn(session: AsyncSession) -> int:
     """
@@ -709,6 +721,18 @@ class NationService:
             )
             for row in result.all()
         ]
+
+    @staticmethod
+    async def count(session: AsyncSession) -> int:
+        """
+        ``SELECT count(*)`` on nations — the public read path for
+        satellites that need the total without the rows (Spec
+        03_registry 5.4). Read-only and never commits.
+        """
+        result = await session.execute(
+            select(func.count()).select_from(Nation)
+        )
+        return result.scalar_one()
 
     @staticmethod
     async def update(

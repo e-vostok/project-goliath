@@ -39,9 +39,9 @@ async def registry_state_view(session: AsyncSession) -> dict:
 
     # Player and nation counts go through the public read path of the
     # owning module — the registry never queries 00_core tables directly
-    # (INV-R1).
-    players_total = len(await PlayerService.list_for_registry(session))
-    nations_total = len(await NationService.list_for_registry(session))
+    # (INV-R1), and the totals come back without loading any rows.
+    players_total = await PlayerService.count(session)
+    nations_total = await NationService.count(session)
 
     profile_rows = await session.execute(
         select(RegistryVkProfile.status, func.count()).group_by(
