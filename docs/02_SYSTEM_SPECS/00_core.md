@@ -52,7 +52,7 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 | Поле          | Тип                        | Ограничения                                                 |
 | ------------- | -------------------------- | ----------------------------------------------------------- |
 | `id`          | UUID                       | PK                                                          |
-| `nation_id`   | UUID                       | FK → `nations.id`, NOT NULL                                 |
+| `nation_id`   | UUID                       | FK → `nations.id`, NULLABLE, `ON DELETE SET NULL` (миграция 0004: при удалении государства строка остаётся осиротевшей исторической записью) |
 | `module_slug` | VARCHAR(50)                | NOT NULL — какой модуль владеет актом                       |
 | `action_type` | VARCHAR(50)                | NOT NULL — тип акта внутри модуля                           |
 | `payload`     | JSONB                      | NOT NULL — данные акта, интерпретируются модулем-владельцем |
