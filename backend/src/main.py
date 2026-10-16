@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager, suppress
 from typing import AsyncGenerator
@@ -47,6 +48,37 @@ from modules._04_orders.startup import (
 )
 from modules._04_orders.worker import start_orders_worker_if_ready
 
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_LOG_HANDLER_NAME = "goliath-root"
+
+
+def configure_logging() -> None:
+    """
+    Point the root logger at stderr so app log lines reach
+    ``docker compose logs``.
+
+    Uvicorn configures only its own ``uvicorn.*`` loggers, so without a
+    root handler every ``modules.*``/``core.*`` record below WARNING is
+    dropped. One named handler with a readable single-line format —
+    repeated calls never stack a second handler, and uvicorn's loggers
+    keep their own handlers with ``propagate=False``, so no line prints
+    twice. ``LOG_LEVEL`` selects the level (default INFO; an unknown
+    value falls back to INFO). ``httpx``/``httpcore`` stay at WARNING:
+    their INFO lines print full request URLs, query strings included.
+    """
+    raw_level = os.environ.get("LOG_LEVEL", "INFO").strip().upper()
+    level = logging.getLevelNamesMapping().get(raw_level, logging.INFO)
+
+    root = logging.getLogger()
+    if not any(h.name == _LOG_HANDLER_NAME for h in root.handlers):
+        handler = logging.StreamHandler()
+        handler.name = _LOG_HANDLER_NAME
+        handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        root.addHandler(handler)
+    root.setLevel(level)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -55,6 +87,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     Validates configuration on startup to fail fast if balance values are invalid.
     """
+    configure_logging()
+
     # DEP-4: refuse to boot a strict-mode deployment (APP_ENV=production
     # and friends) on dev-grade secrets or a local database. Runs before
     # anything else so a misconfigured prod dies immediately.
