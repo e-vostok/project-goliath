@@ -13,7 +13,10 @@
  * It also registers the Registry cell action `order` once — a click
  * on an order title, and the `#registry/order-N` entry request that
  * lands through the same registry mechanism, open the detail window —
- * and hosts the «Приказ №N подан» snackbar after a successful submit.
+ * and hosts the «Приказ №N подан» / «Вердикт … записан» snackbars.
+ * The verdict flow always lands back on the order's detail window —
+ * it reloads on re-entry — and bumps `assignedRefreshKey` so the
+ * «Мне на отсуд» list refetches (Spec 5.4).
  */
 
 import {
@@ -32,6 +35,8 @@ import { ORDERS_TEXTS } from './texts';
 export const MODAL_ORDER_COMPOSER = 'order-composer';
 export const MODAL_ORDER_CONFIRM = 'order-confirm';
 export const MODAL_ORDER_DETAIL = 'order-detail';
+export const MODAL_VERDICT_COMPOSER = 'verdict-composer';
+export const MODAL_VERDICT_CONFIRM = 'verdict-confirm';
 
 /** The values the composer hands to the confirmation window. */
 export interface OrderDraft {
@@ -55,12 +60,22 @@ export type OrdersWindow =
       error: ComposerServerError | null;
     }
   | { view: 'confirm'; requestId: string; draft: OrderDraft }
-  | { view: 'detail'; number: number };
+  | { view: 'detail'; number: number }
+  | {
+      view: 'verdict-composer';
+      /** The order the verdict is written for. */
+      number: number;
+      draft: OrderDraft;
+      error: ComposerServerError | null;
+    }
+  | { view: 'verdict-confirm'; number: number; draft: OrderDraft };
 
 const WINDOW_MODAL_ID = {
   composer: MODAL_ORDER_COMPOSER,
   confirm: MODAL_ORDER_CONFIRM,
   detail: MODAL_ORDER_DETAIL,
+  'verdict-composer': MODAL_VERDICT_COMPOSER,
+  'verdict-confirm': MODAL_VERDICT_CONFIRM,
 } as const;
 
 const EMPTY_DRAFT: OrderDraft = { title: '', summary: '', articleUrl: '' };
@@ -79,6 +94,25 @@ interface OrdersUiContextValue {
   closeWindow: () => void;
   /** Successful submit — close and show «Приказ №N подан». */
   notifySubmitted: (number: number) => void;
+  /**
+   * Bumped when the judge's queue may have changed — the «Мне на
+   * отсуд» list refetches on it.
+   */
+  assignedRefreshKey: number;
+  /** «Написать вердикт» (list row or detail window) — opens the verdict composer. */
+  openVerdictComposer: (number: number) => void;
+  /** Verdict composer → confirmation, carrying the entered values. */
+  toVerdictConfirm: (draft: OrderDraft) => void;
+  /** Confirmation → verdict composer; `error` is shown at a field. */
+  backToVerdictComposer: (error: ComposerServerError | null) => void;
+  /**
+   * ORDER_VERDICT_EXISTS / ORDER_VERDICT_FORBIDDEN — the server's
+   * message is shown, the composer closes and the detail window plus
+   * the assigned list reload.
+   */
+  verdictRejected: (number: number, message: string) => void;
+  /** Successful verdict — back to the order's detail, snackbar, list refresh. */
+  notifyVerdictSubmitted: (number: number) => void;
 }
 
 const OrdersUiContext = createContext<OrdersUiContextValue | null>(null);
@@ -106,6 +140,7 @@ export function OrdersUiProvider({
 }: OrdersUiProviderProps) {
   const [orderWindow, setOrderWindow] = useState<OrdersWindow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [assignedRefreshKey, setAssignedRefreshKey] = useState(0);
 
   // External close: ModalRoot.onClose (Esc/overlay) or another modal
   // taking over drops `activeModal` — the window state goes with it.
@@ -188,6 +223,75 @@ export function OrdersUiProvider({
     [onActiveModal],
   );
 
+  const openVerdictComposer = useCallback(
+    (number: number) => {
+      if (!Number.isInteger(number) || number < 1) {
+        return;
+      }
+      setOrderWindow({
+        view: 'verdict-composer',
+        number,
+        draft: EMPTY_DRAFT,
+        error: null,
+      });
+      onActiveModal(MODAL_VERDICT_COMPOSER);
+    },
+    [onActiveModal],
+  );
+
+  const toVerdictConfirm = useCallback(
+    (draft: OrderDraft) => {
+      setOrderWindow((w) =>
+        w?.view === 'verdict-composer'
+          ? { view: 'verdict-confirm', number: w.number, draft }
+          : w,
+      );
+      onActiveModal(MODAL_VERDICT_CONFIRM);
+    },
+    [onActiveModal],
+  );
+
+  const backToVerdictComposer = useCallback(
+    (error: ComposerServerError | null) => {
+      setOrderWindow((w) =>
+        w?.view === 'verdict-confirm'
+          ? {
+              view: 'verdict-composer',
+              number: w.number,
+              draft: w.draft,
+              error,
+            }
+          : w,
+      );
+      onActiveModal(MODAL_VERDICT_COMPOSER);
+    },
+    [onActiveModal],
+  );
+
+  // Both verdict endings land back on the order's detail window:
+  // leaving the verdict views and re-entering `detail` remounts its
+  // loader, and the assigned list refetches via `assignedRefreshKey`.
+  const finishVerdict = useCallback(
+    (number: number, message: string) => {
+      setOrderWindow({ view: 'detail', number });
+      onActiveModal(MODAL_ORDER_DETAIL);
+      setAssignedRefreshKey((k) => k + 1);
+      setNotice(message);
+    },
+    [onActiveModal],
+  );
+
+  const verdictRejected = useCallback(
+    (number: number, message: string) => finishVerdict(number, message),
+    [finishVerdict],
+  );
+
+  const notifyVerdictSubmitted = useCallback(
+    (number: number) =>
+      finishVerdict(number, ORDERS_TEXTS.verdictNotice(number)),
+    [finishVerdict],
+  );
+
   return (
     <OrdersUiContext.Provider
       value={{
@@ -198,6 +302,12 @@ export function OrdersUiProvider({
         backToComposer,
         closeWindow,
         notifySubmitted,
+        assignedRefreshKey,
+        openVerdictComposer,
+        toVerdictConfirm,
+        backToVerdictComposer,
+        verdictRejected,
+        notifyVerdictSubmitted,
       }}
     >
       {children}

@@ -38,11 +38,17 @@ import {
   MODAL_ORDER_COMPOSER,
   MODAL_ORDER_CONFIRM,
   MODAL_ORDER_DETAIL,
+  MODAL_VERDICT_COMPOSER,
+  MODAL_VERDICT_CONFIRM,
   OrdersUiProvider,
 } from '../modules/04_orders/OrdersUiProvider';
 import { OrderComposer } from '../modules/04_orders/OrderComposer';
 import { ConfirmSubmitModal } from '../modules/04_orders/ConfirmSubmitModal';
 import { OrderDetailModal } from '../modules/04_orders/OrderDetailModal';
+import {
+  ConfirmVerdictModal,
+  VerdictComposer,
+} from '../modules/04_orders/VerdictComposer';
 import {
   parseRegistryOrderHash,
   setRegistryEntryRequest,
@@ -205,6 +211,8 @@ function AuthedArea() {
       <OrderComposer id={MODAL_ORDER_COMPOSER} />
       <ConfirmSubmitModal id={MODAL_ORDER_CONFIRM} />
       <OrderDetailModal id={MODAL_ORDER_DETAIL} />
+      <VerdictComposer id={MODAL_VERDICT_COMPOSER} />
+      <ConfirmVerdictModal id={MODAL_VERDICT_CONFIRM} />
     </ModalRoot>
   );
 
