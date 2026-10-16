@@ -14,13 +14,14 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import modules._02_bot.registry as bot_registry
 import modules._02_bot.startup as bot_startup_module
 import modules._03_registry.registry as registry_module
 import modules._03_registry.startup as registry_startup_module
 import modules._04_orders.startup as orders_startup_module
+import modules._04_orders.worker as orders_worker_module
 from core.admin.registry import AdminRegistry
 from core.db import get_session
 from main import app
@@ -60,7 +61,14 @@ def orders_isolation(monkeypatch):
     )
     monkeypatch.setattr(registry_startup_module, "_registry_config", None)
     monkeypatch.setattr(bot_startup_module, "_bot_config", None)
+    # Worker globals: mode, last-pass stamp and the installed bell.
+    monkeypatch.setattr(
+        orders_worker_module, "_mode", orders_worker_module.WorkerMode.STOPPED
+    )
+    monkeypatch.setattr(orders_worker_module, "_last_pass_at", None)
+    orders_worker_module.install_wake_event(None)
     yield
+    orders_worker_module.install_wake_event(None)
     registry_module.clear_registry()
     for source in saved_sources.values():
         registry_module.register_table_source(
@@ -79,6 +87,21 @@ def orders_isolation(monkeypatch):
 def orders_started(orders_isolation):
     """``startup_orders()`` — the real wiring; returns the config."""
     return startup_orders()
+
+
+@pytest.fixture
+def session_factory(test_db_engine):
+    """
+    A ``get_session_context``-shaped factory over the test engine.
+
+    ``run_retry_pass`` opens its own sessions, so tests seed and assert
+    through ``session_factory()`` sessions that commit — the shared
+    ``:memory:`` pool serialises everything on one connection and
+    ``test_db_session`` must not stay open while the pass runs.
+    """
+    return async_sessionmaker(
+        test_db_engine, class_=AsyncSession, expire_on_commit=False
+    )
 
 
 @pytest.fixture

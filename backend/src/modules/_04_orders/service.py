@@ -24,6 +24,10 @@ judge_player_id = :caller AND verdict_at IS NULL`` that touches the
 four verdict columns and nothing else (INV-O1), and the author's
 announcement under its own SAVEPOINT (INV-O8).
 
+``run_retry_pass`` is the worker's step (Spec 2.3): it owns its own
+sessions — one to pick the candidates, then one transaction per order
+— and returns :class:`RetryPassStats`.
+
 Nothing here exposes the judge: no view carries ``judge_player_id`` or
 any player identifier of the judge (INV-O5); ``can_write_verdict`` is
 computed per viewer — true only for the assigned judge while no verdict
@@ -33,16 +37,18 @@ exists.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import delete, false, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.service import NationService, PlayerService
-from modules._02_bot.service import BotService
+from modules._02_bot.service import BotService, EnqueueResult
 from modules._04_orders import distribution
 from modules._04_orders.distribution import JudgeCandidate
 from modules._04_orders.exceptions import (
@@ -56,6 +62,7 @@ from modules._04_orders.exceptions import (
 from modules._04_orders.models import Order, is_overdue
 from modules._04_orders.notifications import (
     notify_assignment,
+    notify_reminder,
     notify_verdict,
 )
 from modules._04_orders.rules import (
@@ -65,6 +72,8 @@ from modules._04_orders.rules import (
 )
 
 logger = logging.getLogger(__name__)
+
+SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 # PostgreSQL advisory-lock key serializing submissions (and, from
 # Issue 6 on, distribution) across every process sharing the database
@@ -148,6 +157,35 @@ class AssignedOrderView:
     article_url: str
     deadline_at: datetime
     overdue: bool
+
+
+@dataclass(frozen=True)
+class RetryPassStats:
+    """
+    The counters of one ``run_retry_pass`` (Spec 2.3).
+
+    ``assigned`` waiting orders got a judge this pass,
+    ``still_waiting`` found no candidate, ``reminders_sent`` reminder
+    messages were put into the bot outbox, ``reminders_skipped`` due
+    reminders produced none (the deadline had already passed, no
+    VK_APP_ID, the bot skipped the recipient, or a racing pass marked
+    the row first) and ``errors`` per-order transactions failed — each
+    is logged and the pass continues with the next order. No judge
+    field ever leaves the service (INV-O5).
+    """
+
+    assigned: int = 0
+    still_waiting: int = 0
+    reminders_sent: int = 0
+    reminders_skipped: int = 0
+    errors: int = 0
+
+
+def _aware(moment: datetime) -> datetime:
+    """Naive datetimes are read as UTC (storage convention)."""
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment
 
 
 def _detail_view(
@@ -536,6 +574,192 @@ class OrderService:
             distributed_at=distributed_at,
         )
         return DistributeResult.ASSIGNED
+
+    @staticmethod
+    async def run_retry_pass(
+        session_factory: SessionFactory,
+        *,
+        now: datetime | None = None,
+    ) -> RetryPassStats:
+        """
+        One background pass of Spec 2.3 — the worker's step and a
+        standalone testable unit.
+
+        Part A, distribution retry: up to ``distribution.batch_size``
+        judge-less orders, oldest ``(submitted_at, number)`` first; each
+        retried in its own session and transaction with ``distribute``
+        under a SAVEPOINT, then committed. A failure of one order is
+        logged, counted and never stops the pass.
+
+        Part B, reminders: orders with ``reminder_at <= now``,
+        ``reminder_sent_at IS NULL`` and no verdict — the same per-order
+        transaction pattern. A conditional ``UPDATE`` claims the row
+        (rowcount 0 = another pass beat us to it); ``now < deadline_at``
+        enqueues ``ORDER_JUDGE_REMINDER`` to the judge stamped
+        ``event_at = now``, a deadline already passed logs INFO and
+        enqueues nothing — either way the claim marks
+        ``reminder_sent_at = now`` so a reminder is handled once.
+
+        Each part reads its candidates in one session and works every
+        order in a fresh one: correct under concurrent passes (the
+        advisory lock serializes ``distribute``, the conditional UPDATE
+        serializes the reminder claim) and a slow order never holds a
+        transaction open across the whole batch. Never raises for a
+        single bad order.
+        """
+        from modules._04_orders.startup import get_orders_config
+
+        batch_size = get_orders_config().distribution.batch_size
+        moment = now if now is not None else datetime.now(timezone.utc)
+        assigned = still_waiting = 0
+        reminders_sent = reminders_skipped = errors = 0
+
+        # Part A — retry the judge-less orders in submission order.
+        async with session_factory() as session:
+            waiting_ids = (
+                (
+                    await session.execute(
+                        select(Order.id)
+                        .where(Order.judge_player_id.is_(None))
+                        .order_by(Order.submitted_at, Order.number)
+                        .limit(batch_size)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        for order_id in waiting_ids:
+            try:
+                async with session_factory() as session:
+                    async with session.begin():
+                        result = await OrderService._distribute_guarded(
+                            session, order_id, now=moment
+                        )
+            except Exception:
+                errors += 1
+                logger.exception(
+                    "04_orders retry pass: distribute failed for "
+                    "order %s",
+                    order_id,
+                )
+                continue
+            if result is DistributeResult.ASSIGNED:
+                assigned += 1
+            elif result is DistributeResult.NO_CANDIDATES:
+                still_waiting += 1
+
+        # Part B — the reminder sweep over due, unclaimed, undecided
+        # orders, oldest reminder first.
+        async with session_factory() as session:
+            due = (
+                (
+                    await session.execute(
+                        select(Order)
+                        .where(
+                            Order.reminder_at <= moment,
+                            Order.reminder_sent_at.is_(None),
+                            Order.verdict_at.is_(None),
+                        )
+                        .order_by(Order.reminder_at)
+                        .limit(batch_size)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        for order in due:
+            try:
+                async with session_factory() as session:
+                    async with session.begin():
+                        outcome = await OrderService._remind_guarded(
+                            session, order, now=moment
+                        )
+            except Exception:
+                errors += 1
+                logger.exception(
+                    "04_orders retry pass: reminder failed for "
+                    "order %s",
+                    order.id,
+                )
+                continue
+            if outcome == "sent":
+                reminders_sent += 1
+            else:
+                reminders_skipped += 1
+
+        return RetryPassStats(
+            assigned=assigned,
+            still_waiting=still_waiting,
+            reminders_sent=reminders_sent,
+            reminders_skipped=reminders_skipped,
+            errors=errors,
+        )
+
+    @staticmethod
+    async def _distribute_guarded(
+        session: AsyncSession, order_id: str, *, now: datetime
+    ) -> DistributeResult:
+        """
+        One ``distribute`` attempt inside the caller's transaction,
+        wrapped in a SAVEPOINT so its failure rolls back only this
+        order's writes. The SQLite guard is the same as in
+        ``BotService.enqueue``: the driver opens the connection-level
+        transaction lazily on the first DML, so a SAVEPOINT issued
+        before any statement would escape the transaction (its
+        RELEASE commits) — a no-op DELETE forces it open.
+        """
+        if session.bind.dialect.name == "sqlite":
+            await session.execute(delete(Order).where(false()))
+        async with session.begin_nested():
+            return await OrderService.distribute(session, order_id, now=now)
+
+    @staticmethod
+    async def _remind_guarded(
+        session: AsyncSession, order: Order, *, now: datetime
+    ) -> str:
+        """
+        One reminder inside the caller's transaction under a SAVEPOINT
+        (Spec 2.3 step 2). Returns ``"sent"`` only when a reminder row
+        went into the bot outbox — every other claimed-or-lost outcome
+        is a skip the caller counts.
+
+        The conditional UPDATE is the multi-process guard: it claims
+        the row only while ``reminder_sent_at IS NULL``, so two racing
+        passes cannot remind twice. ``judge_player_id`` leaves this
+        method only into ``BotService.enqueue`` — never into a log
+        line (INV-O5).
+        """
+        if session.bind.dialect.name == "sqlite":
+            await session.execute(delete(Order).where(false()))
+        async with session.begin_nested():
+            claimed = await session.execute(
+                update(Order)
+                .where(
+                    Order.id == order.id,
+                    Order.reminder_sent_at.is_(None),
+                )
+                .values(reminder_sent_at=now)
+            )
+            if claimed.rowcount == 0:
+                # Another pass marked the row first — its enqueue owns
+                # the reminder; nothing to do here.
+                return "skipped"
+            if _aware(order.deadline_at) <= now:
+                logger.info(
+                    "order %s reminder skipped: the verdict deadline "
+                    "has already passed",
+                    order.id,
+                )
+                return "skipped"
+            result = await notify_reminder(
+                session,
+                order=order,
+                judge_player_id=order.judge_player_id,
+                now=now,
+            )
+        return "sent" if result is EnqueueResult.QUEUED else "skipped"
 
     @staticmethod
     async def list_assigned(

@@ -3,7 +3,8 @@ Admin hooks of module 04_orders (Spec 5.7).
 
 - State view ``"04_orders"``: counts total and per derived stage, the
   overdue count, the unassigned count and the oldest unassigned age in
-  minutes, plus the overdue orders list
+  minutes, the worker mode (``RUNNING``/``STOPPED``) and the moment of
+  its last finished pass, plus the overdue orders list
   ``[{number, judge_vk_user_id, deadline_at}]`` (up to 50). The judge's
   ``vk_user_id`` lives **only here** — the admin endpoints are for the
   administrator alone, so INV-O5 relaxes just for this view (Spec 5.7).
@@ -29,6 +30,7 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.service import PlayerService
 from modules._00_core.tick_schedule import format_game_time
 from modules._04_orders.models import Order, OrderStage
+from modules._04_orders.worker import get_last_pass_at, get_worker_mode
 
 MODULE_SLUG = "04_orders"
 OVERDUE_LIST_CAP = 50
@@ -91,8 +93,16 @@ async def orders_state_view(session: AsyncSession) -> dict:
         )
     ).scalar_one_or_none()
 
+    last_pass_at = get_last_pass_at()
+
     return {
         "orders_total": total,
+        "worker_mode": get_worker_mode().value,
+        "last_pass_at": (
+            None
+            if last_pass_at is None
+            else format_game_time(last_pass_at, tz)
+        ),
         "stages": {
             OrderStage.SUBMITTED.value: submitted,
             OrderStage.DISTRIBUTED.value: distributed,

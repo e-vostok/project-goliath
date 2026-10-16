@@ -45,6 +45,7 @@ from modules._04_orders.startup import (
     register_orders_extensions,
     startup_orders,
 )
+from modules._04_orders.worker import start_orders_worker_if_ready
 
 
 @asynccontextmanager
@@ -123,6 +124,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         get_session_context
     )
 
+    # Spec 04_orders 2.3: the retry/reminder worker starts after
+    # startup_orders() loaded the config — the module's conscious
+    # exception from the Tick DAG (D3).
+    orders_worker = await start_orders_worker_if_ready(
+        get_session_context
+    )
+
     yield
 
     scheduler_task.cancel()
@@ -132,13 +140,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await bot_runtime.stop()
     if profile_worker is not None:
         await profile_worker.stop()
+    if orders_worker is not None:
+        await orders_worker.stop()
     await get_engine().dispose()
 
 
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.6.15",
+    version="0.6.16",
     lifespan=lifespan,
 )
 
