@@ -16,6 +16,14 @@ candidates via ``PlayerService`` and ``BotService``, one aggregating
 workload query, the injected selector, a conditional ``UPDATE ... WHERE
 judge_player_id IS NULL`` and the two assignment notifications.
 
+``write_verdict`` runs the Spec 5.1 check order on one order: the
+advisory lock, existence, the caller-is-judge check — one and the same
+``ORDER_VERDICT_FORBIDDEN`` for every other cause (INV-O5) — no
+verdict yet, the field rules, then a conditional ``UPDATE ... WHERE
+judge_player_id = :caller AND verdict_at IS NULL`` that touches the
+four verdict columns and nothing else (INV-O1), and the author's
+announcement under its own SAVEPOINT (INV-O8).
+
 Nothing here exposes the judge: no view carries ``judge_player_id`` or
 any player identifier of the judge (INV-O5); ``can_write_verdict`` is
 computed per viewer — true only for the assigned judge while no verdict
@@ -42,9 +50,14 @@ from modules._04_orders.exceptions import (
     OrderNationRequiredError,
     OrderNotFoundError,
     OrderNumberConflictError,
+    OrderVerdictExistsError,
+    OrderVerdictForbiddenError,
 )
 from modules._04_orders.models import Order, is_overdue
-from modules._04_orders.notifications import notify_assignment
+from modules._04_orders.notifications import (
+    notify_assignment,
+    notify_verdict,
+)
 from modules._04_orders.rules import (
     validate_article_url,
     validate_summary,
@@ -555,6 +568,113 @@ class OrderService:
             )
             for order in result.scalars()
         ]
+
+    @staticmethod
+    async def write_verdict(
+        session: AsyncSession,
+        *,
+        player_id: str,
+        number: int,
+        title: str,
+        summary: str,
+        article_url: str,
+    ) -> OrderDetailView:
+        """
+        Write the verdict of an order (Spec 5.1 check order).
+
+        The module advisory lock serializes the verdict with
+        submissions and other verdict attempts on PostgreSQL — two
+        racing writes cannot both land (INV-O1). The refusal for a
+        non-judge caller is one and the same for every cause — no
+        judge yet, the author, a stranger — so nothing about the
+        assignment leaks (INV-O5). Never commits; the caller owns the
+        transaction boundary. Returns the detail as the judge sees it.
+        """
+        from modules._04_orders.startup import (
+            get_orders_allowed_hosts,
+            get_orders_config,
+        )
+
+        config = get_orders_config()
+
+        # 1. Module lock — same key as submit and distribute.
+        if session.bind.dialect.name == "postgresql":
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"),
+                {"key": ORDERS_ADVISORY_LOCK_KEY},
+            )
+
+        # 2. The order exists.
+        order = (
+            await session.execute(
+                select(Order).where(Order.number == number)
+            )
+        ).scalar_one_or_none()
+        if order is None:
+            raise OrderNotFoundError(number)
+
+        # 3. The caller is the assigned judge — otherwise one and the
+        # same refusal, whatever the true cause (INV-O5).
+        if order.judge_player_id != player_id:
+            raise OrderVerdictForbiddenError()
+
+        # 4. No verdict yet.
+        if order.verdict_at is not None:
+            raise OrderVerdictExistsError(number)
+
+        # 5. Field rules (Spec 2.5) — the same limits as an order.
+        title = validate_title(title, config)
+        summary = validate_summary(summary, config)
+        article_url = validate_article_url(
+            article_url, config, allowed_hosts=get_orders_allowed_hosts()
+        )
+
+        # 6. Conditional write (INV-O1): the four verdict columns and
+        # nothing else, only while the row is still this judge's to
+        # decide.
+        verdict_at = datetime.now(timezone.utc)
+        result = await session.execute(
+            update(Order)
+            .where(
+                Order.id == order.id,
+                Order.judge_player_id == player_id,
+                Order.verdict_at.is_(None),
+            )
+            .values(
+                verdict_title=title,
+                verdict_summary=summary,
+                verdict_url=article_url,
+                verdict_at=verdict_at,
+            )
+        )
+        if result.rowcount == 0:
+            # The row changed between the read and the update — re-read
+            # and answer for the state that actually won.
+            fresh = (
+                await session.execute(
+                    select(Order).where(Order.id == order.id)
+                )
+            ).scalar_one()
+            if fresh.verdict_at is not None:
+                raise OrderVerdictExistsError(number)
+            raise OrderVerdictForbiddenError()
+        await session.refresh(order)
+
+        # 7. The author's announcement under its own SAVEPOINT (INV-O8):
+        # a failure or a skip must never undo the verdict.
+        try:
+            async with session.begin_nested():
+                await notify_verdict(
+                    session, order=order, verdict_at=verdict_at
+                )
+        except Exception:
+            logger.exception(
+                "verdict notification failed for order %s", order.id
+            )
+
+        return _detail_view(
+            order, now=verdict_at, viewer_player_id=player_id
+        )
 
     @staticmethod
     async def unresolved_count(

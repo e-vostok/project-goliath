@@ -5,8 +5,9 @@ Two entry points, deliberately split:
 
 - ``register_orders_extensions()`` — registers the Registry table
   source ``orders`` and the four bot notification types (Appendix C:
-  the two produced by the assignment now, the reminder and the verdict
-  announcement for Issues 7 and 9). Called in ``lifespan`` strictly
+  the assignment pair, the verdict announcement and the reminder —
+  the reminder's producer arrives with Issue 9). Called in
+  ``lifespan`` strictly
   before ``startup_bot()`` and ``startup_registry()``: both validate
   their registries against their configs at boot, so the extensions
   must exist first. Idempotent — ``register_table_source`` replaces a
@@ -67,8 +68,8 @@ def register_orders_extensions() -> None:
     Register the module's extension points before the owning modules'
     startups validate them (Spec D11): the Registry table source and the
     four ORDER_* bot notification types with their variable sets
-    (Appendix C). Reminder and verdict types are registration-only for
-    now — their producers arrive with Issues 7 and 9.
+    (Appendix C). The reminder type is registration-only for now —
+    its producer arrives with Issue 9.
     """
     register_table_source("orders", ORDERS_PROVIDES, load_orders_rows)
     for key, variables in NOTIFICATION_VARIABLES.items():
