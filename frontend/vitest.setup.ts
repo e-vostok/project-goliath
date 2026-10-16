@@ -1,10 +1,17 @@
 import '@testing-library/jest-dom/vitest';
 import { setupServer } from 'msw/node';
 
+import { clearAllFormDrafts } from './src/shared/formDraft';
+
 export const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  // Form drafts are module-level session state — never leak them
+  // between tests.
+  clearAllFormDrafts();
+});
 afterAll(() => server.close());
 
 // jsdom lacks browser APIs that VKUI touches at runtime.

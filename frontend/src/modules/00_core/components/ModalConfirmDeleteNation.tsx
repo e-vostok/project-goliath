@@ -35,6 +35,9 @@ export function ModalConfirmDeleteNation({
   const [error, setError] = useState<string | null>(null);
 
   const handleConfirm = async () => {
+    if (submitting) {
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -49,6 +52,10 @@ export function ModalConfirmDeleteNation({
           ? e.message
           : 'Ошибка сети — попробуйте ещё раз.',
       );
+    } finally {
+      // This component never unmounts (it is a permanent child of the
+      // ModalRoot — only VKUI's inner card hides), so the flag must be
+      // released on every settled request or the next window freezes.
       setSubmitting(false);
     }
   };

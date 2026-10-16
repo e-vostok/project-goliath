@@ -21,9 +21,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import { Button, FormStatus, Spinner, Title } from '@vkontakte/vkui';
 
+import { useNationOptions, NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { useRegistryRows } from '../hooks/useRegistryRows';
 import { useRegistryTables } from '../hooks/useRegistryTables';
 import { runCellAction } from '../lib/cellActions';
+import { nationNamesOfRows } from '../lib/nationOptions';
 import type { RegistryEntryRequest } from '../lib/entryRequest';
 import {
   applyView,
@@ -62,6 +64,20 @@ export function PanelRegistry({
   const activeTable = tables.find((t) => t.id === activeTableId) ?? null;
 
   const rows = useRegistryRows(activeTableId);
+
+  // The select_or_contains dropdowns list every nation the Registry
+  // knows — the «nations» table; while it is absent/unloaded the
+  // nations visible in the shown rows stand in (Spec 3.7).
+  const needsNationOptions =
+    activeTable?.columns.some((c) =>
+      c.filters.includes('select_or_contains'),
+    ) ?? false;
+  const nationOptions = useNationOptions(
+    needsNationOptions,
+    tables.find((t) => t.id === NATIONS_TABLE_ID) ?? null,
+  );
+  const nationSelectOptions =
+    nationOptions.names ?? nationNamesOfRows(rows.data);
 
   // Select the requested tab once the table list is known; a request
   // for a table that does not exist is dropped — the panel opens the
@@ -286,6 +302,7 @@ export function PanelRegistry({
         <FilterPanel
           table={activeTable}
           filters={view.filters}
+          nationOptions={nationSelectOptions}
           onFiltersChange={(columnId, filters) =>
             updateView((v) => ({
               ...v,

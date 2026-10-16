@@ -89,7 +89,7 @@ tables:
         source: nation
         width_px: 292
         sortable: true
-        filters: [text, presence]
+        filters: [select_or_contains, presence]
         searchable: true
         stub: false
 
@@ -157,7 +157,7 @@ tables:
     default_sort: {column: number, direction: desc}   # новые приказы сверху
     columns:
       - {id: number, title: "№", type: index, source: number, width_px: 56, sortable: true, filters: [], searchable: false, stub: false}
-      - {id: nation, title: "Государство", type: nation, source: nation, width_px: 168, sortable: true, filters: [text], searchable: true, stub: false}
+      - {id: nation, title: "Государство", type: nation, source: nation, width_px: 168, sortable: true, filters: [select_or_contains], searchable: true, stub: false}
       - {id: title, title: "Название", type: action_text, source: title, width_px: 236, sortable: true, filters: [text], searchable: true, stub: false}
       - {id: submitted, title: "Подача", header_icon: stage_submitted, type: datetime, source: submitted, width_px: 136, sortable: true, filters: [date_range], searchable: false, stub: false}
       - {id: distributed, title: "Распределение", header_icon: stage_distributed, type: datetime, source: distributed, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}

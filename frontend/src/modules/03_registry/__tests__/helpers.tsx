@@ -80,7 +80,8 @@ export const TABLES: RegistryTablesDTO = {
         },
         {
           id: 'nation', title: 'Государство', type: 'nation', width_px: 292,
-          sortable: true, filters: ['text', 'presence'], filter_label: null,
+          sortable: true,
+          filters: ['select_or_contains', 'presence'], filter_label: null,
           header_icon: null,
           searchable: true, stub: false, scale_min: null, scale_max: null,
         },

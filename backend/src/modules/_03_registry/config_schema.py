@@ -54,6 +54,7 @@ FilterKind = Literal[
     "number_range",  # диапазон «от — до» по числу или ключу сортировки
     "date_range",    # диапазон календарных дат (по ключу сортировки — число дней)
     "presence",      # «есть / нет»
+    "select_or_contains",  # выпадающий список известных государств + «содержит»
 ]
 
 IconKey = Literal[
@@ -78,7 +79,7 @@ ALLOWED_FILTERS: dict[str, frozenset[str]] = {
     "person": frozenset({"text"}),
     "gauge": frozenset({"number_range"}),
     "flag": frozenset(),
-    "nation": frozenset({"text", "presence"}),
+    "nation": frozenset({"text", "presence", "select_or_contains"}),
 }
 
 # Типы, которые можно искать общим полем поиска.
@@ -264,6 +265,13 @@ class ColumnConfig(_Strict):
             raise ValueError(
                 f"{label}: фильтр {bad[0]!r} недопустим для типа {self.type!r}; "
                 f"допустимы: {sorted(allowed) or 'никакие'}"
+            )
+        # select_or_contains уже включает поле «содержит» — отдельный
+        # text-фильтр на том же столбце избыточен.
+        if "select_or_contains" in self.filters and "text" in self.filters:
+            raise ValueError(
+                f"{label}: фильтр 'select_or_contains' уже включает «содержит» — "
+                "'text' на том же столбце избыточен"
             )
         # Подпись диапазона имеет смысл только при диапазонном фильтре.
         if self.filter_label is not None and not (

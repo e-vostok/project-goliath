@@ -126,7 +126,7 @@ export const ORDERS_TABLE: RegistryTableDTO = {
     },
     {
       id: 'nation', title: 'Государство', type: 'nation', width_px: 168,
-      sortable: true, filters: ['text'], filter_label: null,
+      sortable: true, filters: ['select_or_contains'], filter_label: null,
       header_icon: null, searchable: true, stub: false,
       scale_min: null, scale_max: null,
     },

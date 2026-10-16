@@ -25,7 +25,8 @@ export type RegistryFilterKind =
   | 'text'
   | 'number_range'
   | 'date_range'
-  | 'presence';
+  | 'presence'
+  | 'select_or_contains';
 
 /** `header_icon` values the schema allows — the three order stages. */
 export type RegistryHeaderIcon =

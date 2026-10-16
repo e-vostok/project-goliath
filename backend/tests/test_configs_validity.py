@@ -633,3 +633,42 @@ def test_missing_profile_key_rejected(tmp_path, key):
         CoreConfig.from_yaml(path)
 
     assert key in str(exc_info.value)
+
+
+def test_03_registry_select_or_contains_filter():
+    """Nation dropdown filter (Spec 03_registry 3.7): the schema accepts
+    ``select_or_contains`` on a ``nation`` column, rejects it on other
+    types and forbids the redundant ``text`` pairing — the kind already
+    includes the «содержит» input."""
+    with open(
+        RegistryConfig.get_default_config_path(), encoding="utf-8"
+    ) as f:
+        data = yaml.safe_load(f)
+
+    # The shipped config already declares it on both nation columns.
+    config = RegistryConfig.model_validate(data)
+    players_nation = next(
+        c for c in config.table("players").columns if c.id == "nation"
+    )
+    orders_nation = next(
+        c for c in config.table("orders").columns if c.id == "nation"
+    )
+    assert players_nation.filters == ["select_or_contains", "presence"]
+    assert orders_nation.filters == ["select_or_contains"]
+
+    # Not a nation type — rejected.
+    bad_type = copy.deepcopy(data)
+    bad_type["tables"][2]["columns"][2]["filters"] = [
+        "select_or_contains"
+    ]
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_type)
+
+    # select_or_contains + text on the same column — redundant, rejected.
+    bad_combo = copy.deepcopy(data)
+    bad_combo["tables"][2]["columns"][1]["filters"] = [
+        "select_or_contains",
+        "text",
+    ]
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_combo)

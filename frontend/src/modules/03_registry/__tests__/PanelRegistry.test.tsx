@@ -40,6 +40,7 @@ import type {
   RegistryTableDTO,
 } from '../types';
 import {
+  NATIONS_ROWS,
   registerRegistryHandlers,
   renderWithSession,
   TABLES,
@@ -198,6 +199,57 @@ describe('PanelRegistry — filter panel', () => {
     expect(
       await screen.findByTestId('filter-dot-player'),
     ).toBeInTheDocument();
+  });
+
+  it('nation column offers a dropdown of every known nation plus «содержит…» — either filters rows', async () => {
+    // A nation the players table does not mention — the dropdown must
+    // still list it (the source is the «nations» table, not the rows).
+    server.use(
+      http.get('*/api/v1/registry/tables/nations', () =>
+        HttpResponse.json({
+          ...NATIONS_ROWS,
+          total: 3,
+          rows: [
+            ...NATIONS_ROWS.rows,
+            {
+              key: 'n3',
+              cells: {
+                number: 3,
+                name: 'Северия',
+                formed: { text: '1 мая 1300 г.', key: 55 },
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+    await user.click(screen.getByTestId('filters-toggle'));
+
+    const item = await screen.findByTestId('filter-item-nation');
+    const select = within(item).getByLabelText('Государство: Список');
+    await waitFor(() =>
+      expect(
+        within(select)
+          .getAllByRole('option')
+          .map((o) => o.textContent),
+      ).toEqual(['Все', 'Новгород', 'Рязань', 'Северия']),
+    );
+
+    // Dropdown: exact nation match — only p3 (Рязань).
+    await user.selectOptions(select, 'Рязань');
+    await waitFor(() => expect(rowKeys()).toEqual(['p3']));
+
+    // Back to «Все», then the free-text half still filters.
+    await user.selectOptions(select, '');
+    await waitFor(() => expect(rowKeys()).toEqual(['p1', 'p2', 'p3']));
+    await user.type(
+      within(item).getByPlaceholderText('содержит…'),
+      'нов',
+    );
+    await waitFor(() => expect(rowKeys()).toEqual(['p1']));
   });
 });
 

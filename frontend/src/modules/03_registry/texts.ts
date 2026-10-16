@@ -29,6 +29,8 @@ export const REGISTRY_TEXTS = {
   presenceAny: 'Все',
   presenceHas: 'Есть',
   presenceNone: 'Нет',
+  filterSelectLabel: 'Список',
+  filterSelectAll: 'Все',
 
   sortAriaLabel: (columnTitle: string) =>
     `Сортировка по «${columnTitle}»`,

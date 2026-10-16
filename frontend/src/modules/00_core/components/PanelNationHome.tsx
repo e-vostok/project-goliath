@@ -28,6 +28,7 @@ import {
 import { Icon24Write, Icon24Delete } from '@vkontakte/icons';
 
 import { api, ApiError } from '../../../shared/api-client';
+import { useFormDraft } from '../../../shared/formDraft';
 import type {
   GameClockDTO,
   NationDTO,
@@ -50,6 +51,15 @@ export interface PanelNationHomeProps {
   onDeleteRequest: () => void;
 }
 
+/** The edit form's five fields, mirrored into the session draft. */
+interface NationEditDraft {
+  name: string;
+  color: string;
+  leaderName: string;
+  leaderTitle: string;
+  historyUrl: string;
+}
+
 export function PanelNationHome({
   nation,
   onChanged,
@@ -60,15 +70,31 @@ export function PanelNationHome({
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
   const hints = nationRulesHints(rules);
 
+  // Draft memory, keyed by nation — reopening the edit form restores
+  // the typed values; «Отмена» and a successful save delete it.
+  const {
+    draft: storedDraft,
+    setDraft: setStoredDraft,
+    clearDraft,
+  } = useFormDraft<NationEditDraft>(`nation-edit:${nation.id}`);
+
   const [clock, setClock] = useState<GameClockDTO | null>(null);
   const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(nation.name);
-  const [editColor, setEditColor] = useState(nation.color_hex);
-  const [editLeaderName, setEditLeaderName] = useState(nation.leader_name ?? '');
-  const [editLeaderTitle, setEditLeaderTitle] = useState(
-    nation.leader_title ?? '',
+  const [editName, setEditName] = useState(
+    storedDraft?.name ?? nation.name,
   );
-  const [editHistoryUrl, setEditHistoryUrl] = useState(nation.history_url ?? '');
+  const [editColor, setEditColor] = useState(
+    storedDraft?.color ?? nation.color_hex,
+  );
+  const [editLeaderName, setEditLeaderName] = useState(
+    storedDraft?.leaderName ?? nation.leader_name ?? '',
+  );
+  const [editLeaderTitle, setEditLeaderTitle] = useState(
+    storedDraft?.leaderTitle ?? nation.leader_title ?? '',
+  );
+  const [editHistoryUrl, setEditHistoryUrl] = useState(
+    storedDraft?.historyUrl ?? nation.history_url ?? '',
+  );
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<EditableNationField, string>>
@@ -83,6 +109,41 @@ export function PanelNationHome({
       .catch(() => {});
     return () => controller.abort();
   }, [token]);
+
+  // While the form is open, mirror the fields into the session draft;
+  // values identical to the nation's own mean nothing is pending.
+  useEffect(() => {
+    if (!editing) {
+      return;
+    }
+    const pristine =
+      editName === nation.name &&
+      editColor === nation.color_hex &&
+      editLeaderName === (nation.leader_name ?? '') &&
+      editLeaderTitle === (nation.leader_title ?? '') &&
+      editHistoryUrl === (nation.history_url ?? '');
+    if (pristine) {
+      clearDraft();
+    } else {
+      setStoredDraft({
+        name: editName,
+        color: editColor,
+        leaderName: editLeaderName,
+        leaderTitle: editLeaderTitle,
+        historyUrl: editHistoryUrl,
+      });
+    }
+  }, [
+    editing,
+    editName,
+    editColor,
+    editLeaderName,
+    editLeaderTitle,
+    editHistoryUrl,
+    nation,
+    setStoredDraft,
+    clearDraft,
+  ]);
 
   const trimmed = {
     name: editName.trim(),
@@ -156,6 +217,7 @@ export function PanelNationHome({
     setFormError(null);
     try {
       await api.updateNation(token, changes);
+      clearDraft();
       setEditing(false);
       onChanged();
     } catch (error) {
@@ -175,6 +237,7 @@ export function PanelNationHome({
   };
 
   const resetEdit = () => {
+    clearDraft();
     setEditing(false);
     setEditName(nation.name);
     setEditColor(nation.color_hex);

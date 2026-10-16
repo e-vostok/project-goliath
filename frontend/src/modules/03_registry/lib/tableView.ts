@@ -44,11 +44,24 @@ export interface PresenceFilter {
   value: 'has' | 'none';
 }
 
+/**
+ * `select_or_contains` (Spec 3.7) — the nation filter pair: `selected`
+ * is the dropdown value (exact nation name; '' = nothing picked) and
+ * `contains` is the free-text «содержит» — they combine (AND) when both
+ * are set.
+ */
+export interface SelectOrContainsFilter {
+  kind: 'select_or_contains';
+  selected: string;
+  contains: string;
+}
+
 export type ColumnFilterValue =
   | TextFilter
   | NumberRangeFilter
   | DateRangeFilter
-  | PresenceFilter;
+  | PresenceFilter
+  | SelectOrContainsFilter;
 
 /** View state of one tab: sort, per-column filters, the shared search
  * and whether the filter panel is open. */
@@ -269,6 +282,18 @@ export function matchColumnFilter(
           typeof cellProp(cell, 'key') === 'number');
       return filter.value === 'has' ? present : !present;
     }
+    case 'select_or_contains': {
+      // The dropdown compares the exact (normalized) nation name; the
+      // «содержит» half follows the text filter rules.
+      const name = cellText(column, cell);
+      if (filter.selected !== '') {
+        const wanted = normalizeText(filter.selected);
+        if (name === null || normalizeText(name) !== wanted) {
+          return false;
+        }
+      }
+      return matchText(name, filter.contains);
+    }
     default:
       return true;
   }
@@ -315,6 +340,10 @@ export function isFilterActive(filter: ColumnFilterValue): boolean {
       return filter.from.trim() !== '' || filter.to.trim() !== '';
     case 'presence':
       return true;
+    case 'select_or_contains':
+      return (
+        filter.selected !== '' || normalizeText(filter.contains) !== ''
+      );
     default:
       return false;
   }
