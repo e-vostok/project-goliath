@@ -20,7 +20,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.calendar import compute_game_date
-from modules._00_core.config_schema import CoreConfig
 from modules._00_core.service import (
     NationService,
     PlayerService,
@@ -46,11 +45,6 @@ NATIONS_PROVIDES = frozenset(
 )
 
 
-def _core_config() -> CoreConfig:
-    """The core config, loaded the same way 00_core's router loads it."""
-    return CoreConfig.from_yaml(CoreConfig.get_default_config_path())
-
-
 async def load_players(session: AsyncSession) -> list[RegistryRow]:
     """
     The ``players`` source (Spec 3.2).
@@ -65,10 +59,13 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     # Local import: sources.py is imported by startup.py, so a top-level
     # import of the config holder would be a cycle (same pattern as
     # start_runtime_if_ready -> BotRuntime in 02_bot).
-    from modules._03_registry.startup import get_registry_config
+    from modules._03_registry.startup import (
+        get_core_config,
+        get_registry_config,
+    )
 
     registry_config = get_registry_config()
-    core_config = _core_config()
+    core_config = get_core_config()
 
     rows = await PlayerService.list_for_registry(session)
     player_ids = [row.player_id for row in rows]
@@ -140,7 +137,10 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
     among the existing ones (D2). ``formed`` is the game-calendar date of
     ``created_turn``; the row key is the nation id.
     """
-    core_config = _core_config()
+    # Local import, same cycle guard as in load_players.
+    from modules._03_registry.startup import get_core_config
+
+    core_config = get_core_config()
     rows = await NationService.list_for_registry(session)
 
     out: list[RegistryRow] = []

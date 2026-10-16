@@ -415,16 +415,20 @@ class TestWorkerLoop:
             orders_started.distribution, session_factory
         )
         await worker.start()
-        assert get_worker_mode() is WorkerMode.RUNNING
+        try:
+            assert get_worker_mode() is WorkerMode.RUNNING
 
-        for _ in range(500):
-            if calls >= 2:
-                break
-            await asyncio.sleep(0.01)
-        assert calls >= 2
-        assert get_last_pass_at() is not None
-
-        await worker.stop()
+            # Wait for a FINISHED pass, not a started one: calls >= 2
+            # only proves the retry began — stopping mid-pass raced the
+            # fixture's engine disposal ("closed database").
+            for _ in range(500):
+                if get_last_pass_at() is not None:
+                    break
+                await asyncio.sleep(0.01)
+            assert calls >= 2
+            assert get_last_pass_at() is not None
+        finally:
+            await worker.stop()
         assert get_worker_mode() is WorkerMode.STOPPED
 
 

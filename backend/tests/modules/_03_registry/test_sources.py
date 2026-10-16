@@ -13,9 +13,11 @@ import pytest
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Province
 from modules._00_core.service import NationService
 from modules._03_registry.service import build_table
+from modules._03_registry.startup import startup_registry
 from tests.fixtures.factories import make_vk_profile
 from tests.fixtures.provinces import make_land_province, make_sea_province
 from tests.modules._03_registry.conftest import seed_nation, seed_player
@@ -229,3 +231,40 @@ class TestNationsTable:
         )
         assert rows[n2.id]["number"] == 1
         assert rows[n3.id]["number"] == 2
+
+
+class TestCoreConfigInjection:
+    """The sources use the CoreConfig captured at startup — a table
+    request must never re-open ``00_core.yaml``."""
+
+    async def test_source_uses_injected_config_without_disk_read(
+        self, test_db_session, registry_isolation, monkeypatch
+    ):
+        core_config = CoreConfig.from_yaml(
+            CoreConfig.get_default_config_path()
+        )
+        monkeypatch.setattr(
+            CoreConfig,
+            "from_yaml",
+            classmethod(
+                lambda cls, path: pytest.fail(
+                    "CoreConfig.from_yaml called during a table request"
+                )
+            ),
+        )
+        startup_registry(core_config=core_config)
+
+        player = await seed_player(
+            test_db_session, 503001, created_at=T0
+        )
+        nation = await seed_nation(
+            test_db_session, player, "Инъекция", "#00AA44", created_turn=2
+        )
+
+        players = await build_table(test_db_session, "players")
+        nations = await build_table(test_db_session, "nations")
+        assert players.total == 1
+        assert _rows_by_key(nations)[nation.id]["formed"] == {
+            "text": "1 марта 2040 г.",
+            "key": 2,
+        }

@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager, suppress
 from typing import AsyncGenerator
@@ -32,6 +33,7 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.router import router as core_router
 from modules._00_core.tick_handler import register_tick_handlers
+from modules._00_core.tick_recovery import recover_interrupted_ticks
 from modules._01_map.api_service import get_api_payloads
 from modules._01_map.router import router as map_router
 from modules._01_map.startup import startup_map
@@ -47,6 +49,37 @@ from modules._04_orders.startup import (
 )
 from modules._04_orders.worker import start_orders_worker_if_ready
 
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_LOG_HANDLER_NAME = "goliath-root"
+
+
+def configure_logging() -> None:
+    """
+    Point the root logger at stderr so app log lines reach
+    ``docker compose logs``.
+
+    Uvicorn configures only its own ``uvicorn.*`` loggers, so without a
+    root handler every ``modules.*``/``core.*`` record below WARNING is
+    dropped. One named handler with a readable single-line format —
+    repeated calls never stack a second handler, and uvicorn's loggers
+    keep their own handlers with ``propagate=False``, so no line prints
+    twice. ``LOG_LEVEL`` selects the level (default INFO; an unknown
+    value falls back to INFO). ``httpx``/``httpcore`` stay at WARNING:
+    their INFO lines print full request URLs, query strings included.
+    """
+    raw_level = os.environ.get("LOG_LEVEL", "INFO").strip().upper()
+    level = logging.getLevelNamesMapping().get(raw_level, logging.INFO)
+
+    root = logging.getLogger()
+    if not any(h.name == _LOG_HANDLER_NAME for h in root.handlers):
+        handler = logging.StreamHandler()
+        handler.name = _LOG_HANDLER_NAME
+        handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        root.addHandler(handler)
+    root.setLevel(level)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -55,6 +88,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     Validates configuration on startup to fail fast if balance values are invalid.
     """
+    configure_logging()
+
     # DEP-4: refuse to boot a strict-mode deployment (APP_ENV=production
     # and friends) on dev-grade secrets or a local database. Runs before
     # anything else so a misconfigured prod dies immediately.
@@ -73,6 +108,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         raise
 
     init_engine(os.environ["DATABASE_URL"])
+
+    # Deploy backlog: a container killed mid-tick leaves RUNNING
+    # tick_log rows forever. Under the tick's own advisory lock, mark
+    # them FAILED before the scheduler can start — a tick alive on
+    # another instance holds the lock and nothing is touched.
+    await recover_interrupted_ticks(get_session_context)
 
     # Handlers must be registered before the scheduler fires its first tick.
     register_tick_handlers()
@@ -100,8 +141,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Spec 03_registry 2.5: config validation + source-registry wiring —
     # after every other startup_* so future modules can register their
-    # sources first.
-    startup_registry()
+    # sources first. The loaded CoreConfig is handed over so the table
+    # sources never re-read 00_core.yaml per request.
+    startup_registry(config)
 
     # Spec 04_orders D11: after all other startup_* — loads and keeps
     # OrdersConfig (a broken YAML stops the boot) and the VK-article
@@ -148,7 +190,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.6.17",
+    version="0.6.19",
     lifespan=lifespan,
 )
 

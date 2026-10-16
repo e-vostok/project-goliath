@@ -41,6 +41,7 @@ def registry_isolation(monkeypatch):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     monkeypatch.setattr(startup_module, "_registry_config", None)
+    monkeypatch.setattr(startup_module, "_core_config", None)
     # The real config now lists the ``orders`` table — its source is
     # registered by 04_orders strictly before startup_registry()
     # (Spec 04_orders D11), so the fixture wires it the same way.

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 
+from modules._00_core.config_schema import CoreConfig
 from modules._03_registry.admin_hooks import register_registry_admin_hooks
 from modules._03_registry.config_schema import RegistryConfig
 from modules._03_registry.errors import RegistryConfigError
@@ -35,6 +36,7 @@ from modules._03_registry.sources import register_builtin_sources
 logger = logging.getLogger(__name__)
 
 _registry_config: RegistryConfig | None = None
+_core_config: CoreConfig | None = None
 
 
 def get_registry_config() -> RegistryConfig:
@@ -44,6 +46,20 @@ def get_registry_config() -> RegistryConfig:
             "RegistryConfig is not loaded — startup_registry() has not run"
         )
     return _registry_config
+
+
+def get_core_config() -> CoreConfig:
+    """
+    The CoreConfig captured by :func:`startup_registry`; raises before
+    it ran. Table sources need its tick timezone and calendar on every
+    request — keeping the object here means no ``00_core.yaml`` read
+    per table build.
+    """
+    if _core_config is None:
+        raise RuntimeError(
+            "CoreConfig is not captured — startup_registry() has not run"
+        )
+    return _core_config
 
 
 def validate_sources_against_config(config: RegistryConfig) -> None:
@@ -67,14 +83,28 @@ def validate_sources_against_config(config: RegistryConfig) -> None:
                 )
 
 
-def startup_registry() -> RegistryConfig:
-    """Boot the module's static parts; returns the validated config."""
-    global _registry_config
+def startup_registry(
+    core_config: CoreConfig | None = None,
+) -> RegistryConfig:
+    """
+    Boot the module's static parts; returns the validated config.
+
+    ``core_config`` is the already-loaded CoreConfig the app holds —
+    the lifespan passes its own so the sources never re-read
+    ``00_core.yaml`` per request. ``None`` loads it once here
+    (standalone boots and tests).
+    """
+    global _registry_config, _core_config
     config = RegistryConfig.from_yaml(RegistryConfig.get_default_config_path())
     register_builtin_sources()
     validate_sources_against_config(config)
     register_registry_admin_hooks()
     _registry_config = config
+    _core_config = (
+        core_config
+        if core_config is not None
+        else CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    )
     logger.info(
         "03_registry started: tables=%s",
         ", ".join(table.id for table in config.tables),

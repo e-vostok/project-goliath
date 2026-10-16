@@ -60,6 +60,7 @@ def orders_isolation(monkeypatch):
         orders_startup_module, "_orders_allowed_hosts", None
     )
     monkeypatch.setattr(registry_startup_module, "_registry_config", None)
+    monkeypatch.setattr(registry_startup_module, "_core_config", None)
     monkeypatch.setattr(bot_startup_module, "_bot_config", None)
     # Worker globals: mode, last-pass stamp and the installed bell.
     monkeypatch.setattr(
