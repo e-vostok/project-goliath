@@ -1,6 +1,16 @@
 # 02_SYSTEM_SPECS / 04_orders
 
-> Версия Spec: 1.1 (15.10.2026). Изменение 1.0 → 1.1: добавлен предел неразрешённых приказов на одного автора (D14, INV-O15, `author.max_unresolved_orders = 5`, код `ORDER_AUTHOR_LIMIT_REACHED`). Вход: `docs/01_GAME_BIBLE/04_orders.md` (утверждена Project Owner 15.10.2026).
+> Версия Spec: 1.2 (16.10.2026). Изменение 1.0 → 1.1: добавлен предел неразрешённых приказов на одного автора (D14, INV-O15, `author.max_unresolved_orders = 5`, код `ORDER_AUTHOR_LIMIT_REACHED`). Вход: `docs/01_GAME_BIBLE/04_orders.md` (утверждена Project Owner 15.10.2026).
+>
+> **Изменения 1.1 → 1.2** (приведение к факту после реализации, Issue 10):
+>
+> - `submit` возвращает `SubmitOutcome` (представление + признак `created`), `write_verdict` — `OrderDetailView`; в публичный API добавлен `unresolved_count`; описаны поля представлений и `RetryPassStats` (2.5).
+> - Фоновая задача запускается в `lifespan` отдельной функцией `start_orders_worker_if_ready()` после `startup_orders()` (2.3, D11); паузы цикла при ошибках — 5, 15, 60 с (INV-O8).
+> - Захват строки напоминания требует также `verdict_at IS NULL`: вердикт, записанный между чтением кандидатов прохода и захватом, отменяет напоминание (2.3, INV-O1).
+> - Проход напоминаний берёт до `batch_size` приказов, старые `reminder_at` первыми (2.3).
+> - Хук состояния отдаёт ключи по факту, включая `overdue_truncated` (5.7).
+> - Список файлов клиента приведён к реальному расположению: конструкторы и окна — в корне модуля, `components/` содержит `OrdersBlock.tsx` и `NationMark.tsx` (5.4).
+> - Ответы ошибок при наличии уточнений несут поле `details` (5.3); порядок проверок вердикта дополнен шагом модульной блокировки и фиксацией условного `UPDATE` (5.1).
 > Артефакты шага: этот файл, `configs/04_orders.yaml`, `backend/src/modules/_04_orders/config_schema.py`.
 > Зависимости: `00_core`, `02_bot`, `03_registry`. `01_map` не требуется.
 > Релиз модуля: MINOR; предложение — 0.7.0 вместе с отложенным Реестром (номер уточняет Roadmap).
@@ -29,7 +39,7 @@
 
 **D10. Тип уведомления без требования государства.** В `types.<КЛЮЧ>` бота вводится обязательный ключ `requires_nation`. У пяти встроенных типов он `true` (поведение не меняется), у четырёх типов приказов — `false`: судья без государства получает сообщение при наличии согласия.
 
-**D11. Ранняя регистрация расширений.** Источник таблицы Реестра и типы уведомлений регистрируются функцией `register_orders_extensions()` в `lifespan` строго раньше `startup_registry()` и `startup_bot()` (оба проверяют реестры против конфигов при старте). Загрузка конфига модуля и запуск фоновой задачи — `startup_orders()` после всех остальных `startup_*`.
+**D11. Ранняя регистрация расширений.** Источник таблицы Реестра и типы уведомлений регистрируются функцией `register_orders_extensions()` в `lifespan` строго раньше `startup_registry()` и `startup_bot()` (оба проверяют реестры против конфигов при старте). Загрузка конфига модуля — `startup_orders()` после всех остальных `startup_*`; запуск и остановка фоновой задачи — `start_orders_worker_if_ready()` и `OrdersWorker.stop()` в `lifespan` следом за ней (2.3).
 
 **D12. Блок «Приказы» только в штабе.** По решению G (15.10.2026) на экране регистрации государства блока нет. Судья без государства работает через уведомление бота и окно приказа в Реестре.
 
@@ -108,14 +118,14 @@
 
 ### 2.1. Инварианты
 
-- **INV-O1. Неизменяемость.** После вставки не меняются никогда: автор, снимок государства, `title`, `summary`, `article_url`, `submitted_at`, `number`. Назначение пишется один раз условным `UPDATE … WHERE judge_player_id IS NULL`; вердикт — один раз `UPDATE … WHERE judge_player_id = :judge AND verdict_at IS NULL`; `reminder_sent_at` — один раз `WHERE reminder_sent_at IS NULL`. Результат определяется по числу затронутых строк.
+- **INV-O1. Неизменяемость.** После вставки не меняются никогда: автор, снимок государства, `title`, `summary`, `article_url`, `submitted_at`, `number`. Назначение пишется один раз условным `UPDATE … WHERE judge_player_id IS NULL`; вердикт — один раз `UPDATE … WHERE judge_player_id = :judge AND verdict_at IS NULL`; `reminder_sent_at` — один раз `WHERE reminder_sent_at IS NULL AND verdict_at IS NULL` (вердикт, записанный между чтением кандидатов прохода и захватом строки, отменяет напоминание). Результат определяется по числу затронутых строк.
 - **INV-O2. Стадии последовательны.** Обеспечивается `CHECK` (Часть 1); «перепрыгнуть» стадию, например записать вердикт без судьи, база не позволяет.
 - **INV-O3. Судья не равен автору.** `CHECK` плюс исключение автора из кандидатов.
 - **INV-O4. Предел нагрузки.** Число приказов судьи без вердикта не превышает `judge.max_pending_verdicts` в момент назначения. Выбор судьи и запись назначения выполняются под модульной блокировкой с пересчётом нагрузки внутри неё (3.3). Понижение предела в конфиге не отзывает назначенное.
 - **INV-O5. Анонимность судьи.** Ни один эндпоинт игрока не возвращает идентификатор или профиль судьи. На запись вердикта не-судьёй сервер отвечает одним и тем же `ORDER_VERDICT_FORBIDDEN` независимо от того, есть ли у приказа судья и кто он.
 - **INV-O6. Снимок государства.** Название и цвет государства-автора в приказе фиксируются при подаче и не обновляются при переименовании, смене цвета или удалении государства.
 - **INV-O7. Суверенность данных.** Внешние ключи — только на `players`. Игроки, рейтинг, государство, согласие бота — только через публичные функции модулей-владельцев. Чужие таблицы не изменяются. Уведомления — только `BotService.enqueue` в той же транзакции, результат не влияет на исход операции, исключений не бросает.
-- **INV-O8. Изоляция сбоев.** Распределение каждого приказа выполняется под собственным `SAVEPOINT`: сбой распределения или постановки уведомления не отменяет подачу приказа и вердикта. Проход фоновой задачи по одному приказу не прерывает проход по остальным. Задача не умирает от исключения (цикл «шаг → при ошибке пауза 5 → 60 с → дальше», как в боте).
+- **INV-O8. Изоляция сбоев.** Распределение каждого приказа выполняется под собственным `SAVEPOINT`: сбой распределения или постановки уведомления не отменяет подачу приказа и вердикта. Проход фоновой задачи по одному приказу не прерывает проход по остальным. Задача не умирает от исключения (цикл «шаг → при ошибке пауза 5 → 15 → 60 с → дальше», как в боте).
 - **INV-O9. Идемпотентность подачи.** `UNIQUE (author_player_id, client_request_id)`: повтор с тем же идентификатором возвращает существующий приказ и ничего не создаёт.
 - **INV-O10. Достижимость.** При `judge.require_reachable = true` кандидат — владелец государства либо игрок с согласием `ALLOWED` на сообщения бота.
 - **INV-O11. Содержимое статей не трогается.** Сервер не открывает и не загружает ссылки игроков; хранит только строки, прошедшие проверку формата.
@@ -139,10 +149,10 @@ stateDiagram-v2
 
 ### 2.3. Фоновая задача
 
-Одна задача процесса сервера, запускается в `startup_orders()`, останавливается в завершении `lifespan` по образцу задач бота. Каждый проход (раз в `distribution.retry_interval_seconds`, а также по сигналу после подачи приказа и после вердикта):
+Одна задача процесса сервера, запускается в `lifespan` вызовом `start_orders_worker_if_ready()` после `startup_orders()`, останавливается в завершении `lifespan` по образцу задач бота. Каждый проход (раз в `distribution.retry_interval_seconds`, а также по сигналу после подачи приказа и после вердикта):
 
 1. **Повтор распределения.** До `distribution.batch_size` приказов без судьи в порядке `submitted_at, number`; для каждого — `distribute` под `SAVEPOINT` и собственной транзакцией; приказы разных авторов обрабатываются независимо (исключение автора меняет набор кандидатов).
-2. **Напоминания.** Приказы с `reminder_at <= now`, `reminder_sent_at IS NULL`, без вердикта: если `now < deadline_at`, ставится уведомление судье и `reminder_sent_at = now`; если срок уже вышел (задача опоздала), напоминание не отправляется, `reminder_sent_at = now`, в журнал — INFO.
+2. **Напоминания.** До `distribution.batch_size` приказов с `reminder_at <= now`, `reminder_sent_at IS NULL`, без вердикта, старые `reminder_at` первыми. Строка захватывается условным `UPDATE … WHERE reminder_sent_at IS NULL AND verdict_at IS NULL` (0 строк — пропуск: отметку поставил другой проход или вердикт уже записан); если `now < deadline_at`, ставится уведомление судье и `reminder_sent_at = now`; если срок уже вышел (задача опоздала), напоминание не отправляется, `reminder_sent_at = now`, в журнал — INFO.
 
 Один рабочий процесс — штатный режим. При нескольких процессах корректность сохраняется: назначение под модульной блокировкой, условные `UPDATE`, ключи дедупликации уведомлений.
 
@@ -163,20 +173,73 @@ class DistributeResult(str, Enum):
 class OrderService:
     @staticmethod
     async def submit(session, *, player_id: str, client_request_id: str,
-                     title: str, summary: str, article_url: str) -> OrderDetailView: ...
+                     title: str, summary: str, article_url: str) -> SubmitOutcome: ...
     @staticmethod
     async def distribute(session, order_id: str, *, now: datetime | None = None) -> DistributeResult: ...
     @staticmethod
     async def run_retry_pass(session_factory, *, now: datetime | None = None) -> RetryPassStats: ...
     @staticmethod
     async def write_verdict(session, *, player_id: str, number: int,
-                            title: str, summary: str, article_url: str) -> VerdictView: ...
+                            title: str, summary: str, article_url: str) -> OrderDetailView: ...
     @staticmethod
     async def get_detail(session, *, number: int, viewer_player_id: str) -> OrderDetailView: ...
     @staticmethod
     async def list_assigned(session, *, player_id: str) -> list[AssignedOrderView]: ...
     @staticmethod
     async def list_for_registry(session) -> list[RegistryOrderView]: ...   # без полей судьи
+    @staticmethod
+    async def unresolved_count(session, *, player_id: str) -> int: ...     # приказов автора без вердикта (INV-O15)
+
+# Представления сервиса — ни в одном нет полей судьи (INV-O5):
+@dataclass(frozen=True)
+class OrderDetailView:
+    number: int
+    nation_name: str
+    nation_color: str
+    title: str
+    summary: str
+    article_url: str
+    distributed: bool               # судья назначен
+    verdict_title: str | None
+    verdict_summary: str | None
+    verdict_url: str | None
+    overdue: bool
+    can_write_verdict: bool         # истинно только для назначенного судьи без вердикта
+
+@dataclass(frozen=True)
+class SubmitOutcome:
+    view: OrderDetailView
+    created: bool                   # False — идемпотентный повтор (INV-O9)
+
+@dataclass(frozen=True)
+class AssignedOrderView:            # очередь судьи; deadline_at не NULL (INV-O4)
+    number: int
+    nation_name: str
+    nation_color: str
+    title: str
+    summary: str
+    article_url: str
+    deadline_at: datetime
+    overdue: bool
+
+@dataclass(frozen=True)
+class RegistryOrderView:            # строка источника Реестра (Приложение A)
+    number: int
+    nation_name: str
+    nation_color: str
+    title: str
+    submitted_at: datetime
+    distributed_at: datetime | None
+    deadline_at: datetime | None    # для отметки просрочки
+    verdict_at: datetime | None
+
+@dataclass(frozen=True)
+class RetryPassStats:               # счётчики одного прохода (2.3)
+    assigned: int
+    still_waiting: int
+    reminders_sent: int
+    reminders_skipped: int
+    errors: int
 
 # backend/src/modules/_04_orders/distribution.py
 @dataclass(frozen=True)
@@ -192,7 +255,7 @@ JudgeSelector = Callable[[str, Sequence[JudgeCandidate], JudgeSettings], str | N
 def select_judge_v1(author_player_id, candidates, settings) -> str | None: ...
 ```
 
-`select_judge_v1` — чистая детерминированная функция (3.3), заменяемая без изменения остального кода: сервис получает селектор через единственную точку подстановки.
+`select_judge_v1` — чистая детерминированная функция (3.3), заменяемая без изменения остального кода: сервис получает селектор через единственную точку подстановки (`distribution.judge_selector`).
 
 Правила проверки полей (`rules.py` модуля): `validate_title`, `validate_summary` — обрезка краевых пробелов, длины из `limits`; запрещены символы категорий управляющих (`Cc`, кроме перевода строки в краткой сути), форматирующих (`Cf`), суррогатов (`Cs`), частного использования (`Co`) и неназначенных (`Cn`); в названии переводы строки запрещены; в краткой сути переводы строки нормализуются к `\n`. `validate_article_url` — обёртка общей функции из D7. Пустое после обрезки значение — ошибка.
 
@@ -232,7 +295,7 @@ $$k(j) = \bigl(P(j),\; \tau(j),\; id_j\bigr), \qquad j^{*} = \arg\min_{j \in E(a
 4. Если $Q$: для игроков без государства получить `BotService.consented_player_ids`.
 5. Один агрегирующий запрос по `orders` — $P$ и $\tau$.
 6. Построить кандидатов и вызвать селектор.
-7. Условный `UPDATE` назначения (INV-O1). Проверить число затронутых строк.
+7. Условный `UPDATE` назначения (INV-O1): судья и по конфигу на момент назначения `deadline_at`/`reminder_at` (D5). Проверить число затронутых строк.
 8. Поставить два уведомления (`event_at = distributed_at`): судье `order_assigned:<id>`, автору `order_distributed:<id>`.
 
 ### 3.4. Срок и напоминание
@@ -319,9 +382,9 @@ $$number = 1 + \max(0,\; \max_o\, number(o))$$
 
 Таблица приказов в Реестре отдаётся штатным `GET /registry/tables/orders` (Приложение A).
 
-Порядок проверок `POST /orders`: модульная блокировка (PostgreSQL) → повтор по `client_request_id` (вернуть существующий) → наличие государства → предел приказов автора (`ORDER_AUTHOR_LIMIT_REACHED`) → название → суть → ссылка → создание, попытка распределения под `SAVEPOINT`.
+Порядок проверок `POST /orders`: модульная блокировка (PostgreSQL) → повтор по `client_request_id` (вернуть существующий) → наличие государства → предел приказов автора (`ORDER_AUTHOR_LIMIT_REACHED`) → название → суть → ссылка → вставка с номером (повторы под `SAVEPOINT`, 3.5) → попытка распределения под `SAVEPOINT`.
 
-Порядок проверок `POST /orders/{number}/verdict`: существование приказа → игрок назначен судьёй (иначе `ORDER_VERDICT_FORBIDDEN`, в том числе когда судьи ещё нет) → вердикта ещё нет → название → суть → ссылка → запись.
+Порядок проверок `POST /orders/{number}/verdict`: модульная блокировка (PostgreSQL) → существование приказа → игрок назначен судьёй (иначе `ORDER_VERDICT_FORBIDDEN`, в том числе когда судьи ещё нет) → вердикта ещё нет → название → суть → ссылка → условный `UPDATE` (INV-O1) → уведомление автору под `SAVEPOINT` (INV-O8).
 
 ### 5.2. DTO
 
@@ -373,11 +436,11 @@ AssignedOrdersDTO = { items: list[AssignedOrderDTO] }    # все приказы
 | `ORDER_VERDICT_EXISTS` | 409 | вердикт уже записан |
 | `ORDER_NUMBER_CONFLICT` | 500 | не удалось назначить номер (3.5) |
 
-`message` — по-русски, с причиной (например «Ссылка должна вести на статью ВК вида vk.com/@…»). Ошибки полей клиент показывает у соответствующего поля по коду.
+`message` — по-русски, с причиной (например «Ссылка должна вести на статью ВК вида vk.com/@…»). При наличии уточнений ответ содержит поле `details`: `ORDER_AUTHOR_LIMIT_REACHED` → `{"max_unresolved_orders": N}`, `ORDER_NOT_FOUND` и `ORDER_VERDICT_EXISTS` → `{"number": N}`. Ошибки полей клиент показывает у соответствующего поля по коду.
 
 ### 5.4. Клиент (VKUI, только desktop)
 
-**Файлы** (`frontend/src/modules/04_orders/`): `api.ts`, `types.ts`, `texts.ts`, `hooks/useAssignedOrders.ts`, `hooks/useOrderDetail.ts`, `hooks/useOrderRules.ts`, `OrdersUiProvider.tsx` (контекст и хост окон), `components/OrdersBlock.tsx`, `OrderComposer.tsx`, `ConfirmSubmitModal.tsx`, `OrderDetailModal.tsx`, `VerdictComposer.tsx`. Все окна не шире 910 px, без горизонтальной прокрутки; текст не ломается посреди слова.
+**Файлы** (`frontend/src/modules/04_orders/`): `api.ts`, `types.ts`, `texts.ts`, `hooks/useAssignedOrders.ts`, `hooks/useOrderDetail.ts`, `hooks/useOrderRules.ts`, `OrdersUiProvider.tsx` (контекст и хост окон), `OrderComposer.tsx`, `ConfirmSubmitModal.tsx`, `OrderDetailModal.tsx`, `VerdictComposer.tsx`, `components/OrdersBlock.tsx`, `components/NationMark.tsx` (цветная метка и название государства-автора). Все окна не шире 910 px, без горизонтальной прокрутки; текст не ломается посреди слова.
 
 **Интеграция.** `OrdersUiProvider` монтируется один раз в `AppShell` и хостит модальные окна модуля; он же регистрирует в Реестре обработчик действия `order` (5.6). `OrdersBlock` вставляется в `PanelNationHome`; в `PanelCreateNation` блока нет (D12).
 
@@ -399,7 +462,7 @@ AssignedOrdersDTO = { items: list[AssignedOrderDTO] }    # все приказы
 
 ### 5.7. Админ-панель (`AdminRegistry`)
 
-- `register_state_view("04_orders", fn)` возвращает: число приказов всего и по стадиям, число просроченных, число без судьи и возраст старейшего без судьи в минутах, режим фоновой задачи (`RUNNING`/`STOPPED`) и момент последнего прохода (в памяти процесса), список просроченных приказов `[{number, judge_vk_user_id, deadline_at}]` (до 50; **только здесь** судья виден, эндпоинты админа — только для администратора), время — строками `YYYY-MM-DD HH:MM:SS` в `tick.tick_timezone` через `format_game_time`.
+- `register_state_view("04_orders", fn)` возвращает ключи: `orders_total`, `stages` (`{"SUBMITTED", "DISTRIBUTED", "VERDICT"}`), `overdue_total`, `unassigned_total`, `oldest_unassigned_age_minutes`, `worker_mode` (`RUNNING`/`STOPPED`), `last_pass_at` (момент последнего прохода в памяти процесса), `overdue_orders` — список `[{number, judge_vk_user_id, deadline_at}]` (до 50; **только здесь** судья виден, эндпоинты админа — только для администратора), `overdue_truncated`. Время — строками `YYYY-MM-DD HH:MM:SS` в `tick.tick_timezone` через `format_game_time`.
 - `register_reset("04_orders", fn)` удаляет все приказы (INV-O14). Хуки сброса вызываются в порядке, обратном регистрации, до `00_core`.
 
 ---

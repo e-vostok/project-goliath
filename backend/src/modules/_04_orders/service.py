@@ -594,7 +594,8 @@ class OrderService:
         Part B, reminders: orders with ``reminder_at <= now``,
         ``reminder_sent_at IS NULL`` and no verdict — the same per-order
         transaction pattern. A conditional ``UPDATE`` claims the row
-        (rowcount 0 = another pass beat us to it); ``now < deadline_at``
+        (rowcount 0 = another pass beat us to it, or a verdict landed
+        between the candidate read and the claim); ``now < deadline_at``
         enqueues ``ORDER_JUDGE_REMINDER`` to the judge stamped
         ``event_at = now``, a deadline already passed logs INFO and
         enqueues nothing — either way the claim marks
@@ -726,10 +727,12 @@ class OrderService:
         is a skip the caller counts.
 
         The conditional UPDATE is the multi-process guard: it claims
-        the row only while ``reminder_sent_at IS NULL``, so two racing
-        passes cannot remind twice. ``judge_player_id`` leaves this
-        method only into ``BotService.enqueue`` — never into a log
-        line (INV-O5).
+        the row only while ``reminder_sent_at IS NULL`` and no verdict
+        exists, so two racing passes cannot remind twice — and a
+        verdict written between the pass's candidate read and this
+        claim wins the row (rowcount 0, no reminder for a decided
+        order). ``judge_player_id`` leaves this method only into
+        ``BotService.enqueue`` — never into a log line (INV-O5).
         """
         if session.bind.dialect.name == "sqlite":
             await session.execute(delete(Order).where(false()))
@@ -739,12 +742,14 @@ class OrderService:
                 .where(
                     Order.id == order.id,
                     Order.reminder_sent_at.is_(None),
+                    Order.verdict_at.is_(None),
                 )
                 .values(reminder_sent_at=now)
             )
             if claimed.rowcount == 0:
-                # Another pass marked the row first — its enqueue owns
-                # the reminder; nothing to do here.
+                # Another pass marked the row first — or a verdict
+                # landed after the candidate read: either way the
+                # reminder is not ours to send.
                 return "skipped"
             if _aware(order.deadline_at) <= now:
                 logger.info(
