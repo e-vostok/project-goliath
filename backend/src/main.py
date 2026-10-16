@@ -141,8 +141,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Spec 03_registry 2.5: config validation + source-registry wiring —
     # after every other startup_* so future modules can register their
-    # sources first.
-    startup_registry()
+    # sources first. The loaded CoreConfig is handed over so the table
+    # sources never re-read 00_core.yaml per request.
+    startup_registry(config)
 
     # Spec 04_orders D11: after all other startup_* — loads and keeps
     # OrdersConfig (a broken YAML stops the boot) and the VK-article
