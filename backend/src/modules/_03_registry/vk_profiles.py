@@ -24,7 +24,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from urllib.parse import urlparse
 
 import httpx
@@ -74,7 +74,7 @@ def clean_photo_url(value: object) -> str | None:
     return value
 
 
-class OutcomeKind(str, Enum):
+class OutcomeKind(StrEnum):
     """What the VK boundary answered for one requested id (Spec 3.4)."""
 
     OK = "OK"  # user returned, not deactivated/hidden
@@ -94,10 +94,10 @@ class ProfileOutcome:
     photo_url: str | None = None
 
 
-class BatchFailure(str, Enum):
+class BatchFailure(StrEnum):
     """Why a whole ``users.get`` batch produced no per-player outcome."""
 
-    INVALID_TOKEN = "INVALID_TOKEN"  # codes 5, 27, 28 — CRITICAL once
+    INVALID_TOKEN = "INVALID_TOKEN"  # codes 5, 27, 28 — CRITICAL once  # noqa: S105
     RETRY = "RETRY"  # transport, HTTP 5xx, other codes
 
 

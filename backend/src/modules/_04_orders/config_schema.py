@@ -50,7 +50,9 @@ class JudgeSettings(_Strict):
     min_rating: int = Field(
         ge=JUDGE_RATING_MIN,
         le=JUDGE_RATING_MAX,
-        description="Порог судейского рейтинга: судья имеет рейтинг не ниже этого числа.",
+        description=(
+            "Порог судейского рейтинга: судья имеет рейтинг не ниже этого числа."
+        ),
     )
     max_pending_verdicts: int = Field(
         ge=1,
@@ -71,7 +73,9 @@ class JudgeSettings(_Strict):
     reminder_percent: int = Field(
         ge=10,
         le=95,
-        description="Доля срока, по прошествии которой судье уходит напоминание, процент.",
+        description=(
+            "Доля срока, по прошествии которой судье уходит напоминание, процент."
+        ),
     )
 
     @property
@@ -135,12 +139,16 @@ class LimitsSettings(_Strict):
     summary_max_length: int = Field(
         ge=1,
         le=SUMMARY_COLUMN_LENGTH,
-        description="Максимальная длина краткой сути, символы (не больше длины колонки).",
+        description=(
+            "Максимальная длина краткой сути, символы (не больше длины колонки)."
+        ),
     )
     url_max_length: int = Field(
         ge=30,
         le=URL_COLUMN_LENGTH,
-        description="Максимальная длина ссылки на статью, символы (не больше длины колонки).",
+        description=(
+            "Максимальная длина ссылки на статью, символы (не больше длины колонки)."
+        ),
     )
 
     @model_validator(mode="after")
@@ -173,9 +181,10 @@ class OrdersConfig(_Strict):
         gap = self.judge.deadline_seconds - self.judge.reminder_seconds
         if self.distribution.retry_interval_seconds * 2 > gap:
             raise ValueError(
-                "distribution.retry_interval_seconds, умноженный на 2, не может превышать "
-                f"промежуток между напоминанием и концом срока ({gap} с): "
-                "уменьшите период задачи, увеличьте срок или уменьшите reminder_percent"
+                "distribution.retry_interval_seconds, умноженный на 2, не "
+                "может превышать промежуток между напоминанием и концом срока "
+                f"({gap} с): уменьшите период задачи, увеличьте срок "
+                "или уменьшите reminder_percent"
             )
         return self
 

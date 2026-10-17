@@ -310,7 +310,7 @@ class TestReminderRace:
         async with session_factory() as session:
             author, nation = await seed_author(session, 881201)
             judge = await seed_judge(session, 881202, nation=True, consent="ALLOWED")
-            order = await make_order(
+            await make_order(
                 session,
                 author,
                 nation=nation,

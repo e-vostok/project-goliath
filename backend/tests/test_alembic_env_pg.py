@@ -29,7 +29,7 @@ pytestmark = pytest.mark.postgres
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
-def test_upgrade_head_accepts_asyncpg_database_url(pg_url, monkeypatch):
+def test_upgrade_head_accepts_asyncpg_database_url(pg_url, monkeypatch):  # noqa: F811
     """DATABASE_URL in the asyncpg form migrates the wiped test schema
     to head and seeds the game_clock singleton."""
     # Fresh empty schema: the upgrade must create everything itself.

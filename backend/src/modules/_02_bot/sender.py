@@ -133,7 +133,7 @@ class Sender:
         results = await asyncio.gather(
             *(_one(group) for group in groups), return_exceptions=True
         )
-        for group, result in zip(groups, results):
+        for group, result in zip(groups, results, strict=True):
             if isinstance(result, BaseException):
                 logger.exception(
                     "send of group %s crashed",

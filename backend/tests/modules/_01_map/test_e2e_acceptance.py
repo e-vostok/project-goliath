@@ -141,7 +141,7 @@ async def live_client(tmp_path, monkeypatch):
 
 
 @pytest_asyncio.fixture
-async def pg_real_map_client(pg_url: str, pg_clean: None, monkeypatch):
+async def pg_real_map_client(pg_url: str, pg_clean: None, monkeypatch):  # noqa: F811
     """Same as ``pg_live_client`` but on the REAL map tree."""
     _set_test_env(monkeypatch, pg_url)
     saved = _snapshot_process_state()

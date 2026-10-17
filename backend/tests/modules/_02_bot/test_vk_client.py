@@ -19,7 +19,7 @@ import pytest
 from modules._02_bot.vk_client import SendKind, VkClient
 from tests.fixtures.fake_vk import FakeVk
 
-TOKEN = "unit-test-token-not-real"
+TOKEN = "unit-test-token-not-real"  # noqa: S105
 GROUP_ID = "12345"
 
 

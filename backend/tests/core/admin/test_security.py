@@ -22,7 +22,7 @@ from core.security.jwt import issue_token
 from main import domain_error_handler
 from modules._00_core.models import Player
 
-TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
+TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"  # noqa: S105
 
 
 @pytest.fixture(autouse=True)

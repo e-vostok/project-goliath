@@ -35,7 +35,7 @@ from tests.fixtures.provinces import STARTING_GROUP
 from .test_router import seed_provinces
 from .test_security import TEST_APP_SECRET, make_launch_params
 
-TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
+TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"  # noqa: S105
 
 VK_USER_ID = 424242
 NATION_NAME = "Northern Syndicate"

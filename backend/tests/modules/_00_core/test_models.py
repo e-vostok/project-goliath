@@ -287,7 +287,7 @@ async def test_game_clock_singleton_constraint(test_db_session):
 @pytest.mark.asyncio
 async def test_province_nation_id_nullable(test_db_session):
     """Test that province nation_id can be NULL (free province)."""
-    province = await make_land_province(test_db_session, id=1001)
+    await make_land_province(test_db_session, id=1001)
 
     result = await test_db_session.execute(select(Province).where(Province.id == 1001))
     retrieved_province = result.scalar_one()

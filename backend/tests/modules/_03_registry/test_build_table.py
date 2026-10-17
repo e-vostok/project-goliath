@@ -206,7 +206,7 @@ class TestStartupCheck:
 
     def test_real_config_boots(self, registry_isolation):
         """The shipped config passes the check (Spec 2.5 steps 1–4)."""
-        config = startup_registry()
+        startup_registry()
         assert "03_registry" in AdminRegistry.get_state_view_hooks()
 
 

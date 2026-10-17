@@ -51,22 +51,31 @@ class FrameConfig(_Strict):
 
 class ViewSettings(_Strict):
     frame: FrameConfig = Field(
-        description="Рамка вида при минимальном масштабе; целиком внутри view_box манифеста (проверяет загрузчик).",
+        description=(
+            "Рамка вида при минимальном масштабе; целиком внутри view_box манифеста "
+            "(проверяет загрузчик)."
+        ),
     )
     zoom_max: float = Field(
         ge=2.0,
         le=40.0,
-        description="Максимальный масштаб относительно минимального (вид рамки по высоте окна).",
+        description=(
+            "Максимальный масштаб относительно минимального (вид рамки по высоте окна)."
+        ),
     )
     pan_margin_fraction: float = Field(
         ge=0.0,
         le=0.5,
-        description="Допустимый отступ за край поля при перетаскивании, доля размера окна.",
+        description=(
+            "Допустимый отступ за край поля при перетаскивании, доля размера окна."
+        ),
     )
     label_min_width_px: int = Field(
         ge=20,
         le=400,
-        description="Подпись узла показывается, если его ширина на экране не меньше, px.",
+        description=(
+            "Подпись узла показывается, если его ширина на экране не меньше, px."
+        ),
     )
     search_min_chars: int = Field(
         ge=1,
@@ -104,7 +113,10 @@ class RefreshSettings(_Strict):
     stale_after_seconds: int = Field(
         ge=60,
         le=86400,
-        description="Возраст данных, после которого при ошибках они помечаются устаревшими, сек.",
+        description=(
+            "Возраст данных, после которого при ошибках они помечаются устаревшими, "
+            "сек."
+        ),
     )
 
 
@@ -116,7 +128,10 @@ class ColorSettings(_Strict):
     province_border: str = Field(pattern=_HEX_COLOR_RE.pattern)
     land_underlay: str = Field(
         pattern=_HEX_COLOR_RE.pattern,
-        description="Подложка под заливки суши (map2_13): волосяные швы между соседними провинциями показывают цвет суши, а не моря.",
+        description=(
+            "Подложка под заливки суши (map2_13): волосяные швы между соседними "
+            "провинциями показывают цвет суши, а не моря."
+        ),
     )
     hover: str = Field(pattern=_HEX_COLOR_RE.pattern)
 
@@ -131,7 +146,8 @@ class ColorSettings(_Strict):
         ]
         if len(set(base)) != len(base):
             raise ValueError(
-                "colors.neutral_province, colors.sea and colors.outside must be pairwise distinct"
+                "colors.neutral_province, colors.sea and colors.outside "
+                "must be pairwise distinct"
             )
         return self
 
@@ -142,7 +158,9 @@ class HoverSettings(_Strict):
     fill_opacity: float = Field(
         ge=0.0,
         le=0.6,
-        description="Прозрачность заливки цветом colors.hover при наведении; 0 — без заливки.",
+        description=(
+            "Прозрачность заливки цветом colors.hover при наведении; 0 — без заливки."
+        ),
     )
     stroke_enabled: bool = Field(
         description="Обводить ли контур узла при наведении цветом colors.hover.",
@@ -263,7 +281,9 @@ class LabelsSettings(_Strict):
     fit_ratio: float = Field(
         ge=0.5,
         le=1.0,
-        description="Текст должен быть не шире и не выше этой доли label-бокса на экране.",
+        description=(
+            "Текст должен быть не шире и не выше этой доли label-бокса на экране."
+        ),
     )
     collision_padding_px: float = Field(
         ge=0.0,
@@ -286,30 +306,42 @@ class LabelsSettings(_Strict):
     province_zoom_ratio: float = Field(
         ge=0.5,
         le=1.0,
-        description="Доля максимального зума камеры, с которой считается «максимальный зум» "
-        "для подписей провинций (map2_6c): ниже — только морские подписи, на максимуме — только провинции.",
+        description="Доля максимального зума камеры, с которой считается "
+        "«максимальный зум» для подписей провинций (map2_6c): ниже — только "
+        "морские подписи, на максимуме — только провинции.",
     )
     fade_ms: int = Field(
         ge=0,
         le=500,
-        description="Длительность появления/исчезновения подписи, мс (map2_6c; 0 = без перехода).",
+        description=(
+            "Длительность появления/исчезновения подписи, мс (map2_6c; 0 = без "
+            "перехода)."
+        ),
     )
     # map2_20: подписи провинций идут вдоль «спины» — поворот, растяжка,
     # лёгкий изгиб и частичная прозрачность, как у названий государств.
     max_angle_deg: float = Field(
         ge=0.0,
         le=89.0,
-        description="Максимальный наклон хорды «спины» подписи от горизонтали, градусы (map2_20).",
+        description=(
+            "Максимальный наклон хорды «спины» подписи от горизонтали, градусы "
+            "(map2_20)."
+        ),
     )
     max_bend: float = Field(
         ge=0.0,
         le=0.25,
-        description="Максимальный изгиб подписи: стрелка дуги как доля длины хорды (map2_20).",
+        description=(
+            "Максимальный изгиб подписи: стрелка дуги как доля длины хорды (map2_20)."
+        ),
     )
     thickness_ratio: float = Field(
         ge=0.2,
         le=0.95,
-        description="Высота текста как доля локальной толщины провинции поперёк спины (map2_20).",
+        description=(
+            "Высота текста как доля локальной толщины провинции поперёк спины "
+            "(map2_20)."
+        ),
     )
     length_ratio: float = Field(
         ge=0.3,
@@ -319,12 +351,16 @@ class LabelsSettings(_Strict):
     letter_spacing_min_em: float = Field(
         ge=-0.1,
         le=0.0,
-        description="Минимальное разрежение букв при подгонке вдоль спины, em (map2_20).",
+        description=(
+            "Минимальное разрежение букв при подгонке вдоль спины, em (map2_20)."
+        ),
     )
     letter_spacing_max_em: float = Field(
         ge=0.0,
         le=1.0,
-        description="Максимальное разрежение букв при подгонке вдоль спины, em (map2_20).",
+        description=(
+            "Максимальное разрежение букв при подгонке вдоль спины, em (map2_20)."
+        ),
     )
     land_opacity: float = Field(
         ge=0.2,
@@ -377,7 +413,10 @@ class StatesSettings(_Strict):
     thickness_ratio: float = Field(
         ge=0.2,
         le=0.95,
-        description="Высота текста не более этой доли локальной толщины территории поперёк строки.",
+        description=(
+            "Высота текста не более этой доли локальной толщины территории поперёк "
+            "строки."
+        ),
     )
     length_ratio: float = Field(
         ge=0.3,
@@ -392,7 +431,10 @@ class StatesSettings(_Strict):
     max_bend: float = Field(
         ge=0.0,
         le=0.25,
-        description="Максимальный изгиб надписи: стрелка дуги / длина хорды (0 — прямая строка).",
+        description=(
+            "Максимальный изгиб надписи: стрелка дуги / длина хорды (0 — прямая "
+            "строка)."
+        ),
     )
     min_px: int = Field(
         ge=6,
@@ -405,12 +447,17 @@ class StatesSettings(_Strict):
         description="Максимальный экранный размер надписи, px.",
     )
     color_mode: Literal["auto", "light", "dark"] = Field(
-        description="Цвет надписи: auto — светлый или тёмный по контрасту с цветом государства.",
+        description=(
+            "Цвет надписи: auto — светлый или тёмный по контрасту с цветом государства."
+        ),
     )
     min_group_share: float = Field(
         ge=0.0,
         le=1.0,
-        description="Надпись для отдельной связной части государства, если её площадь не меньше этой доли общей.",
+        description=(
+            "Надпись для отдельной связной части государства, если её площадь не "
+            "меньше этой доли общей."
+        ),
     )
 
     @model_validator(mode="after")
@@ -444,7 +491,9 @@ class ReliefSettings(_Strict):
     inactive_brightness: float = Field(
         ge=0.02,
         le=1.0,
-        description="Яркость рельефа неигрового мира; целевое — блики не светлее #2A2A2A.",
+        description=(
+            "Яркость рельефа неигрового мира; целевое — блики не светлее #2A2A2A."
+        ),
     )
 
 
@@ -456,7 +505,10 @@ class StartingGroupSettings(_Strict):
 
 class BigWindowSettings(_Strict):
     enabled: bool = Field(
-        description="Показывать кнопку «Развернуть» (полноэкранный режим страницы, проверено в ВК в E1).",
+        description=(
+            "Показывать кнопку «Развернуть» (полноэкранный режим страницы, проверено в "
+            "ВК в E1)."
+        ),
     )
 
 

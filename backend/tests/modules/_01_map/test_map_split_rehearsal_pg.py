@@ -51,7 +51,10 @@ class _Capture(logging.Handler):
 
 @pytest.mark.asyncio
 async def test_map2_11_old_manifest_db_gains_one_row(
-    pg_url, pg_clean, monkeypatch, extension_snapshot
+    pg_url,
+    pg_clean,  # noqa: F811
+    monkeypatch,
+    extension_snapshot,
 ):
     config = MapConfig.from_yaml(MapConfig.get_default_config_path())
     map_data = load_map_data(REAL_MAP_DIR, config)

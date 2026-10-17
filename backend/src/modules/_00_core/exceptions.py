@@ -52,7 +52,8 @@ class ProvinceCountOutOfRangeError(CoreDomainError):
 
     def __init__(self, count: int, min_allowed: int, max_allowed: int):
         super().__init__(
-            f"Province count {count} is out of range (must be between {min_allowed} and {max_allowed})",
+            f"Province count {count} is out of range "
+            f"(must be between {min_allowed} and {max_allowed})",
             "PROVINCE_COUNT_OUT_OF_RANGE",
         )
 
@@ -253,6 +254,7 @@ class FrequencyCapExceededError(CoreDomainError):
 
     def __init__(self, action_type: str, current_count: int, max_allowed: int):
         super().__init__(
-            f"Action '{action_type}' frequency cap exceeded: {current_count}/{max_allowed}",
+            f"Action '{action_type}' frequency cap exceeded: "
+            f"{current_count}/{max_allowed}",
             "FREQUENCY_CAP_EXCEEDED",
         )

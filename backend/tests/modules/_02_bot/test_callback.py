@@ -255,7 +255,7 @@ class TestPrivacy:
     """INV-B12: no secret, request body or message text in logs."""
 
     async def test_nothing_sensitive_in_logs(self, client, bot_started, caplog):
-        mark_secret = "WRONG-SECRET-DEADBEEF"
+        mark_secret = "WRONG-SECRET-DEADBEEF"  # noqa: S105
         mark_text = "PLAYER-SECRET-TEXT-XYZ"
         with caplog.at_level(logging.DEBUG):
             await client.post(

@@ -104,14 +104,14 @@ async def build_table(session: AsyncSession, table_id: str) -> BuiltTable:
     try:
         table = config.table(table_id)
     except KeyError:
-        raise RegistryTableNotFoundError(table_id)
+        raise RegistryTableNotFoundError(table_id) from None
 
     source = get_table_source(table.source)
     if source is None:
         # Startup validated this (Spec 2.5 step 3); reaching it at
         # request time means the registry was reset mid-process.
         logger.error("registry table '%s' has no registered source", table.id)
-        raise RegistryProviderError(table_id)
+        raise RegistryProviderError(table_id) from None
 
     try:
         rows = await source.load(session)
@@ -119,7 +119,7 @@ async def build_table(session: AsyncSession, table_id: str) -> BuiltTable:
         raise
     except Exception:
         logger.exception("registry source failed: table=%s", table.id)
-        raise RegistryProviderError(table_id)
+        raise RegistryProviderError(table_id) from None
 
     for row in rows:
         for column in table.columns:

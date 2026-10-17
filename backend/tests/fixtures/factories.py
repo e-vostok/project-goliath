@@ -42,12 +42,20 @@ def utcnow():
     return datetime.now(UTC)
 
 
+def _new_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def _new_short_name() -> str:
+    return f"N{uuid.uuid4().hex[:15]}"
+
+
 class PlayerFactory(SQLAlchemyFactory[Player]):
     """Factory for creating Player instances."""
 
     __model__ = Player
 
-    id = lambda: str(uuid.uuid4())
+    id = _new_uuid
     vk_user_id = 1234567890
     created_at = utcnow
     level = LEVEL_DEFAULT
@@ -59,7 +67,7 @@ class NationFactory(SQLAlchemyFactory[Nation]):
 
     __model__ = Nation
 
-    id = lambda: str(uuid.uuid4())
+    id = _new_uuid
     owner_player_id = None  # Set explicitly in tests
     name = "Test Nation"
     color_hex = "#FF0000"
@@ -67,7 +75,7 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     leader_title = VALID_PROFILE["leader_title"]
     history_url = VALID_PROFILE["history_url"]
     # UNIQUE (INV-11): each built nation gets a fresh short name.
-    short_name = lambda: f"N{uuid.uuid4().hex[:15]}"
+    short_name = _new_short_name
     gender = VALID_PROFILE["gender"]
     succession_type = VALID_PROFILE["succession_type"]
     capital_name = VALID_PROFILE["capital_name"]
@@ -104,7 +112,7 @@ class ScheduledActionFactory(SQLAlchemyFactory[ScheduledAction]):
 
     __model__ = ScheduledAction
 
-    id = lambda: str(uuid.uuid4())
+    id = _new_uuid
     nation_id = None  # Set explicitly in tests
     module_slug = "test_module"
     action_type = "test_action"

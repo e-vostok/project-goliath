@@ -28,8 +28,8 @@ from modules._00_core.models import GameClock, Nation, Player, Province
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import make_land_province
 
-TEST_VK_SECRET = "test-vk-app-secret"
-TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
+TEST_VK_SECRET = "test-vk-app-secret"  # noqa: S105
+TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"  # noqa: S105
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -149,7 +149,7 @@ class TestAuthVk:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["token_type"] == "bearer"
+        assert body["token_type"] == "bearer"  # noqa: S105
         assert body["expires_in"] == CORE_CONFIG.auth.jwt_ttl_minutes * 60
         assert body["player"]["vk_user_id"] == 555
         assert body["access_token"]
@@ -180,7 +180,8 @@ class TestAuthVk:
             "/api/v1/auth/vk",
             json={
                 "launch_params": make_launch_params(
-                    vk_user_id=555, secret="wrong-secret"
+                    vk_user_id=555,
+                    secret="wrong-secret",  # noqa: S106
                 )
             },
         )

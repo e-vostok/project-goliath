@@ -45,7 +45,7 @@ from modules._04_orders.config_schema import (
 )
 
 
-class OrderStage(str, enum.Enum):
+class OrderStage(enum.StrEnum):
     """The derived stage of an order (Spec Part 1, D4) — not a column."""
 
     SUBMITTED = "SUBMITTED"

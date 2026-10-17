@@ -30,7 +30,7 @@ import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, suppress
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,7 +48,7 @@ SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 FAILURE_PAUSES_SECONDS = (5.0, 15.0, 60.0)
 
 
-class WorkerMode(str, Enum):
+class WorkerMode(StrEnum):
     """Lifecycle mode of the orders worker (Spec 5.7)."""
 
     STOPPED = "STOPPED"

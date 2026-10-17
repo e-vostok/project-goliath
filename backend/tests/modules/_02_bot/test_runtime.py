@@ -188,7 +188,7 @@ class TestEndToEnd:
         try:
             # The tick runs through the real path while VK is dead.
             async with sf() as session:
-                outcome = await TickOrchestrator.run_tick(session)
+                await TickOrchestrator.run_tick(session)
                 await session.commit()
             async with sf() as session:
                 turn = (

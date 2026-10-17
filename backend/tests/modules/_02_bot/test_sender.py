@@ -39,8 +39,8 @@ from tests.modules._02_bot._issue3_support import (
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )
@@ -456,7 +456,7 @@ class TestOrderingAndGuards:
             await session.execute(
                 update(BotOutbox)
                 .where(BotOutbox.id == row_id)
-                .values(lease_token="someone-else")
+                .values(lease_token="someone-else")  # noqa: S106
             )
             await session.commit()
 
@@ -467,5 +467,5 @@ class TestOrderingAndGuards:
             await sender.process_group(groups[0])
         row = await _row(test_db_engine, row_id)
         assert row.status == "LEASED"  # untouched
-        assert row.lease_token == "someone-else"
+        assert row.lease_token == "someone-else"  # noqa: S105
         assert len(fake.send_requests()) == 0

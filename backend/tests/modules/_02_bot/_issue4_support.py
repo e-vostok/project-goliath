@@ -14,7 +14,7 @@ from modules._00_core.models import Player
 
 # Values wired by the ``bot_env`` fixture of the module conftest.
 GROUP_ID = "12345"
-CALLBACK_SECRET = "test-callback-secret"
+CALLBACK_SECRET = "test-callback-secret"  # noqa: S105
 CONFIRMATION = "test-confirm"
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())

@@ -1,3 +1,4 @@
+# ruff: noqa: E402 — startup must load_dotenv / set sys.path before app imports
 """
 FastAPI application entry point.
 

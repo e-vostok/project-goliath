@@ -422,7 +422,6 @@ async def _compose_and_lease(
     lease_until: datetime,
 ) -> list[ClaimedGroup]:
     """Steps 8–9: compose the ungrouped rows and lease each message."""
-    sender = config.sender
     views = [_row_view(row) for row in rows]
     history = await _sent_history(
         session,

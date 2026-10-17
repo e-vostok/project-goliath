@@ -124,7 +124,7 @@ def test_placeholder_jwt_rejected(placeholder):
 
 def test_placeholder_jwt_match_is_case_insensitive():
     env = _valid_env()
-    env["JWT_SECRET_KEY"] = "My-SECRET-Production-Key-0123456789ab"
+    env["JWT_SECRET_KEY"] = "My-SECRET-Production-Key-0123456789ab"  # noqa: S105
     with pytest.raises(ProductionConfigError) as exc_info:
         validate_production_environment(env)
     assert "JWT_SECRET_KEY" in str(exc_info.value)
@@ -187,7 +187,7 @@ def test_missing_vk_app_secret_rejected():
 
 def test_change_me_vk_app_secret_rejected():
     env = _valid_env()
-    env["VK_APP_SECRET"] = "CHANGE_ME"
+    env["VK_APP_SECRET"] = "CHANGE_ME"  # noqa: S105
     with pytest.raises(ProductionConfigError) as exc_info:
         validate_production_environment(env)
     assert "VK_APP_SECRET" in str(exc_info.value)

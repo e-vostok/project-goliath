@@ -89,6 +89,6 @@ async def test_auth_vk_served_by_real_startup(live_client):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["token_type"] == "bearer"
+    assert body["token_type"] == "bearer"  # noqa: S105
     assert body["access_token"]
     assert body["player"]["vk_user_id"] == 999001

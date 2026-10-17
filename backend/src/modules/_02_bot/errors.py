@@ -14,10 +14,10 @@ classifies here so the sender's switch stays total.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ErrorClass(str, Enum):
+class ErrorClass(StrEnum):
     """Failure class of one send attempt (Spec 2.7)."""
 
     SYSTEM = "SYSTEM"  # 1, 10 — retry, counts

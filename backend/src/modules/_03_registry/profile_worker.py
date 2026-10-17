@@ -29,7 +29,7 @@ import os
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager, suppress
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,11 +49,11 @@ logger = logging.getLogger(__name__)
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
-class WorkerMode(str, Enum):
+class WorkerMode(StrEnum):
     """Lifecycle mode of the profile worker (Spec 2.4)."""
 
     OFF = "OFF"
-    NO_TOKEN = "NO_TOKEN"
+    NO_TOKEN = "NO_TOKEN"  # noqa: S105
     RUNNING = "RUNNING"
 
 

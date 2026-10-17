@@ -44,14 +44,14 @@ if TYPE_CHECKING:
     pass
 
 
-class ScheduledActionStatus(str, enum.Enum):
+class ScheduledActionStatus(enum.StrEnum):
     """Status of a scheduled action."""
 
     PENDING = "PENDING"
     APPLIED = "APPLIED"
 
 
-class TickLogStatus(str, enum.Enum):
+class TickLogStatus(enum.StrEnum):
     """Status of a tick execution."""
 
     RUNNING = "RUNNING"

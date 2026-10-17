@@ -18,7 +18,7 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ _app_id_warned = False
 _active_runtime: object | None = None
 
 
-class BotMode(str, Enum):
+class BotMode(StrEnum):
     """Lifecycle mode of the module (Spec 1.4)."""
 
     OFF = "OFF"

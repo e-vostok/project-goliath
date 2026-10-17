@@ -124,7 +124,7 @@ async def auth_vk(
     ttl_minutes = CORE_CONFIG.auth.jwt_ttl_minutes
     return AuthResponseDTO(
         access_token=issue_token(player.id, ttl_minutes),
-        token_type="bearer",
+        token_type="bearer",  # noqa: S106
         expires_in=ttl_minutes * 60,
         player=_player_dto(player),
     )
@@ -289,7 +289,7 @@ async def delete_nations_me(
 async def list_provinces(
     player: Player = Depends(get_current_player),
     session: AsyncSession = Depends(get_session),
-    ids: Annotated[list[int], Query()] = [],
+    ids: Annotated[list[int], Query()] = [],  # noqa: B006 — FastAPI convention, never mutated
     free_only: Annotated[bool, Query()] = False,
 ) -> list[ProvinceDTO]:
     """List provinces, optionally filtered by IDs and/or free status."""
