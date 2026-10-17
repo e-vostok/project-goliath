@@ -36,7 +36,8 @@ def compute_game_date(current_turn: int, config: CoreConfig) -> date:
         raise ValueError("current_turn must not be negative")
     epoch = config.calendar.epoch_start_date
     total = (
-        epoch.year * 12 + (epoch.month - 1)
+        epoch.year * 12
+        + (epoch.month - 1)
         + current_turn * config.calendar.months_per_turn
     )
     year, month0 = divmod(total, 12)

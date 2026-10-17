@@ -68,22 +68,14 @@ class Order(Base):
         nullable=False,
         index=True,
     )
-    client_request_id: Mapped[str] = mapped_column(
-        String(36), nullable=False
-    )
+    client_request_id: Mapped[str] = mapped_column(String(36), nullable=False)
     # Snapshot of the author's nation at submission (INV-O6) — no FK.
     nation_id: Mapped[str] = mapped_column(String(36), nullable=False)
     nation_name: Mapped[str] = mapped_column(String(100), nullable=False)
     nation_color: Mapped[str] = mapped_column(CHAR(7), nullable=False)
-    title: Mapped[str] = mapped_column(
-        String(TITLE_COLUMN_LENGTH), nullable=False
-    )
-    summary: Mapped[str] = mapped_column(
-        String(SUMMARY_COLUMN_LENGTH), nullable=False
-    )
-    article_url: Mapped[str] = mapped_column(
-        String(URL_COLUMN_LENGTH), nullable=False
-    )
+    title: Mapped[str] = mapped_column(String(TITLE_COLUMN_LENGTH), nullable=False)
+    summary: Mapped[str] = mapped_column(String(SUMMARY_COLUMN_LENGTH), nullable=False)
+    article_url: Mapped[str] = mapped_column(String(URL_COLUMN_LENGTH), nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -128,9 +120,7 @@ class Order(Base):
             "client_request_id",
             name="uq_orders_author_client_request",
         ),
-        CheckConstraint(
-            "number >= 1", name="ck_orders_number_positive"
-        ),
+        CheckConstraint("number >= 1", name="ck_orders_number_positive"),
         CheckConstraint(
             "judge_player_id IS NULL OR judge_player_id <> author_player_id",
             name="ck_orders_judge_not_author",
@@ -184,12 +174,8 @@ class Order(Base):
         Index(
             "ix_orders_reminders_due",
             "reminder_at",
-            postgresql_where=text(
-                "reminder_sent_at IS NULL AND verdict_at IS NULL"
-            ),
-            sqlite_where=text(
-                "reminder_sent_at IS NULL AND verdict_at IS NULL"
-            ),
+            postgresql_where=text("reminder_sent_at IS NULL AND verdict_at IS NULL"),
+            sqlite_where=text("reminder_sent_at IS NULL AND verdict_at IS NULL"),
         ),
     )
 
@@ -213,8 +199,4 @@ def is_overdue(order: Order, now: datetime) -> bool:
     deadline_at = order.deadline_at
     if deadline_at is not None and deadline_at.tzinfo is None:
         deadline_at = deadline_at.replace(tzinfo=timezone.utc)
-    return (
-        order.verdict_at is None
-        and deadline_at is not None
-        and now > deadline_at
-    )
+    return order.verdict_at is None and deadline_at is not None and now > deadline_at

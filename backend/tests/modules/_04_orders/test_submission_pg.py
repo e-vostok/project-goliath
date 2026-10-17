@@ -96,10 +96,7 @@ class TestConcurrentSubmit:
         )
 
         numbers = [r for r in results if isinstance(r, int)]
-        failures = [
-            r for r in results
-            if isinstance(r, OrderAuthorLimitReachedError)
-        ]
+        failures = [r for r in results if isinstance(r, OrderAuthorLimitReachedError)]
         assert len(numbers) == 1, f"expected one order, got {results!r}"
         assert len(failures) == 1, f"expected one refusal, got {results!r}"
 
@@ -129,8 +126,8 @@ class TestConcurrentSubmit:
         assert {first, second} == {1, 2}
         async with pg_db() as session:
             rows = (
-                await session.execute(
-                    select(Order.number).order_by(Order.number)
-                )
-            ).scalars().all()
+                (await session.execute(select(Order.number).order_by(Order.number)))
+                .scalars()
+                .all()
+            )
             assert list(rows) == [1, 2]

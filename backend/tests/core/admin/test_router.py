@@ -89,9 +89,9 @@ def _probe_pg_test_url() -> str | None:
     reachable, else None. The env var may come from the process
     environment or the repo-root .env (same file main.py loads).
     """
-    raw = os.environ.get("DATABASE_URL_TEST") or dotenv_values(
-        REPO_ROOT / ".env"
-    ).get("DATABASE_URL_TEST")
+    raw = os.environ.get("DATABASE_URL_TEST") or dotenv_values(REPO_ROOT / ".env").get(
+        "DATABASE_URL_TEST"
+    )
     if not raw or not raw.startswith(("postgresql://", "postgres://", "postgresql+")):
         return None
     try:
@@ -119,9 +119,9 @@ def _reset_pg_schema(url: str) -> None:
 def _async_url(url: str) -> str:
     """Point a bare postgresql:// URL at the asyncpg driver."""
     if url.startswith("postgres://"):
-        return "postgresql+asyncpg://" + url[len("postgres://"):]
+        return "postgresql+asyncpg://" + url[len("postgres://") :]
     if url.startswith("postgresql://"):
-        return "postgresql+asyncpg://" + url[len("postgresql://"):]
+        return "postgresql+asyncpg://" + url[len("postgresql://") :]
     return url
 
 
@@ -158,8 +158,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -167,9 +166,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     AdminRegistry._state_view_hooks.clear()
@@ -293,9 +290,7 @@ class TestAdminAuthorization:
     @pytest.mark.parametrize(
         "method,url,body", ADMIN_ROUTES, ids=[r[1] for r in ADMIN_ROUTES]
     )
-    async def test_admin_gets_200(
-        self, live_client, monkeypatch, method, url, body
-    ):
+    async def test_admin_gets_200(self, live_client, monkeypatch, method, url, body):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
 
@@ -322,9 +317,7 @@ class TestAdminState:
     """GET /api/v1/admin/state aggregates module state views."""
 
     @pytest.mark.asyncio
-    async def test_state_contains_00_core_view(
-        self, live_client, monkeypatch
-    ):
+    async def test_state_contains_00_core_view(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
         await _seed_provinces([1001, 1002, 1003])
@@ -336,14 +329,10 @@ class TestAdminState:
         # 02_bot registers its state view in the lifespan since Issue 2;
         # 03_registry registers its own since its Issue 2; 04_orders
         # registers its own at startup_orders() since its Issue 4.
-        assert list(modules) == [
-            "00_core", "02_bot", "03_registry", "04_orders"
-        ]
+        assert list(modules) == ["00_core", "02_bot", "03_registry", "04_orders"]
         orders = modules["04_orders"]
         assert orders["orders_total"] == 0
-        assert orders["stages"] == {
-            "SUBMITTED": 0, "DISTRIBUTED": 0, "VERDICT": 0
-        }
+        assert orders["stages"] == {"SUBMITTED": 0, "DISTRIBUTED": 0, "VERDICT": 0}
         core = modules["00_core"]
         assert core["clock"]["current_turn"] == 0
         assert core["clock"]["next_tick_at"] is not None
@@ -355,9 +344,7 @@ class TestAdminState:
         assert core["nations"] == []
 
     @pytest.mark.asyncio
-    async def test_state_reflects_created_nation(
-        self, live_client, monkeypatch
-    ):
+    async def test_state_reflects_created_nation(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
         created = await live_client.post(
@@ -401,10 +388,7 @@ class TestAdminState:
         assert response.status_code == 200
         modules = response.json()["modules"]
         assert modules["zzz_broken"] == {"error": "ValueError"}
-        assert (
-            modules["00_core"]["counts"]["provinces_total"]
-            == MINI_NODE_COUNT
-        )
+        assert modules["00_core"]["counts"]["provinces_total"] == MINI_NODE_COUNT
 
 
 class TestAdminTickLog:
@@ -417,9 +401,7 @@ class TestAdminTickLog:
         for turn in (1, 2, 3):
             await _insert_tick_log(turn)
 
-        response = await live_client.get(
-            "/api/v1/admin/tick-log", headers=headers
-        )
+        response = await live_client.get("/api/v1/admin/tick-log", headers=headers)
 
         assert response.status_code == 200
         rows = response.json()
@@ -439,9 +421,7 @@ class TestAdminTickLog:
             assert ADMIN_TIME_PATTERN.match(row["finished_at"])
 
     @pytest.mark.asyncio
-    async def test_rows_render_game_timezone_times(
-        self, live_client, monkeypatch
-    ):
+    async def test_rows_render_game_timezone_times(self, live_client, monkeypatch):
         """Times are 'YYYY-MM-DD HH:MM:SS' in tick_timezone under their
         plain names — no offsets, no *_local keys; NULL stays NULL."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
@@ -451,15 +431,11 @@ class TestAdminTickLog:
             2, status=TickLogStatus.RUNNING, finished=False
         )
 
-        response = await live_client.get(
-            "/api/v1/admin/tick-log", headers=headers
-        )
+        response = await live_client.get("/api/v1/admin/tick-log", headers=headers)
 
         assert response.status_code == 200
         running, done = response.json()  # newest first
-        assert not any(
-            key.endswith("_local") for row in (running, done) for key in row
-        )
+        assert not any(key.endswith("_local") for row in (running, done) for key in row)
         assert running["status"] == "RUNNING"
         assert running["finished_at"] is None
         assert running["started_at"] == _expected_game_time(running_instant)
@@ -484,9 +460,7 @@ class TestAdminTickLog:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("limit", [0, 101])
-    async def test_limit_out_of_range_422(
-        self, live_client, monkeypatch, limit
-    ):
+    async def test_limit_out_of_range_422(self, live_client, monkeypatch, limit):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
 
@@ -512,9 +486,7 @@ class TestAdminTickRun:
         headers = await _admin_headers(live_client)
         before = datetime.now(timezone.utc)
 
-        response = await live_client.post(
-            "/api/v1/admin/tick/run", headers=headers
-        )
+        response = await live_client.post("/api/v1/admin/tick/run", headers=headers)
 
         assert response.status_code == 200
         body = response.json()
@@ -550,13 +522,9 @@ class TestAdminTickRun:
         async def failing_handler(session, turn_number):
             raise RuntimeError("phase exploded")
 
-        TickOrchestrator.register(
-            TickPhase.PHASE_1_ENVIRONMENT, failing_handler
-        )
+        TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, failing_handler)
 
-        response = await live_client.post(
-            "/api/v1/admin/tick/run", headers=headers
-        )
+        response = await live_client.post("/api/v1/admin/tick/run", headers=headers)
 
         assert response.status_code == 200
         body = response.json()
@@ -582,9 +550,7 @@ class TestAdminTickRun:
 
         TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, wipe_log)
 
-        response = await live_client.post(
-            "/api/v1/admin/tick/run", headers=headers
-        )
+        response = await live_client.post("/api/v1/admin/tick/run", headers=headers)
 
         assert response.status_code == 200
         body = response.json()
@@ -604,9 +570,7 @@ class TestAdminTickRun:
             await session.execute(delete(GameClock))
             await session.commit()
 
-        response = await live_client.post(
-            "/api/v1/admin/tick/run", headers=headers
-        )
+        response = await live_client.post("/api/v1/admin/tick/run", headers=headers)
 
         assert response.status_code == 404
         assert response.json()["code"] == "GAME_CLOCK_NOT_FOUND"
@@ -645,9 +609,7 @@ class TestAdminStateReset:
         assert me.json()["name"] == "Keep Me"
 
     @pytest.mark.asyncio
-    async def test_unknown_module_slug_returns_404(
-        self, live_client, monkeypatch
-    ):
+    async def test_unknown_module_slug_returns_404(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
 
@@ -789,9 +751,7 @@ class TestAdminStateReset:
             # An unowned sea zone: owned land carries map_ownership_log
             # rows whose FK would make the delete itself fail on
             # PostgreSQL before fails_second can run.
-            await session.execute(
-                delete(Province).where(Province.id == 2001)
-            )
+            await session.execute(delete(Province).where(Province.id == 2001))
 
         # Execution order is reversed registration: mutates_first runs
         # before fails_second.
@@ -832,9 +792,7 @@ class TestAdminStateReset:
         assert response.status_code == 200
 
         # The journal is wiped; the admin player still authenticates.
-        tick_log = await live_client.get(
-            "/api/v1/admin/tick-log", headers=headers
-        )
+        tick_log = await live_client.get("/api/v1/admin/tick-log", headers=headers)
         assert tick_log.json() == []
         state = await live_client.get("/api/v1/admin/state", headers=headers)
         assert state.json()["modules"]["00_core"]["counts"]["players"] == 1
@@ -866,9 +824,7 @@ class TestAdminResetGate:
         assert response.json()["code"] == "RESET_DISABLED"
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "value", ["false", "0", "off", "no", "FALSE ", " random"]
-    )
+    @pytest.mark.parametrize("value", ["false", "0", "off", "no", "FALSE ", " random"])
     async def test_falsy_flag_values_return_403_reset_disabled(
         self, live_client, monkeypatch, value
     ):

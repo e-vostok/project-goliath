@@ -43,9 +43,9 @@ def utcnow():
 
 class PlayerFactory(SQLAlchemyFactory[Player]):
     """Factory for creating Player instances."""
-    
+
     __model__ = Player
-    
+
     id = lambda: str(uuid.uuid4())
     vk_user_id = 1234567890
     created_at = utcnow
@@ -55,9 +55,9 @@ class PlayerFactory(SQLAlchemyFactory[Player]):
 
 class NationFactory(SQLAlchemyFactory[Nation]):
     """Factory for creating Nation instances."""
-    
+
     __model__ = Nation
-    
+
     id = lambda: str(uuid.uuid4())
     owner_player_id = None  # Set explicitly in tests
     name = "Test Nation"
@@ -89,9 +89,9 @@ class ProvinceFactory(SQLAlchemyFactory[Province]):
 
 class GameClockFactory(SQLAlchemyFactory[GameClock]):
     """Factory for creating GameClock instances."""
-    
+
     __model__ = GameClock
-    
+
     id = 1
     current_turn = 0
     last_tick_at = None
@@ -100,9 +100,9 @@ class GameClockFactory(SQLAlchemyFactory[GameClock]):
 
 class ScheduledActionFactory(SQLAlchemyFactory[ScheduledAction]):
     """Factory for creating ScheduledAction instances."""
-    
+
     __model__ = ScheduledAction
-    
+
     id = lambda: str(uuid.uuid4())
     nation_id = None  # Set explicitly in tests
     module_slug = "test_module"
@@ -117,9 +117,9 @@ class ScheduledActionFactory(SQLAlchemyFactory[ScheduledAction]):
 
 class TickLogFactory(SQLAlchemyFactory[TickLog]):
     """Factory for creating TickLog instances."""
-    
+
     __model__ = TickLog
-    
+
     turn_number = 1
     started_at = utcnow
     finished_at = None
@@ -201,9 +201,7 @@ async def make_order(
         reminder_at = reminder_at or distributed_at + timedelta(hours=54)
     if verdict_at is not None:
         verdict_title = verdict_title if verdict_title is not None else title
-        verdict_summary = (
-            verdict_summary if verdict_summary is not None else summary
-        )
+        verdict_summary = verdict_summary if verdict_summary is not None else summary
         verdict_url = verdict_url if verdict_url is not None else article_url
     if number is None:
         # Spec 3.5: the public number is the next after the maximum.

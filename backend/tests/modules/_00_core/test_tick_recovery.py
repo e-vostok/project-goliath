@@ -31,12 +31,8 @@ async def test_mark_interrupted_ticks_flips_only_running(test_db_session):
     now = datetime.now(timezone.utc)
     test_db_session.add_all(
         [
-            TickLog(
-                turn_number=1, started_at=now, status=TickLogStatus.RUNNING
-            ),
-            TickLog(
-                turn_number=2, started_at=now, status=TickLogStatus.RUNNING
-            ),
+            TickLog(turn_number=1, started_at=now, status=TickLogStatus.RUNNING),
+            TickLog(turn_number=2, started_at=now, status=TickLogStatus.RUNNING),
             TickLog(
                 turn_number=3,
                 started_at=now,
@@ -57,8 +53,10 @@ async def test_mark_interrupted_ticks_flips_only_running(test_db_session):
     assert await mark_interrupted_ticks(test_db_session) == 2
 
     rows = (
-        await test_db_session.execute(select(TickLog).order_by(TickLog.id))
-    ).scalars().all()
+        (await test_db_session.execute(select(TickLog).order_by(TickLog.id)))
+        .scalars()
+        .all()
+    )
     assert [row.status for row in rows] == [
         TickLogStatus.FAILED,
         TickLogStatus.FAILED,
@@ -73,9 +71,7 @@ async def test_mark_interrupted_ticks_flips_only_running(test_db_session):
     assert rows[3].error_message == "boom"
 
 
-async def test_recover_on_sqlite_marks_and_warns_once(
-    test_db_engine, caplog
-):
+async def test_recover_on_sqlite_marks_and_warns_once(test_db_engine, caplog):
     """
     On the single-writer dialect there is no advisory lock: the pass
     marks directly through a session factory — the lifespan path — and
@@ -94,30 +90,20 @@ async def test_recover_on_sqlite_marks_and_warns_once(
         )
         await session.commit()
 
-    with caplog.at_level(
-        logging.WARNING, logger="modules._00_core.tick_recovery"
-    ):
+    with caplog.at_level(logging.WARNING, logger="modules._00_core.tick_recovery"):
         assert await recover_interrupted_ticks(maker) == 1
 
-    warnings = [
-        r for r in caplog.records if r.levelno == logging.WARNING
-    ]
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
     assert "1" in warnings[0].getMessage()
 
     async with maker() as session:
-        row = (
-            await session.execute(select(TickLog))
-        ).scalar_one()
+        row = (await session.execute(select(TickLog))).scalar_one()
     assert row.status == TickLogStatus.FAILED
     assert row.error_message == INTERRUPTED_NOTE
 
     # A clean journal marks nothing and stays quiet.
     caplog.clear()
-    with caplog.at_level(
-        logging.WARNING, logger="modules._00_core.tick_recovery"
-    ):
+    with caplog.at_level(logging.WARNING, logger="modules._00_core.tick_recovery"):
         assert await recover_interrupted_ticks(maker) == 0
-    assert not [
-        r for r in caplog.records if r.levelno == logging.WARNING
-    ]
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]

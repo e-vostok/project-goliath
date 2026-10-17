@@ -43,9 +43,7 @@ class TestBuildTable:
     ):
         # model_copy skips validation — the test-only cap under 50 is
         # deliberate (INV-R4).
-        lowered = registry_started.limits.model_copy(
-            update={"max_rows_per_table": 2}
-        )
+        lowered = registry_started.limits.model_copy(update={"max_rows_per_table": 2})
         monkeypatch.setattr(
             startup_module,
             "_registry_config",
@@ -83,8 +81,7 @@ class TestBuildTable:
             }
         )
         tables = [
-            sorted_cfg if t.id == "players" else t
-            for t in registry_started.tables
+            sorted_cfg if t.id == "players" else t for t in registry_started.tables
         ]
         monkeypatch.setattr(
             startup_module,
@@ -95,12 +92,8 @@ class TestBuildTable:
         p_alpha = await seed_player(test_db_session, 503101)
         p_beta = await seed_player(test_db_session, 503102)
         await seed_player(test_db_session, 503103)  # no nation
-        await seed_nation(
-            test_db_session, p_alpha, "Alpha", "#AA0101", created_turn=0
-        )
-        await seed_nation(
-            test_db_session, p_beta, "Beta", "#AA0102", created_turn=0
-        )
+        await seed_nation(test_db_session, p_alpha, "Alpha", "#AA0101", created_turn=0)
+        await seed_nation(test_db_session, p_beta, "Beta", "#AA0102", created_turn=0)
 
         built = await build_table(test_db_session, "players")
 
@@ -185,9 +178,7 @@ class TestBuildTable:
 class TestStartupCheck:
     """Spec 2.5 step 3 — config vs source registry (INV-R3)."""
 
-    def test_unknown_table_source_aborts_boot(
-        self, registry_isolation, monkeypatch
-    ):
+    def test_unknown_table_source_aborts_boot(self, registry_isolation, monkeypatch):
         bad = RegistryConfig.from_yaml(
             RegistryConfig.get_default_config_path()
         ).model_copy(deep=True)
@@ -200,9 +191,7 @@ class TestStartupCheck:
         with pytest.raises(RegistryConfigError):
             startup_registry()
 
-    def test_unknown_column_source_aborts_boot(
-        self, registry_isolation, monkeypatch
-    ):
+    def test_unknown_column_source_aborts_boot(self, registry_isolation, monkeypatch):
         bad = RegistryConfig.from_yaml(
             RegistryConfig.get_default_config_path()
         ).model_copy(deep=True)
@@ -224,18 +213,12 @@ class TestStartupCheck:
 class TestAdminStateView:
     """Spec 5.4 — counters only; no names, photo urls or VK ids."""
 
-    async def test_state_view_shape(
-        self, test_db_session, registry_started
-    ):
+    async def test_state_view_shape(self, test_db_session, registry_started):
         from tests.fixtures.factories import make_vk_profile
 
         player = await seed_player(test_db_session, 504001)
-        await make_vk_profile(
-            test_db_session, player, status="PENDING"
-        )
-        await seed_nation(
-            test_db_session, player, "Альфа", "#BB0001", created_turn=0
-        )
+        await make_vk_profile(test_db_session, player, status="PENDING")
+        await seed_nation(test_db_session, player, "Альфа", "#BB0001", created_turn=0)
 
         view = AdminRegistry.get_state_view_hooks()["03_registry"]
         snapshot = await view(test_db_session)

@@ -20,23 +20,23 @@ from core.db import Base
 async def test_db_engine() -> AsyncGenerator[Any, None]:
     """
     Create an async SQLite in-memory database engine for testing.
-    
+
     The database is created fresh for each test function.
     """
     database_url = "sqlite+aiosqlite:///:memory:"
-    
+
     engine = create_async_engine(
         database_url,
         echo=False,
         future=True,
     )
-    
+
     # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     yield engine
-    
+
     await engine.dispose()
 
 
@@ -44,7 +44,7 @@ async def test_db_engine() -> AsyncGenerator[Any, None]:
 async def test_db_session(test_db_engine: Any) -> AsyncGenerator[AsyncSession, None]:
     """
     Create an async session for the test database.
-    
+
     Creates tables using SQLAlchemy metadata before yielding the session.
     Wraps each test in a transaction that gets rolled back.
     """
@@ -53,13 +53,13 @@ async def test_db_session(test_db_engine: Any) -> AsyncGenerator[AsyncSession, N
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    
+
     async with session_maker() as session:
         # Begin a transaction
         await session.begin()
-        
+
         yield session
-        
+
         # Rollback the transaction to clean up
         await session.rollback()
 
@@ -84,7 +84,5 @@ def mini_map_config(monkeypatch):
     from tests.modules._01_map.conftest import map_config
 
     config = map_config()
-    monkeypatch.setattr(
-        MapConfig, "from_yaml", classmethod(lambda cls, path: config)
-    )
+    monkeypatch.setattr(MapConfig, "from_yaml", classmethod(lambda cls, path: config))
     return config

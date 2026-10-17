@@ -174,12 +174,8 @@ def _rules_dto(service: MapService) -> MapViewRulesDTO:
         require_connected_start=config.starting_group.require_connected,
         big_window_enabled=config.big_window.enabled,
         refresh=MapRefreshRulesDTO(
-            tick_refresh_delay_seconds=(
-                config.refresh.tick_refresh_delay_seconds
-            ),
-            tick_refresh_jitter_seconds=(
-                config.refresh.tick_refresh_jitter_seconds
-            ),
+            tick_refresh_delay_seconds=(config.refresh.tick_refresh_delay_seconds),
+            tick_refresh_jitter_seconds=(config.refresh.tick_refresh_jitter_seconds),
             retry_delay_seconds=config.refresh.retry_delay_seconds,
             max_retries=config.refresh.max_retries,
             stale_after_seconds=config.refresh.stale_after_seconds,
@@ -386,11 +382,7 @@ async def build_state(
                 (
                     province_id,
                     owner.nation_id,
-                    (
-                        owner.nation_id
-                        if owner.nation_id in existing
-                        else None
-                    ),
+                    (owner.nation_id if owner.nation_id in existing else None),
                     owner.name,
                     owner.color,
                 )
@@ -407,9 +399,7 @@ async def build_state(
         if index is None:
             index = len(nations)
             nation_index[key] = index
-            nations.append(
-                MapNationDTO(id=dto_id, name=name, color_hex=color)
-            )
+            nations.append(MapNationDTO(id=dto_id, name=name, color_hex=color))
         owners.append([province_id, index])
 
     return MapStateDTO(
@@ -422,6 +412,7 @@ async def build_state(
 
 
 # ------------------------------------------------- starting-group
+
 
 def check_starting_group(
     service: MapService, province_ids: list[int]
@@ -438,9 +429,7 @@ def check_starting_group(
     """
     node_count = len(service.map_data.nodes)
     if len(province_ids) > node_count:
-        raise ProvinceCountOutOfRangeError(
-            len(province_ids), 1, node_count
-        )
+        raise ProvinceCountOutOfRangeError(len(province_ids), 1, node_count)
     try:
         components = service.group_components(province_ids)
     except UnknownNodeError as exc:

@@ -68,9 +68,7 @@ async def _seed_clock(session, current_turn: int = 0) -> GameClock:
     return clock
 
 
-def _nation_body(
-    name: str, color: str, province_ids: list[int]
-) -> dict:
+def _nation_body(name: str, color: str, province_ids: list[int]) -> dict:
     return {
         "name": name,
         "color_hex": color,
@@ -197,9 +195,7 @@ class TestScenarioA:
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)
 
-        resp = await client.get(
-            TABLES_URL, headers=bearer_headers(players[2].id)
-        )
+        resp = await client.get(TABLES_URL, headers=bearer_headers(players[2].id))
         assert resp.status_code == 200
         _assert_no_identifiers(resp.text, players)
 
@@ -287,9 +283,7 @@ class TestScenarioB:
                 {"id": 9400002, "deactivated": "banned"},
             ]
         )
-        vk_client = VkProfilesClient(
-            profiles, "test-token", transport=fake.transport
-        )
+        vk_client = VkProfilesClient(profiles, "test-token", transport=fake.transport)
         await test_db_session.commit()
         await run_cycle(
             session_factory,
@@ -325,8 +319,6 @@ class TestScenarioB:
         assert resp.status_code == 200
         _assert_no_identifiers(resp.text, [p_ok, p_dead])
 
-        resp = await client.get(
-            TABLES_URL, headers=bearer_headers(p_ok.id)
-        )
+        resp = await client.get(TABLES_URL, headers=bearer_headers(p_ok.id))
         assert resp.status_code == 200
         _assert_no_identifiers(resp.text, [p_ok, p_dead])

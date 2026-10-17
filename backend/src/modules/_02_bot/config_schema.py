@@ -367,9 +367,13 @@ class TypeSettings(_Strict):
             if self.merge != "never":
                 raise ValueError("critical не сливается (merge должен быть never)")
             if self.hold_seconds != 0:
-                raise ValueError("critical не выдерживается (hold_seconds должен быть 0)")
+                raise ValueError(
+                    "critical не выдерживается (hold_seconds должен быть 0)"
+                )
         if self.hold_seconds >= self.ttl_minutes * 60:
-            raise ValueError("hold_seconds должен быть меньше срока годности ttl_minutes")
+            raise ValueError(
+                "hold_seconds должен быть меньше срока годности ttl_minutes"
+            )
         return self
 
 
@@ -397,8 +401,12 @@ class HelpLinks(_Strict):
         max_length=10,
         description="Допустимые хосты ссылок кнопок помощи: нижний регистр, без схемы, порта и пути.",
     )
-    rules_url: str | None = Field(description="Ссылка на правила; null — кнопка скрыта.")
-    regulations_url: str | None = Field(description="Ссылка на регламент; null — кнопка скрыта.")
+    rules_url: str | None = Field(
+        description="Ссылка на правила; null — кнопка скрыта."
+    )
+    regulations_url: str | None = Field(
+        description="Ссылка на регламент; null — кнопка скрыта."
+    )
     admin_contact_url: str | None = Field(
         description="Ссылка «Связаться с администрацией»; null — кнопка скрыта.",
     )
@@ -531,10 +539,14 @@ class BotConfig(_Strict):
         # 2а. Ссылка на диалог с сообществом: https, один {group_id}, хост разрешён.
         tpl = self.client.chat_url_template
         if tpl.count("{group_id}") != 1:
-            raise ValueError("client.chat_url_template должен содержать ровно один {group_id}")
+            raise ValueError(
+                "client.chat_url_template должен содержать ровно один {group_id}"
+            )
         probe = tpl.replace("{group_id}", "1")
         if "{" in probe or "}" in probe:
-            raise ValueError("client.chat_url_template: других фигурных скобок быть не должно")
+            raise ValueError(
+                "client.chat_url_template: других фигурных скобок быть не должно"
+            )
         parsed_chat = urlparse(probe)
         if parsed_chat.scheme != "https" or not parsed_chat.hostname:
             raise ValueError("client.chat_url_template должен начинаться с https://")
@@ -553,26 +565,38 @@ class BotConfig(_Strict):
                 # по реестру (Spec 2.5); здесь — только форма шаблона.
                 continue
             check_template(
-                f"types.{key}.text", t.text, base,
-                variable_max_length=v_max, message_max_chars=m_max,
+                f"types.{key}.text",
+                t.text,
+                base,
+                variable_max_length=v_max,
+                message_max_chars=m_max,
             )
             merged = base | IMPLICIT_MERGE_VARIABLES
             if t.batch_text is not None:
                 check_template(
-                    f"types.{key}.batch_text", t.batch_text, merged,
-                    variable_max_length=v_max, message_max_chars=m_max,
+                    f"types.{key}.batch_text",
+                    t.batch_text,
+                    merged,
+                    variable_max_length=v_max,
+                    message_max_chars=m_max,
                 )
             if t.line_text is not None:
                 check_template(
-                    f"types.{key}.line_text", t.line_text, merged,
-                    variable_max_length=v_max, message_max_chars=m_max,
+                    f"types.{key}.line_text",
+                    t.line_text,
+                    merged,
+                    variable_max_length=v_max,
+                    message_max_chars=m_max,
                 )
 
         # 4. Шаблоны ответов в диалоге.
         for name, allowed in DIALOG_TEXT_VARIABLES.items():
             check_template(
-                f"dialog.texts.{name}", getattr(self.dialog.texts, name), allowed,
-                variable_max_length=v_max, message_max_chars=m_max,
+                f"dialog.texts.{name}",
+                getattr(self.dialog.texts, name),
+                allowed,
+                variable_max_length=v_max,
+                message_max_chars=m_max,
             )
 
         # 5. Сводное сообщение (суточный потолок) помещается в сообщение.

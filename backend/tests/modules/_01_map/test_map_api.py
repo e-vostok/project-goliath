@@ -107,31 +107,27 @@ def map_installed(extension_snapshot, flat_map_service, config):
 @pytest_asyncio.fixture
 async def client(map_db_session, map_installed):
     """HTTP client on the shared test session (provinces synced)."""
+
     async def _override_get_session():
         yield map_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
 
 async def _set_turn(session, turn: int) -> None:
     """Bump the game-clock singleton (created when absent)."""
-    result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = result.scalar_one_or_none()
     if clock is None:
         session.add(
             GameClock(
                 id=1,
                 current_turn=turn,
-                next_tick_at=datetime.now(timezone.utc)
-                + timedelta(days=1),
+                next_tick_at=datetime.now(timezone.utc) + timedelta(days=1),
             )
         )
     else:
@@ -150,9 +146,7 @@ async def _auth_headers(client, vk_user_id: int) -> dict[str, str]:
 
 
 @pytest_asyncio.fixture
-async def live_client(
-    tmp_path, monkeypatch, extension_snapshot, mini_map_config
-):
+async def live_client(tmp_path, monkeypatch, extension_snapshot, mini_map_config):
     """
     The real ASGI lifespan on a migrated tmp SQLite file — the
     production engine path, no get_session override. Admin allowlist
@@ -161,29 +155,22 @@ async def live_client(
     fixture's view_box.
     """
     db_file = tmp_path / "live.db"
-    monkeypatch.setenv(
-        "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-    )
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
     command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
-    monkeypatch.setenv(
-        "DATABASE_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}"
-    )
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
     # The linked mini map hosts two valid starting groups of exactly
     # five provinces each (Registration 2.0: min == max == 5).
     monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_LINKED_DIR))
     monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
 
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     TickOrchestrator._handlers.clear()
@@ -201,9 +188,7 @@ class TestManifest:
         self, client, map_db_session, map_installed
     ):
         player = await seed_player(map_db_session)
-        resp = await client.get(
-            MANIFEST_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(MANIFEST_URL, headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         dto = MapManifestDTO.model_validate(resp.json())
@@ -216,9 +201,7 @@ class TestManifest:
         assert len(dto.nodes) == 10
         assert len(dto.edges) == 10
         # Deterministic ordering: nodes ascending by id.
-        assert [n.id for n in dto.nodes] == sorted(
-            n["id"] for n in manifest["nodes"]
-        )
+        assert [n.id for n in dto.nodes] == sorted(n["id"] for n in manifest["nodes"])
         node = dto.nodes[0]
         assert node.id == 1001 and node.key == "mini_alpha"
         assert node.kind == "LAND" and node.name == "Mini Alpha"
@@ -236,12 +219,8 @@ class TestManifest:
     async def test_strait_multipliers(self, client, map_db_session):
         """Explicit 0.3, default 0.5 from config, null elsewhere."""
         player = await seed_player(map_db_session)
-        resp = await client.get(
-            MANIFEST_URL, headers=bearer_headers(player.id)
-        )
-        edges = {
-            (e["a"], e["b"]): e for e in resp.json()["edges"]
-        }
+        resp = await client.get(MANIFEST_URL, headers=bearer_headers(player.id))
+        edges = {(e["a"], e["b"]): e for e in resp.json()["edges"]}
         assert edges[(1005, 1006)]["multiplier"] == 0.5
         assert edges[(1006, 1007)]["multiplier"] == 0.3
         for key, edge in edges.items():
@@ -254,9 +233,7 @@ class TestManifest:
 
     async def test_rules_built_from_config(self, client, map_db_session):
         player = await seed_player(map_db_session)
-        resp = await client.get(
-            MANIFEST_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(MANIFEST_URL, headers=bearer_headers(player.id))
         config = map_config()
         rules = resp.json()["rules"]
         assert rules["frame"] == [
@@ -326,28 +303,22 @@ class TestManifest:
         "header",
         [
             '"deadbeefdeadbeef", {etag}',  # a list of tags
-            'W/{etag}',                    # weak tag
-            '*',                           # wildcard
-            'W/"other", W/{etag}',         # weak inside a list
+            "W/{etag}",  # weak tag
+            "*",  # wildcard
+            'W/"other", W/{etag}',  # weak inside a list
         ],
     )
-    async def test_if_none_match_forms(
-        self, client, map_db_session, header
-    ):
+    async def test_if_none_match_forms(self, client, map_db_session, header):
         player = await seed_player(map_db_session)
         headers = bearer_headers(player.id)
-        etag = (
-            await client.get(MANIFEST_URL, headers=headers)
-        ).headers["etag"]
+        etag = (await client.get(MANIFEST_URL, headers=headers)).headers["etag"]
         resp = await client.get(
             MANIFEST_URL,
             headers={**headers, "If-None-Match": header.format(etag=etag)},
         )
         assert resp.status_code == 304
 
-    async def test_if_none_match_miss_returns_200(
-        self, client, map_db_session
-    ):
+    async def test_if_none_match_miss_returns_200(self, client, map_db_session):
         player = await seed_player(map_db_session)
         resp = await client.get(
             MANIFEST_URL,
@@ -364,17 +335,13 @@ class TestManifest:
         """Same files + same config -> same tag on a fresh service."""
         player = await seed_player(map_db_session)
         etag = (
-            await client.get(
-                MANIFEST_URL, headers=bearer_headers(player.id)
-            )
+            await client.get(MANIFEST_URL, headers=bearer_headers(player.id))
         ).headers["etag"]
         again = api_service.build_api_payloads(
             MapService(load_map_data(FIXTURE_DIR, config), config)
         )
         assert again.manifest_etag == etag
-        assert again.manifest_body == (
-            api_service.get_api_payloads().manifest_body
-        )
+        assert again.manifest_body == (api_service.get_api_payloads().manifest_body)
 
     async def test_etag_changes_when_rules_change(
         self, client, map_db_session, flat_map_service, config
@@ -382,16 +349,10 @@ class TestManifest:
         """A config-only edit changes the tag though files did not."""
         player = await seed_player(map_db_session)
         etag = (
-            await client.get(
-                MANIFEST_URL, headers=bearer_headers(player.id)
-            )
+            await client.get(MANIFEST_URL, headers=bearer_headers(player.id))
         ).headers["etag"]
         changed = config.model_copy(
-            update={
-                "colors": config.colors.model_copy(
-                    update={"hover": "#EEEEEE"}
-                )
-            }
+            update={"colors": config.colors.model_copy(update={"hover": "#EEEEEE"})}
         )
         other = api_service.build_api_payloads(
             MapService(flat_map_service.map_data, changed)
@@ -462,12 +423,8 @@ class TestGeometry:
         assert resp.json()["paths"] == on_disk["paths"]
         assert dto.outside == on_disk["outside"]
         # paths keys are exactly the loaded node ids.
-        assert set(dto.paths) == {
-            n.id for n in map_installed.all_nodes()
-        }
-        assert resp.headers["cache-control"] == (
-            "public, max-age=31536000, immutable"
-        )
+        assert set(dto.paths) == {n.id for n in map_installed.all_nodes()}
+        assert resp.headers["cache-control"] == ("public, max-age=31536000, immutable")
         assert resp.headers["etag"] == f'"{version}"'
 
     async def test_unknown_version_404(self, client, map_db_session):
@@ -479,14 +436,10 @@ class TestGeometry:
         assert resp.status_code == 404
         assert resp.json()["code"] == "MAP_VERSION_UNKNOWN"
 
-    async def test_version_from_manifest_works_end_to_end(
-        self, client, map_db_session
-    ):
+    async def test_version_from_manifest_works_end_to_end(self, client, map_db_session):
         player = await seed_player(map_db_session)
         headers = bearer_headers(player.id)
-        manifest = (
-            await client.get(MANIFEST_URL, headers=headers)
-        ).json()
+        manifest = (await client.get(MANIFEST_URL, headers=headers)).json()
         resp = await client.get(
             f"/api/v1/map/geometry/{manifest['geometry_version']}",
             headers=headers,
@@ -513,9 +466,7 @@ class TestBorders:
         on_disk = load_borders(FIXTURE_DIR)
         assert resp.json()["pairs"] == on_disk["pairs"]
         assert resp.json()["coasts"] == on_disk["coasts"]
-        assert resp.headers["cache-control"] == (
-            "public, max-age=31536000, immutable"
-        )
+        assert resp.headers["cache-control"] == ("public, max-age=31536000, immutable")
         assert resp.headers["etag"] == f'"{version}"'
 
     async def test_unknown_version_404(self, client, map_db_session):
@@ -527,14 +478,10 @@ class TestBorders:
         assert resp.status_code == 404
         assert resp.json()["code"] == "MAP_VERSION_UNKNOWN"
 
-    async def test_version_from_manifest_works_end_to_end(
-        self, client, map_db_session
-    ):
+    async def test_version_from_manifest_works_end_to_end(self, client, map_db_session):
         player = await seed_player(map_db_session)
         headers = bearer_headers(player.id)
-        manifest = (
-            await client.get(MANIFEST_URL, headers=headers)
-        ).json()
+        manifest = (await client.get(MANIFEST_URL, headers=headers)).json()
         resp = await client.get(
             f"/api/v1/map/borders/{manifest['borders_version']}",
             headers=headers,
@@ -547,9 +494,7 @@ class TestState:
 
     async def test_empty_world(self, client, map_db_session, map_installed):
         player = await seed_player(map_db_session)
-        resp = await client.get(
-            STATE_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(STATE_URL, headers=bearer_headers(player.id))
         assert resp.status_code == 200
         dto = MapStateDTO.model_validate(resp.json())
         assert dto.turn == 0
@@ -557,9 +502,7 @@ class TestState:
         assert dto.nations == []
         assert dto.geometry_version == map_installed.geometry_version
 
-    async def test_current_state_two_nations(
-        self, client, map_db_session
-    ):
+    async def test_current_state_two_nations(self, client, map_db_session):
         player_a = await seed_player(map_db_session, vk_user_id=8101)
         player_b = await seed_player(map_db_session, vk_user_id=8102)
         # /map/state reads live rows — seed the nations directly: the
@@ -572,25 +515,19 @@ class TestState:
             map_db_session, player_b, "Bravo", "#2211BB", [1003]
         )
 
-        resp = await client.get(
-            STATE_URL, headers=bearer_headers(player_a.id)
-        )
+        resp = await client.get(STATE_URL, headers=bearer_headers(player_a.id))
         assert resp.status_code == 200
         dto = MapStateDTO.model_validate(resp.json())
         assert dto.turn == 0
         assert dto.owners == [[1001, 0], [1002, 0], [1003, 1]]
-        assert [str(n.id) for n in dto.nations] == [
-            nation_a.id, nation_b.id
-        ]
+        assert [str(n.id) for n in dto.nations] == [nation_a.id, nation_b.id]
         assert dto.nations[0].name == "Alpha"
         assert dto.nations[0].color_hex == "#AA1100"
         assert dto.nations[1].name == "Bravo"
         # SEA nodes are never listed.
         assert all(pid < 2001 for pid, _ in dto.owners)
 
-    async def test_past_turn_from_journal(
-        self, client, map_db_session
-    ):
+    async def test_past_turn_from_journal(self, client, map_db_session):
         """
         Scripted journal rows: claims at turns 0 and 1, a release at
         turn 2. Journal nation ids absent from the live table resolve
@@ -629,45 +566,29 @@ class TestState:
         await _set_turn(map_db_session, 3)
         headers = bearer_headers(player.id)
 
-        at_0 = (
-            await client.get(
-                STATE_URL, params={"turn": 0}, headers=headers
-            )
-        ).json()
+        at_0 = (await client.get(STATE_URL, params={"turn": 0}, headers=headers)).json()
         assert at_0["turn"] == 0
         assert at_0["owners"] == [[1001, 0]]
         assert at_0["nations"] == [
             {"id": None, "name": "Gone Realm", "color_hex": "#101010"}
         ]
 
-        at_1 = (
-            await client.get(
-                STATE_URL, params={"turn": 1}, headers=headers
-            )
-        ).json()
+        at_1 = (await client.get(STATE_URL, params={"turn": 1}, headers=headers)).json()
         assert at_1["owners"] == [[1001, 0], [1002, 1]]
         assert at_1["nations"][1]["name"] == "B Realm"
         # Two distinct journal ids stay two entries even though both
         # resolve to id=null (unique by (id, name, color)).
         assert [n["id"] for n in at_1["nations"]] == [None, None]
 
-        at_2 = (
-            await client.get(
-                STATE_URL, params={"turn": 2}, headers=headers
-            )
-        ).json()
+        at_2 = (await client.get(STATE_URL, params={"turn": 2}, headers=headers)).json()
         assert at_2["owners"] == [[1002, 0]]
         assert at_2["nations"] == [
             {"id": None, "name": "B Realm", "color_hex": "#202020"}
         ]
 
-    async def test_turn_equals_current_matches_default(
-        self, client, map_db_session
-    ):
+    async def test_turn_equals_current_matches_default(self, client, map_db_session):
         player = await seed_player(map_db_session)
-        await seed_nation(
-            map_db_session, player, "Alpha", "#AA1100", [1001]
-        )
+        await seed_nation(map_db_session, player, "Alpha", "#AA1100", [1001])
         headers = bearer_headers(player.id)
         plain = (await client.get(STATE_URL, headers=headers)).json()
         explicit = (
@@ -679,9 +600,7 @@ class TestState:
         ).json()
         assert explicit == plain
 
-    async def test_retired_node_never_in_state(
-        self, client, map_db_session
-    ):
+    async def test_retired_node_never_in_state(self, client, map_db_session):
         """
         Spec 1.9: /map/state never returns owners of ids outside the
         active manifest — neither a live provinces row (a retired node's
@@ -689,15 +608,11 @@ class TestState:
         real provinces and nation entry survive the filtering.
         """
         player = await seed_player(map_db_session)
-        nation = await seed_nation(
-            map_db_session, player, "Alpha", "#AA1100", [1001]
-        )
+        nation = await seed_nation(map_db_session, player, "Alpha", "#AA1100", [1001])
         # An owned row on an id the manifest does not know — the shape
         # a retired-but-owned leftover would have (startup normally
         # refuses this; the read path must still be safe).
-        map_db_session.add(
-            Province(id=9999, kind="LAND", nation_id=nation.id)
-        )
+        map_db_session.add(Province(id=9999, kind="LAND", nation_id=nation.id))
         # A journal claim on the retired id back at turn 0 (a withdrawn
         # node the journal legitimately remembers) plus the turn-0
         # registration claim for 1001 — seed_nation writes live rows
@@ -732,11 +647,7 @@ class TestState:
         assert current.owners == [[1001, 0]]
         assert [str(n.id) for n in current.nations] == [nation.id]
 
-        at_0 = (
-            await client.get(
-                STATE_URL, params={"turn": 0}, headers=headers
-            )
-        ).json()
+        at_0 = (await client.get(STATE_URL, params={"turn": 0}, headers=headers)).json()
         # turn 0's snapshot holds 1001 (claimed at registration) and
         # the withdrawn 9999 — only the active id is returned, and the
         # retired node's journal nation disappears with it.
@@ -748,14 +659,10 @@ class TestState:
         await _set_turn(map_db_session, 2)
         headers = bearer_headers(player.id)
         for turn in (-1, 3):
-            resp = await client.get(
-                STATE_URL, params={"turn": turn}, headers=headers
-            )
+            resp = await client.get(STATE_URL, params={"turn": turn}, headers=headers)
             assert resp.status_code == 422
             assert resp.json()["code"] == "TURN_OUT_OF_RANGE"
-        resp = await client.get(
-            STATE_URL, params={"turn": "abc"}, headers=headers
-        )
+        resp = await client.get(STATE_URL, params={"turn": "abc"}, headers=headers)
         assert resp.status_code == 422
         # The framework's validation shape, not a domain code.
         assert "code" not in resp.json()
@@ -775,9 +682,7 @@ class TestStartingGroupCheck:
         dto = StartingGroupCheckResponse.model_validate(resp.json())
         assert dto.connected is True and dto.component_count == 1
 
-    async def test_broken_chain_two_components(
-        self, client, map_db_session
-    ):
+    async def test_broken_chain_two_components(self, client, map_db_session):
         player = await seed_player(map_db_session)
         resp = await client.post(
             CHECK_URL,
@@ -789,9 +694,7 @@ class TestStartingGroupCheck:
         assert body == {"connected": False, "component_count": 2}
 
     @pytest.mark.parametrize("pair", [[1005, 1006], [1006, 1007]])
-    async def test_strait_joined_pair_connected(
-        self, client, map_db_session, pair
-    ):
+    async def test_strait_joined_pair_connected(self, client, map_db_session, pair):
         player = await seed_player(map_db_session)
         resp = await client.post(
             CHECK_URL,
@@ -801,9 +704,7 @@ class TestStartingGroupCheck:
         assert resp.status_code == 200
         assert resp.json() == {"connected": True, "component_count": 1}
 
-    async def test_single_province_connected(
-        self, client, map_db_session
-    ):
+    async def test_single_province_connected(self, client, map_db_session):
         player = await seed_player(map_db_session)
         resp = await client.post(
             CHECK_URL,
@@ -852,9 +753,7 @@ class TestStartingGroupCheck:
         )
         assert resp.status_code == 422
 
-    async def test_list_capped_by_node_count(
-        self, client, map_db_session
-    ):
+    async def test_list_capped_by_node_count(self, client, map_db_session):
         player = await seed_player(map_db_session)
         resp = await client.post(
             CHECK_URL,
@@ -868,9 +767,7 @@ class TestStartingGroupCheck:
         self, client, map_db_session, flat_map_service
     ):
         """require_connected=false: real connectivity still reported."""
-        service = MapService(
-            flat_map_service.map_data, map_config_disconnected()
-        )
+        service = MapService(flat_map_service.map_data, map_config_disconnected())
         init_map_service(service)
         player = await seed_player(map_db_session)
         resp = await client.post(
@@ -887,9 +784,7 @@ class TestProvinceDtoKind:
 
     async def test_kinds_returned(self, client, map_db_session):
         player = await seed_player(map_db_session)
-        resp = await client.get(
-            "/api/v1/provinces", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/provinces", headers=bearer_headers(player.id))
         assert resp.status_code == 200
         body = resp.json()
         by_id = {p["id"]: p for p in body}
@@ -901,14 +796,10 @@ class TestProvinceDtoKind:
 class TestContract:
     """OpenAPI shape, absent reserve endpoints, auth on every route."""
 
-    async def test_openapi_lists_exactly_the_map_routes(
-        self, client, map_db_session
-    ):
+    async def test_openapi_lists_exactly_the_map_routes(self, client, map_db_session):
         resp = await client.get("/openapi.json")
         paths = resp.json()["paths"]
-        map_paths = {
-            p for p in paths if p.startswith("/api/v1/map")
-        }
+        map_paths = {p for p in paths if p.startswith("/api/v1/map")}
         assert map_paths == {
             "/api/v1/map/manifest",
             "/api/v1/map/geometry/{version}",
@@ -923,14 +814,10 @@ class TestContract:
         "url",
         ["/api/v1/map/big-window/pass", "/api/v1/auth/pass"],
     )
-    async def test_reserve_pass_endpoints_absent(
-        self, client, map_db_session, url
-    ):
+    async def test_reserve_pass_endpoints_absent(self, client, map_db_session, url):
         """Removed in Spec 1.6 — 404 by absence of the route."""
         player = await seed_player(map_db_session)
-        resp = await client.post(
-            url, headers=bearer_headers(player.id), json={}
-        )
+        resp = await client.post(url, headers=bearer_headers(player.id), json={})
         assert resp.status_code == 404
 
     @pytest.mark.parametrize(
@@ -943,9 +830,7 @@ class TestContract:
             ("POST", CHECK_URL, {"province_ids": [1001]}),
         ],
     )
-    async def test_every_route_requires_auth(
-        self, client, method, url, body
-    ):
+    async def test_every_route_requires_auth(self, client, method, url, body):
         resp = await client.request(method, url, json=body)
         assert resp.status_code == 401
         assert resp.json()["code"] == "UNAUTHORIZED"
@@ -999,9 +884,7 @@ class TestLiveHistory:
             return resp.json()
 
         async def tick():
-            resp = await live_client.post(
-                "/api/v1/admin/tick/run", headers=admin
-            )
+            resp = await live_client.post("/api/v1/admin/tick/run", headers=admin)
             assert resp.status_code == 200, resp.text
             assert resp.json()["ok"] is True
             return resp.json()["current_turn"]
@@ -1013,9 +896,7 @@ class TestLiveHistory:
             *[[pid, 0] for pid in STARTING_GROUP],
             *[[pid, 1] for pid in range(1009, 1014)],
         ]
-        assert [n["name"] for n in now["nations"]] == [
-            "Alpha", "Bravo"
-        ]
+        assert [n["name"] for n in now["nations"]] == ["Alpha", "Bravo"]
 
         # --- tick -> 1, then rename Alpha -> Beta ------------------
         assert await tick() == 1
@@ -1048,9 +929,7 @@ class TestLiveHistory:
 
         current = await state()
         assert current["turn"] == 2
-        assert current["owners"] == [
-            [pid, 0] for pid in range(1009, 1014)
-        ]
+        assert current["owners"] == [[pid, 0] for pid in range(1009, 1014)]
         assert current["nations"] == [
             {
                 "id": nation_b["id"],
@@ -1100,13 +979,9 @@ class TestRealMap:
         self, tmp_path, monkeypatch, extension_snapshot
     ):
         db_file = tmp_path / "real.db"
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
         command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}")
         monkeypatch.delenv("MAP_DATA_DIR", raising=False)
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
 
@@ -1126,9 +1001,7 @@ class TestRealMap:
 
                     plain = await client.get(
                         MANIFEST_URL,
-                        headers={
-                            **headers, "Accept-Encoding": "identity"
-                        },
+                        headers={**headers, "Accept-Encoding": "identity"},
                     )
                     assert plain.status_code == 200
                     body = plain.json()
@@ -1142,9 +1015,7 @@ class TestRealMap:
                         headers={**headers, "Accept-Encoding": "gzip"},
                     )
                     assert zipped.headers["content-encoding"] == "gzip"
-                    manifest_gzip = int(
-                        zipped.headers["content-length"]
-                    )
+                    manifest_gzip = int(zipped.headers["content-length"])
 
                     revalidated = await client.get(
                         MANIFEST_URL,
@@ -1159,9 +1030,7 @@ class TestRealMap:
 
                     geo_plain = await client.get(
                         f"/api/v1/map/geometry/{version}",
-                        headers={
-                            **headers, "Accept-Encoding": "identity"
-                        },
+                        headers={**headers, "Accept-Encoding": "identity"},
                     )
                     assert geo_plain.status_code == 200
                     geometry_plain = len(geo_plain.content)
@@ -1169,22 +1038,14 @@ class TestRealMap:
                         f"/api/v1/map/geometry/{version}",
                         headers={**headers, "Accept-Encoding": "gzip"},
                     )
-                    assert (
-                        geo_zip.headers["content-encoding"] == "gzip"
-                    )
-                    geometry_gzip = int(
-                        geo_zip.headers["content-length"]
-                    )
+                    assert geo_zip.headers["content-encoding"] == "gzip"
+                    geometry_gzip = int(geo_zip.headers["content-length"])
 
                     timings = []
                     for _ in range(20):
                         started = time.perf_counter()
-                        resp = await client.get(
-                            MANIFEST_URL, headers=headers
-                        )
-                        timings.append(
-                            (time.perf_counter() - started) * 1000
-                        )
+                        resp = await client.get(MANIFEST_URL, headers=headers)
+                        timings.append((time.perf_counter() - started) * 1000)
                         assert resp.status_code == 200
                     p50 = statistics.median(timings)
 

@@ -294,9 +294,7 @@ class ColorSettings(BaseModel):
     def check_palette_format(cls, colors: list[str]) -> list[str]:
         for color in colors:
             if _HEX_RE.match(color) is None:
-                raise ValueError(
-                    f"palette: '{color}' не в формате #RRGGBB"
-                )
+                raise ValueError(f"palette: '{color}' не в формате #RRGGBB")
         if len({c.upper() for c in colors}) != len(colors):
             raise ValueError("palette: дубли недопустимы")
         return colors
@@ -356,25 +354,20 @@ class CalendarSettings(BaseModel):
     months_per_turn: int = Field(
         ge=1,
         le=12,
-        description="Количество игровых календарных месяцев, "
-        "проходящих за один ход.",
+        description="Количество игровых календарных месяцев, проходящих за один ход.",
     )
-    month_names: list[Annotated[str, Field(min_length=1, max_length=20)]] = (
-        Field(
-            min_length=12,
-            max_length=12,
-            description="Названия месяцев для формата «дд.месяц.гггг» "
-            "(ровно 12, январь первым), без управляющих символов и дублей.",
-        )
+    month_names: list[Annotated[str, Field(min_length=1, max_length=20)]] = Field(
+        min_length=12,
+        max_length=12,
+        description="Названия месяцев для формата «дд.месяц.гггг» "
+        "(ровно 12, январь первым), без управляющих символов и дублей.",
     )
 
     @field_validator("month_names")
     @classmethod
     def check_month_names(cls, names: list[str]) -> list[str]:
         for name in names:
-            if any(
-                unicodedata.category(c) in ("Cc", "Cf") for c in name
-            ):
+            if any(unicodedata.category(c) in ("Cc", "Cf") for c in name):
                 raise ValueError(
                     f"month_names: '{name}' содержит управляющий или "
                     "невидимый символ (категории Cc/Cf недопустимы)"
@@ -386,9 +379,7 @@ class CalendarSettings(BaseModel):
     @model_validator(mode="after")
     def check_epoch_is_month_start(self) -> Self:
         if self.epoch_start_date.day != 1:
-            raise ValueError(
-                "epoch_start_date обязан указывать на первое число месяца"
-            )
+            raise ValueError("epoch_start_date обязан указывать на первое число месяца")
         return self
 
 
@@ -412,10 +403,7 @@ class CoreConfig(BaseModel):
         heartbeat_interval_seconds); a threshold at or below that sum
         would flap /api/v1/health to "stale" on a recoverable transient.
         """
-        minimum = (
-            self.tick.retry_delay_seconds
-            + self.tick.heartbeat_interval_seconds
-        )
+        minimum = self.tick.retry_delay_seconds + self.tick.heartbeat_interval_seconds
         if self.tick.health_max_heartbeat_age_seconds <= minimum:
             raise ValueError(
                 "tick.health_max_heartbeat_age_seconds "
@@ -440,6 +428,7 @@ class CoreConfig(BaseModel):
         working correctly whether called from backend/src or backend/tests.
         """
         import os
+
         # This file is at: backend/src/modules/_00_core/config_schema.py
         # Config is at: configs/00_core.yaml
         # We need to go: _00_core -> modules -> src -> backend -> project_root

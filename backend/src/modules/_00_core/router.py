@@ -68,9 +68,7 @@ def _player_dto(player: Player) -> PlayerDTO:
 async def _nation_dto(session: AsyncSession, nation: Nation) -> NationDTO:
     """Assemble NationDTO, including the nation's province IDs."""
     result = await session.execute(
-        select(Province.id)
-        .where(Province.nation_id == nation.id)
-        .order_by(Province.id)
+        select(Province.id).where(Province.nation_id == nation.id).order_by(Province.id)
     )
     return NationDTO(
         id=nation.id,
@@ -313,9 +311,7 @@ async def get_game_clock(
     session: AsyncSession = Depends(get_session),
 ) -> GameClockDTO:
     """Return the current turn, derived game date, and next tick time."""
-    result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = result.scalar_one_or_none()
     if clock is None:
         raise GameClockNotFoundError()

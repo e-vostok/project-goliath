@@ -59,8 +59,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -68,9 +67,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     AdminRegistry._reset_hooks.clear()

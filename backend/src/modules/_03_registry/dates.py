@@ -40,9 +40,7 @@ def game_date_text(d: date) -> str:
     return f"{d.day} {_MONTHS_GENITIVE[d.month - 1]} {d.year} г."
 
 
-def real_date_parts(
-    created_at: datetime, tick_timezone: str
-) -> tuple[str, int]:
+def real_date_parts(created_at: datetime, tick_timezone: str) -> tuple[str, int]:
     """
     The ``joined`` cell values for a stored ``created_at`` (Spec 3.5):
     the display text and the key = days since 1970-01-01 of the calendar
@@ -53,7 +51,6 @@ def real_date_parts(
         created_at = created_at.replace(tzinfo=timezone.utc)
     local_date = created_at.astimezone(ZoneInfo(tick_timezone)).date()
     text = (
-        f"{local_date.day} {_MONTHS_GENITIVE[local_date.month - 1]} "
-        f"{local_date.year}"
+        f"{local_date.day} {_MONTHS_GENITIVE[local_date.month - 1]} {local_date.year}"
     )
     return text, (local_date - _EPOCH).days

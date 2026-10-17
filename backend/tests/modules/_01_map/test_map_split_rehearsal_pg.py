@@ -66,11 +66,7 @@ async def test_map2_11_old_manifest_db_gains_one_row(
         async with get_session_context() as session:
             await session.execute(
                 sa.insert(Province),
-                [
-                    {"id": i, "kind": kinds[i]}
-                    for i in sorted(kinds)
-                    if i != new_id
-                ],
+                [{"id": i, "kind": kinds[i]} for i in sorted(kinds) if i != new_id],
             )
             await session.commit()
 

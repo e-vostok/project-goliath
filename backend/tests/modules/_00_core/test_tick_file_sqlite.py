@@ -74,9 +74,7 @@ async def file_session_maker(tmp_path, monkeypatch):
     command.upgrade(alembic_cfg, "head")
 
     engine = create_async_engine(db_url)
-    maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     yield maker
     await engine.dispose()
 
@@ -92,9 +90,7 @@ async def _seed_pending_action(session_maker) -> str:
 
 async def _fetch_clock(session_maker) -> GameClock:
     async with session_maker() as session:
-        result = await session.execute(
-            select(GameClock).where(GameClock.id == 1)
-        )
+        result = await session.execute(select(GameClock).where(GameClock.id == 1))
         return result.scalar_one()
 
 
@@ -196,12 +192,11 @@ class TestTickOnFileSQLite:
     async def test_successful_tick_after_failure(self, file_session_maker):
         """A failed tick leaves no lock or RUNNING residue behind: the next
         attempt runs clean, turns +1 and logs COMPLETED after the FAILED row."""
+
         async def failing_handler(session: AsyncSession, turn_number: int) -> None:
             raise ValueError("Transient failure")
 
-        TickOrchestrator.register(
-            TickPhase.PHASE_1_ENVIRONMENT, failing_handler
-        )
+        TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, failing_handler)
 
         async with file_session_maker() as session:
             assert await run_scheduled_tick(session) is TickOutcome.FAILED
@@ -243,8 +238,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -252,9 +246,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     AdminRegistry._state_view_hooks.clear()
@@ -286,9 +278,7 @@ async def test_admin_tick_run_endpoint_on_file_sqlite(live_client):
     assert response.status_code == 200
     headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
 
-    response = await live_client.post(
-        "/api/v1/admin/tick/run", headers=headers
-    )
+    response = await live_client.post("/api/v1/admin/tick/run", headers=headers)
 
     assert response.status_code == 200
     body = response.json()

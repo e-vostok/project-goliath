@@ -49,9 +49,7 @@ def _jwt_problems(jwt_key: str) -> str | None:
     if not jwt_key:
         return "JWT_SECRET_KEY is not set"
     if len(jwt_key) < _JWT_MIN_LENGTH:
-        return (
-            f"JWT_SECRET_KEY is shorter than {_JWT_MIN_LENGTH} characters"
-        )
+        return f"JWT_SECRET_KEY is shorter than {_JWT_MIN_LENGTH} characters"
     if len(set(jwt_key)) == 1:
         return "JWT_SECRET_KEY consists of a single repeated character"
     lowered = jwt_key.lower()
@@ -130,6 +128,5 @@ def validate_production_environment(env: Mapping[str, str]) -> None:
     ]
     if problems:
         raise ProductionConfigError(
-            f"Refusing to start with APP_ENV={app_env}: "
-            + "; ".join(problems)
+            f"Refusing to start with APP_ENV={app_env}: " + "; ".join(problems)
         )

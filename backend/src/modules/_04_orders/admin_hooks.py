@@ -66,9 +66,7 @@ def _aware(moment: datetime) -> datetime:
 
 async def orders_state_view(session: AsyncSession) -> dict:
     """Read-only JSON snapshot of the orders world (Spec 5.7)."""
-    tz = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).tick.tick_timezone
+    tz = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).tick.tick_timezone
     now = datetime.now(timezone.utc)
 
     total = (
@@ -119,8 +117,7 @@ async def orders_state_view(session: AsyncSession) -> dict:
     # Author and judge identities (VK id, nation name) resolve through
     # the core read path — never through direct table reads (INV-O7).
     player_rows = {
-        row.player_id: row
-        for row in await PlayerService.list_for_registry(session)
+        row.player_id: row for row in await PlayerService.list_for_registry(session)
     }
 
     def _player_field(player_id: str, field: str):
@@ -129,9 +126,7 @@ async def orders_state_view(session: AsyncSession) -> dict:
 
     oldest_unassigned_at = (
         await session.execute(
-            select(func.min(Order.submitted_at)).where(
-                Order.judge_player_id.is_(None)
-            )
+            select(func.min(Order.submitted_at)).where(Order.judge_player_id.is_(None))
         )
     ).scalar_one_or_none()
 
@@ -141,9 +136,7 @@ async def orders_state_view(session: AsyncSession) -> dict:
         "orders_total": total,
         "worker_mode": get_worker_mode().value,
         "last_pass_at": (
-            None
-            if last_pass_at is None
-            else format_game_time(last_pass_at, tz)
+            None if last_pass_at is None else format_game_time(last_pass_at, tz)
         ),
         "stages": {
             OrderStage.SUBMITTED.value: submitted,
@@ -155,9 +148,7 @@ async def orders_state_view(session: AsyncSession) -> dict:
         "oldest_unassigned_age_minutes": (
             None
             if oldest_unassigned_at is None
-            else int(
-                (now - _aware(oldest_unassigned_at)).total_seconds() // 60
-            )
+            else int((now - _aware(oldest_unassigned_at)).total_seconds() // 60)
         ),
         "overdue_orders": [
             {
@@ -165,9 +156,7 @@ async def orders_state_view(session: AsyncSession) -> dict:
                 "judge_vk_user_id": judge_vk_ids.get(judge_player_id),
                 "deadline_at": format_game_time(deadline_at, tz),
             }
-            for number, deadline_at, judge_player_id in overdue_all[
-                :OVERDUE_LIST_CAP
-            ]
+            for number, deadline_at, judge_player_id in overdue_all[:OVERDUE_LIST_CAP]
         ],
         "overdue_truncated": len(overdue_all) > OVERDUE_LIST_CAP,
         "assigned_orders": [
@@ -176,15 +165,11 @@ async def orders_state_view(session: AsyncSession) -> dict:
                 "author_vk_user_id": _player_field(
                     order.author_player_id, "vk_user_id"
                 ),
-                "judge_vk_user_id": _player_field(
-                    order.judge_player_id, "vk_user_id"
-                ),
+                "judge_vk_user_id": _player_field(order.judge_player_id, "vk_user_id"),
                 "judge_nation_name": _player_field(
                     order.judge_player_id, "nation_name"
                 ),
-                "distributed_at": format_game_time(
-                    order.distributed_at, tz
-                ),
+                "distributed_at": format_game_time(order.distributed_at, tz),
                 "deadline_at": format_game_time(order.deadline_at, tz),
                 "overdue": is_overdue(order, now),
             }
@@ -202,9 +187,7 @@ async def orders_reset(session: AsyncSession) -> None:
     await session.execute(delete(Order))
 
 
-async def orders_player_delete_preview(
-    session: AsyncSession, player_id: str
-) -> dict:
+async def orders_player_delete_preview(session: AsyncSession, player_id: str) -> dict:
     """Counts of this player's orders by role for the delete-preview."""
     authored = (
         await session.execute(
@@ -240,9 +223,7 @@ async def orders_player_delete_preview(
     }
 
 
-async def orders_delete_player(
-    session: AsyncSession, player_id: str
-) -> None:
+async def orders_delete_player(session: AsyncSession, player_id: str) -> None:
     """
     Remove this module's rows of one player (admin player deletion).
 
@@ -285,12 +266,8 @@ async def orders_delete_player(
             reminder_sent_at=None,
         )
     )
-    await session.execute(
-        delete(Order).where(Order.author_player_id == player_id)
-    )
-    await session.execute(
-        delete(Order).where(Order.judge_player_id == player_id)
-    )
+    await session.execute(delete(Order).where(Order.author_player_id == player_id))
+    await session.execute(delete(Order).where(Order.judge_player_id == player_id))
 
 
 def register_orders_admin_hooks() -> None:
@@ -300,9 +277,5 @@ def register_orders_admin_hooks() -> None:
     if MODULE_SLUG not in AdminRegistry.get_reset_hooks():
         AdminRegistry.register_reset(MODULE_SLUG, orders_reset)
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
-        AdminRegistry.register_player_preview(
-            MODULE_SLUG, orders_player_delete_preview
-        )
-    register_player_delete_hook(
-        f"{MODULE_SLUG}.player_delete", orders_delete_player
-    )
+        AdminRegistry.register_player_preview(MODULE_SLUG, orders_player_delete_preview)
+    register_player_delete_hook(f"{MODULE_SLUG}.player_delete", orders_delete_player)

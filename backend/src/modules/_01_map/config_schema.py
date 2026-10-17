@@ -238,8 +238,7 @@ class LabelsSettings(_Strict):
         "(SIL OFL, WOFF2 в клиенте).",
     )
     sea_font: MapFontName = Field(
-        description="Шрифт подписей морских зон — один из шести встроенных "
-        "(map2_21).",
+        description="Шрифт подписей морских зон — один из шести встроенных (map2_21).",
     )
     land_min_px: int = Field(
         ge=6,
@@ -347,13 +346,9 @@ class LabelsSettings(_Strict):
     @model_validator(mode="after")
     def check_min_max(self) -> Self:
         if self.land_min_px > self.land_max_px:
-            raise ValueError(
-                "labels.land_min_px must not exceed labels.land_max_px"
-            )
+            raise ValueError("labels.land_min_px must not exceed labels.land_max_px")
         if self.sea_min_px > self.sea_max_px:
-            raise ValueError(
-                "labels.sea_min_px must not exceed labels.sea_max_px"
-            )
+            raise ValueError("labels.sea_min_px must not exceed labels.sea_max_px")
         return self
 
 
@@ -421,9 +416,7 @@ class StatesSettings(_Strict):
     @model_validator(mode="after")
     def check_min_max(self) -> Self:
         if self.min_px > self.max_px:
-            raise ValueError(
-                "states.min_px must not exceed states.max_px"
-            )
+            raise ValueError("states.min_px must not exceed states.max_px")
         return self
 
 

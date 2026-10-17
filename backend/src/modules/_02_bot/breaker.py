@@ -98,10 +98,7 @@ class CircuitBreaker:
             return
         if self._state != BreakerState.CLOSED or not counts:
             return
-        while (
-            self._window
-            and now - self._window[0][0] > self._window_seconds
-        ):
+        while self._window and now - self._window[0][0] > self._window_seconds:
             self._window.popleft()
         self._window.append((now, not success))
         n = len(self._window)

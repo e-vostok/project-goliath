@@ -57,8 +57,6 @@ class MapOwnershipLog(Base):
             "AND new_nation_color IS NOT NULL)",
             name="ck_log_new_nation_consistent",
         ),
-        Index(
-            "ix_map_log_province_turn", "province_id", "turn_number", "id"
-        ),
+        Index("ix_map_log_province_turn", "province_id", "turn_number", "id"),
         Index("ix_map_log_turn", "turn_number"),
     )

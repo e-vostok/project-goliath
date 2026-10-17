@@ -112,8 +112,7 @@ class BotService:
         bad_values = sorted(
             key
             for key, value in variables.items()
-            if isinstance(value, bool)
-            or not isinstance(value, (str, int))
+            if isinstance(value, bool) or not isinstance(value, (str, int))
         )
         if bad_values:
             logger.error(
@@ -134,8 +133,7 @@ class BotService:
         )
         if bad_links:
             logger.error(
-                "enqueue rejected: link variables %s of '%s' fail the "
-                "URL rules",
+                "enqueue rejected: link variables %s of '%s' fail the URL rules",
                 bad_links,
                 type_key,
             )
@@ -145,8 +143,7 @@ class BotService:
         if type_cfg is None:
             # Unreachable past startup validation; stay defensive.
             logger.error(
-                "enqueue rejected: type_key '%s' is absent from "
-                "configs/02_bot.yaml",
+                "enqueue rejected: type_key '%s' is absent from configs/02_bot.yaml",
                 type_key,
             )
             return EnqueueResult.REJECTED_INVALID
@@ -154,9 +151,7 @@ class BotService:
             return EnqueueResult.SKIPPED_TYPE_DISABLED
 
         if type_cfg.requires_nation:
-            nation = await NationService.player_nation_summary(
-                session, player_id
-            )
+            nation = await NationService.player_nation_summary(session, player_id)
             if nation is None:
                 return EnqueueResult.SKIPPED_NO_NATION
 
@@ -286,10 +281,7 @@ class BotService:
             created_at=t,
             not_before=t,
             next_attempt_at=t,
-            expires_at=t
-            + timedelta(
-                minutes=get_bot_config().dialog.reply_ttl_minutes
-            ),
+            expires_at=t + timedelta(minutes=get_bot_config().dialog.reply_ttl_minutes),
         )
         # Same SQLite-only transaction opener as enqueue (INV-B1).
         if session.bind.dialect.name == "sqlite":

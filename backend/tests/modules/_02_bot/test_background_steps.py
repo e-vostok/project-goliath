@@ -44,21 +44,23 @@ ENV = BotEnv(
 
 
 class TestReconciler:
-    async def test_unknown_folded_into_fsm(
-        self, test_db_engine, bot_config
-    ):
+    async def test_unknown_folded_into_fsm(self, test_db_engine, bot_config):
         """UNKNOWN -> ALLOWED on True, UNKNOWN -> DENIED on False,
         untouched on None; oldest checked first."""
         sf = make_session_factory(test_db_engine)
         async with sf() as session:
             oldest = await add_player(session, vk_user_id=100)
             await add_consent(
-                session, oldest.id, state="UNKNOWN",
+                session,
+                oldest.id,
+                state="UNKNOWN",
                 created_at=NOW - timedelta(hours=2),
             )
             newer = await add_player(session, vk_user_id=200)
             await add_consent(
-                session, newer.id, state="UNKNOWN",
+                session,
+                newer.id,
+                state="UNKNOWN",
                 created_at=NOW - timedelta(hours=1),
             )
             flaky = await add_player(session, vk_user_id=300)
@@ -72,7 +74,9 @@ class TestReconciler:
         fake.respond_allowed(False)
         fake.fail_timeout()
         vk = VkClient(
-            bot_config, ENV.group_token, ENV.group_id,
+            bot_config,
+            ENV.group_token,
+            ENV.group_id,
             transport=fake.transport,
         )
         limiter = TokenBucket(1000)
@@ -81,18 +85,13 @@ class TestReconciler:
 
         # The ALLOWED consent was never checked: only 3 VK calls,
         # oldest first.
-        user_ids = [
-            parse_qs(r.content.decode())["user_id"][0]
-            for r in fake.requests
-        ]
+        user_ids = [parse_qs(r.content.decode())["user_id"][0] for r in fake.requests]
         assert user_ids == ["100", "200", "300"]
 
         async with sf() as session:
             consents = {
                 row.player_id: row
-                for row in (
-                    await session.execute(select(BotConsent))
-                ).scalars()
+                for row in (await session.execute(select(BotConsent))).scalars()
             }
         assert consents[oldest.id].state == "ALLOWED"
         assert consents[oldest.id].state_source == "VK_CHECK"
@@ -102,9 +101,7 @@ class TestReconciler:
         assert consents[flaky.id].state == "UNKNOWN"
         assert consents[flaky.id].last_checked_at is None
 
-    async def test_denied_drops_pending_notifications(
-        self, test_db_engine, bot_config
-    ):
+    async def test_denied_drops_pending_notifications(self, test_db_engine, bot_config):
         """A False answer is a DENIED signal: the player's pending
         NOTIFICATION rows drop as NO_CONSENT (Spec 2.3)."""
         sf = make_session_factory(test_db_engine)
@@ -116,36 +113,38 @@ class TestReconciler:
         fake = FakeVk()
         fake.respond_allowed(False)
         vk = VkClient(
-            bot_config, ENV.group_token, ENV.group_id,
+            bot_config,
+            ENV.group_token,
+            ENV.group_id,
             transport=fake.transport,
         )
         await reconcile_step(sf, bot_config, ENV, vk, TokenBucket(1000))
         async with sf() as session:
-            row = (
-                await session.execute(select(BotOutbox))
-            ).scalar_one()
+            row = (await session.execute(select(BotOutbox))).scalar_one()
         assert row.status == "DROPPED"
         assert row.drop_reason == "NO_CONSENT"
 
 
 class TestJanitor:
-    async def test_purge_and_unstick(
-        self, test_db_engine, bot_config
-    ):
+    async def test_purge_and_unstick(self, test_db_engine, bot_config):
         sf = make_session_factory(test_db_engine)
-        old = NOW - timedelta(
-            days=bot_config.sender.purge_after_days, hours=1
-        )
+        old = NOW - timedelta(days=bot_config.sender.purge_after_days, hours=1)
         async with sf() as session:
             player = await add_member(session)
             # Old terminal rows + journal entry -> purged.
             await add_outbox(
-                session, player.id, status="SENT",
-                sent_at=old, created_at=old,
+                session,
+                player.id,
+                status="SENT",
+                sent_at=old,
+                created_at=old,
             )
             await add_outbox(
-                session, player.id, status="FAILED",
-                drop_reason="ATTEMPTS_EXHAUSTED", created_at=old,
+                session,
+                player.id,
+                status="FAILED",
+                drop_reason="ATTEMPTS_EXHAUSTED",
+                created_at=old,
             )
             session.add(
                 BotVkEvent(
@@ -156,16 +155,22 @@ class TestJanitor:
             )
             # A recent terminal row and a live lease -> kept.
             await add_outbox(
-                session, player.id, status="DROPPED",
+                session,
+                player.id,
+                status="DROPPED",
                 drop_reason="NO_CONSENT",
             )
             stuck = await add_outbox(
-                session, player.id, status="LEASED",
+                session,
+                player.id,
+                status="LEASED",
                 lease_until=NOW - timedelta(minutes=5),
                 lease_token="dead-token",
             )
             live = await add_outbox(
-                session, player.id, status="LEASED",
+                session,
+                player.id,
+                status="LEASED",
                 lease_until=NOW + timedelta(minutes=5),
                 lease_token="live-token",
             )
@@ -183,13 +188,11 @@ class TestJanitor:
         async with sf() as session:
             rows = {
                 row.id: row
-                for row in (
-                    await session.execute(select(BotOutbox))
-                ).scalars()
+                for row in (await session.execute(select(BotOutbox))).scalars()
             }
             events = (
-                await session.execute(select(BotVkEvent.event_id))
-            ).scalars().all()
+                (await session.execute(select(BotVkEvent.event_id))).scalars().all()
+            )
 
         # Two old terminal rows purged; the recent DROPPED survives
         # alongside the two lease cases.

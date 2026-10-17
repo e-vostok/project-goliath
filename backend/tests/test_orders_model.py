@@ -111,9 +111,7 @@ def test_migration_0010_up_down_up(tmp_path, monkeypatch):
     try:
         with engine.connect() as conn:
             insp = sa.inspect(conn)
-            checks = {
-                c["name"] for c in insp.get_check_constraints("orders")
-            }
+            checks = {c["name"] for c in insp.get_check_constraints("orders")}
             indexes = {i["name"] for i in insp.get_indexes("orders")}
     finally:
         engine.dispose()

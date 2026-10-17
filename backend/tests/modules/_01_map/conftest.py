@@ -35,16 +35,12 @@ from modules._01_map.hooks import register_map_hooks
 from modules._01_map.loader import load_map_data
 from modules._01_map.service import MapService
 
-FIXTURE_DIR = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "map_mini"
-)
+FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "map_mini"
 # The linked variant (extra strait 1004-1005): its land nodes
 # 1001..1007 form one connected group — the only fixture where a
 # valid Registration-2.0 starting set of exactly 5 exists.
 LINKED_FIXTURE_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures"
-    / "map_mini_linked"
+    Path(__file__).resolve().parents[2] / "fixtures" / "map_mini_linked"
 )
 REPO_ROOT = Path(__file__).resolve().parents[4]
 REAL_DATA_DIR = REPO_ROOT / "data" / "map"
@@ -75,25 +71,17 @@ def map_config(**limit_overrides: int) -> MapConfig:
     the mini-map frame, optionally with patched limits."""
     config = MapConfig.from_yaml(MapConfig.get_default_config_path())
     config = config.model_copy(
-        update={
-            "view": config.view.model_copy(update={"frame": MINI_FRAME})
-        }
+        update={"view": config.view.model_copy(update={"frame": MINI_FRAME})}
     )
     if limit_overrides:
         config = config.model_copy(
-            update={
-                "limits": config.limits.model_copy(
-                    update=limit_overrides
-                )
-            }
+            update={"limits": config.limits.model_copy(update=limit_overrides)}
         )
     return config
 
 
 def load_manifest(data_dir: Path) -> dict:
-    return json.loads(
-        (data_dir / "manifest.json").read_text(encoding="utf-8")
-    )
+    return json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
 
 
 def save_manifest(data_dir: Path, doc: dict) -> None:
@@ -105,9 +93,7 @@ def save_manifest(data_dir: Path, doc: dict) -> None:
 
 
 def load_geometry(data_dir: Path) -> dict:
-    return json.loads(
-        (data_dir / "geometry.json").read_text(encoding="utf-8")
-    )
+    return json.loads((data_dir / "geometry.json").read_text(encoding="utf-8"))
 
 
 def save_geometry(data_dir: Path, doc: dict) -> None:
@@ -119,9 +105,7 @@ def save_geometry(data_dir: Path, doc: dict) -> None:
 
 
 def load_borders(data_dir: Path) -> dict:
-    return json.loads(
-        (data_dir / "borders.json").read_text(encoding="utf-8")
-    )
+    return json.loads((data_dir / "borders.json").read_text(encoding="utf-8"))
 
 
 def save_borders(data_dir: Path, doc: dict) -> None:
@@ -133,9 +117,7 @@ def save_borders(data_dir: Path, doc: dict) -> None:
 
 
 def load_lock(data_dir: Path) -> dict:
-    return json.loads(
-        (data_dir / "ids.lock.json").read_text(encoding="utf-8")
-    )
+    return json.loads((data_dir / "ids.lock.json").read_text(encoding="utf-8"))
 
 
 def save_lock(data_dir: Path, doc: dict) -> None:
@@ -212,9 +194,7 @@ def flat_map_service(config) -> MapService:
 @pytest.fixture
 def linked_map_service(config) -> MapService:
     """MapService over the linked mini map (1001..1007 connected)."""
-    return MapService(
-        load_map_data(LINKED_FIXTURE_DIR, config), config
-    )
+    return MapService(load_map_data(LINKED_FIXTURE_DIR, config), config)
 
 
 def map_config_disconnected() -> MapConfig:
@@ -233,10 +213,7 @@ async def sync_map_nodes(session, map_service: MapService) -> None:
     """Sync a MapService's nodes into provinces via the real path."""
     await ProvinceService.ensure_nodes(
         session,
-        [
-            NodeSpec(id=node.id, kind=node.kind)
-            for node in map_service.all_nodes()
-        ],
+        [NodeSpec(id=node.id, kind=node.kind) for node in map_service.all_nodes()],
     )
 
 

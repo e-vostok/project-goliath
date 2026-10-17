@@ -42,9 +42,7 @@ CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 
 async def _set_turn(session, turn: int) -> None:
-    result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    result = await session.execute(select(GameClock).where(GameClock.id == 1))
     result.scalar_one().current_turn = turn
     await session.flush()
 
@@ -117,9 +115,7 @@ class TestOwnersAtTurnPg:
                 await owners_at_turn(session, -1)
 
     @pytest.mark.asyncio
-    async def test_records_for_province_ordering(
-        self, pg_db, flat_map_service
-    ):
+    async def test_records_for_province_ordering(self, pg_db, flat_map_service):
         async with pg_db() as session:
             await sync_map_nodes(session, flat_map_service)
             await record_changes(
@@ -165,9 +161,7 @@ class TestListenerOnPg:
             rows = (
                 (
                     await session.execute(
-                        select(MapOwnershipLog).order_by(
-                            MapOwnershipLog.id
-                        )
+                        select(MapOwnershipLog).order_by(MapOwnershipLog.id)
                     )
                 )
                 .scalars()
@@ -191,9 +185,7 @@ class TestListenerOnPg:
             rows = (
                 (
                     await session.execute(
-                        select(MapOwnershipLog).order_by(
-                            MapOwnershipLog.id
-                        )
+                        select(MapOwnershipLog).order_by(MapOwnershipLog.id)
                     )
                 )
                 .scalars()
@@ -228,9 +220,7 @@ class TestRemoveRetiredPg:
     """
 
     @pytest.mark.asyncio
-    async def test_unowned_removed_and_history_blocks(
-        self, pg_db, flat_map_service
-    ):
+    async def test_unowned_removed_and_history_blocks(self, pg_db, flat_map_service):
         # Nodes 1007/1008 pretend to be retired by a newer map version;
         # 1008 carries a journal row, 1007 does not.
         async with pg_db() as session:
@@ -251,9 +241,7 @@ class TestRemoveRetiredPg:
             await session.commit()
 
         async with pg_db() as session:
-            history = await province_ids_with_journal(
-                session, [1007, 1008]
-            )
+            history = await province_ids_with_journal(session, [1007, 1008])
             assert history == {1008}
             with pytest.raises(RetiredProvinceHistoryError) as exc_info:
                 await ProvinceService.remove_retired(
@@ -267,17 +255,13 @@ class TestRemoveRetiredPg:
             result = await ProvinceService.remove_retired(
                 session,
                 [1007],
-                history_ids=await province_ids_with_journal(
-                    session, [1007]
-                ),
+                history_ids=await province_ids_with_journal(session, [1007]),
             )
             assert result.removed == [1007]
             await session.commit()
 
         async with pg_db() as session:
-            ids = (
-                await session.execute(select(Province.id))
-            ).scalars().all()
+            ids = (await session.execute(select(Province.id))).scalars().all()
             assert 1007 not in ids
             assert 1008 in ids
             count = await session.execute(

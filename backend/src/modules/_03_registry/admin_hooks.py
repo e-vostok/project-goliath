@@ -56,9 +56,7 @@ async def registry_state_view(session: AsyncSession) -> dict:
         )
     )
     profiles = {"PENDING": 0, "OK": 0, "UNAVAILABLE": 0}
-    profiles.update(
-        {status: count for status, count in profile_rows.all()}
-    )
+    profiles.update({status: count for status, count in profile_rows.all()})
 
     last_cycle = get_last_cycle_at()
     return {
@@ -73,9 +71,7 @@ async def registry_state_view(session: AsyncSession) -> dict:
     }
 
 
-async def registry_player_delete_preview(
-    session: AsyncSession, player_id: str
-) -> dict:
+async def registry_player_delete_preview(session: AsyncSession, player_id: str) -> dict:
     """Whether the module keeps a cached VK profile for this player."""
     rows = (
         await session.execute(
@@ -87,9 +83,7 @@ async def registry_player_delete_preview(
     return {"vk_profile_rows": rows}
 
 
-async def registry_delete_player(
-    session: AsyncSession, player_id: str
-) -> None:
+async def registry_delete_player(session: AsyncSession, player_id: str) -> None:
     """
     Remove the cached VK profile of one player (admin player deletion).
 
@@ -98,9 +92,7 @@ async def registry_delete_player(
     raise rolls the whole player deletion back.
     """
     await session.execute(
-        delete(RegistryVkProfile).where(
-            RegistryVkProfile.player_id == player_id
-        )
+        delete(RegistryVkProfile).where(RegistryVkProfile.player_id == player_id)
     )
 
 
@@ -112,6 +104,4 @@ def register_registry_admin_hooks() -> None:
         AdminRegistry.register_player_preview(
             MODULE_SLUG, registry_player_delete_preview
         )
-    register_player_delete_hook(
-        f"{MODULE_SLUG}.player_delete", registry_delete_player
-    )
+    register_player_delete_hook(f"{MODULE_SLUG}.player_delete", registry_delete_player)

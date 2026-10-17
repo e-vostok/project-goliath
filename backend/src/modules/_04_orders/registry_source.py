@@ -54,9 +54,7 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
             cells={
                 "number": row.number,
                 "nation": cell_nation(row.nation_name, row.nation_color),
-                "title": cell_action_text(
-                    text=row.title, action=f"order:{row.number}"
-                ),
+                "title": cell_action_text(text=row.title, action=f"order:{row.number}"),
                 "submitted": cell_datetime(row.submitted_at, tz),
                 "distributed": cell_datetime(row.distributed_at, tz),
                 "verdict": cell_datetime(

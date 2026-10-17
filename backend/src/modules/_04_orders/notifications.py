@@ -34,12 +34,8 @@ ORDER_VERDICT_READY = "ORDER_VERDICT_READY"
 
 # The exact variable set each type promises to provide (Appendix C).
 NOTIFICATION_VARIABLES: dict[str, frozenset[str]] = {
-    ORDER_JUDGE_ASSIGNED: frozenset(
-        {"order_number", "nation_name", "order_link"}
-    ),
-    ORDER_JUDGE_REMINDER: frozenset(
-        {"order_number", "hours_left", "order_link"}
-    ),
+    ORDER_JUDGE_ASSIGNED: frozenset({"order_number", "nation_name", "order_link"}),
+    ORDER_JUDGE_REMINDER: frozenset({"order_number", "hours_left", "order_link"}),
     ORDER_DISTRIBUTED: frozenset({"order_number", "order_link"}),
     ORDER_VERDICT_READY: frozenset({"order_number", "order_link"}),
 }
@@ -169,9 +165,7 @@ async def notify_reminder(
     deadline = order.deadline_at
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=timezone.utc)
-    hours_left = max(
-        1, math.ceil((deadline - now).total_seconds() / 3600)
-    )
+    hours_left = max(1, math.ceil((deadline - now).total_seconds() / 3600))
     return await BotService.enqueue(
         session,
         type_key=ORDER_JUDGE_REMINDER,

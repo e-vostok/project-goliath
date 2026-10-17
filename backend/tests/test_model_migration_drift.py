@@ -75,9 +75,7 @@ def test_no_model_migration_drift(tmp_path, monkeypatch):
     engine = sa.create_engine(db_url)
     try:
         with engine.connect() as conn:
-            diffs = compare_metadata(
-                MigrationContext.configure(conn), Base.metadata
-            )
+            diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     finally:
         engine.dispose()
 

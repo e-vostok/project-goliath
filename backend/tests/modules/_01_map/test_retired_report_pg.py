@@ -63,9 +63,7 @@ async def _table_counts(session) -> dict[str, int]:
         ("nations", Nation),
         ("map_ownership_log", MapOwnershipLog),
     ):
-        result = await session.execute(
-            sa.select(sa.func.count()).select_from(model)
-        )
+        result = await session.execute(sa.select(sa.func.count()).select_from(model))
         counts[name] = result.scalar_one()
     return counts
 
@@ -77,9 +75,7 @@ class TestRetiredReportPg:
     ):
         async with pg_db() as session:
             await sync_map_nodes(session, flat_map_service)
-            session.add(
-                Province(id=RETIRED_ID, kind="LAND", nation_id=None)
-            )
+            session.add(Province(id=RETIRED_ID, kind="LAND", nation_id=None))
             await session.commit()
 
         code = await retired_report.run()
@@ -113,11 +109,7 @@ class TestRetiredReportPg:
                     **VALID_PROFILE,
                 )
             )
-            session.add(
-                Province(
-                    id=RETIRED_ID, kind="LAND", nation_id="nation-pg"
-                )
-            )
+            session.add(Province(id=RETIRED_ID, kind="LAND", nation_id="nation-pg"))
             # PG enforces the map_ownership_log -> provinces FK: flush
             # the row before appending its journal entries.
             await session.flush()
@@ -150,9 +142,7 @@ class TestRetiredReportPg:
         """Row counts of provinces/nations/map_ownership_log unchanged."""
         async with pg_db() as session:
             await sync_map_nodes(session, flat_map_service)
-            session.add(
-                Province(id=RETIRED_ID, kind="LAND", nation_id=None)
-            )
+            session.add(Province(id=RETIRED_ID, kind="LAND", nation_id=None))
             await session.commit()
             before = await _table_counts(session)
 

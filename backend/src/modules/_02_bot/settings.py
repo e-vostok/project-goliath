@@ -78,14 +78,11 @@ def read_bot_env(environ: Mapping[str, str] = os.environ) -> BotEnv:
         )
         _app_id_warned = True
     return BotEnv(
-        enabled=(environ.get("BOT_ENABLED") or "").strip().lower()
-        in _TRUE_VALUES,
+        enabled=(environ.get("BOT_ENABLED") or "").strip().lower() in _TRUE_VALUES,
         group_id=_nonblank(environ.get("VK_GROUP_ID")),
         group_token=_nonblank(environ.get("VK_GROUP_TOKEN")),
         callback_secret=_nonblank(environ.get("VK_CALLBACK_SECRET")),
-        callback_confirmation=_nonblank(
-            environ.get("VK_CALLBACK_CONFIRMATION")
-        ),
+        callback_confirmation=_nonblank(environ.get("VK_CALLBACK_CONFIRMATION")),
         app_id=app_id,
     )
 

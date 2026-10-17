@@ -90,9 +90,7 @@ class TestValidateLaunchParams:
         launch_params = make_launch_params(secret="wrong-secret")
 
         with pytest.raises(InvalidSignatureError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
     def test_tampered_param_raises(self):
         """Changing a vk_* param after signing invalidates the signature."""
@@ -100,9 +98,7 @@ class TestValidateLaunchParams:
         launch_params = launch_params.replace("vk_user_id=111", "vk_user_id=999")
 
         with pytest.raises(InvalidSignatureError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
     def test_expired_timestamp_raises(self):
         """A vk_ts older than the freshness window is rejected."""
@@ -111,9 +107,7 @@ class TestValidateLaunchParams:
         )
 
         with pytest.raises(TimestampExpiredError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
     def test_future_timestamp_raises(self):
         """A vk_ts in the future beyond the window is rejected."""
@@ -122,9 +116,7 @@ class TestValidateLaunchParams:
         )
 
         with pytest.raises(TimestampExpiredError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
 
 class TestJwt:

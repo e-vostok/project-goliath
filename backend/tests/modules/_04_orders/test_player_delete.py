@@ -104,9 +104,7 @@ class TestOrdersPlayerDeleteHook:
                     select(Nation).where(Nation.owner_player_id == target.id)
                 )
             ).scalar_one()
-            authored = await make_order(
-                session, target, nation=target_nation
-            )
+            authored = await make_order(session, target, nation=target_nation)
             authored_decided = await make_order(
                 session,
                 target,

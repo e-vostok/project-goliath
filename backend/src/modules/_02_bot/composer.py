@@ -21,11 +21,7 @@ from modules._02_bot.config_schema import BotConfig
 
 def _utc(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 def _age_key(row: "RowView") -> tuple[datetime, int]:
@@ -113,35 +109,21 @@ def compose(
 
     # Step 1: critical rows and dialog replies are single messages,
     # never in the daily cap and never merged.
-    critical = sorted(
-        (r for r in ready if r.priority == "critical"), key=_age_key
-    )
+    critical = sorted((r for r in ready if r.priority == "critical"), key=_age_key)
     replies = sorted(
-        (
-            r
-            for r in ready
-            if r.kind == "REPLY" and r.priority != "critical"
-        ),
+        (r for r in ready if r.kind == "REPLY" and r.priority != "critical"),
         key=_age_key,
     )
     head = [
-        ComposedMessage(
-            (row.id,), "SINGLE", row.type_key, counts_toward_cap=False
-        )
+        ComposedMessage((row.id,), "SINGLE", row.type_key, counts_toward_cap=False)
         for row in critical
     ] + [
-        ComposedMessage(
-            (row.id,), "SINGLE", row.type_key, counts_toward_cap=False
-        )
+        ComposedMessage((row.id,), "SINGLE", row.type_key, counts_toward_cap=False)
         for row in replies
     ]
 
     # Step 2: merge normal notification rows per type.
-    normal = [
-        r
-        for r in ready
-        if r.priority != "critical" and r.kind == "NOTIFICATION"
-    ]
+    normal = [r for r in ready if r.priority != "critical" and r.kind == "NOTIFICATION"]
     by_type: dict[str, list[RowView]] = {}
     for row in normal:
         by_type.setdefault(row.type_key, []).append(row)
@@ -156,9 +138,7 @@ def compose(
 
         if merge == "never":
             rest.extend(
-                ComposedMessage(
-                    (row.id,), "SINGLE", type_key, counts_toward_cap
-                )
+                ComposedMessage((row.id,), "SINGLE", type_key, counts_toward_cap)
                 for row in type_rows
             )
         elif merge == "always":
@@ -186,18 +166,13 @@ def compose(
             single_rows = type_rows[:free]
             remainder = type_rows[free:]
             rest.extend(
-                ComposedMessage(
-                    (row.id,), "SINGLE", type_key, counts_toward_cap
-                )
+                ComposedMessage((row.id,), "SINGLE", type_key, counts_toward_cap)
                 for row in single_rows
             )
             if remainder:
                 window = timedelta(minutes=type_cfg.window_minutes)
                 last_batch = history.last_batch_at.get(type_key)
-                if (
-                    last_batch is not None
-                    and _utc(last_batch) + window > now
-                ):
+                if last_batch is not None and _utc(last_batch) + window > now:
                     resume = _utc(last_batch) + window
                     for row in remainder:
                         deferred[row.id] = resume
@@ -234,10 +209,7 @@ def compose(
         for m in collapsed:
             counts[m.type_key] = counts.get(m.type_key, 0) + 1
             oldest = min(_age_key(rows_by_id[i]) for i in m.row_ids)
-            if (
-                m.type_key not in oldest_by_type
-                or oldest < oldest_by_type[m.type_key]
-            ):
+            if m.type_key not in oldest_by_type or oldest < oldest_by_type[m.type_key]:
                 oldest_by_type[m.type_key] = oldest
         ordered_types = sorted(counts, key=oldest_by_type.__getitem__)
         passing.append(
@@ -246,9 +218,7 @@ def compose(
                 "SUMMARY",
                 None,
                 counts_toward_cap=True,
-                collapsed_counts=tuple(
-                    (k, counts[k]) for k in ordered_types
-                ),
+                collapsed_counts=tuple((k, counts[k]) for k in ordered_types),
             )
         )
     # free_slots == 0: none of the capped messages go, none deferred —

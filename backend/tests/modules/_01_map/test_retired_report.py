@@ -123,9 +123,7 @@ def _journal_row(province_id: int, turn: int) -> MapOwnershipLog:
 
 class TestReady:
     @pytest.mark.asyncio
-    async def test_clean_db_with_active_nodes(
-        self, report_db, mini_map_env, capsys
-    ):
+    async def test_clean_db_with_active_nodes(self, report_db, mini_map_env, capsys):
         async with _session(report_db) as session:
             await _seed_active_nodes(session)
             await session.commit()
@@ -146,12 +144,8 @@ class TestReady:
     ):
         async with _session(report_db) as session:
             await _seed_active_nodes(session)
-            session.add(
-                Province(id=RETIRED_LAND, kind="LAND", nation_id=None)
-            )
-            session.add(
-                Province(id=RETIRED_SEA, kind="SEA", nation_id=None)
-            )
+            session.add(Province(id=RETIRED_LAND, kind="LAND", nation_id=None))
+            session.add(Province(id=RETIRED_SEA, kind="SEA", nation_id=None))
             await session.commit()
 
         code = await retired_report.run()
@@ -213,9 +207,7 @@ class TestStop:
     ):
         async with _session(report_db) as session:
             await _seed_active_nodes(session)
-            session.add(
-                Province(id=RETIRED_LAND, kind="LAND", nation_id=None)
-            )
+            session.add(Province(id=RETIRED_LAND, kind="LAND", nation_id=None))
             session.add(_journal_row(RETIRED_LAND, 3))
             session.add(_journal_row(RETIRED_LAND, 7))
             await session.commit()
@@ -230,15 +222,11 @@ class TestStop:
         assert "RETIRED_PROVINCE_HISTORY" in out
 
     @pytest.mark.asyncio
-    async def test_unknown_extra_row_stops(
-        self, report_db, mini_map_env, capsys
-    ):
+    async def test_unknown_extra_row_stops(self, report_db, mini_map_env, capsys):
         """A row whose id is in neither manifest nor lock — INV_M5."""
         async with _session(report_db) as session:
             await _seed_active_nodes(session)
-            session.add(
-                Province(id=UNKNOWN_ID, kind="LAND", nation_id=None)
-            )
+            session.add(Province(id=UNKNOWN_ID, kind="LAND", nation_id=None))
             await session.commit()
 
         code = await retired_report.run()
@@ -271,9 +259,7 @@ class TestStop:
 
 class TestReadOnly:
     @pytest.mark.asyncio
-    async def test_row_counts_unchanged(
-        self, report_db, retired_map_env, capsys
-    ):
+    async def test_row_counts_unchanged(self, report_db, retired_map_env, capsys):
         """Seeded rows survive the report byte-for-byte — it is SELECT-only."""
         async with _session(report_db) as session:
             await _seed_active_nodes(session)
@@ -302,9 +288,7 @@ class TestReadOnly:
                     nation_id="nation-ro",
                 )
             )
-            session.add(
-                Province(id=RETIRED_SEA, kind="SEA", nation_id=None)
-            )
+            session.add(Province(id=RETIRED_SEA, kind="SEA", nation_id=None))
             session.add(_journal_row(RETIRED_LAND, 5))
             await session.commit()
 
@@ -313,18 +297,20 @@ class TestReadOnly:
         after = await _table_counts(report_db)
 
         assert code == retired_report.EXIT_STOP
-        assert before == after == {
-            "provinces": 12,
-            "nations": 1,
-            "map_ownership_log": 1,
-        }
+        assert (
+            before
+            == after
+            == {
+                "provinces": 12,
+                "nations": 1,
+                "map_ownership_log": 1,
+            }
+        )
         async with _session(report_db) as session:
             assert await session.get(Province, RETIRED_LAND) is not None
 
 
-def test_main_entrypoint(
-    tmp_path, monkeypatch, mini_map_config, capsys
-):
+def test_main_entrypoint(tmp_path, monkeypatch, mini_map_config, capsys):
     """python -m path: sync main() wraps asyncio.run(run())."""
     db_file = tmp_path / "cli.db"
     url = f"sqlite+aiosqlite:///{db_file.as_posix()}"

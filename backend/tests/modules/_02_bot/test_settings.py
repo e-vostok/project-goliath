@@ -27,9 +27,7 @@ class TestReadBotEnv:
         assert env.group_id is None
         assert env.group_token is None
 
-    def test_enabled_truthy_variants(
-        self, bot_isolation, bot_off_env, monkeypatch
-    ):
+    def test_enabled_truthy_variants(self, bot_isolation, bot_off_env, monkeypatch):
         monkeypatch.setenv("BOT_ENABLED", "Yes")
         assert read_bot_env().enabled is True
         monkeypatch.setenv("BOT_ENABLED", "0")
@@ -50,9 +48,7 @@ class TestReadBotEnv:
         with caplog.at_level(logging.WARNING):
             assert read_bot_env().app_id is None
             assert read_bot_env().app_id is None
-        warnings = [
-            r for r in caplog.records if "VK_APP_ID" in r.getMessage()
-        ]
+        warnings = [r for r in caplog.records if "VK_APP_ID" in r.getMessage()]
         assert len(warnings) == 1
 
 
@@ -70,9 +66,7 @@ class TestGetBotMode:
         assert mode == BotMode.MISCONFIGURED
         assert is_bot_active() is False
         critical = [
-            r.getMessage()
-            for r in caplog.records
-            if r.levelno >= logging.CRITICAL
+            r.getMessage() for r in caplog.records if r.levelno >= logging.CRITICAL
         ]
         assert len(critical) == 1
         assert "VK_GROUP_ID" in critical[0]
@@ -88,9 +82,7 @@ class TestGetBotMode:
         assert get_bot_mode() == BotMode.RUNNING
         assert is_bot_active() is True
 
-    def test_running_flag_does_not_wake_disabled_bot(
-        self, bot_isolation, bot_off_env
-    ):
+    def test_running_flag_does_not_wake_disabled_bot(self, bot_isolation, bot_off_env):
         set_runtime_running(True)
         assert get_bot_mode() == BotMode.OFF
         assert is_bot_active() is False

@@ -53,9 +53,7 @@ _bot_config: BotConfig | None = None
 def get_bot_config() -> BotConfig:
     """The config loaded by :func:`startup_bot`; raises before it ran."""
     if _bot_config is None:
-        raise RuntimeError(
-            "BotConfig is not loaded — startup_bot() has not run"
-        )
+        raise RuntimeError("BotConfig is not loaded — startup_bot() has not run")
     return _bot_config
 
 

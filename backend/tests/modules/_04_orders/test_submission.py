@@ -68,9 +68,7 @@ class TestSubmitService:
 
         assert outcome.created is True
         assert outcome.view.number == 1
-        row = (
-            await test_db_session.execute(select(Order))
-        ).scalar_one()
+        row = (await test_db_session.execute(select(Order))).scalar_one()
         assert row.number == 1
         assert row.author_player_id == player.id
         # INV-O6: the snapshot columns carry the nation's identity.
@@ -111,9 +109,7 @@ class TestSubmitService:
         assert view.nation_name == "Старое Имя"
         assert view.nation_color == "#336699"
 
-    async def test_submit_without_nation_refused(
-        self, test_db_session, orders_started
-    ):
+    async def test_submit_without_nation_refused(self, test_db_session, orders_started):
         player = PlayerFactory.build(vk_user_id=770003, nations=[])
         test_db_session.add(player)
         await test_db_session.flush()
@@ -155,9 +151,7 @@ class TestSubmitService:
         test_db_session.add(judge)
         await test_db_session.flush()
         written = [
-            await make_order(
-                test_db_session, author, nation=nation, judge=judge
-            )
+            await make_order(test_db_session, author, nation=nation, judge=judge)
             for _ in range(5)
         ]
 
@@ -203,9 +197,7 @@ class TestSubmitHttp:
         headers = bearer_headers(player.id)
         request_id = str(uuid.uuid4())
 
-        first = await client.post(
-            ORDERS_URL, json=_body(request_id), headers=headers
-        )
+        first = await client.post(ORDERS_URL, json=_body(request_id), headers=headers)
         assert first.status_code == 201
         assert first.headers["cache-control"] == "no-store"
         body = first.json()
@@ -225,24 +217,16 @@ class TestSubmitHttp:
         }
 
         # INV-O9: the idempotent repeat answers 200 with the same order.
-        repeat = await client.post(
-            ORDERS_URL, json=_body(request_id), headers=headers
-        )
+        repeat = await client.post(ORDERS_URL, json=_body(request_id), headers=headers)
         assert repeat.status_code == 200
         assert repeat.json() == body
-        count = await test_db_session.scalar(
-            select(func.count()).select_from(Order)
-        )
+        count = await test_db_session.scalar(select(func.count()).select_from(Order))
         assert count == 1
 
-        detail = await client.get(
-            f"{ORDERS_URL}/1", headers=headers
-        )
+        detail = await client.get(f"{ORDERS_URL}/1", headers=headers)
         assert detail.status_code == 200
         assert detail.json() == body
 
-        missing = await client.get(
-            f"{ORDERS_URL}/99", headers=headers
-        )
+        missing = await client.get(f"{ORDERS_URL}/99", headers=headers)
         assert missing.status_code == 404
         assert missing.json()["code"] == "ORDER_NOT_FOUND"

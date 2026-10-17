@@ -89,18 +89,14 @@ def _nation_body(name: str = "Государство Тестовое") -> dict:
 
 async def _outbox_rows(engine) -> list[BotOutbox]:
     async with make_session_factory(engine)() as session:
-        return list(
-            (await session.execute(select(BotOutbox))).scalars().all()
-        )
+        return list((await session.execute(select(BotOutbox))).scalars().all())
 
 
 async def _consent(engine, player_id: str) -> BotConsent | None:
     async with make_session_factory(engine)() as session:
         return (
             await session.execute(
-                select(BotConsent).where(
-                    BotConsent.player_id == player_id
-                )
+                select(BotConsent).where(BotConsent.player_id == player_id)
             )
         ).scalar_one_or_none()
 
@@ -268,9 +264,7 @@ class TestNationCreatedHook:
             await real_enqueue_reply(session, **kwargs)
             raise RuntimeError("injected hook failure")
 
-        monkeypatch.setattr(
-            BotService, "enqueue_reply", staticmethod(_boom)
-        )
+        monkeypatch.setattr(BotService, "enqueue_reply", staticmethod(_boom))
 
         player = await seed_player(test_db_session, vk_user_id=770007)
         await add_consent(test_db_session, player.id, state="ALLOWED")

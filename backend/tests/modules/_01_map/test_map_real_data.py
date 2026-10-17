@@ -40,10 +40,7 @@ def real_service() -> MapService:
     elapsed = time.perf_counter() - t0
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
-    print(
-        f"\nreal map load: {elapsed:.2f}s, "
-        f"peak tracemalloc {peak / 1e6:.1f} MB"
-    )
+    print(f"\nreal map load: {elapsed:.2f}s, peak tracemalloc {peak / 1e6:.1f} MB")
     assert elapsed < 30.0, f"map load took {elapsed:.1f}s"
     return MapService(data, config)
 
@@ -90,17 +87,13 @@ def test_real_group_and_path_plausible(real_service):
     data = real_service.map_data
 
     # two known LAND provinces joined by a land edge
-    land_edge = next(
-        e for e in data.edges.values() if e.type == "land"
-    )
+    land_edge = next(e for e in data.edges.values() if e.type == "land")
     a, b = land_edge.a, land_edge.b
     assert real_service.is_group_connected([a, b])
     assert real_service.is_group_connected([a])
 
     # a land pair separated by a strait is a connected starting group
-    strait = next(
-        e for e in data.edges.values() if e.type == "strait"
-    )
+    strait = next(e for e in data.edges.values() if e.type == "strait")
     assert real_service.is_group_connected([strait.a, strait.b])
 
     # a land node and a sea zone can never form a legal group
@@ -119,7 +112,4 @@ def test_real_group_and_path_plausible(real_service):
     res = real_service.shortest_path(first, last, lambda e: 1.0)
     assert res is not None
     assert res.nodes[0] == first and res.nodes[-1] == last
-    print(
-        f"  path 1001 -> 2123: {len(res.nodes)} nodes, "
-        f"cost {res.total_cost}"
-    )
+    print(f"  path 1001 -> 2123: {len(res.nodes)} nodes, cost {res.total_cost}")

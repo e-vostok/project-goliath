@@ -195,9 +195,7 @@ def test_frame_outside_view_box_rejected(mini_dir):
         update={
             "view": base.view.model_copy(
                 update={
-                    "frame": FrameConfig(
-                        x=519.1, y=20.9, width=221.3, height=217.3
-                    )
+                    "frame": FrameConfig(x=519.1, y=20.9, width=221.3, height=217.3)
                 }
             )
         }
@@ -212,9 +210,7 @@ def test_frame_outside_view_box_rejected(mini_dir):
 
 
 def test_bad_node_key_charset(mini_dir):
-    _mutate_manifest(
-        mini_dir, lambda d: d["nodes"][0].update(key="Bad-Key")
-    )
+    _mutate_manifest(mini_dir, lambda d: d["nodes"][0].update(key="Bad-Key"))
     _expect(mini_dir, SCHEMA_INVALID)
 
 
@@ -227,9 +223,7 @@ def test_bad_path_characters(mini_dir):
 
 
 def test_non_numeric_path_key(mini_dir):
-    _mutate_geometry(
-        mini_dir, lambda d: d["paths"].update({"abc": "M 0 0 Z"})
-    )
+    _mutate_geometry(mini_dir, lambda d: d["paths"].update({"abc": "M 0 0 Z"}))
     _expect(mini_dir, SCHEMA_INVALID)
 
 
@@ -267,9 +261,7 @@ def test_inv_m1_id_mismatch(mini_dir):
 
 
 def test_inv_m1_duplicate_key_in_manifest(mini_dir):
-    _mutate_manifest(
-        mini_dir, lambda d: d["nodes"].append(dict(d["nodes"][1]))
-    )
+    _mutate_manifest(mini_dir, lambda d: d["nodes"].append(dict(d["nodes"][1])))
     _expect(mini_dir, INV_M1)
 
 
@@ -284,9 +276,7 @@ def test_inv_m1_duplicate_id_in_manifest(mini_dir):
 
 
 def test_inv_m1_duplicate_id_in_lock(mini_dir):
-    _mutate_lock(
-        mini_dir, lambda d: d["ids"].update({"extra_zone": 1002})
-    )
+    _mutate_lock(mini_dir, lambda d: d["ids"].update({"extra_zone": 1002}))
     _expect(mini_dir, INV_M1)
 
 
@@ -300,9 +290,7 @@ def test_inv_m1_sea_key_without_prefix(mini_dir):
     _mutate_manifest(mini_dir, mut)
     _mutate_lock(
         mini_dir,
-        lambda d: d["ids"].update(
-            {"mini_north": d["ids"].pop("sea_mini_north")}
-        ),
+        lambda d: d["ids"].update({"mini_north": d["ids"].pop("sea_mini_north")}),
     )
     _expect(mini_dir, INV_M1)
 
@@ -317,9 +305,7 @@ def test_inv_m1_land_key_with_sea_prefix(mini_dir):
     _mutate_manifest(mini_dir, mut)
     _mutate_lock(
         mini_dir,
-        lambda d: d["ids"].update(
-            {"sea_beta": d["ids"].pop("mini_beta")}
-        ),
+        lambda d: d["ids"].update({"sea_beta": d["ids"].pop("mini_beta")}),
     )
     _expect(mini_dir, INV_M1)
 
@@ -328,9 +314,7 @@ def test_inv_m1_land_key_with_sea_prefix(mini_dir):
 
 
 def _edge(doc, a, b):
-    return next(
-        e for e in doc["edges"] if e["a"] == a and e["b"] == b
-    )
+    return next(e for e in doc["edges"] if e["a"] == a and e["b"] == b)
 
 
 def test_inv_m2_edge_a_greater_than_b(mini_dir):
@@ -352,6 +336,7 @@ def test_inv_m2_duplicated_pair(mini_dir):
 
 def test_inv_m2_duplicated_pair_reversed(mini_dir):
     """The same pair as (a,b) and (b,a): a>b also fires — same code."""
+
     def mut(d):
         e = dict(_edge(d, 1001, 1002))
         e["a"], e["b"] = e["b"], e["a"]
@@ -364,9 +349,7 @@ def test_inv_m2_duplicated_pair_reversed(mini_dir):
 def test_inv_m2_unknown_endpoint(mini_dir):
     _mutate_manifest(
         mini_dir,
-        lambda d: d["edges"].append(
-            {"a": 1001, "b": 1999, "type": "land", "len": 1.0}
-        ),
+        lambda d: d["edges"].append({"a": 1001, "b": 1999, "type": "land", "len": 1.0}),
     )
     _expect(mini_dir, INV_M2)
 
@@ -374,9 +357,7 @@ def test_inv_m2_unknown_endpoint(mini_dir):
 def test_inv_m2_loop(mini_dir):
     _mutate_manifest(
         mini_dir,
-        lambda d: d["edges"].append(
-            {"a": 1001, "b": 1001, "type": "land", "len": 1.0}
-        ),
+        lambda d: d["edges"].append({"a": 1001, "b": 1001, "type": "land", "len": 1.0}),
     )
     _expect(mini_dir, INV_M2)
 
@@ -394,9 +375,7 @@ def test_inv_m2_coast_between_two_land(mini_dir):
 def test_inv_m2_sea_between_land_and_sea(mini_dir):
     _mutate_manifest(
         mini_dir,
-        lambda d: d["edges"].append(
-            {"a": 1003, "b": 2001, "type": "sea", "len": 1.0}
-        ),
+        lambda d: d["edges"].append({"a": 1003, "b": 2001, "type": "sea", "len": 1.0}),
     )
     _expect(mini_dir, INV_M2)
 
@@ -511,9 +490,7 @@ def test_inv_m6_extra_path(mini_dir):
 
 
 def test_inv_m6_manifest_version_tampered(mini_dir):
-    _mutate_manifest(
-        mini_dir, lambda d: d.update(geometry_version="000000000000")
-    )
+    _mutate_manifest(mini_dir, lambda d: d.update(geometry_version="000000000000"))
     _expect(mini_dir, INV_M6)
 
 

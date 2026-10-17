@@ -124,9 +124,7 @@ class BotOutbox(Base):
     last_error_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
-        CheckConstraint(
-            "kind IN ('NOTIFICATION','REPLY')", name="ck_bot_outbox_kind"
-        ),
+        CheckConstraint("kind IN ('NOTIFICATION','REPLY')", name="ck_bot_outbox_kind"),
         CheckConstraint(
             "priority IN ('critical','normal')",
             name="ck_bot_outbox_priority",
@@ -139,9 +137,7 @@ class BotOutbox(Base):
             "player_id", "type_key", "event_key", name="uq_bot_outbox_dedup"
         ),
         Index("ix_bot_outbox_ready", "status", "next_attempt_at"),
-        Index(
-            "ix_bot_outbox_player_status", "player_id", "status", "sent_at"
-        ),
+        Index("ix_bot_outbox_player_status", "player_id", "status", "sent_at"),
     )
 
 
@@ -164,9 +160,7 @@ class BotVkEvent(Base):
         DateTime(timezone=True), nullable=False
     )
 
-    __table_args__ = (
-        UniqueConstraint("event_id", name="uq_bot_vk_events_event_id"),
-    )
+    __table_args__ = (UniqueConstraint("event_id", name="uq_bot_vk_events_event_id"),)
 
 
 class BotState(Base):
@@ -179,6 +173,4 @@ class BotState(Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
-    __table_args__ = (
-        CheckConstraint("id = 1", name="ck_bot_state_singleton"),
-    )
+    __table_args__ = (CheckConstraint("id = 1", name="ck_bot_state_singleton"),)

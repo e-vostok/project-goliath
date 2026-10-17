@@ -62,20 +62,14 @@ async def digest_watcher_step(
         return
     turn = snapshot.current_turn
 
-    core_config = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    )
+    core_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     enqueued_any = False
     async with session_factory() as session:
         async with session.begin():
             if await _claim_turn(session, turn):
-                await _enqueue_digests(
-                    session, snapshot, core_config, turn
-                )
+                await _enqueue_digests(session, snapshot, core_config, turn)
                 enqueued_any = True
-            await _maybe_enqueue_deadline(
-                session, snapshot, config, turn, t
-            )
+            await _maybe_enqueue_deadline(session, snapshot, config, turn, t)
     if enqueued_any:
         request_wake()
 
@@ -94,9 +88,7 @@ async def _claim_turn(session: AsyncSession, turn: int) -> bool:
     if result.rowcount > 0:
         return True
     existing = (
-        await session.execute(
-            select(BotState.id).where(BotState.id == 1)
-        )
+        await session.execute(select(BotState.id).where(BotState.id == 1))
     ).scalar_one_or_none()
     if existing is not None:
         return False
@@ -116,22 +108,20 @@ async def _enqueue_digests(
 ) -> None:
     """One TICK_DIGEST row per (nation owner ∩ consent ALLOWED)."""
     player_ids = (
-        await session.execute(
-            select(BotConsent.player_id).where(
-                BotConsent.state == "ALLOWED"
+        (
+            await session.execute(
+                select(BotConsent.player_id).where(BotConsent.state == "ALLOWED")
             )
         )
-    ).scalars().all()
-    game_date = format_game_date(
-        compute_game_date(turn, core_config), core_config
+        .scalars()
+        .all()
     )
-    next_tick_time = format_game_time(
-        snapshot.next_tick_at, core_config.tick.tick_timezone
-    ) or "—"
+    game_date = format_game_date(compute_game_date(turn, core_config), core_config)
+    next_tick_time = (
+        format_game_time(snapshot.next_tick_at, core_config.tick.tick_timezone) or "—"
+    )
     for player_id in player_ids:
-        nation = await NationService.player_nation_summary(
-            session, player_id
-        )
+        nation = await NationService.player_nation_summary(session, player_id)
         if nation is None:
             continue
         await BotService.enqueue(
@@ -192,9 +182,7 @@ async def _maybe_enqueue_deadline(
         audience |= await provider(session, turn)
     if not audience:
         return
-    hours_left = max(
-        1, math.ceil((next_tick_at - now).total_seconds() / 3600)
-    )
+    hours_left = max(1, math.ceil((next_tick_at - now).total_seconds() / 3600))
     for player_id in audience:
         await BotService.enqueue(
             session,

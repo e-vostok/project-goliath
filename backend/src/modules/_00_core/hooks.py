@@ -96,16 +96,12 @@ class OwnershipChange:
     turn: int
 
 
-OwnershipListener = Callable[
-    [AsyncSession, Sequence[OwnershipChange]], Awaitable[None]
-]
+OwnershipListener = Callable[[AsyncSession, Sequence[OwnershipChange]], Awaitable[None]]
 
 # A check receives the already-loaded province rows (existence and
 # freedom were verified by core before any stage runs) and raises a
 # domain error carrying ``code``/``message`` to reject the registration.
-RegistrationCheck = Callable[
-    [AsyncSession, Sequence["Province"]], Awaitable[None]
-]
+RegistrationCheck = Callable[[AsyncSession, Sequence["Province"]], Awaitable[None]]
 # STAGE_BEFORE_ALL checks run before the provinces are loaded, so they
 # see the registering player instead: signature ``(session, player_id)``.
 BeforeAllCheck = Callable[[AsyncSession, str], Awaitable[None]]
@@ -128,9 +124,7 @@ _nation_created_hooks: dict[str, NationCreatedHook] = {}
 _player_delete_hooks: dict[str, PlayerDeleteHook] = {}
 
 
-def register_ownership_listener(
-    name: str, listener: OwnershipListener
-) -> None:
+def register_ownership_listener(name: str, listener: OwnershipListener) -> None:
     """
     Register ``listener`` under ``name``; the same name re-registers
     (replaces) instead of raising — startup is re-run per lifespan boot.
@@ -168,9 +162,7 @@ def get_registration_checks(
     return dict(_registration_checks[stage])
 
 
-def register_nation_created_hook(
-    name: str, hook: NationCreatedHook
-) -> None:
+def register_nation_created_hook(name: str, hook: NationCreatedHook) -> None:
     """
     Register ``hook`` under ``name``; the same name re-registers
     (replaces) instead of raising — startup is re-run per lifespan boot.
@@ -186,9 +178,7 @@ def get_nation_created_hooks() -> dict[str, NationCreatedHook]:
     return dict(_nation_created_hooks)
 
 
-def register_player_delete_hook(
-    name: str, hook: PlayerDeleteHook
-) -> None:
+def register_player_delete_hook(name: str, hook: PlayerDeleteHook) -> None:
     """
     Register ``hook`` under ``name``; the same name re-registers
     (replaces) instead of raising — startup is re-run per lifespan boot.

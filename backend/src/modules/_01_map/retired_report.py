@@ -118,10 +118,7 @@ class RetiredReport:
     def ok(self) -> bool:
         """True when nothing would abort the startup sync."""
         return not (
-            self.owned
-            or self.journal
-            or self.unknown_extra
-            or self.kind_mismatch
+            self.owned or self.journal or self.unknown_extra or self.kind_mismatch
         )
 
     @property
@@ -145,9 +142,7 @@ async def collect_report(
     writes, never commits — the caller rolls the session back.
     """
     retired = set(map_data.retired_ids)
-    rows = (
-        await session.execute(select(Province.id, Province.kind))
-    ).all()
+    rows = (await session.execute(select(Province.id, Province.kind))).all()
     db_kinds = {row[0]: row[1] for row in rows}
 
     present = sorted(retired & set(db_kinds))
@@ -163,9 +158,7 @@ async def collect_report(
             )
         ).all()
         owned = [
-            OwnedRetired(row[0], row[1], row[2])
-            for row in rows
-            if row[1] is not None
+            OwnedRetired(row[0], row[1], row[2]) for row in rows if row[1] is not None
         ]
         stats = (
             await session.execute(
@@ -180,9 +173,7 @@ async def collect_report(
                 .order_by(MapOwnershipLog.province_id)
             )
         ).all()
-        journal = [
-            JournalStat(row[0], row[1], row[2], row[3]) for row in stats
-        ]
+        journal = [JournalStat(row[0], row[1], row[2], row[3]) for row in stats]
 
     nodes = map_data.nodes
     missing = sorted(set(nodes) - set(db_kinds))
@@ -221,9 +212,7 @@ def _rows_word(n: int) -> str:
     """Russian plural of 'строка' for the verdict line."""
     if 10 < n % 100 < 20:
         return "строк"
-    return {1: "строка", 2: "строки", 3: "строки", 4: "строки"}.get(
-        n % 10, "строк"
-    )
+    return {1: "строка", 2: "строки", 3: "строки", 4: "строки"}.get(n % 10, "строк")
 
 
 def format_report(report: RetiredReport) -> list[str]:
@@ -238,8 +227,7 @@ def format_report(report: RetiredReport) -> list[str]:
         f"Версия геометрии: {r.geometry_version}",
         f"Узлов в manifest.json: {r.manifest_total} "
         f"(LAND: {r.manifest_land}, SEA: {r.manifest_sea})",
-        f"Выведенных id в ids.lock.json (нет в manifest.json): "
-        f"{len(r.retired_ids)}",
+        f"Выведенных id в ids.lock.json (нет в manifest.json): {len(r.retired_ids)}",
         f"Строк в таблице provinces: {r.provinces_total}",
         f"Узлов манифеста ещё нет в базе: {len(r.missing_manifest)} "
         "(будут созданы при запуске)",
@@ -254,8 +242,7 @@ def format_report(report: RetiredReport) -> list[str]:
     )
     if r.owned:
         lines.append(
-            "  ПРИНАДЛЕЖАТ НАЦИЯМ — запуск остановится "
-            "(RETIRED_PROVINCE_OWNED):"
+            "  ПРИНАДЛЕЖАТ НАЦИЯМ — запуск остановится (RETIRED_PROVINCE_OWNED):"
         )
         for o in r.owned:
             lines.append(
@@ -274,9 +261,7 @@ def format_report(report: RetiredReport) -> list[str]:
                 f"{j.turn_min}–{j.turn_max}"
             )
     if r.unknown_extra:
-        shown = ", ".join(
-            str(i) for i in r.unknown_extra[:_MAX_LISTED]
-        )
+        shown = ", ".join(str(i) for i in r.unknown_extra[:_MAX_LISTED])
         if len(r.unknown_extra) > _MAX_LISTED:
             shown += f" и ещё {len(r.unknown_extra) - _MAX_LISTED}"
         lines.append(
@@ -285,20 +270,13 @@ def format_report(report: RetiredReport) -> list[str]:
         )
         lines.append(f"  {shown}")
     if r.kind_mismatch:
-        lines.append(
-            "Тип узла в базе не совпадает с manifest.json (INV_M5):"
-        )
-        for node_id, db_kind, manifest_kind in r.kind_mismatch[
-            :_MAX_LISTED
-        ]:
+        lines.append("Тип узла в базе не совпадает с manifest.json (INV_M5):")
+        for node_id, db_kind, manifest_kind in r.kind_mismatch[:_MAX_LISTED]:
             lines.append(
-                f"  id {node_id}: в базе {db_kind}, "
-                f"в manifest.json {manifest_kind}"
+                f"  id {node_id}: в базе {db_kind}, в manifest.json {manifest_kind}"
             )
         if len(r.kind_mismatch) > _MAX_LISTED:
-            lines.append(
-                f"  ... и ещё {len(r.kind_mismatch) - _MAX_LISTED}"
-            )
+            lines.append(f"  ... и ещё {len(r.kind_mismatch) - _MAX_LISTED}")
 
     lines.append("")
     if r.ok:
@@ -321,8 +299,7 @@ def format_report(report: RetiredReport) -> list[str]:
             )
         if r.unknown_extra:
             lines.append(
-                f"  - посторонних строк в provinces: "
-                f"{len(r.unknown_extra)} (INV_M5)"
+                f"  - посторонних строк в provinces: {len(r.unknown_extra)} (INV_M5)"
             )
         if r.kind_mismatch:
             lines.append(
@@ -352,16 +329,12 @@ async def run() -> int:
 
     # MapData carries retired ids but not their keys — re-read the lock
     # (already validated by load_map_data) for the display names.
-    lock_doc = json.loads(
-        (data_dir / _IDS_LOCK).read_text(encoding="utf-8")
-    )
+    lock_doc = json.loads((data_dir / _IDS_LOCK).read_text(encoding="utf-8"))
     key_by_id = {i: k for k, i in lock_doc["ids"].items()}
 
     engine = create_async_engine(url)
     try:
-        maker = async_sessionmaker(
-            engine, class_=AsyncSession, expire_on_commit=False
-        )
+        maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with maker() as session:
             report = await collect_report(
                 session,

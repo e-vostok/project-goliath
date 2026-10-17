@@ -111,9 +111,7 @@ class TestEnsureNodesInsert:
         assert second.extra_in_db == []
         assert await _province_count(test_db_session) == 1
 
-    async def test_empty_input_reports_existing_rows_as_extra(
-        self, test_db_session
-    ):
+    async def test_empty_input_reports_existing_rows_as_extra(self, test_db_session):
         await make_land_province(test_db_session, id=1001)
 
         result = await ProvinceService.ensure_nodes(test_db_session, [])
@@ -125,9 +123,7 @@ class TestEnsureNodesInsert:
 
 
 class TestEnsureNodesMismatchAndExtra:
-    async def test_kind_mismatch_is_reported_not_changed(
-        self, test_db_session
-    ):
+    async def test_kind_mismatch_is_reported_not_changed(self, test_db_session):
         await make_land_province(test_db_session, id=1001)
 
         result = await ProvinceService.ensure_nodes(
@@ -140,9 +136,7 @@ class TestEnsureNodesMismatchAndExtra:
         # The existing row keeps its original kind.
         assert await _kind_of(test_db_session, 1001) == "LAND"
 
-    async def test_extra_db_row_is_reported_not_deleted(
-        self, test_db_session
-    ):
+    async def test_extra_db_row_is_reported_not_deleted(self, test_db_session):
         await make_land_province(test_db_session, id=1001)
         await make_sea_province(test_db_session, id=2001)
 
@@ -175,9 +169,7 @@ class TestEnsureNodesMismatchAndExtra:
 
 
 class TestEnsureNodesValidation:
-    async def test_duplicate_ids_raise_and_write_nothing(
-        self, test_db_session
-    ):
+    async def test_duplicate_ids_raise_and_write_nothing(self, test_db_session):
         nodes = [
             NodeSpec(id=1001, kind="LAND"),
             NodeSpec(id=1001, kind="SEA"),
@@ -188,9 +180,7 @@ class TestEnsureNodesValidation:
 
         assert await _province_count(test_db_session) == 0
 
-    async def test_invalid_kind_raises_and_writes_nothing(
-        self, test_db_session
-    ):
+    async def test_invalid_kind_raises_and_writes_nothing(self, test_db_session):
         nodes = [
             NodeSpec(id=1001, kind="LAND"),
             NodeSpec(id=1002, kind="XXX"),  # type: ignore[arg-type]
@@ -201,9 +191,7 @@ class TestEnsureNodesValidation:
 
         assert await _province_count(test_db_session) == 0
 
-    async def test_province_with_nation_is_never_touched(
-        self, test_db_session
-    ):
+    async def test_province_with_nation_is_never_touched(self, test_db_session):
         """An owned province with a matching kind is 'existing', not
         'added' — ensure_nodes must not strip ownership."""
         import uuid as _uuid
@@ -246,8 +234,7 @@ class TestEnsureNodesPerformance:
         """1123 nodes — the real manifest size — in a couple of
         statements, not per-row round trips (generous time bound)."""
         nodes = [
-            NodeSpec(id=3000 + i, kind="LAND" if i % 10 else "SEA")
-            for i in range(1123)
+            NodeSpec(id=3000 + i, kind="LAND" if i % 10 else "SEA") for i in range(1123)
         ]
 
         start = time.monotonic()
@@ -272,9 +259,7 @@ class TestEnsureNodesPerformance:
 
         event.listen(test_db_engine.sync_engine, "before_cursor_execute", count_stmt)
         try:
-            nodes = [
-                NodeSpec(id=5000 + i, kind="LAND") for i in range(1123)
-            ]
+            nodes = [NodeSpec(id=5000 + i, kind="LAND") for i in range(1123)]
             await ProvinceService.ensure_nodes(test_db_session, nodes)
         finally:
             event.remove(
@@ -300,12 +285,8 @@ class TestRemoveRetired:
         assert result == RetiredRemovalResult()
         assert await _province_count(test_db_session) == 0
 
-    async def test_absent_ids_are_reported_not_inserted(
-        self, test_db_session
-    ):
-        result = await ProvinceService.remove_retired(
-            test_db_session, [1001, 1002]
-        )
+    async def test_absent_ids_are_reported_not_inserted(self, test_db_session):
+        result = await ProvinceService.remove_retired(test_db_session, [1001, 1002])
 
         assert result.removed == []
         assert result.absent == [1001, 1002]
@@ -324,9 +305,7 @@ class TestRemoveRetired:
         assert result.absent == [3000]
         assert await _province_ids(test_db_session) == [1002]
 
-    async def test_owned_row_is_fatal_with_nation_list(
-        self, test_db_session
-    ):
+    async def test_owned_row_is_fatal_with_nation_list(self, test_db_session):
         await _make_owned_province(test_db_session, 1001)
 
         with pytest.raises(RetiredProvinceOwnedError) as exc_info:
@@ -338,9 +317,7 @@ class TestRemoveRetired:
         # The row survives — the caller's transaction is untouched.
         assert await _province_ids(test_db_session) == [1001]
 
-    async def test_owned_error_wins_over_history(
-        self, test_db_session
-    ):
+    async def test_owned_error_wins_over_history(self, test_db_session):
         """An owned retired row reports ownership, not journal history —
         the spec's error takes precedence."""
         await _make_owned_province(test_db_session, 1001)
@@ -350,9 +327,7 @@ class TestRemoveRetired:
                 test_db_session, [1001], history_ids={1001}
             )
 
-    async def test_history_ids_block_unowned_delete(
-        self, test_db_session
-    ):
+    async def test_history_ids_block_unowned_delete(self, test_db_session):
         """An unowned retired row carrying journal history aborts the
         boot — deleting it would violate the FK or orphan the journal."""
         await make_land_province(test_db_session, id=1001)
@@ -366,9 +341,7 @@ class TestRemoveRetired:
         assert exc_info.value.details["province_ids"] == [1001]
         assert await _province_ids(test_db_session) == [1001]
 
-    async def test_history_for_absent_id_is_ignored(
-        self, test_db_session
-    ):
+    async def test_history_for_absent_id_is_ignored(self, test_db_session):
         result = await ProvinceService.remove_retired(
             test_db_session, [1001], history_ids={1001}
         )

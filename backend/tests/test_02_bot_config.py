@@ -25,9 +25,7 @@ from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
 
 def _load_raw() -> dict:
     """The real ``configs/02_bot.yaml`` as a plain dict."""
-    with open(
-        BotConfig.get_default_config_path(), encoding="utf-8"
-    ) as f:
+    with open(BotConfig.get_default_config_path(), encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -55,9 +53,7 @@ class TestRealConfig:
             os.path.join("backend", "tests"),
         ],
     )
-    def test_default_path_resolves_from_any_cwd(
-        self, tmp_path, monkeypatch, cwd_name
-    ):
+    def test_default_path_resolves_from_any_cwd(self, tmp_path, monkeypatch, cwd_name):
         """get_default_config_path is resolved relative to the schema
         file, so loading works from src/ and tests/ alike."""
         from pathlib import Path
@@ -112,9 +108,7 @@ class TestRejects:
     def test_critical_type_cannot_merge(self):
         """priority=critical forbids merge != never (RED_ALERT)."""
         self._expect_error(
-            lambda d: d["types"]["RED_ALERT"].__setitem__(
-                "merge", "always"
-            ),
+            lambda d: d["types"]["RED_ALERT"].__setitem__("merge", "always"),
             "merge",
         )
 

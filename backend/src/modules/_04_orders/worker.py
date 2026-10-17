@@ -102,9 +102,7 @@ class OrdersWorker:
         if self._task is not None:
             return
         install_wake_event(self._wake)
-        self._task = asyncio.create_task(
-            self._loop(), name="orders-retry"
-        )
+        self._task = asyncio.create_task(self._loop(), name="orders-retry")
         _mode = WorkerMode.RUNNING
 
     async def stop(self) -> None:
@@ -149,9 +147,7 @@ class OrdersWorker:
             failures = 0
             _last_pass_at = datetime.now(timezone.utc)
             try:
-                await asyncio.wait_for(
-                    self._wake.wait(), timeout=interval_seconds
-                )
+                await asyncio.wait_for(self._wake.wait(), timeout=interval_seconds)
             except asyncio.TimeoutError:
                 pass
             self._wake.clear()
@@ -170,8 +166,6 @@ async def start_orders_worker_if_ready(
     # import would cycle (startup -> admin_hooks -> worker).
     from modules._04_orders.startup import get_orders_config
 
-    worker = OrdersWorker(
-        get_orders_config().distribution, session_factory
-    )
+    worker = OrdersWorker(get_orders_config().distribution, session_factory)
     await worker.start()
     return worker

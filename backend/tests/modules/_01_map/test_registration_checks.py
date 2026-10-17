@@ -109,9 +109,7 @@ class TestRegistrationChecks:
         assert "ещё 1" in err.message
 
     @pytest.mark.asyncio
-    async def test_disconnected_group_rejected(
-        self, map_db_session, map_hooks
-    ):
+    async def test_disconnected_group_rejected(self, map_db_session, map_hooks):
         """Five land nodes across two components — {1001..1004} + the
         coast-only 1008 — pass the count check but fail connectivity."""
         player = await _player(map_db_session, 102)
@@ -127,15 +125,11 @@ class TestRegistrationChecks:
         assert exc_info.value.details == {"component_count": 2}
 
     @pytest.mark.asyncio
-    async def test_strait_group_accepted(
-        self, linked_map_db_session, linked_map_hooks
-    ):
+    async def test_strait_group_accepted(self, linked_map_db_session, linked_map_hooks):
         """1001..1005 join through the 1004-1005 strait — accepted."""
         player = await _player(linked_map_db_session, 103)
 
-        nation = await _create(
-            linked_map_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _create(linked_map_db_session, player, list(STARTING_GROUP))
 
         assert nation.id is not None
 
@@ -161,16 +155,12 @@ class TestRegistrationChecks:
         register_map_hooks(flat_map_service, config)
         player = await _player(map_db_session, 105)
 
-        nation = await _create(
-            map_db_session, player, [1001, 1002, 1003, 1004, 1008]
-        )
+        nation = await _create(map_db_session, player, [1001, 1002, 1003, 1004, 1008])
 
         assert nation.id is not None
 
     @pytest.mark.asyncio
-    async def test_sea_error_beats_connectivity(
-        self, map_db_session, map_hooks
-    ):
+    async def test_sea_error_beats_connectivity(self, map_db_session, map_hooks):
         """2001 (sea) + 1005 (disconnected from 1001's group): the
         after_free check runs first — PROVINCE_NOT_LAND wins."""
         player = await _player(map_db_session, 106)
@@ -179,9 +169,7 @@ class TestRegistrationChecks:
             await _create(map_db_session, player, [1001, 2001, 1005])
 
     @pytest.mark.asyncio
-    async def test_nonexistent_id_beats_map_checks(
-        self, map_db_session, map_hooks
-    ):
+    async def test_nonexistent_id_beats_map_checks(self, map_db_session, map_hooks):
         player = await _player(map_db_session, 107)
 
         with pytest.raises(ProvinceNotFoundError):
@@ -208,9 +196,7 @@ class TestRegistrationChecks:
             )
 
     @pytest.mark.asyncio
-    async def test_count_beats_connectivity(
-        self, map_db_session, map_hooks
-    ):
+    async def test_count_beats_connectivity(self, map_db_session, map_hooks):
         """Six provinces AND disconnected — the count check sits in
         core between the two stages, so it fires first."""
         player = await _player(map_db_session, 110)

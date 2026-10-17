@@ -60,9 +60,7 @@ async def _consent_durable(engine, player_id: str) -> BotConsent:
     async with make_session_factory(engine)() as session:
         return (
             await session.execute(
-                select(BotConsent).where(
-                    BotConsent.player_id == player_id
-                )
+                select(BotConsent).where(BotConsent.player_id == player_id)
             )
         ).scalar_one()
 

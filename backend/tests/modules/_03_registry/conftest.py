@@ -54,17 +54,13 @@ def registry_isolation(monkeypatch):
     )
     monkeypatch.setattr(profile_worker_module, "_last_cycle_at", None)
     monkeypatch.setattr(profile_worker_module, "_no_token_warned", False)
-    monkeypatch.setattr(
-        profile_worker_module, "_invalid_token_logged", False
-    )
+    monkeypatch.setattr(profile_worker_module, "_invalid_token_logged", False)
     profile_worker_module.install_wake_event(None)
     yield
     registry_module.clear_registry()
     profile_worker_module.install_wake_event(None)
     for source in saved_sources.values():
-        registry_module.register_table_source(
-            source.key, source.provides, source.load
-        )
+        registry_module.register_table_source(source.key, source.provides, source.load)
     AdminRegistry._state_view_hooks.clear()
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.clear()
@@ -109,14 +105,13 @@ def jwt_secret(monkeypatch):
 @pytest_asyncio.fixture
 async def client(test_db_session):
     """HTTP client bound to the real app, backed by the test session."""
+
     async def _override_get_session():
         yield test_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
