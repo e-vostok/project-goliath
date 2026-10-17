@@ -5,7 +5,11 @@ Admin hooks of module 04_orders (Spec 5.7).
   overdue count, the unassigned count and the oldest unassigned age in
   minutes, the worker mode (``RUNNING``/``STOPPED``) and the moment of
   its last finished pass, plus the overdue orders list
-  ``[{number, judge_vk_user_id, deadline_at}]`` (up to 50). The judge's
+  ``[{number, judge_vk_user_id, deadline_at}]`` (up to 50) and the
+  assigned orders list ``[{number, author_vk_user_id,
+  judge_vk_user_id, judge_nation_name, distributed_at, deadline_at,
+  overdue}]`` — every judged-but-undecided order, newest number first,
+  up to 50 (``assigned_truncated`` flags the rest). The judge's
   ``vk_user_id`` lives **only here** — the admin endpoints are for the
   administrator alone, so INV-O5 relaxes just for this view (Spec 5.7).
   Times are ``YYYY-MM-DD HH:MM:SS`` strings in ``tick.tick_timezone``
@@ -29,11 +33,12 @@ from core.admin.registry import AdminRegistry
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.service import PlayerService
 from modules._00_core.tick_schedule import format_game_time
-from modules._04_orders.models import Order, OrderStage
+from modules._04_orders.models import Order, OrderStage, is_overdue
 from modules._04_orders.worker import get_last_pass_at, get_worker_mode
 
 MODULE_SLUG = "04_orders"
 OVERDUE_LIST_CAP = 50
+ASSIGNED_LIST_CAP = 50
 
 
 def _aware(moment: datetime) -> datetime:
@@ -85,6 +90,27 @@ async def orders_state_view(session: AsyncSession) -> dict:
         session, {row[2] for row in overdue_all if row[2] is not None}
     )
 
+    assigned_rows = await session.execute(
+        select(Order)
+        .where(
+            Order.judge_player_id.is_not(None),
+            Order.verdict_at.is_(None),
+        )
+        .order_by(Order.number.desc())
+    )
+    assigned_all = assigned_rows.scalars().all()
+
+    # Author and judge identities (VK id, nation name) resolve through
+    # the core read path — never through direct table reads (INV-O7).
+    player_rows = {
+        row.player_id: row
+        for row in await PlayerService.list_for_registry(session)
+    }
+
+    def _player_field(player_id: str, field: str):
+        row = player_rows.get(player_id)
+        return getattr(row, field) if row is not None else None
+
     oldest_unassigned_at = (
         await session.execute(
             select(func.min(Order.submitted_at)).where(
@@ -128,6 +154,27 @@ async def orders_state_view(session: AsyncSession) -> dict:
             ]
         ],
         "overdue_truncated": len(overdue_all) > OVERDUE_LIST_CAP,
+        "assigned_orders": [
+            {
+                "number": order.number,
+                "author_vk_user_id": _player_field(
+                    order.author_player_id, "vk_user_id"
+                ),
+                "judge_vk_user_id": _player_field(
+                    order.judge_player_id, "vk_user_id"
+                ),
+                "judge_nation_name": _player_field(
+                    order.judge_player_id, "nation_name"
+                ),
+                "distributed_at": format_game_time(
+                    order.distributed_at, tz
+                ),
+                "deadline_at": format_game_time(order.deadline_at, tz),
+                "overdue": is_overdue(order, now),
+            }
+            for order in assigned_all[:ASSIGNED_LIST_CAP]
+        ],
+        "assigned_truncated": len(assigned_all) > ASSIGNED_LIST_CAP,
     }
 
 
