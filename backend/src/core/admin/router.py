@@ -1,14 +1,24 @@
 """
 HTTP API router for the admin panel.
 
-Five endpoints, all gated by require_admin (prefix /api/v1/admin):
-GET /me, GET /state, GET /tick-log, POST /tick/run, POST /state/reset.
+Seven endpoints, all gated by require_admin (prefix /api/v1/admin):
+GET /me, GET /state, GET /tick-log, POST /tick/run, POST /state/reset,
+GET /players/{vk_user_id}/delete-preview and
+POST /players/{vk_user_id}/delete.
 
 The router owns no module tables: state views and resets are delegated to
 module-provided hooks in AdminRegistry; the only table it touches directly
 is the read-only tick_log audit trail. A manual tick reuses
 core.tick.scheduler.run_scheduled_tick on a FRESH session — the same code
 path the automatic scheduler takes — so no tick logic is duplicated here.
+
+Player deletion is the exceptional test-player cleanup tool: the preview
+aggregates every module's PlayerPreviewHook into a fixed-shape "what will
+disappear" response, and the delete itself goes through
+PlayerService.delete_player — one transaction, all-or-nothing — after
+three guards: the retyped confirm_vk_user_id must match the path id, the
+target may not be the caller's own player, and may not be on the admin
+allowlist at all. A WARNING audit line is logged per deletion.
 """
 
 from __future__ import annotations
@@ -23,14 +33,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.registry import AdminRegistry
-from core.admin.security import require_admin
+from core.admin.security import is_admin_vk_user, require_admin
 from core.db import get_session, get_session_context
 from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.config_schema import CoreConfig
-from modules._00_core.exceptions import CoreDomainError
+from modules._00_core.exceptions import CoreDomainError, PlayerNotFoundError
 from modules._00_core.models import GameClock, Player, TickLog
 from modules._00_core.router import GameClockNotFoundError
+from modules._00_core.service import PlayerService
 from modules._00_core.tick_schedule import format_game_time
 
 logger = logging.getLogger(__name__)
@@ -91,6 +102,51 @@ class ResetDisabledError(CoreDomainError):
         )
 
 
+class ConfirmationMismatchError(CoreDomainError):
+    """
+    The retyped ``confirm_vk_user_id`` does not match the path's
+    ``vk_user_id`` — the irreversible deletion must never happen by
+    accident, so the two must agree exactly.
+    """
+
+    def __init__(self):
+        super().__init__(
+            "confirm_vk_user_id does not match the target's vk_user_id",
+            "CONFIRMATION_MISMATCH",
+        )
+
+
+class CannotDeleteSelfError(CoreDomainError):
+    """An administrator may not delete their own player."""
+
+    def __init__(self):
+        super().__init__(
+            "An administrator cannot delete their own player",
+            "CANNOT_DELETE_SELF",
+        )
+
+
+class CannotDeleteAdminError(CoreDomainError):
+    """Players whose VK id is on the admin allowlist are never deletable."""
+
+    def __init__(self):
+        super().__init__(
+            "Players on the admin allowlist cannot be deleted",
+            "CANNOT_DELETE_ADMIN",
+        )
+
+
+class PlayerDeleteFailedError(CoreDomainError):
+    """Raised when the delete transaction throws; maps to a 500."""
+
+    def __init__(self, cause: Exception):
+        super().__init__(
+            "Player deletion failed and rolled back: "
+            f"{type(cause).__name__}: {cause}",
+            "PLAYER_DELETE_FAILED",
+        )
+
+
 def _reset_allowed() -> bool:
     """
     Read ADMIN_ALLOW_RESET at REQUEST time (never import time), so the
@@ -107,6 +163,17 @@ class StateResetRequest(BaseModel):
 
     confirm: Any = None
     module_slug: str | None = None
+
+
+class PlayerDeleteRequest(BaseModel):
+    """
+    Body for POST /players/{vk_user_id}/delete: the administrator retypes
+    the target's VK id, which must equal the path's ``vk_user_id``
+    exactly (compared as trimmed strings, so int and str JSON forms both
+    work). Anything else is a CONFIRMATION_MISMATCH.
+    """
+
+    confirm_vk_user_id: Any = None
 
 
 def _tick_log_dict(row: TickLog, tz_name: str) -> dict:
@@ -278,3 +345,117 @@ async def admin_state_reset(
 
     await session.commit()
     return {"reset": plan}
+
+
+async def _load_player_by_vk_id(
+    session: AsyncSession, vk_user_id: int
+) -> Player:
+    """The target's player row or 404 PLAYER_NOT_FOUND."""
+    result = await session.execute(
+        select(Player).where(Player.vk_user_id == vk_user_id)
+    )
+    player = result.scalar_one_or_none()
+    if player is None:
+        raise PlayerNotFoundError(f"vk_user_id={vk_user_id}")
+    return player
+
+
+async def _player_delete_preview(
+    session: AsyncSession, player: Player
+) -> dict:
+    """
+    The fixed-shape delete-preview response for one player.
+
+    Starts from zeroed defaults, then merges every registered module's
+    PlayerPreviewHook fragment — the response contract below is the API,
+    the fragments are how each module reports its own share. A failing
+    fragment propagates: a wrong preview must never authorize a real
+    deletion.
+    """
+    preview: dict[str, Any] = {
+        "vk_user_id": player.vk_user_id,
+        "nation_name": None,
+        "provinces_released": 0,
+        "orders_author": 0,
+        "orders_judge_undecided": 0,
+        "orders_judge_decided": 0,
+        "outbox_rows": 0,
+        "consent_rows": 0,
+        "vk_profile_rows": 0,
+    }
+    for preview_hook in AdminRegistry.get_player_preview_hooks().values():
+        fragment = await preview_hook(session, player.id)
+        preview.update(fragment)
+    return preview
+
+
+@router.get("/players/{vk_user_id}/delete-preview")
+async def admin_player_delete_preview(
+    vk_user_id: int,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    What deleting this player would remove — read-only, never commits.
+
+    The counts come from the same module hooks' preview halves as the
+    real deletion, so a positive preview is an honest statement of the
+    destructive operation. 404 PLAYER_NOT_FOUND for unknown targets.
+    """
+    player = await _load_player_by_vk_id(session, vk_user_id)
+    return await _player_delete_preview(session, player)
+
+
+@router.post("/players/{vk_user_id}/delete")
+async def admin_player_delete(
+    vk_user_id: int,
+    body: PlayerDeleteRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Delete a player and everything tied to them — irreversible.
+
+    Guards, in order: the target must exist (404); it may not be the
+    caller's own player (409 CANNOT_DELETE_SELF) nor any allowlisted
+    admin (409 CANNOT_DELETE_ADMIN); the retyped confirm_vk_user_id must
+    match the path id (422 CONFIRMATION_MISMATCH).
+
+    The deletion itself is PlayerService.delete_player on the request
+    session — one transaction, all-or-nothing: nation deletion
+    (provinces freed, journal written), every module's player-delete
+    hook, then the players row. Any failure rolls everything back and
+    answers 500 PLAYER_DELETE_FAILED. One WARNING audit line logs the
+    admin's vk id, the target's vk id and the deletion counts.
+    """
+    player = await _load_player_by_vk_id(session, vk_user_id)
+
+    if player.vk_user_id == admin.vk_user_id:
+        raise CannotDeleteSelfError()
+    if is_admin_vk_user(player.vk_user_id):
+        raise CannotDeleteAdminError()
+    if (
+        body.confirm_vk_user_id is None
+        or str(body.confirm_vk_user_id).strip() != str(vk_user_id)
+    ):
+        raise ConfirmationMismatchError()
+
+    preview = await _player_delete_preview(session, player)
+    try:
+        await PlayerService.delete_player(session, player.id)
+    except Exception as exc:
+        await session.rollback()
+        logger.exception(
+            "Admin player delete failed for vk_user_id %s", vk_user_id
+        )
+        raise PlayerDeleteFailedError(exc) from exc
+
+    await session.commit()
+    logger.warning(
+        "admin_player_delete admin_vk_user_id=%s target_vk_user_id=%s "
+        "counts=%s",
+        admin.vk_user_id,
+        vk_user_id,
+        preview,
+    )
+    return preview

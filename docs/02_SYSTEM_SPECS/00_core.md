@@ -52,7 +52,7 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 | Поле          | Тип                        | Ограничения                                                 |
 | ------------- | -------------------------- | ----------------------------------------------------------- |
 | `id`          | UUID                       | PK                                                          |
-| `nation_id`   | UUID                       | FK → `nations.id`, NOT NULL                                 |
+| `nation_id`   | UUID                       | FK → `nations.id`, NULLABLE, `ON DELETE SET NULL` (миграция 0004: при удалении государства строка остаётся осиротевшей исторической записью) |
 | `module_slug` | VARCHAR(50)                | NOT NULL — какой модуль владеет актом                       |
 | `action_type` | VARCHAR(50)                | NOT NULL — тип акта внутри модуля                           |
 | `payload`     | JSONB                      | NOT NULL — данные акта, интерпретируются модулем-владельцем |
@@ -162,7 +162,7 @@ class TickPhase(IntEnum):
 
 ### 3.8 Точки расширения для модулей-сателлитов (extension points)
 
-Ядро никогда не импортирует модули-сателлиты: зависимость односторонняя. Чтобы сателлит мог встроиться в операции ядра, `00_core` владеет двумя именованными реестрами (реализация — `modules/_00_core/hooks.py`), которые сателлиты заполняют при старте приложения.
+Ядро никогда не импортирует модули-сателлиты: зависимость односторонняя. Чтобы сателлит мог встроиться в операции ядра, `00_core` владеет именованными реестрами (реализация — `modules/_00_core/hooks.py`), которые сателлиты заполняют при старте приложения.
 
 **Реестр слушателей смены владельца провинции.**
 
@@ -174,6 +174,11 @@ class TickPhase(IntEnum):
 
 - `NationService.create` выполняет проверки сателлитов на двух стадиях полного порядка Части 2/Части 5: `after_free` — сразу после проверки существования и свободы провинций, до проверки количества; `after_count` — сразу после проверки количества, до записи строки государства.
 - Проверка получает `AsyncSession` и загруженные строки `provinces`; отказ — доменное исключение со стабильным `code` и русским `message` (HTTP-статус — таблица соответствия в `main.py`, отсутствующий код → 500). Порядок вызова внутри стадии — порядок регистрации.
+
+**Реестр хуков удаления игрока.**
+
+- `register_player_delete_hook(name, fn)` — хук получает `(session, player_id)` и удаляет только строки собственного модуля этого игрока (инвариант суверенности данных); коммитить нельзя.
+- `PlayerService.delete_player(session, player_id)` — админский инструмент для удаления тестовых игроков, необратимо. Всё выполняется в **одной транзакции** вызывающего кода (сервис не коммитит): (1) `NationService.delete` для государства игрока, если оно есть — провинции освобождаются, `scheduled_actions` сиротеют, записи об освобождении пишутся в журнал через `notify_ownership_changed` той же транзакцией; (2) все зарегистрированные хуки удаления в порядке регистрации — в отличие от хуков `nation_created`, SAVEPOINT на хук **нет**: ошибка любого хука откатывает удаление целиком (все-или-ничего); (3) строка `players`. Явные DELETE хуков — не запасной вариант: SQLite-тесты могут работать без включённых внешних ключей, поэтому каскады FK остаются лишь страховкой для PostgreSQL. Игрок не найден → `PLAYER_NOT_FOUND`. Удалённый пользователь ВК, снова открывший приложение, получает нового игрока через `get_or_create` — удаление не является баном.
 
 **Общие правила реестров.**
 
@@ -198,9 +203,14 @@ $$
 
 **Игровая дата:**
 $$
-D_{game} = D_{epoch} + \lfloor N_{turn} \times R_{days} \rfloor
+M_{total} = Y_{epoch} \times 12 + (m_{epoch} - 1) + N_{turn} \times R_{months}
 $$
-где $D_{epoch}$ = `calendar_epoch_start_date`, $N_{turn}$ = `game_clock.current_turn`, $R_{days}$ = `calendar_days_per_turn`. Округление вниз — защитный паттерн на случай, если `R_days` станет дробным в будущих ревизиях; при целочисленном конфиге эффекта не даёт.
+$$
+D_{game} = \mathrm{date}\bigl(\lfloor M_{total} / 12 \rfloor,\; M_{total} \bmod 12 + 1,\; 1\bigr)
+$$
+где $D_{epoch}$ = `calendar.epoch_start_date` (схема требует первое число месяца, поэтому день результата всегда 1), $N_{turn}$ = `game_clock.current_turn`, $R_{months}$ = `calendar.months_per_turn`. Округление не нужно — все операнды целые; отрицательный $N_{turn}$ — `ValueError`, а итог за пределами `date.max` прижимается к `9999-12-01` вместо ошибки. Первый ход ($N_{turn} = 0$, в том числе сразу после сброса мира) — январь 2040 года.
+
+Игроку дата показывается как `дд.месяц.гггг` с месяцем словом: `format_game_date` подставляет название из `calendar.month_names` (ровно 12 имён, январь первым, без дублей) — `01.январь.2040`, `01.февраль.2040`, `01.январь.2041` (ход 12). В JSON дата остаётся ISO в `game_date`, текстовая форма приезжает отдельным полем `game_date_text`.
 
 **Свежесть `vk_ts` (Session Auth):**
 $$
@@ -259,8 +269,8 @@ $$
 | `nation.leader_title_max_length`      | int             | символы       | 1   | 100  | **60**           |
 | `nation.history_url_max_length`       | int             | символы       | 30  | 2000 | **200**          |
 | `nation.history_url_allowed_hosts`    | list[str]       | имена хостов  | 1 элемент | 10 элементов | **["vk.com", "vk.ru"]** |
-| `calendar.epoch_start_date`           | date (ISO 8601) | —             | —   | —    | **"0001-01-01"** |
-| `calendar.days_per_turn`              | int             | игровые сутки | 1   | 365  | **7**            |
+| `calendar.epoch_start_date`           | date (ISO 8601, день = 1) | —   | —   | —    | **"2040-01-01"** |
+| `calendar.months_per_turn`            | int             | игровые месяцы | 1  | 12   | **3**            |
 
 `tick_interval_hours=24` и `vk_ts_freshness_window_minutes=30` — не мои предположения, а уже зафиксированные в `README.md` («суточный ход») и `development_workflow.md` («свежестью ≤ 30 минут») значения; я их перенёс без изменений. С переходом на суточный тик в фиксированное локальное время `tick_interval_hours` остаётся в конфиге только для миграции 0001 (посев первого `next_tick_at` на свежей БД) — планировщик и `finalize_tick()` используют `tick_time`/`tick_timezone`. `tick.retry_delay_seconds` — пауза перед повторной попыткой тика после сбоя.
 
@@ -302,7 +312,8 @@ NationRulesDTO    = { name_min_length: int, name_max_length: int,
                       history_url_max_length: int, history_url_allowed_hosts: list[str],
                       min_provinces: int, max_provinces: int }                                      # значения из конфига, для подсказок в форме
 ProvinceDTO       = { id: int, nation_id: UUID | None }
-GameClockDTO      = { current_turn: int, game_date: str, next_tick_at: datetime }
+GameClockDTO      = { current_turn: int, game_date: str, game_date_text: str, next_tick_at: datetime }
+                                                                                             # game_date — ISO; game_date_text — «дд.месяц.гггг»
 ErrorResponse      = { detail: str, code: str }
 ```
 

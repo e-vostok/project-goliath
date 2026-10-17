@@ -154,6 +154,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
+    saved_previews = AdminRegistry.get_player_preview_hooks()
     saved_handlers = {
         phase: list(handlers)
         for phase, handlers in TickOrchestrator._handlers.items()
@@ -173,6 +174,8 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.clear()
     AdminRegistry._reset_hooks.update(saved_resets)
+    AdminRegistry._player_preview_hooks.clear()
+    AdminRegistry._player_preview_hooks.update(saved_previews)
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved_handlers)
     TickOrchestrator._finalize_callback = saved_finalize
@@ -328,8 +331,17 @@ class TestAdminState:
 
         assert response.status_code == 200
         modules = response.json()["modules"]
-        # 02_bot registers its state view in the lifespan since Issue 2.
-        assert list(modules) == ["00_core", "02_bot"]
+        # 02_bot registers its state view in the lifespan since Issue 2;
+        # 03_registry registers its own since its Issue 2; 04_orders
+        # registers its own at startup_orders() since its Issue 4.
+        assert list(modules) == [
+            "00_core", "02_bot", "03_registry", "04_orders"
+        ]
+        orders = modules["04_orders"]
+        assert orders["orders_total"] == 0
+        assert orders["stages"] == {
+            "SUBMITTED": 0, "DISTRIBUTED": 0, "VERDICT": 0
+        }
         core = modules["00_core"]
         assert core["clock"]["current_turn"] == 0
         assert core["clock"]["next_tick_at"] is not None
@@ -674,10 +686,13 @@ class TestAdminStateReset:
         )
 
         assert response.status_code == 200
-        # 02_bot's queue reset runs first (reverse registration order:
-        # 02_bot registered last in the lifespan), then 01_map's
-        # journal hook, then 00_core wipes the world.
-        assert response.json() == {"reset": ["02_bot", "01_map", "00_core"]}
+        # Reverse registration order: 04_orders registered last in the
+        # lifespan (startup_orders) so its orders wipe runs first, then
+        # 02_bot's queue reset, then 01_map's journal hook, then
+        # 00_core wipes the world.
+        assert response.json() == {
+            "reset": ["04_orders", "02_bot", "01_map", "00_core"]
+        }
 
         me = await live_client.get("/api/v1/nations/me", headers=headers)
         assert me.status_code == 404
@@ -738,11 +753,12 @@ class TestAdminStateReset:
         )
 
         assert response.status_code == 200
-        # Registration order: 00_core, 01_map, 02_bot (lifespan),
-        # mod_a, mod_b -> executed reversed.
+        # Registration order: 00_core, 01_map, 02_bot, 04_orders
+        # (lifespan), mod_a, mod_b -> executed reversed.
         assert response.json()["reset"] == [
             "mod_b",
             "mod_a",
+            "04_orders",
             "02_bot",
             "01_map",
             "00_core",

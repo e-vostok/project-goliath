@@ -77,6 +77,7 @@ export interface ProvinceDTO {
 export interface GameClockDTO {
   current_turn: number;
   game_date: string;
+  game_date_text: string;
   next_tick_at: string;
 }
 
@@ -119,6 +120,23 @@ export interface AdminTickRunResultDTO {
 /** POST /admin/state/reset result — module slugs that were reset. */
 export interface AdminResetResultDTO {
   reset: string[];
+}
+
+/**
+ * GET /admin/players/{vk_user_id}/delete-preview and the matching POST
+ * /delete result — the fixed-shape "what disappears with this player"
+ * counts assembled from every module's preview hook.
+ */
+export interface AdminPlayerDeleteResultDTO {
+  vk_user_id: number;
+  nation_name: string | null;
+  provinces_released: number;
+  orders_author: number;
+  orders_judge_undecided: number;
+  orders_judge_decided: number;
+  outbox_rows: number;
+  consent_rows: number;
+  vk_profile_rows: number;
 }
 
 /** Error codes emitted by 00_core (Spec Part 5 + router-internal codes). */

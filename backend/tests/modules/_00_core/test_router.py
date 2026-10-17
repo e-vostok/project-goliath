@@ -13,7 +13,7 @@ import hashlib
 import hmac
 import time
 import urllib.parse
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -111,6 +111,7 @@ async def seed_nation(
         # legacy=True simulates a pre-migration row (NULL profile, INV-7).
         **({} if legacy else VALID_PROFILE),
         created_at=datetime.now(timezone.utc),
+        created_turn=0,
     )
     session.add(nation)
     await session.flush()
@@ -708,12 +709,11 @@ class TestGameClockEndpoint:
     async def test_game_clock_returns_derived_date(
         self, client, test_db_session
     ):
-        """game_date must match the Part 3 formula for a known turn."""
+        """game_date at turn 0 is the calendar epoch — January 2040."""
         player = await seed_player(test_db_session)
-        current_turn = 10
         next_tick = datetime.now(timezone.utc) + timedelta(hours=24)
         test_db_session.add(
-            GameClock(id=1, current_turn=current_turn, next_tick_at=next_tick)
+            GameClock(id=1, current_turn=0, next_tick_at=next_tick)
         )
         await test_db_session.flush()
 
@@ -723,11 +723,9 @@ class TestGameClockEndpoint:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["current_turn"] == current_turn
-        expected_date = CORE_CONFIG.calendar.epoch_start_date + timedelta(
-            days=current_turn * CORE_CONFIG.calendar.days_per_turn
-        )
-        assert body["game_date"] == expected_date.isoformat()
+        assert body["current_turn"] == 0
+        assert body["game_date"] == "2040-01-01"
+        assert body["game_date_text"] == "01.январь.2040"
 
 
 class TestAuthRequired:

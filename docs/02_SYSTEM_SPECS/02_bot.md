@@ -253,9 +253,9 @@ stateDiagram-v2
 Шаги (в транзакции вызывающего):
 
 1. Бот выключен → `SKIPPED_BOT_OFF` (без записи).
-2. Тип не зарегистрирован, набор переменных не совпадает с зарегистрированным, значение не `str|int` → ошибка в журнал, `REJECTED_INVALID`.
+2. Тип не зарегистрирован, набор переменных не совпадает с зарегистрированным, значение не `str|int`, переменная `*_link` не проходит проверку ссылки (п. 4.9) → ошибка в журнал, `REJECTED_INVALID`.
 3. Тип выключен в конфиге → `SKIPPED_TYPE_DISABLED`.
-4. У игрока нет государства или согласие ≠ `ALLOWED` (для типов с `requires_consent`) → `SKIPPED_NO_CONSENT` / `SKIPPED_NO_NATION`. Строка не создаётся.
+4. У игрока нет государства (для типов с `requires_nation`) или согласие ≠ `ALLOWED` (для типов с `requires_consent`) → `SKIPPED_NO_NATION` / `SKIPPED_NO_CONSENT`. Строка не создаётся.
 5. Вставка строки со значениями:
 
 $$\texttt{not\_before}=t+h_k,\qquad \texttt{expires\_at}=t_0+60\cdot\mathrm{ttl}_k,\qquad \texttt{next\_attempt\_at}=\texttt{not\_before}$$
@@ -278,7 +278,7 @@ $$\text{ключ}(p)=\bigl(\ \text{есть критическая строка 
 
    То есть сначала игроки с критическими сообщениями и ответами, затем по давности.
 5. **Блокировка.** Готовые строки выбранных игроков читаются `SELECT … FOR UPDATE SKIP LOCKED` (на SQLite — без блокировки).
-6. Для каждого игрока выполняются проверки согласия (INV-B3, шаг 7) и государства; строки, не прошедшие проверку, → `DROPPED`.
+6. Для каждого игрока выполняются проверки согласия (INV-B3, шаг 7) и государства (для типов с `requires_nation`); строки, не прошедшие проверку, → `DROPPED`.
 7. Строки, уже имеющие `group_id` (повторная отправка после сбоя или падения), собираются обратно в **ту же** группу, если все её строки ещё готовы; если хотя бы одна строка группы потеряна — группа распускается (`group_id`, `random_id`, `render_mode` обнуляются), строки идут в новую композицию.
 8. Остальные строки проходят композицию (п. 3.4). Каждой получившейся группе присваиваются новый `group_id`, `random_id`, `render_mode`.
 9. Все строки выбранных групп: `status='LEASED'`, `attempts = attempts + 1`, `lease_until = t + sender.lease_seconds`, `lease_token = <новый UUID>`. **Коммит.** Только после коммита выполняются запросы к ВК (INV-B7).
@@ -363,7 +363,9 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 4. Замена `[` и `]` на `(` и `)` (разметка упоминаний ВК `[id1|имя]`).
 5. Обрезка до `limits.variable_max_length` символов с заменой последнего на `…`.
 
-Игровая дата `{game_date}` — формат ISO `ГГГГ-ММ-ДД` из `compute_game_date(turn, config)`; `{next_tick_time}` — строка, которую выдаёт форматирование времени ядра для `game_clock.next_tick_at`; `{leader_title}`/`{leader_name}` при `NULL` (государства до миграции профиля) — `—`. Если после подстановки длина превышает `limits.message_max_chars` — строка `DROPPED / TOO_LONG` (схема гарантирует, что по умолчанию этого не бывает). Недостающая переменная → `DROPPED / TEMPLATE_ERROR`.
+Переменные `*_link` очистку не проходят (очистка испортила бы адрес): они подставляются в текст как есть, но обязаны пройти проверку ссылки ещё раз — недопустимое значение → `DROPPED / TEMPLATE_ERROR`.
+
+Игровая дата `{game_date}` — строка `дд.месяц.гггг` (месяц словом, например `01.январь.2040`) из `format_game_date(compute_game_date(turn, config), config)`; `{next_tick_time}` — строка, которую выдаёт форматирование времени ядра для `game_clock.next_tick_at`; `{leader_title}`/`{leader_name}` при `NULL` (государства до миграции профиля) — `—`. Если после подстановки длина превышает `limits.message_max_chars` — строка `DROPPED / TOO_LONG` (схема гарантирует, что по умолчанию этого не бывает). Недостающая переменная → `DROPPED / TEMPLATE_ERROR`.
 
 Всегда передаются `disable_mentions=1` и `dont_parse_links=1`.
 
@@ -516,11 +518,14 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 
 Ключ — заглавные латинские буквы, цифры, `_` (3–40 символов). Обязательны пять встроенных: `TICK_DIGEST`, `RED_ALERT`, `DIPLOMATIC_DISPATCH`, `DIRECTIVE_STATUS`, `DEADLINE_WARNING`.
 
+Каталог допускает типы модулей-сателлитов. Модуль `04_orders` регистрирует четыре типа в `register_orders_extensions()` — `ORDER_JUDGE_ASSIGNED`, `ORDER_JUDGE_REMINDER`, `ORDER_DISTRIBUTED`, `ORDER_VERDICT_READY` (все с `requires_nation = false`: судья может быть игроком без государства, если у него есть согласие на сообщения бота). Их тексты и переменные заданы в Spec `04_orders`, Приложение C.
+
 | Ключ | Тип | Диапазон / правило |
 | :-- | :-- | :-- |
 | `enabled` | bool | выключенный тип не создаёт сообщений |
 | `priority` | `critical`\|`normal` | `critical`: нет потолка, склейки и выдержки |
 | `requires_consent` | bool | — |
+| `requires_nation` | bool | сообщение только владельцу государства; при `false` проверка государства (п. 3.1 шаг 4, п. 3.2 шаг 6) не выполняется |
 | `counts_toward_cap` | bool | требует `line_text`; для `critical` запрещено |
 | `ttl_minutes` | int | 1–10080; `hold_seconds < ttl·60` |
 | `hold_seconds` | int | 0–3600 |
@@ -534,9 +539,10 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 ### 4.9. Правила шаблонов
 
 - Плейсхолдеры только `{имя}` из списка типа; других фигурных скобок нет.
-- Допустимые переменные: `TICK_DIGEST` — `turn, game_date, nation_name, province_count, next_tick_time`; `RED_ALERT` — `event_text`; `DIPLOMATIC_DISPATCH` — `from_nation`; `DIRECTIVE_STATUS` — `directive_title, status_text`; `DEADLINE_WARNING` — `hours_left`; в `batch_text`/`line_text` дополнительно `count`.
+- Допустимые переменные: `TICK_DIGEST` — `turn, game_date, nation_name, province_count, next_tick_time`; `RED_ALERT` — `event_text`; `DIPLOMATIC_DISPATCH` — `from_nation`; `DIRECTIVE_STATUS` — `directive_title, status_text`; `DEADLINE_WARNING` — `hours_left`; типы модуля `04_orders`: `ORDER_JUDGE_ASSIGNED` — `order_number, nation_name, order_link`; `ORDER_JUDGE_REMINDER` — `order_number, hours_left, order_link`; `ORDER_DISTRIBUTED` — `order_number, order_link`; `ORDER_VERDICT_READY` — `order_number, order_link`; в `batch_text`/`line_text` дополнительно `count`.
 - Диалоговые тексты: `start_member` — `nation_name`; `status` — `nation_name, leader_title, leader_name, province_count, turn, game_date, next_tick_time`; прочие — без переменных.
 - Шаблон ≤ 1000 символов; без управляющих и невидимых символов (кроме перевода строки); худший случай (каждая переменная максимальной длины) помещается в `limits.message_max_chars`.
+- Переменная с суффиксом `_link` — ссылка: значение обязано быть `https`-адресом на хосте из `dialog.help.allowed_hosts` длиной ≤ 300 символов. Проверяется при постановке (`REJECTED_INVALID`) и повторно при отрисовке (нарушение → `DROPPED / TEMPLATE_ERROR`); подставляется в текст как есть, без очистки `sanitize_value` (п. 3.6).
 - Эмодзи на старте не используются (штабной тон); схема их не запрещает отдельно, но в тестах конфигурации проверяется отсутствие символов категорий `Cc`/`Cf`.
 
 ---
@@ -613,6 +619,8 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 
 - **Просмотр состояния** (`register_state_view("02_bot", …)`): `bot_mode` (`OFF` / `MISCONFIGURED` / `READY` / `RUNNING`), состояние отправщика (`RUNNING`/`BREAKER_OPEN`/`HALF_OPEN`/`HALTED_AUTH`), время последнего прохода каждой задачи, счётчики строк очереди по статусам, возраст самой старой готовой строки, число согласий по состояниям, `last_digest_turn`. Секреты не показываются.
 - **Сброс** (`register_reset("02_bot", …)`): удалить все строки `bot_outbox` (INV-B14), `bot_state.last_digest_turn = 0`. Согласия и `bot_vk_events` сохраняются. Хук не коммитит.
+- **Удаление игрока** (`register_player_delete_hook("02_bot.player_delete", …)`): удалить строку `bot_consents` игрока (на ней же живёт состояние диалога — `last_plate_at`) и все его строки `bot_outbox`. Журнал входящих `bot_vk_events` сохраняется: у него нет FK на `players`, только логический `vk_user_id`, и он append-only. Хук не коммитит — ошибка откатывает удаление игрока целиком.
+- **Предпросмотр удаления** (`register_player_preview("02_bot", …)`): счётчики `outbox_rows` и `consent_rows` игрока для админского delete-preview; только чтение.
 
 ### 5.5. Клавиатура бота
 
@@ -681,11 +689,23 @@ class BotService:
         session: AsyncSession,                 # сессия вызывающего; не коммитится
         *,
         type_key: str,                         # ключ из каталога
-        player_id: str,                        # получатель (владелец государства)
+        player_id: str,                        # получатель (владелец государства — для типов с requires_nation)
         event_key: str,                        # стабильный ключ события (для защиты от дубля)
         variables: Mapping[str, str | int],    # ровно переменные типа
         event_at: datetime | None = None,      # момент события; по умолчанию «сейчас»
     ) -> EnqueueResult: ...
+
+    @staticmethod
+    async def consented_player_ids(
+        session: AsyncSession,
+        player_ids: Iterable[str],
+    ) -> set[str]: ...                         # player_id с согласием ALLOWED; ∅ при неактивном боте или пустом входе
+
+    @staticmethod
+    def app_link(fragment: str) -> str | None: ...
+        # https://vk.com/app<VK_APP_ID>#<fragment> — ссылка в мини-приложение;
+        # None, если VK_APP_ID не задан или не число (хост vk.com входит в
+        # dialog.help.allowed_hosts)
 
 def register_notification_type(key: str, variables: frozenset[str]) -> None: ...
 def register_deadline_audience(provider: Callable[[AsyncSession, int], Awaitable[set[str]]]) -> None: ...

@@ -359,3 +359,141 @@ describe('AdminBlock — full-screen JSON overlay', () => {
     expect(screen.getByTestId('admin-output-overlay')).toBeInTheDocument();
   });
 });
+
+describe('AdminBlock — удаление игрока', () => {
+  const PREVIEW = {
+    vk_user_id: 123456789,
+    nation_name: 'Цель',
+    provinces_released: 2,
+    orders_author: 1,
+    orders_judge_undecided: 1,
+    orders_judge_decided: 1,
+    outbox_rows: 3,
+    consent_rows: 1,
+    vk_profile_rows: 1,
+  };
+
+  function allowDeleteApi() {
+    server.use(
+      http.get('*/api/v1/admin/players/*/delete-preview', () =>
+        HttpResponse.json(PREVIEW),
+      ),
+      http.post('*/api/v1/admin/players/*/delete', () =>
+        HttpResponse.json(PREVIEW),
+      ),
+    );
+  }
+
+  it('renders the section only for admins, with a disabled destructive button', async () => {
+    const user = await renderAsAdmin();
+
+    expect(
+      screen.getByText('Удаление игрока'),
+    ).toBeInTheDocument();
+    const deleteButton = screen.getByRole('button', {
+      name: 'Удалить безвозвратно',
+    });
+    expect(deleteButton).toBeDisabled();
+
+    // Stays disabled while the two ids differ.
+    await user.type(screen.getByLabelText('VK ID игрока'), '123456789');
+    await user.type(
+      screen.getByLabelText('Повторите VK ID для подтверждения'),
+      '987654321',
+    );
+    expect(deleteButton).toBeDisabled();
+
+    // Enabled only when both fields carry the same id.
+    await user.clear(
+      screen.getByLabelText('Повторите VK ID для подтверждения'),
+    );
+    await user.type(
+      screen.getByLabelText('Повторите VK ID для подтверждения'),
+      '123456789',
+    );
+    expect(deleteButton).toBeEnabled();
+  });
+
+  it('«Показать, что будет удалено» renders a plain-Russian preview', async () => {
+    allowDeleteApi();
+    const user = await renderAsAdmin();
+
+    await user.type(screen.getByLabelText('VK ID игрока'), '123456789');
+    await user.click(
+      screen.getByRole('button', { name: 'Показать, что будет удалено' }),
+    );
+
+    const preview = await screen.findByTestId('player-delete-preview');
+    expect(preview).toHaveTextContent(
+      'Государство «Цель» будет удалено, 2 провинций станут свободными',
+    );
+    expect(preview).toHaveTextContent('2 приказов будет удалено');
+    expect(preview).toHaveTextContent(
+      '1 вернутся в очередь на нового судью',
+    );
+  });
+
+  it('sends the retyped id, then shows the deletion counts', async () => {
+    let deleteBody: unknown;
+    server.use(
+      http.get('*/api/v1/admin/players/*/delete-preview', () =>
+        HttpResponse.json(PREVIEW),
+      ),
+      http.post('*/api/v1/admin/players/*/delete', async ({ request }) => {
+        deleteBody = await request.json();
+        return HttpResponse.json(PREVIEW);
+      }),
+    );
+    const onWorldChanged = vi.fn();
+    const user = await renderAsAdmin(onWorldChanged);
+
+    await user.type(screen.getByLabelText('VK ID игрока'), '123456789');
+    await user.type(
+      screen.getByLabelText('Повторите VK ID для подтверждения'),
+      '123456789',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Удалить безвозвратно' }),
+    );
+
+    await waitFor(() => expect(deleteBody).toBeDefined());
+    expect(deleteBody).toEqual({ confirm_vk_user_id: '123456789' });
+
+    const result = await screen.findByTestId('player-delete-result');
+    expect(result).toHaveTextContent('2 провинций станут свободными');
+    await waitFor(() => expect(onWorldChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows a Russian error for PLAYER_NOT_FOUND and never deletes', async () => {
+    let deleteCalls = 0;
+    server.use(
+      http.get('*/api/v1/admin/players/*/delete-preview', () =>
+        HttpResponse.json(
+          {
+            detail: 'Player vk_user_id=1 does not exist',
+            code: 'PLAYER_NOT_FOUND',
+          },
+          { status: 404 },
+        ),
+      ),
+      http.post('*/api/v1/admin/players/*/delete', () => {
+        deleteCalls += 1;
+        return HttpResponse.json(PREVIEW);
+      }),
+    );
+    const onWorldChanged = vi.fn();
+    const user = await renderAsAdmin(onWorldChanged);
+
+    await user.type(screen.getByLabelText('VK ID игрока'), '1');
+    await user.click(
+      screen.getByRole('button', { name: 'Показать, что будет удалено' }),
+    );
+
+    await screen.findByText('Игрок с таким VK ID не найден.');
+    expect(
+      screen.queryByTestId('player-delete-preview'),
+    ).not.toBeInTheDocument();
+    expect(deleteCalls).toBe(0);
+    expect(onWorldChanged).not.toHaveBeenCalled();
+  });
+});

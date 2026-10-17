@@ -11,6 +11,15 @@ Admin hooks of module 02_bot (Spec 5.4).
   ``bot_state.last_digest_turn`` (INV-B14); consents and the
   ``bot_vk_events`` journal survive. The hook never commits — the admin
   panel owns the transaction.
+- Player delete ``"02_bot.player_delete"``: removes the player's
+  ``bot_consents`` row (the consent FSM and the dialog state live on
+  it — ``last_plate_at`` included) and all their ``bot_outbox`` rows.
+  The ``bot_vk_events`` inbound journal survives: it carries only a
+  logical ``vk_user_id`` link (no FK, INV-B11) and is append-only
+  history. Runs inside ``PlayerService.delete_player``'s transaction —
+  a raise aborts the whole deletion (no per-hook savepoint).
+- Player preview ``"02_bot"``: returns ``{"outbox_rows", "consent_rows"}``
+  counts for the admin delete-preview; read-only.
 
 ``register_bot_admin_hooks`` is idempotent like the other modules'
 registrars: membership check, never double-register.
@@ -25,6 +34,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.registry import AdminRegistry
+from modules._00_core.hooks import register_player_delete_hook
 from modules._02_bot.models import BotConsent, BotOutbox, BotState
 from modules._02_bot.settings import (
     MODULE_SLUG,
@@ -109,9 +119,57 @@ async def bot_reset(session: AsyncSession) -> None:
     await session.flush()
 
 
+async def bot_player_delete_preview(
+    session: AsyncSession, player_id: str
+) -> dict:
+    """Counts of the module's rows the player deletion removes."""
+    outbox_rows = (
+        await session.execute(
+            select(func.count())
+            .select_from(BotOutbox)
+            .where(BotOutbox.player_id == player_id)
+        )
+    ).scalar_one()
+    consent_rows = (
+        await session.execute(
+            select(func.count())
+            .select_from(BotConsent)
+            .where(BotConsent.player_id == player_id)
+        )
+    ).scalar_one()
+    return {"outbox_rows": outbox_rows, "consent_rows": consent_rows}
+
+
+async def bot_delete_player(session: AsyncSession, player_id: str) -> None:
+    """
+    Remove the module's rows of one player (admin player deletion).
+
+    Deletes the ``bot_consents`` row — which also holds the dialog
+    state (``last_plate_at``) — and every ``bot_outbox`` row. Explicit
+    DELETEs, not FK cascade: SQLite may run without enforced foreign
+    keys. Inside the caller's transaction; never commits, and a raise
+    rolls the whole player deletion back.
+    """
+    await session.execute(
+        delete(BotOutbox).where(BotOutbox.player_id == player_id)
+    )
+    await session.execute(
+        delete(BotConsent).where(BotConsent.player_id == player_id)
+    )
+
+
 def register_bot_admin_hooks() -> None:
     """Register the admin hooks; safe to call on every app boot."""
     if MODULE_SLUG not in AdminRegistry.get_state_view_hooks():
         AdminRegistry.register_state_view(MODULE_SLUG, bot_state_view)
     if MODULE_SLUG not in AdminRegistry.get_reset_hooks():
         AdminRegistry.register_reset(MODULE_SLUG, bot_reset)
+    if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
+        AdminRegistry.register_player_preview(
+            MODULE_SLUG, bot_player_delete_preview
+        )
+    # Player-delete hooks live in the 00_core registry; re-registering
+    # the same name simply replaces the entry.
+    register_player_delete_hook(
+        f"{MODULE_SLUG}.player_delete", bot_delete_player
+    )

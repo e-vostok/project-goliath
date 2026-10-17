@@ -14,6 +14,7 @@ All functions take the caller's AsyncSession and never commit (INV-B1);
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -158,3 +159,24 @@ async def is_allowed(session: AsyncSession, player_id: str) -> bool:
         select(BotConsent.state).where(BotConsent.player_id == player_id)
     )
     return result.scalar_one_or_none() == "ALLOWED"
+
+
+async def allowed_ids(
+    session: AsyncSession, player_ids: Iterable[str]
+) -> set[str]:
+    """
+    The subset of ``player_ids`` whose stored consent state is ALLOWED —
+    the batched counterpart of :func:`is_allowed` for producers that
+    resolve an audience (Spec 04_orders, Appendix B2). Read-only, never
+    commits.
+    """
+    ids = set(player_ids)
+    if not ids:
+        return set()
+    result = await session.execute(
+        select(BotConsent.player_id).where(
+            BotConsent.player_id.in_(ids),
+            BotConsent.state == "ALLOWED",
+        )
+    )
+    return set(result.scalars().all())

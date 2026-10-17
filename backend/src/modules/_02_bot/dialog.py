@@ -20,7 +20,7 @@ from typing import Literal
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.service import (
     GameClockService,
@@ -231,7 +231,9 @@ async def _status_variables(
         "leader_name": nation.leader_name or "—",
         "province_count": nation.province_count,
         "turn": turn,
-        "game_date": compute_game_date(turn, core_config).isoformat(),
+        "game_date": format_game_date(
+            compute_game_date(turn, core_config), core_config
+        ),
         "next_tick_time": next_tick_time,
     }
 

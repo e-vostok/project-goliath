@@ -272,6 +272,7 @@ class TestRetiredNodes:
                     name="Retired Owner",
                     color_hex="#102030",
                     created_at=datetime.now(timezone.utc),
+                    created_turn=0,
                     **VALID_PROFILE,
                 )
             )

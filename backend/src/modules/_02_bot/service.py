@@ -21,7 +21,7 @@ have a single import surface.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
@@ -38,7 +38,11 @@ from modules._02_bot.registry import (
     register_deadline_audience,
     register_notification_type,
 )
-from modules._02_bot.settings import is_bot_active
+from modules._02_bot.render import (
+    LINK_VARIABLE_SUFFIX,
+    is_valid_link_value,
+)
+from modules._02_bot.settings import is_bot_active, read_bot_env
 from modules._02_bot.signal import request_wake
 from modules._02_bot.startup import get_bot_config
 
@@ -118,6 +122,24 @@ class BotService:
                 type_key,
             )
             return EnqueueResult.REJECTED_INVALID
+        # ``*_link`` variables carry URLs (Spec 04_orders, Appendix B2):
+        # https only, host from dialog.help.allowed_hosts, <= 300 chars.
+        bad_links = sorted(
+            key
+            for key, value in variables.items()
+            if key.endswith(LINK_VARIABLE_SUFFIX)
+            and not is_valid_link_value(
+                value, get_bot_config().dialog.help.allowed_hosts
+            )
+        )
+        if bad_links:
+            logger.error(
+                "enqueue rejected: link variables %s of '%s' fail the "
+                "URL rules",
+                bad_links,
+                type_key,
+            )
+            return EnqueueResult.REJECTED_INVALID
 
         type_cfg = get_bot_config().types.get(type_key)
         if type_cfg is None:
@@ -131,11 +153,12 @@ class BotService:
         if not type_cfg.enabled:
             return EnqueueResult.SKIPPED_TYPE_DISABLED
 
-        nation = await NationService.player_nation_summary(
-            session, player_id
-        )
-        if nation is None:
-            return EnqueueResult.SKIPPED_NO_NATION
+        if type_cfg.requires_nation:
+            nation = await NationService.player_nation_summary(
+                session, player_id
+            )
+            if nation is None:
+                return EnqueueResult.SKIPPED_NO_NATION
 
         if type_cfg.requires_consent and not await consent.is_allowed(
             session, player_id
@@ -192,6 +215,35 @@ class BotService:
 
         _arm_wake(session)
         return EnqueueResult.QUEUED
+
+    @staticmethod
+    async def consented_player_ids(
+        session: AsyncSession, player_ids: Iterable[str]
+    ) -> set[str]:
+        """
+        The subset of ``player_ids`` whose consent state is ``ALLOWED``
+        — one batched read for producers resolving an audience
+        (Spec 04_orders, Appendix B2). Empty when the bot is not active:
+        an OFF/MISCONFIGURED bot must promise nobody a message.
+        Read-only, never commits.
+        """
+        if not is_bot_active():
+            return set()
+        return await consent.allowed_ids(session, player_ids)
+
+    @staticmethod
+    def app_link(fragment: str) -> str | None:
+        """
+        ``https://vk.com/app<VK_APP_ID>#<fragment>`` — a link that opens
+        the Mini App straight at ``fragment`` (Spec 04_orders, Appendix
+        B2; the host ``vk.com`` is in ``dialog.help.allowed_hosts``).
+        ``None`` while ``VK_APP_ID`` is blank or not a number — the
+        producer then sends the message without the link.
+        """
+        app_id = read_bot_env().app_id
+        if app_id is None:
+            return None
+        return f"https://vk.com/app{app_id}#{fragment}"
 
     @staticmethod
     async def enqueue_reply(

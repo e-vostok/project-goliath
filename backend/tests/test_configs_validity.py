@@ -9,13 +9,20 @@ single place instead of every test.
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 import yaml
 from pydantic import ValidationError
 
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.player_stats import JUDGE_RATING_MAX, JUDGE_RATING_MIN
 from modules._01_map.config_schema import MapConfig
 from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
+from modules._03_registry.config_schema import RegistryConfig
+import modules._04_orders.config_schema as orders_schema
+from modules._04_orders.config_schema import OrdersConfig
+from modules._04_orders.models import Order
 
 
 def _base_config() -> dict:
@@ -47,8 +54,13 @@ def _base_config() -> dict:
             "history_url_allowed_hosts": ["vk.com", "vk.ru"],
         },
         "calendar": {
-            "epoch_start_date": "0001-01-01",
-            "days_per_turn": 7,
+            "epoch_start_date": "2040-01-01",
+            "months_per_turn": 1,
+            "month_names": [
+                "январь", "февраль", "март", "апрель", "май", "июнь",
+                "июль", "август", "сентябрь", "октябрь", "ноябрь",
+                "декабрь",
+            ],
         },
     }
 
@@ -92,8 +104,10 @@ def test_valid_config_loads():
     assert config.nation.leader_title_max_length == 60
     assert config.nation.history_url_max_length == 200
     assert config.nation.history_url_allowed_hosts == ["vk.com", "vk.ru"]
-    assert str(config.calendar.epoch_start_date) == "0001-01-01"
-    assert config.calendar.days_per_turn == 7
+    assert str(config.calendar.epoch_start_date) == "2040-01-01"
+    assert config.calendar.months_per_turn == 1
+    assert config.calendar.month_names[0] == "январь"
+    assert config.calendar.month_names[11] == "декабрь"
 
 
 def test_map_config_loads():
@@ -120,6 +134,164 @@ def test_02_bot_config_loads():
     assert config.types["DEADLINE_WARNING"].enabled is False
     assert "{group_id}" in config.client.chat_url_template
     assert config.consent.required_for_registration is True
+
+
+def test_03_registry_config_loads():
+    """configs/03_registry.yaml ↔ RegistryConfig (module 03_registry,
+    Issue 1).
+
+    The registration gate proves the real file loads; the gauge scale of
+    the ``judge_rating`` column must equal the 00_core scale constants —
+    the bounds are model properties the config can only repeat for
+    drawing (Spec 03_registry 0/D1)."""
+    config = RegistryConfig.from_yaml(
+        RegistryConfig.get_default_config_path()
+    )
+
+    players = config.table("players")
+    gauge = next(c for c in players.columns if c.id == "judge_rating")
+    assert gauge.type == "gauge"
+    assert gauge.scale_min == JUDGE_RATING_MIN
+    assert gauge.scale_max == JUDGE_RATING_MAX
+
+
+def test_04_orders_config_loads():
+    """configs/04_orders.yaml ↔ OrdersConfig (module 04_orders, Issue 1).
+
+    The registration gate proves the real file loads; the schema's
+    judge-rating bounds must equal the 00_core scale constants — they
+    are model properties the config can only repeat as the allowed
+    threshold range (Spec 04_orders 4.1, Appendix T)."""
+    config = OrdersConfig.from_yaml(OrdersConfig.get_default_config_path())
+
+    assert config.judge.min_rating == 0
+    assert config.judge.max_pending_verdicts == 5
+    assert config.judge.require_reachable is True
+    assert config.judge.verdict_deadline_hours == 72
+    assert config.judge.reminder_percent == 75
+    assert config.author.max_unresolved_orders == 5
+    assert config.distribution.retry_interval_seconds == 60
+    assert config.distribution.batch_size == 50
+    assert config.limits.title_min_length == 3
+    assert config.limits.title_max_length == 100
+    assert config.limits.summary_min_length == 10
+    assert config.limits.summary_max_length == 500
+    assert config.limits.url_max_length == 200
+
+    # The min_rating Field bounds repeat the 00_core scale exactly.
+    assert orders_schema.JUDGE_RATING_MIN == JUDGE_RATING_MIN
+    assert orders_schema.JUDGE_RATING_MAX == JUDGE_RATING_MAX
+    field_meta = orders_schema.JudgeSettings.model_fields[
+        "min_rating"
+    ].metadata
+    assert any(
+        getattr(m, "ge", None) == JUDGE_RATING_MIN for m in field_meta
+    )
+    assert any(
+        getattr(m, "le", None) == JUDGE_RATING_MAX for m in field_meta
+    )
+
+
+def test_04_orders_column_lengths_match_schema():
+    """``orders`` column lengths equal the schema constants — any valid
+    config limit fits the column without a new migration (Spec 04_orders
+    Part 1: «Длины колонок равны верхним границам схемы конфига»)."""
+    columns = Order.__table__.columns
+    assert columns["title"].type.length == orders_schema.TITLE_COLUMN_LENGTH
+    assert (
+        columns["verdict_title"].type.length
+        == orders_schema.TITLE_COLUMN_LENGTH
+    )
+    assert (
+        columns["summary"].type.length == orders_schema.SUMMARY_COLUMN_LENGTH
+    )
+    assert (
+        columns["verdict_summary"].type.length
+        == orders_schema.SUMMARY_COLUMN_LENGTH
+    )
+    assert (
+        columns["article_url"].type.length
+        == orders_schema.URL_COLUMN_LENGTH
+    )
+    assert (
+        columns["verdict_url"].type.length == orders_schema.URL_COLUMN_LENGTH
+    )
+
+
+def test_03_registry_accepts_new_types_and_rejects_bad_combos():
+    """04_orders Issue 3 (Spec 03_registry 1.2): the schema accepts the
+    ``datetime`` and ``action_text`` column types, the ``header_icon``
+    key and the ``orders`` table icon — and still rejects an
+    ``action_text`` column with ``date_range`` and an unknown
+    ``header_icon`` value."""
+    with open(
+        RegistryConfig.get_default_config_path(), encoding="utf-8"
+    ) as f:
+        data = yaml.safe_load(f)
+
+    data["tables"] = [
+        {
+            "id": "orders",
+            "title": "Приказы",
+            "icon": "orders",
+            "source": "orders",
+            "empty_text": "Приказов пока нет",
+            "default_sort": {"column": "number", "direction": "desc"},
+            "columns": [
+                {
+                    "id": "number", "title": "№", "type": "index",
+                    "source": "number", "width_px": 56, "sortable": True,
+                    "filters": [], "searchable": False, "stub": False,
+                },
+                {
+                    "id": "title", "title": "Название",
+                    "type": "action_text", "source": "title",
+                    "width_px": 236, "sortable": True,
+                    "filters": ["text"], "searchable": True, "stub": False,
+                },
+                {
+                    "id": "submitted", "title": "Подача",
+                    "header_icon": "stage_submitted", "type": "datetime",
+                    "source": "submitted", "width_px": 136,
+                    "sortable": True,
+                    "filters": ["date_range", "presence"],
+                    "searchable": False, "stub": False,
+                },
+            ],
+        }
+    ]
+    config = RegistryConfig.model_validate(data)
+    orders = config.table("orders")
+    assert orders.icon == "orders"
+    assert orders.columns[1].type == "action_text"
+    assert orders.columns[2].type == "datetime"
+    assert orders.columns[2].header_icon == "stage_submitted"
+
+    bad_filters = copy.deepcopy(data)
+    bad_filters["tables"][0]["columns"][1]["filters"] = ["date_range"]
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_filters)
+
+    bad_icon = copy.deepcopy(data)
+    bad_icon["tables"][0]["columns"][2]["header_icon"] = "stage_magic"
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_icon)
+
+
+def test_03_registry_table_over_table_max_width_rejected():
+    """03_registry Issue 3b: a table whose ``width_px`` columns sum above
+    ``layout.table_max_width_px`` fails validation — the 910 px window
+    rule is enforced before the server starts (Spec 03_registry 4.1)."""
+    with open(
+        RegistryConfig.get_default_config_path(), encoding="utf-8"
+    ) as f:
+        data = yaml.safe_load(f)
+    data["tables"][0]["columns"][1]["width_px"] = 600
+
+    with pytest.raises(ValidationError) as exc_info:
+        RegistryConfig.model_validate(data)
+
+    assert "table_max_width_px" in str(exc_info.value)
 
 
 def test_02_bot_nation_created_rejects_unknown_placeholder():
@@ -283,12 +455,53 @@ def test_health_max_heartbeat_age_must_exceed_retry_plus_interval(tmp_path):
 
 def test_missing_required_field(tmp_path):
     """Test that missing required field raises ValidationError."""
-    path = _write_config(tmp_path, drop=[("calendar", "days_per_turn")])
+    path = _write_config(tmp_path, drop=[("calendar", "months_per_turn")])
 
     with pytest.raises(ValidationError) as exc_info:
         CoreConfig.from_yaml(path)
 
-    assert "days_per_turn" in str(exc_info.value)
+    assert "months_per_turn" in str(exc_info.value)
+
+
+def test_calendar_epoch_must_be_first_of_month(tmp_path):
+    """epoch_start_date with a day other than 1 is rejected (CAL-1)."""
+    path = _write_config(
+        tmp_path, {"calendar": {"epoch_start_date": "2040-01-15"}}
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "epoch_start_date" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("bad_months", [0, 13])
+def test_calendar_months_per_turn_out_of_bounds_rejected(
+    tmp_path, bad_months
+):
+    """months_per_turn outside [1, 12] raises ValidationError."""
+    path = _write_config(
+        tmp_path, {"calendar": {"months_per_turn": bad_months}}
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "months_per_turn" in str(exc_info.value)
+
+
+def test_calendar_legacy_days_per_turn_config_rejected(tmp_path):
+    """An old-style calendar with only days_per_turn fails validation."""
+    path = _write_config(
+        tmp_path,
+        {"calendar": {"days_per_turn": 7}},
+        drop=[("calendar", "months_per_turn")],
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "months_per_turn" in str(exc_info.value)
 
 
 # --- Nation profile keys (Spec 1.1) ---------------------------------------
@@ -420,3 +633,42 @@ def test_missing_profile_key_rejected(tmp_path, key):
         CoreConfig.from_yaml(path)
 
     assert key in str(exc_info.value)
+
+
+def test_03_registry_select_or_contains_filter():
+    """Nation dropdown filter (Spec 03_registry 3.7): the schema accepts
+    ``select_or_contains`` on a ``nation`` column, rejects it on other
+    types and forbids the redundant ``text`` pairing — the kind already
+    includes the «содержит» input."""
+    with open(
+        RegistryConfig.get_default_config_path(), encoding="utf-8"
+    ) as f:
+        data = yaml.safe_load(f)
+
+    # The shipped config already declares it on both nation columns.
+    config = RegistryConfig.model_validate(data)
+    players_nation = next(
+        c for c in config.table("players").columns if c.id == "nation"
+    )
+    orders_nation = next(
+        c for c in config.table("orders").columns if c.id == "nation"
+    )
+    assert players_nation.filters == ["select_or_contains", "presence"]
+    assert orders_nation.filters == ["select_or_contains"]
+
+    # Not a nation type — rejected.
+    bad_type = copy.deepcopy(data)
+    bad_type["tables"][2]["columns"][2]["filters"] = [
+        "select_or_contains"
+    ]
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_type)
+
+    # select_or_contains + text on the same column — redundant, rejected.
+    bad_combo = copy.deepcopy(data)
+    bad_combo["tables"][2]["columns"][1]["filters"] = [
+        "select_or_contains",
+        "text",
+    ]
+    with pytest.raises(ValidationError):
+        RegistryConfig.model_validate(bad_combo)

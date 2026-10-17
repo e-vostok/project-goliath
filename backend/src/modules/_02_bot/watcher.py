@@ -31,7 +31,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.service import GameClockService, NationService
 from modules._00_core.tick_schedule import format_game_time
@@ -122,7 +122,9 @@ async def _enqueue_digests(
             )
         )
     ).scalars().all()
-    game_date = compute_game_date(turn, core_config).isoformat()
+    game_date = format_game_date(
+        compute_game_date(turn, core_config), core_config
+    )
     next_tick_time = format_game_time(
         snapshot.next_tick_at, core_config.tick.tick_timezone
     ) or "—"

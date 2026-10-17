@@ -20,6 +20,7 @@ from modules._00_core.hooks import (
     STAGE_AFTER_COUNT,
     STAGE_AFTER_FREE,
     OwnershipChange,
+    get_player_delete_hooks,
     notify_ownership_changed,
     run_before_all_checks,
     run_nation_created_hooks,
@@ -31,6 +32,7 @@ from modules._00_core.exceptions import (
     NameTakenError,
     NationAlreadyExistsError,
     NationNotFoundError,
+    PlayerNotFoundError,
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
     ProvinceTakenError,
@@ -119,6 +121,7 @@ class PlayerNationSummary:
     leader_name: str | None
     leader_title: str | None
     province_count: int
+    color_hex: str
 
 
 @dataclass(frozen=True)
@@ -128,6 +131,37 @@ class GameClockSnapshot:
     current_turn: int
     last_tick_at: datetime | None
     next_tick_at: datetime | None
+
+
+@dataclass(frozen=True)
+class PlayerRegistryRow:
+    """
+    One players-table row for module 03_registry (Spec 03_registry 1.4).
+
+    ``player_id``/``vk_user_id`` are read plumbing for the module and the
+    profile worker — they never reach the client (INV-R2).
+    """
+
+    player_id: str
+    vk_user_id: int
+    created_at: datetime
+    level: int
+    judge_rating: int
+    nation_id: str | None
+    nation_name: str | None
+    nation_color: str | None
+
+
+@dataclass(frozen=True)
+class NationRegistryRow:
+    """One nations-table row for module 03_registry (Spec 03_registry 1.4)."""
+
+    nation_id: str
+    name: str
+    color_hex: str
+    created_turn: int
+    created_at: datetime
+    province_count: int
 
 
 class ProvinceService:
@@ -334,6 +368,115 @@ class PlayerService:
         )
         return {row[0]: row[1] for row in result.all()}
 
+    @staticmethod
+    async def list_for_registry(
+        session: AsyncSession,
+    ) -> list[PlayerRegistryRow]:
+        """
+        Every player joined to the nation they own (if any), ordered by
+        (created_at, id) — the row-numbering order of Spec 03_registry
+        3.2. Read-only and never commits.
+        """
+        result = await session.execute(
+            select(
+                Player.id,
+                Player.vk_user_id,
+                Player.created_at,
+                Player.level,
+                Player.judge_rating,
+                Nation.id,
+                Nation.name,
+                Nation.color_hex,
+            )
+            .outerjoin(Nation, Nation.owner_player_id == Player.id)
+            .order_by(Player.created_at, Player.id)
+        )
+        return [
+            PlayerRegistryRow(
+                player_id=row[0],
+                vk_user_id=row[1],
+                created_at=row[2],
+                level=row[3],
+                judge_rating=row[4],
+                nation_id=row[5],
+                nation_name=row[6],
+                nation_color=row[7],
+            )
+            for row in result.all()
+        ]
+
+    @staticmethod
+    async def count(session: AsyncSession) -> int:
+        """
+        ``SELECT count(*)`` on players — the public read path for
+        satellites that need the total without the rows (Spec
+        03_registry 5.4). Read-only and never commits.
+        """
+        result = await session.execute(
+            select(func.count()).select_from(Player)
+        )
+        return result.scalar_one()
+
+    @staticmethod
+    async def delete_player(
+        session: AsyncSession, player_id: str
+    ) -> None:
+        """
+        Delete a player and everything tied to them (admin tool for
+        test players — irreversible).
+
+        Runs inside the caller's transaction, all-or-nothing; this
+        method never commits. Order:
+
+        1. ``NationService.delete`` for the player's nation, if any —
+           it releases the provinces (INV-6), orphans scheduled actions
+           and writes the release entries to the ownership journal
+           through ``notify_ownership_changed`` in this transaction.
+        2. Every registered ``player_delete`` hook, in registration
+           order — each hook deletes only its own module's rows for
+           this player (data sovereignty, invariant 3). There is NO
+           per-hook savepoint: a raising hook aborts the deletion and
+           the caller's rollback restores everything.
+        3. The ``players`` row itself — a bulk DELETE, not ORM
+           ``session.delete``: an ORM delete would lazy-load
+           ``player.nations`` to null out FKs, which cannot happen in
+           async context (and no nation remains anyway).
+
+        Explicit hook deletes are what actually remove satellite rows —
+        the FK ``ON DELETE CASCADE`` clauses are only a safety net for
+        PostgreSQL; SQLite test schemas may run without enforced foreign
+        keys.
+
+        Raises:
+            PlayerNotFoundError: If the player does not exist.
+        """
+        player = (
+            await session.execute(
+                select(Player).where(Player.id == player_id)
+            )
+        ).scalar_one_or_none()
+        if player is None:
+            raise PlayerNotFoundError(player_id)
+
+        nation = (
+            await session.execute(
+                select(Nation).where(Nation.owner_player_id == player_id)
+            )
+        ).scalar_one_or_none()
+        if nation is not None:
+            await NationService.delete(session, nation.id)
+
+        for hook in get_player_delete_hooks().values():
+            await hook(session, player_id)
+
+        # Flush pending ORM deletes (the nation row) before the bulk
+        # players DELETE: nations.owner_player_id carries a plain FK
+        # without cascade, so the nation must be physically gone first.
+        await session.flush()
+        await session.execute(
+            delete(Player).where(Player.id == player_id)
+        )
+
 
 async def _current_turn(session: AsyncSession) -> int:
     """
@@ -504,7 +647,10 @@ class NationService:
         # Stage "after_count": satellite checks on the sized group.
         await run_registration_checks(STAGE_AFTER_COUNT, session, provinces)
 
-        # INV-3: Atomic transaction - create nation and assign provinces
+        # INV-3: Atomic transaction - create nation and assign provinces.
+        # created_turn stamps the transaction's current turn (Spec
+        # 03_registry 1.4; INV-R9: never changed afterwards).
+        turn = await _current_turn(session)
         nation = Nation(
             id=str(uuid.uuid4()),
             owner_player_id=owner_player_id,
@@ -514,6 +660,7 @@ class NationService:
             leader_title=leader_title,
             history_url=history_url,
             created_at=datetime.now(timezone.utc),
+            created_turn=turn,
         )
         session.add(nation)
         await session.flush()  # Get the nation ID
@@ -522,7 +669,6 @@ class NationService:
         # provinces.nation_id outside the admin world reset. Every such
         # write is announced through notify_ownership_changed in the same
         # transaction (INV-M7).
-        turn = await _current_turn(session)
         ordered = sorted(provinces, key=lambda p: p.id)
         for province in ordered:
             province.nation_id = nation.id
@@ -577,6 +723,7 @@ class NationService:
             leader_name=nation.leader_name,
             leader_title=nation.leader_title,
             province_count=count_result.scalar_one(),
+            color_hex=nation.color_hex,
         )
 
     @staticmethod
@@ -595,6 +742,59 @@ class NationService:
             select(Nation.id).where(Nation.id.in_(ids))
         )
         return set(result.scalars().all())
+
+    @staticmethod
+    async def list_for_registry(
+        session: AsyncSession,
+    ) -> list[NationRegistryRow]:
+        """
+        Every nation with its live province count, ordered by
+        (created_turn, created_at, id) — the row-numbering order of
+        Spec 03_registry 3.3. The count is a correlated subquery over
+        provinces.nation_id; sea zones can never be owned
+        (ck_provinces_sea_unowned), so they need no special case.
+        Read-only and never commits.
+        """
+        province_count = (
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id == Nation.id)
+            .scalar_subquery()
+        )
+        result = await session.execute(
+            select(
+                Nation.id,
+                Nation.name,
+                Nation.color_hex,
+                Nation.created_turn,
+                Nation.created_at,
+                province_count,
+            )
+            .order_by(Nation.created_turn, Nation.created_at, Nation.id)
+        )
+        return [
+            NationRegistryRow(
+                nation_id=row[0],
+                name=row[1],
+                color_hex=row[2],
+                created_turn=row[3],
+                created_at=row[4],
+                province_count=row[5],
+            )
+            for row in result.all()
+        ]
+
+    @staticmethod
+    async def count(session: AsyncSession) -> int:
+        """
+        ``SELECT count(*)`` on nations — the public read path for
+        satellites that need the total without the rows (Spec
+        03_registry 5.4). Read-only and never commits.
+        """
+        result = await session.execute(
+            select(func.count()).select_from(Nation)
+        )
+        return result.scalar_one()
 
     @staticmethod
     async def update(

@@ -617,3 +617,26 @@ describe('fieldToStep', () => {
     }
   });
 });
+
+describe('PanelCreateNation — draft memory', () => {
+  it('restores the typed values after the screen is reopened', async () => {
+    const user = userEvent.setup();
+    const first = renderWithProviders(
+      <PanelCreateNation onCreated={() => {}} />,
+    );
+
+    await user.type(
+      screen.getByLabelText('Название государства'),
+      'Черновия',
+    );
+    await user.type(screen.getByLabelText('Имя лидера'), 'Черновик');
+    first.unmount();
+
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    expect(screen.getByLabelText('Название государства')).toHaveValue(
+      'Черновия',
+    );
+    expect(screen.getByLabelText('Имя лидера')).toHaveValue('Черновик');
+    expect(screen.getByLabelText('Должность лидера')).toHaveValue('');
+  });
+});
