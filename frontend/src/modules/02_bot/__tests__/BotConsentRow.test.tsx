@@ -15,6 +15,7 @@ import {
   SESSION,
 } from '../../00_core/components/__tests__/helpers';
 import { PanelNationHome } from '../../00_core/components/PanelNationHome';
+import { OrdersUiProvider } from '../../04_orders/OrdersUiProvider';
 import type { NationDTO } from '../../../shared/types';
 import { BOT_TEXTS } from '../texts';
 import {
@@ -42,11 +43,14 @@ const NATION: NationDTO = {
 
 function renderHome() {
   renderWithBot(
-    <PanelNationHome
-      nation={NATION}
-      onChanged={vi.fn()}
-      onDeleteRequest={vi.fn()}
-    />,
+    // PanelNationHome hosts the orders block — the provider must exist.
+    <OrdersUiProvider activeModal={null} onActiveModal={() => {}}>
+      <PanelNationHome
+        nation={NATION}
+        onChanged={vi.fn()}
+        onDeleteRequest={vi.fn()}
+      />
+    </OrdersUiProvider>,
   );
 }
 

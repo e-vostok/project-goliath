@@ -43,10 +43,17 @@ reset/state-hook одной строкой, без переделки панел
   как `YYYY-MM-DD HH:MM:SS` в `tick.tick_timezone` под исходными именами; `*_local`-ключи
   удалены; общий helper `format_game_time` в `modules/_00_core/tick_schedule.py`;
   хранение и планировщик остаются в tz-aware UTC.
+- [x] **Issue 7: Удаление тестового игрока (необратимо)** — реестр player-delete хуков
+  в `00_core` (`register_player_delete_hook`), `PlayerService.delete_player` в одной
+  транзакции (NationService.delete → хуки модулей → players); хуки `_02_bot`
+  (consents+outbox), `_03_registry` (vk_profile), `_04_orders` (requeue без вердикта,
+  удаление author- и verdict-строк) + preview-хуки в `AdminRegistry`; эндпоинты
+  `GET/POST /admin/players/{vk_user_id}/delete-preview|delete` с запретами
+  self/admin и retype-подтверждением; секция «Удаление игрока» в блоке «Админ».
 
 ## Backlog & Tech Debt
 
-- Reset не трогает players — обсудить, нужен ли отдельный флаг «полный сброс».
+- Reset не трогает players — отдельное удаление игрока появилось в Issue 7; обсудить, нужен ли ещё флаг «полный сброс».
 - Свежая БД: миграция 0001 сеет первый `next_tick_at` как `now + tick_interval_hours`; привести её к `next_tick_after()` (фиксированное локальное время), затем удалить `tick_interval_hours`. Ручной тик и reset уже используют `next_tick_after()` и не сдвигают суточное расписание.
 - Красивые таблицы вместо JSON — позже.
 - Ручной тик и планировщик не защищены общим локом; reset не чистит игроков.

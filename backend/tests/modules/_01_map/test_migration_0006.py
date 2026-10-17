@@ -101,11 +101,21 @@ def _nation_owning(url: str, province_id: int) -> None:
                 ),
                 {"id": player_id},
             )
+            # created_turn exists only from migration 0008 on — the
+            # guard tests run this helper against the 0005 schema too.
+            has_created_turn = "created_turn" in {
+                c["name"]
+                for c in sa.inspect(conn).get_columns("nations")
+            }
             conn.execute(
                 sa.text(
                     "INSERT INTO nations "
-                    "(id, owner_player_id, name, color_hex, created_at) "
-                    "VALUES (:id, :owner, 'Guard Nation', '#123456', :ts)"
+                    "(id, owner_player_id, name, color_hex, created_at"
+                    + (", created_turn" if has_created_turn else "")
+                    + ") VALUES (:id, :owner, 'Guard Nation', '#123456',"
+                    " :ts"
+                    + (", 0" if has_created_turn else "")
+                    + ")"
                 ),
                 {
                     "id": nation_id,

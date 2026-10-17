@@ -27,6 +27,7 @@ import {
 import { server } from '../../../../../vitest.setup';
 import type { NationRulesDTO } from '../../../../shared/types';
 import { SessionProvider } from '../../hooks/useAuth';
+import { OrdersUiProvider } from '../../../04_orders/OrdersUiProvider';
 import {
   MINI_GEOMETRY,
   MINI_MANIFEST,
@@ -69,7 +70,8 @@ export const FREE_PROVINCES = [
 
 export const GAME_CLOCK = {
   current_turn: 12,
-  game_date: '15 марта 1240',
+  game_date: '2041-01-01',
+  game_date_text: '01.январь.2041',
   next_tick_at: '2026-10-02T03:00:00Z',
 };
 
@@ -187,7 +189,13 @@ export function renderWithProviders(ui: ReactElement) {
     <ConfigProvider platform={Platform.VKCOM}>
       <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
         <AppRoot>
-          <SessionProvider session={SESSION}>{ui}</SessionProvider>
+          <SessionProvider session={SESSION}>
+            {/* PanelNationHome hosts the orders block — the provider
+                must exist; these tests never open its windows. */}
+            <OrdersUiProvider activeModal={null} onActiveModal={() => {}}>
+              {ui}
+            </OrdersUiProvider>
+          </SessionProvider>
         </AppRoot>
       </AdaptivityProvider>
     </ConfigProvider>,

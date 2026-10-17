@@ -76,7 +76,8 @@ async def test_create_nation_happy_path(test_db_session):
         owner_player_id=player.id,
         name="Test Nation",
         color_hex="#00FF00",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     test_db_session.add(nation)
     await test_db_session.flush()
@@ -106,14 +107,16 @@ async def test_duplicate_owner_player_id_constraint(test_db_session):
         owner_player_id=player.id,
         name="Nation 1",
         color_hex="#111111",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player.id,
         name="Nation 2",
         color_hex="#222222",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     
     test_db_session.add(nation1)
@@ -146,14 +149,16 @@ async def test_duplicate_nation_name_constraint(test_db_session):
         owner_player_id=player1.id,
         name="Duplicate Name",
         color_hex="#111111",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player2.id,
         name="Duplicate Name",
         color_hex="#222222",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     
     test_db_session.add(nation1)
@@ -186,14 +191,16 @@ async def test_duplicate_nation_color_hex_constraint(test_db_session):
         owner_player_id=player1.id,
         name="Nation 1",
         color_hex="#ABCDEF",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player2.id,
         name="Nation 2",
         color_hex="#ABCDEF",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     
     test_db_session.add(nation1)
@@ -220,7 +227,8 @@ async def test_create_scheduled_action_happy_path(test_db_session):
         owner_player_id=player.id,
         name="Test Nation",
         color_hex="#FF0000",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     test_db_session.add(nation)
     await test_db_session.flush()
@@ -305,7 +313,8 @@ async def test_province_assignment(test_db_session):
         owner_player_id=player.id,
         name="Test Nation",
         color_hex="#FF0000",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        created_turn=0
     )
     province = await make_land_province(test_db_session, id=1001)
 

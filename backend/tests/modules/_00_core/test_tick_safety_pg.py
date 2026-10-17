@@ -15,6 +15,7 @@ the real app through its real lifespan.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -29,6 +30,10 @@ from core.tick.orchestrator import (
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.models import GameClock, TickLog, TickLogStatus
 from modules._00_core.tick_handler import register_tick_handlers
+from modules._00_core.tick_recovery import (
+    INTERRUPTED_NOTE,
+    recover_interrupted_ticks,
+)
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
     pg_clean,  # noqa: F401 — autouse per-test data reset
@@ -259,6 +264,83 @@ class TestScheduleRecheck:
         logs = await _tick_logs(pg_db)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
+
+
+class TestInterruptedRecovery:
+    """Boot-time repair of RUNNING rows a killed container left behind."""
+
+    async def _seed_running(self, pg_db, turn_number: int) -> None:
+        async with pg_db() as session:
+            session.add(
+                TickLog(
+                    turn_number=turn_number,
+                    started_at=datetime.now(timezone.utc),
+                    status=TickLogStatus.RUNNING,
+                )
+            )
+            await session.commit()
+
+    async def test_lock_held_by_other_connection_touches_nothing(
+        self, pg_db
+    ):
+        """
+        Another process mid-tick holds the advisory mutex: the boot pass
+        backs off (returns None) and the RUNNING row keeps its status —
+        it belongs to that live tick, not to a dead one.
+        """
+        await self._seed_running(pg_db, turn_number=7)
+
+        async with pg_db() as blocker:
+            await _acquire_advisory_lock(blocker)
+
+            assert await recover_interrupted_ticks(pg_db) is None
+            logs = await _tick_logs(pg_db)
+            assert [log.status for log in logs] == [TickLogStatus.RUNNING]
+
+            await _release_advisory_lock(blocker)
+
+    async def test_free_lock_marks_failed_and_next_tick_runs(
+        self, pg_db, caplog
+    ):
+        """
+        No tick alive anywhere: leftover RUNNING rows become FAILED with
+        the restart note (one WARNING with the count), and the stale
+        rows were never a gate — the next scheduled tick executes and
+        logs its own COMPLETED row.
+        """
+        await self._seed_running(pg_db, turn_number=7)
+        await self._seed_running(pg_db, turn_number=8)
+
+        with caplog.at_level(
+            logging.WARNING, logger="modules._00_core.tick_recovery"
+        ):
+            assert await recover_interrupted_ticks(pg_db) == 2
+
+        warnings = [
+            r for r in caplog.records if r.levelno == logging.WARNING
+        ]
+        assert len(warnings) == 1
+        assert "2" in warnings[0].getMessage()
+
+        logs = await _tick_logs(pg_db)
+        assert [log.status for log in logs] == [
+            TickLogStatus.FAILED,
+            TickLogStatus.FAILED,
+        ]
+        assert all(log.error_message == INTERRUPTED_NOTE for log in logs)
+        assert all(log.finished_at is not None for log in logs)
+
+        # Nothing reads RUNNING as a gate — the advisory lock is the
+        # only mutex — so a once-stale journal never delays the next
+        # turn: the scheduler path fires normally.
+        await _make_overdue(pg_db)
+        async with pg_db() as session:
+            outcome = await run_scheduled_tick(
+                session, enforce_schedule=True
+            )
+        assert outcome is TickOutcome.EXECUTED
+        logs = await _tick_logs(pg_db)
+        assert logs[-1].status == TickLogStatus.COMPLETED
 
 
 class TestAdminTickRunConflict:

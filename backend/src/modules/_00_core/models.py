@@ -16,6 +16,13 @@ from sqlalchemy import BigInteger, CHAR, CheckConstraint, DateTime, Enum as SQLE
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
+from modules._00_core.player_stats import (
+    JUDGE_RATING_DEFAULT,
+    JUDGE_RATING_MAX,
+    JUDGE_RATING_MIN,
+    LEVEL_DEFAULT,
+    LEVEL_MIN,
+)
 
 if TYPE_CHECKING:
     from typing import Self
@@ -42,9 +49,31 @@ class Player(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     vk_user_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), nullable=False)
-    
+    # Scale bounds are pinned by ck_players_level_min /
+    # ck_players_judge_rating_range (Spec 03_registry 0/D1, 1.2); the
+    # constants live in player_stats.py and no config can widen them.
+    level: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=LEVEL_DEFAULT, server_default="1"
+    )
+    judge_rating: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=JUDGE_RATING_DEFAULT,
+        server_default="0",
+    )
+
     # Relationships
     nations: Mapped[list[Nation]] = relationship(back_populates="owner")
+
+    __table_args__ = (
+        CheckConstraint(
+            f"level >= {LEVEL_MIN}", name="ck_players_level_min"
+        ),
+        CheckConstraint(
+            f"judge_rating BETWEEN {JUDGE_RATING_MIN} AND {JUDGE_RATING_MAX}",
+            name="ck_players_judge_rating_range",
+        ),
+    )
 
 
 class Nation(Base):
@@ -63,11 +92,21 @@ class Nation(Base):
     leader_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
     history_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # The turn the nation was formed on (INV-R9: immutable after
+    # creation). No default: NationService.create stamps the transaction's
+    # current_turn; pre-0008 rows were backfilled by the migration.
+    created_turn: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     # Relationships
     owner: Mapped[Player] = relationship(back_populates="nations")
     provinces: Mapped[list[Province]] = relationship(back_populates="nation")
     scheduled_actions: Mapped[list[ScheduledAction]] = relationship(back_populates="nation")
+
+    __table_args__ = (
+        CheckConstraint(
+            "created_turn >= 0", name="ck_nations_created_turn_min"
+        ),
+    )
 
 
 class Province(Base):

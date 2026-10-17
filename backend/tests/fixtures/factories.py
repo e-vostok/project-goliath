@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from polyfactory.factories.sqlalchemy_factory import SQLAlchemyFactory
+from sqlalchemy import func as sa_func, select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.models import (
@@ -25,7 +26,13 @@ from modules._00_core.models import (
     TickLog,
     TickLogStatus,
 )
+from modules._00_core.player_stats import (
+    JUDGE_RATING_DEFAULT,
+    LEVEL_DEFAULT,
+)
 from modules._02_bot.models import BotConsent, BotOutbox
+from modules._03_registry.models import RegistryVkProfile
+from modules._04_orders.models import Order
 from tests.fixtures.profile import VALID_PROFILE
 
 
@@ -42,6 +49,8 @@ class PlayerFactory(SQLAlchemyFactory[Player]):
     id = lambda: str(uuid.uuid4())
     vk_user_id = 1234567890
     created_at = utcnow
+    level = LEVEL_DEFAULT
+    judge_rating = JUDGE_RATING_DEFAULT
 
 
 class NationFactory(SQLAlchemyFactory[Nation]):
@@ -57,6 +66,7 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     leader_title = VALID_PROFILE["leader_title"]
     history_url = VALID_PROFILE["history_url"]
     created_at = utcnow
+    created_turn = 0
     __set_foreign_keys__ = False
 
 
@@ -112,9 +122,146 @@ class TickLogFactory(SQLAlchemyFactory[TickLog]):
     error_message = None
 
 
+async def make_vk_profile(
+    session: AsyncSession,
+    player: Player,
+    *,
+    status: str = "OK",
+    first_name: str | None = "Иван",
+    last_name: str | None = "Петров",
+    photo_url: str | None = None,
+    fetched_at: datetime | None = None,
+    next_attempt_at: datetime | None = None,
+) -> RegistryVkProfile:
+    """Insert a ``registry_vk_profiles`` row for ``player`` and flush it."""
+    now = utcnow()
+    row = RegistryVkProfile(
+        player_id=player.id,
+        status=status,
+        first_name=first_name,
+        last_name=last_name,
+        photo_url=photo_url,
+        fetched_at=fetched_at or now,
+        next_attempt_at=next_attempt_at or now,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+# ── Module 04_orders seeders (Spec Part 1) ────────────────────────────
+
+
+async def make_order(
+    session: AsyncSession,
+    author: Player,
+    *,
+    nation: Nation | None = None,
+    number: int | None = None,
+    client_request_id: str | None = None,
+    nation_id: str | None = None,
+    nation_name: str | None = None,
+    nation_color: str | None = None,
+    title: str = "Тестовый приказ",
+    summary: str = "Краткая суть тестового приказа.",
+    article_url: str = "https://vk.com/@test/order-article",
+    submitted_at: datetime | None = None,
+    judge: Player | None = None,
+    distributed_at: datetime | None = None,
+    deadline_at: datetime | None = None,
+    reminder_at: datetime | None = None,
+    reminder_sent_at: datetime | None = None,
+    verdict_title: str | None = None,
+    verdict_summary: str | None = None,
+    verdict_url: str | None = None,
+    verdict_effects: dict | None = None,
+    verdict_at: datetime | None = None,
+) -> Order:
+    """Insert an ``orders`` row for ``author`` and flush it.
+
+    Defaults describe a valid SUBMITTED order: no judge, the nation
+    snapshot taken from ``nation`` (or synthetic values), a sequential
+    public ``number`` and a unique ``client_request_id``. Passing
+    ``judge`` fills the missing distribution timestamps with consistent
+    values (``distributed_at`` = submission, deadline +72 h, reminder
+    +54 h); passing ``verdict_at`` fills the missing verdict fields.
+    Explicitly passed values always win — a halfway combination is kept
+    as given so the CHECK groups can be exercised.
+    """
+    now = utcnow()
+    submitted = submitted_at or now
+    if judge is not None:
+        distributed_at = distributed_at or submitted
+        deadline_at = deadline_at or distributed_at + timedelta(hours=72)
+        reminder_at = reminder_at or distributed_at + timedelta(hours=54)
+    if verdict_at is not None:
+        verdict_title = verdict_title if verdict_title is not None else title
+        verdict_summary = (
+            verdict_summary if verdict_summary is not None else summary
+        )
+        verdict_url = verdict_url if verdict_url is not None else article_url
+    if number is None:
+        # Spec 3.5: the public number is the next after the maximum.
+        number = await session.scalar(
+            sa_select(sa_func.coalesce(sa_func.max(Order.number), 0) + 1)
+        )
+    row = Order(
+        number=number,
+        author_player_id=author.id,
+        client_request_id=client_request_id or str(uuid.uuid4()),
+        nation_id=nation_id or (nation.id if nation else str(uuid.uuid4())),
+        nation_name=nation_name or (nation.name if nation else "Test Nation"),
+        nation_color=nation_color or (nation.color_hex if nation else "#FF0000"),
+        title=title,
+        summary=summary,
+        article_url=article_url,
+        submitted_at=submitted,
+        judge_player_id=judge.id if judge is not None else None,
+        distributed_at=distributed_at,
+        deadline_at=deadline_at,
+        reminder_at=reminder_at,
+        reminder_sent_at=reminder_sent_at,
+        verdict_title=verdict_title,
+        verdict_summary=verdict_summary,
+        verdict_url=verdict_url,
+        verdict_effects=verdict_effects,
+        verdict_at=verdict_at,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
 # ── Module 02_bot seeders (Spec Part 1.1) ─────────────────────────────
 
 _event_key_seq = itertools.count()
+
+
+async def make_player(
+    session: AsyncSession,
+    *,
+    vk_user_id: int | None = None,
+    judge_rating: int | None = None,
+    consent_state: str | None = None,
+) -> Player:
+    """Insert a ``players`` row and flush it.
+
+    ``judge_rating`` overrides the registry rating default (the judge
+    threshold tests need values both sides of ``judge.min_rating``);
+    ``consent_state`` seeds the ``bot_consents`` row that decides the
+    reachability of a nationless player (Spec 04_orders 3.2).
+    """
+    build_kwargs: dict = {"nations": []}
+    if vk_user_id is not None:
+        build_kwargs["vk_user_id"] = vk_user_id
+    if judge_rating is not None:
+        build_kwargs["judge_rating"] = judge_rating
+    player = PlayerFactory.build(**build_kwargs)
+    session.add(player)
+    await session.flush()
+    if consent_state is not None:
+        await make_consent(session, player, state=consent_state)
+    return player
 
 
 async def make_consent(

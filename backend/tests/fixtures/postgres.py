@@ -263,6 +263,7 @@ async def pg_live_client(
 
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
+    saved_previews = AdminRegistry.get_player_preview_hooks()
     saved_handlers = {
         phase: list(handlers)
         for phase, handlers in TickOrchestrator._handlers.items()
@@ -282,6 +283,8 @@ async def pg_live_client(
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.clear()
     AdminRegistry._reset_hooks.update(saved_resets)
+    AdminRegistry._player_preview_hooks.clear()
+    AdminRegistry._player_preview_hooks.update(saved_previews)
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved_handlers)
     TickOrchestrator._finalize_callback = saved_finalize

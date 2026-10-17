@@ -314,6 +314,9 @@ class TypeSettings(_Strict):
     requires_consent: bool = Field(
         description="Отправлять только при подтверждённом разрешении игрока.",
     )
+    requires_nation: bool = Field(
+        description="Отправлять только владельцу государства; при false проверка государства не выполняется.",
+    )
     counts_toward_cap: bool = Field(
         description="Учитывается ли сообщение в суточном потолке limits.daily_cap_normal.",
     )

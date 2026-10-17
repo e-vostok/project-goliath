@@ -88,6 +88,16 @@ class NationNotFoundError(CoreDomainError):
         )
 
 
+class PlayerNotFoundError(CoreDomainError):
+    """Raised when attempting to operate on a player that does not exist."""
+
+    def __init__(self, player_id: str):
+        super().__init__(
+            f"Player {player_id} does not exist",
+            "PLAYER_NOT_FOUND"
+        )
+
+
 class LeaderNameInvalidError(CoreDomainError):
     """Raised when the leader name fails the Part 3 text-field checks."""
 

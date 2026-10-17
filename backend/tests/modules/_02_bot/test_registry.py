@@ -42,6 +42,7 @@ def _config_with_type() -> BotConfig:
         "enabled": True,
         "priority": "normal",
         "requires_consent": True,
+        "requires_nation": True,
         "counts_toward_cap": False,
         "ttl_minutes": 60,
         "hold_seconds": 0,
