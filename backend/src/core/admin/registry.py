@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 ResetHook = Callable[[AsyncSession], Awaitable[None]]
 StateViewHook = Callable[[AsyncSession], Awaitable[dict]]
+# A player-delete preview hook sees (session, player_id) and returns a
+# JSON-able dict fragment of what the module would lose with that player
+# (counts only — e.g. {"outbox_rows": 3}); the admin endpoint merges the
+# fragments into its fixed-shape response. Read-only, never commits.
+PlayerPreviewHook = Callable[[AsyncSession, str], Awaitable[dict]]
 
 
 class AdminRegistry:
@@ -31,6 +36,7 @@ class AdminRegistry:
 
     _reset_hooks: dict[str, ResetHook] = {}
     _state_view_hooks: dict[str, StateViewHook] = {}
+    _player_preview_hooks: dict[str, PlayerPreviewHook] = {}
 
     @classmethod
     def register_reset(cls, module_slug: str, reset_fn: ResetHook) -> None:
@@ -74,6 +80,35 @@ class AdminRegistry:
         logger.info(f"Registered admin state-view hook for module '{module_slug}'")
 
     @classmethod
+    def register_player_preview(
+        cls, module_slug: str, preview_fn: PlayerPreviewHook
+    ) -> None:
+        """
+        Register a player-delete preview hook for a module.
+
+        Args:
+            module_slug: The owning module's slug.
+            preview_fn: Async function taking (session, player_id) that
+                        returns a dict fragment of per-module counts —
+                        what deleting this player would remove. Called by
+                        the admin panel's delete-preview endpoint.
+
+        Raises:
+            ValueError: If a preview hook is already registered for
+                        module_slug.
+        """
+        if module_slug in cls._player_preview_hooks:
+            raise ValueError(
+                f"Player-preview hook already registered for module "
+                f"'{module_slug}'"
+            )
+        cls._player_preview_hooks[module_slug] = preview_fn
+        logger.info(
+            f"Registered admin player-preview hook for module "
+            f"'{module_slug}'"
+        )
+
+    @classmethod
     def get_reset_hooks(cls) -> dict[str, ResetHook]:
         """Return all registered reset hooks in registration order."""
         return dict(cls._reset_hooks)
@@ -84,6 +119,11 @@ class AdminRegistry:
         return dict(cls._state_view_hooks)
 
     @classmethod
+    def get_player_preview_hooks(cls) -> dict[str, PlayerPreviewHook]:
+        """Return all player-delete preview hooks in registration order."""
+        return dict(cls._player_preview_hooks)
+
+    @classmethod
     def clear_handlers(cls) -> None:
         """
         Clear all registered hooks.
@@ -92,3 +132,4 @@ class AdminRegistry:
         """
         cls._reset_hooks.clear()
         cls._state_view_hooks.clear()
+        cls._player_preview_hooks.clear()
