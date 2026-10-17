@@ -1209,54 +1209,32 @@ class ScheduledActionService:
         # INV-FREQUENCY: Check frequency constraints
         max_allowed = None
 
+        conditions = [
+            ScheduledAction.nation_id == nation_id,
+            ScheduledAction.module_slug == module_slug,
+            ScheduledAction.action_type == action_type,
+            ScheduledAction.status == ScheduledActionStatus.PENDING,
+        ]
+        if frequency_rule in (
+            FrequencyRule.ONCE_PER_TURN,
+            FrequencyRule.MULTIPLE_PER_TURN,
+        ):
+            conditions.append(ScheduledAction.turn_number == turn_number)
+
+        # Count actions for this nation, module, type, on this specific turn
+        result = await session.execute(select(ScheduledAction).where(*conditions))
+        current_count = len(result.scalars().all())
+
         if frequency_rule == FrequencyRule.ONCE_PER_TURN:
             max_allowed = 1
-            # Count actions for this nation, module, type, on this specific turn
-            result = await session.execute(
-                select(ScheduledAction).where(
-                    ScheduledAction.nation_id == nation_id,
-                    ScheduledAction.module_slug == module_slug,
-                    ScheduledAction.action_type == action_type,
-                    ScheduledAction.turn_number == turn_number,
-                    ScheduledAction.status == ScheduledActionStatus.PENDING,
-                )
-            )
-            current_count = len(result.scalars().all())
-
         elif frequency_rule == FrequencyRule.ONCE_PER_GAME:
             max_allowed = 1
-            # Count actions for this nation, module, type, across all turns
-            result = await session.execute(
-                select(ScheduledAction).where(
-                    ScheduledAction.nation_id == nation_id,
-                    ScheduledAction.module_slug == module_slug,
-                    ScheduledAction.action_type == action_type,
-                    ScheduledAction.status == ScheduledActionStatus.PENDING,
-                )
-            )
-            current_count = len(result.scalars().all())
-
         elif frequency_rule == FrequencyRule.MULTIPLE_PER_TURN:
             if frequency_cap is None:
                 raise ValueError("frequency_cap is required for MULTIPLE_PER_TURN rule")
             max_allowed = frequency_cap
-            # Count actions for this nation, module, type, on this specific turn
-            result = await session.execute(
-                select(ScheduledAction).where(
-                    ScheduledAction.nation_id == nation_id,
-                    ScheduledAction.module_slug == module_slug,
-                    ScheduledAction.action_type == action_type,
-                    ScheduledAction.turn_number == turn_number,
-                    ScheduledAction.status == ScheduledActionStatus.PENDING,
-                )
-            )
-            current_count = len(result.scalars().all())
-
         elif frequency_rule == FrequencyRule.UNLIMITED:
-            # No constraint
-            current_count = 0
             max_allowed = float("inf")
-
         else:
             raise ValueError(f"Unknown frequency rule: {frequency_rule}")
 
