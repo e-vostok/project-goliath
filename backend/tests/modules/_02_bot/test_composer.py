@@ -9,19 +9,15 @@ expiry/readiness filtering and the a=0 shutout.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from modules._02_bot.composer import (
-    ComposedMessage,
-    ComposeResult,
     RowView,
     SentHistory,
     compose,
 )
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 _id_seq = 0
 

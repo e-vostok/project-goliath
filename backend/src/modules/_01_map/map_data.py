@@ -12,8 +12,9 @@ Internal to module ``_01_map`` — other modules must go through
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal
 
 from .map_files import Borders, Geometry, Manifest
 

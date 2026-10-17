@@ -16,13 +16,13 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+import modules._04_orders.config_schema as orders_schema
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Nation
 from modules._00_core.player_stats import JUDGE_RATING_MAX, JUDGE_RATING_MIN
 from modules._01_map.config_schema import MapConfig
 from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
 from modules._03_registry.config_schema import RegistryConfig
-import modules._04_orders.config_schema as orders_schema
 from modules._04_orders.config_schema import OrdersConfig
 from modules._04_orders.models import Order
 

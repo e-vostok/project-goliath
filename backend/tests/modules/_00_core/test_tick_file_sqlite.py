@@ -10,12 +10,10 @@ the tick_log update on a second connection ("database is locked").
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
@@ -23,6 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator, TickOutcome, TickPhase
 from core.tick.scheduler import run_scheduled_tick

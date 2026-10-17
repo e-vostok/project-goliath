@@ -11,7 +11,7 @@ stamps the transaction's current turn and ``update`` never rewrites it
 from __future__ import annotations
 
 import itertools
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -55,7 +55,7 @@ async def test_created_turn_stamped_on_create_and_immutable(
         GameClock(
             id=1,
             current_turn=7,
-            next_tick_at=datetime.now(timezone.utc),
+            next_tick_at=datetime.now(UTC),
         )
     )
     await test_db_session.flush()

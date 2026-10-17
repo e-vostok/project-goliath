@@ -11,6 +11,7 @@ against a real in-memory SQLite database — no mocks.
 from __future__ import annotations
 
 import time
+from datetime import UTC
 
 import pytest
 from sqlalchemy import func, select
@@ -44,7 +45,7 @@ async def _make_owned_province(
 ) -> None:
     """A player, their nation, and a LAND province owned by it."""
     import uuid as _uuid
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from modules._00_core.models import Nation, Player
     from tests.fixtures.profile import VALID_PROFILE
@@ -52,14 +53,14 @@ async def _make_owned_province(
     player = Player(
         id=str(_uuid.uuid4()),
         vk_user_id=777001,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     nation = Nation(
         id=str(_uuid.uuid4()),
         owner_player_id=player.id,
         name=nation_name,
         color_hex="#101010",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         created_turn=0,
         **VALID_PROFILE,
     )
@@ -195,7 +196,7 @@ class TestEnsureNodesValidation:
         """An owned province with a matching kind is 'existing', not
         'added' — ensure_nodes must not strip ownership."""
         import uuid as _uuid
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from modules._00_core.models import Nation, Player
         from tests.fixtures.profile import VALID_PROFILE
@@ -203,14 +204,14 @@ class TestEnsureNodesValidation:
         player = Player(
             id=str(_uuid.uuid4()),
             vk_user_id=777001,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         nation = Nation(
             id=str(_uuid.uuid4()),
             owner_player_id=player.id,
             name="Owning Nation",
             color_hex="#101010",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             created_turn=0,
             **VALID_PROFILE,
         )

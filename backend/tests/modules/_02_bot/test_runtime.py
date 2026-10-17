@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 
 import pytest
@@ -22,7 +22,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from core.db import Base
-
 from core.tick.orchestrator import TickOrchestrator
 from modules._00_core.models import GameClock
 from modules._00_core.tick_handler import finalize_tick
@@ -103,7 +102,7 @@ class TestEndToEnd:
         """READY + fake VK: the runtime claims the queued row, sends
         it, writes SENT — and stop() leaves a clean queue."""
         sf = make_session_factory(file_db_engine)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with sf() as session:
             player = await add_member(session)
             row = await add_outbox(
@@ -167,7 +166,7 @@ class TestEndToEnd:
         real tick still completes, current_turn advances, and the
         watcher turns it into a digest row for the player."""
         sf = make_session_factory(file_db_engine)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with sf() as session:
             session.add(
                 GameClock(

@@ -9,7 +9,7 @@ and record_vk_check semantics.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -22,16 +22,16 @@ from modules._02_bot.consent import (
     is_allowed,
     record_vk_check,
 )
-from modules._02_bot.models import BotConsent, BotOutbox
+from modules._02_bot.models import BotOutbox
 from tests.fixtures.factories import make_consent, make_outbox_row
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def _aware(value: datetime | None) -> datetime | None:
     """SQLite returns naive datetimes even for timezone=True columns."""
     if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 

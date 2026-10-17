@@ -12,7 +12,7 @@ is written after it.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _aware(value: datetime | None) -> datetime | None:
     """SQLite returns naive datetimes for ``timezone=True`` columns."""
     if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 
@@ -50,7 +50,7 @@ async def sync_consent_with_vk(
     last one is within the minimum interval, which returns
     ``throttled=True``. Returns ``(state, stale, throttled)``.
     """
-    t = now if now is not None else datetime.now(timezone.utc)
+    t = now if now is not None else datetime.now(UTC)
     row = await consent_mod.get_or_create_consent(session, player.id, now=t)
     last = _aware(row.last_checked_at)
 

@@ -18,7 +18,6 @@ from modules._00_core.hooks import (
     STAGE_AFTER_FREE,
     OwnershipChange,
     get_ownership_listeners,
-    get_registration_checks,
     notify_ownership_changed,
     register_ownership_listener,
     register_registration_check,
@@ -26,7 +25,7 @@ from modules._00_core.hooks import (
     run_registration_checks,
     snapshot_extension_points,
 )
-from modules._00_core.models import Nation, Player, Province
+from modules._00_core.models import Nation, Player
 from modules._00_core.service import NationService
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import (

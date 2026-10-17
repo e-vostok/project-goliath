@@ -22,11 +22,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from sqlalchemy import event as sa_event
 from sqlalchemy import delete, false, select
+from sqlalchemy import event as sa_event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,7 +160,7 @@ class BotService:
         ):
             return EnqueueResult.SKIPPED_NO_CONSENT
 
-        t = now if now is not None else datetime.now(timezone.utc)
+        t = now if now is not None else datetime.now(UTC)
         t0 = event_at if event_at is not None else t
         not_before = t + timedelta(seconds=type_cfg.hold_seconds)
         row = BotOutbox(
@@ -263,7 +263,7 @@ class BotService:
         ``now + dialog.reply_ttl_minutes``. ``now`` only exists for
         tests.
         """
-        t = now if now is not None else datetime.now(timezone.utc)
+        t = now if now is not None else datetime.now(UTC)
         row = BotOutbox(
             player_id=player_id,
             kind="REPLY",

@@ -10,7 +10,6 @@ priority ordering, and the lease_token write guard.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import timedelta
 from urllib.parse import parse_qs
@@ -21,7 +20,6 @@ from sqlalchemy import select, update
 from modules._02_bot.breaker import CircuitBreaker
 from modules._02_bot.claim import claim_batch
 from modules._02_bot.config_schema import BreakerSettings
-from modules._02_bot.errors import ErrorClass
 from modules._02_bot.limiter import TokenBucket
 from modules._02_bot.models import BotConsent, BotOutbox
 from modules._02_bot.sender import Sender

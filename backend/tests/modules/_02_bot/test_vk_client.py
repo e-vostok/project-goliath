@@ -12,10 +12,9 @@ disabled), and ``isMessagesFromGroupAllowed`` 1/0/None.
 
 from __future__ import annotations
 
-import pytest
 from urllib.parse import parse_qs
 
-import httpx
+import pytest
 
 from modules._02_bot.vk_client import SendKind, VkClient
 from tests.fixtures.fake_vk import FakeVk

@@ -18,10 +18,10 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import IntegrityError
 
+from alembic import command
 from modules._04_orders.models import OrderStage, is_overdue, stage_of
 from tests.fixtures.factories import PlayerFactory, make_order, utcnow
 

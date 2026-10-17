@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,7 +62,7 @@ async def get_or_create_consent(
     )
     consent = result.scalar_one_or_none()
     if consent is None:
-        t = now if now is not None else datetime.now(timezone.utc)
+        t = now if now is not None else datetime.now(UTC)
         consent = BotConsent(
             player_id=player_id,
             state="UNKNOWN",
@@ -95,7 +95,7 @@ async def apply_consent_signal(
         raise ValueError(f"new_state must be 'ALLOWED' or 'DENIED', got {new_state!r}")
     if source not in CONSENT_SOURCES:
         raise ValueError(f"unknown consent signal source {source!r}")
-    t = now if now is not None else datetime.now(timezone.utc)
+    t = now if now is not None else datetime.now(UTC)
 
     consent = await get_or_create_consent(session, player_id, now=t)
     old = consent.state

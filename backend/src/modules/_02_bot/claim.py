@@ -22,7 +22,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +42,7 @@ from modules._02_bot.settings import BotEnv
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _row_view(row: BotOutbox) -> RowView:

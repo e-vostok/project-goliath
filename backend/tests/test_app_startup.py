@@ -13,12 +13,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator
 from main import app

@@ -216,7 +216,7 @@ async def notify_ownership_changed(
 async def run_registration_checks(
     stage: CheckStage,
     session: AsyncSession,
-    provinces: Sequence["Province"],
+    provinces: Sequence[Province],
 ) -> None:
     """Run all checks of one province stage, in registration order."""
     if stage == STAGE_BEFORE_ALL:

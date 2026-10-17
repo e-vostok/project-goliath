@@ -10,7 +10,7 @@ test_tick_safety_pg.py.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -28,7 +28,7 @@ async def test_mark_interrupted_ticks_flips_only_running(test_db_session):
     RUNNING rows become FAILED with ``interrupted by restart``; finished
     rows keep their status and their original error text.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     test_db_session.add_all(
         [
             TickLog(turn_number=1, started_at=now, status=TickLogStatus.RUNNING),
@@ -84,7 +84,7 @@ async def test_recover_on_sqlite_marks_and_warns_once(test_db_engine, caplog):
         session.add(
             TickLog(
                 turn_number=1,
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
                 status=TickLogStatus.RUNNING,
             )
         )

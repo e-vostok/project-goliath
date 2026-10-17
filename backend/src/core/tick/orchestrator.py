@@ -10,7 +10,7 @@ from __future__ import annotations
 import enum
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,8 +160,8 @@ class TickOrchestrator:
         if enforce_schedule:
             # SQLite returns naive datetimes even for timezone=True columns.
             if next_tick_at.tzinfo is None:
-                next_tick_at = next_tick_at.replace(tzinfo=timezone.utc)
-            if next_tick_at > datetime.now(timezone.utc):
+                next_tick_at = next_tick_at.replace(tzinfo=UTC)
+            if next_tick_at > datetime.now(UTC):
                 logger.info("Tick skipped: not due until %s", next_tick_at)
                 return TickOutcome.SKIPPED_NOT_DUE
 
@@ -179,7 +179,7 @@ class TickOrchestrator:
         async with AsyncSession(async_engine) as log_session:
             tick_log = TickLog(
                 turn_number=next_turn,
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
                 status=TickLogStatus.RUNNING,
             )
             log_session.add(tick_log)
@@ -210,7 +210,7 @@ class TickOrchestrator:
                 .where(TickLog.id == tick_log_id)
                 .values(
                     status=TickLogStatus.COMPLETED,
-                    finished_at=datetime.now(timezone.utc),
+                    finished_at=datetime.now(UTC),
                 )
             )
 
@@ -232,7 +232,7 @@ class TickOrchestrator:
                     .where(TickLog.id == tick_log_id)
                     .values(
                         status=TickLogStatus.FAILED,
-                        finished_at=datetime.now(timezone.utc),
+                        finished_at=datetime.now(UTC),
                         error_message=str(e),
                     )
                 )

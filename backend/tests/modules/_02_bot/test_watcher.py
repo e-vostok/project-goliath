@@ -12,20 +12,19 @@ needs a registered audience provider.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 
 from core.tick.orchestrator import TickOrchestrator, TickPhase
-from modules._00_core.models import GameClock, Player
+from modules._00_core.models import GameClock
 from modules._00_core.tick_handler import finalize_tick
 from modules._02_bot.claim import claim_batch
-from modules._02_bot.models import BotConsent, BotOutbox
+from modules._02_bot.models import BotOutbox
 from modules._02_bot.registry import register_deadline_audience
 from modules._02_bot.settings import BotEnv
 from modules._02_bot.watcher import digest_watcher_step
-from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._02_bot._issue3_support import (
     NOW,
     add_bot_state,

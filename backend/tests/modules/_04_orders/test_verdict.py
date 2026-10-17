@@ -10,7 +10,7 @@ VK_APP_ID=777).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -19,7 +19,7 @@ from modules._02_bot.models import BotOutbox
 from modules._02_bot.render import render_message
 from modules._04_orders.models import Order, OrderStage, stage_of
 from modules._04_orders.service import OrderService
-from tests.fixtures.factories import make_consent, make_order, utcnow
+from tests.fixtures.factories import make_consent, make_order
 from tests.modules._03_registry.conftest import bearer_headers
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
@@ -34,7 +34,7 @@ VALID_VERDICT = {
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class TestWriteVerdict:

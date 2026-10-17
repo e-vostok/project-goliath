@@ -10,7 +10,6 @@ No mocks: real files, real hashing, the real ``configs/01_map.yaml``
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 
 import pytest

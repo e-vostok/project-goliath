@@ -11,7 +11,6 @@ same trick as tests/modules/_01_map/test_ownership_log.py.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
 
 import pytest
 import sqlalchemy as sa

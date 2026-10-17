@@ -14,14 +14,12 @@ tests/fixtures/postgres.py).
 from __future__ import annotations
 
 import asyncio
-import uuid
 
 import pytest
 from sqlalchemy import func, select
 
 from modules._00_core.models import Player
 from modules._04_orders.models import Order
-from modules._04_orders.service import OrderService
 from tests.fixtures.factories import (
     NationFactory,
     PlayerFactory,
@@ -29,7 +27,6 @@ from tests.fixtures.factories import (
 )
 from tests.fixtures.postgres import (
     pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )

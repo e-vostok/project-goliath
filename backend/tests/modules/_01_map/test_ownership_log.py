@@ -11,7 +11,7 @@ Runs on a real in-memory SQLite database — no mocks.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
@@ -37,7 +37,7 @@ def _log_row(**overrides) -> dict:
         "new_nation_id": None,
         "new_nation_name": None,
         "new_nation_color": None,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     row.update(overrides)
     return row

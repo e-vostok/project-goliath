@@ -14,7 +14,7 @@ grow with the number of players.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,7 +79,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     # retry (next_attempt_at in the future) never do — an unreachable
     # VK adds no load from table opens. A plain function call: a no-op
     # while the worker is not running.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if any(
         (profile := profiles.get(row.player_id)) is None
         or aware_utc(profile.next_attempt_at) <= now

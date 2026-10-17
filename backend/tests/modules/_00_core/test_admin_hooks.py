@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -23,6 +23,7 @@ from dotenv import dotenv_values
 from sqlalchemy import create_engine, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import modules._01_map.models  # noqa: F401 — registers map_ownership_log
 from core.admin.registry import AdminRegistry
 from core.db import Base
 from modules._00_core.admin_hooks import (
@@ -43,12 +44,6 @@ from modules._00_core.models import (
     TickLogStatus,
 )
 from modules._00_core.tick_schedule import next_tick_after
-import modules._01_map.models  # noqa: F401 — registers map_ownership_log
-
-# so drop_all/create_all on the shared PG test DB sees its FK into
-# provinces and drops tables in dependency order.
-from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
 from tests.fixtures.factories import (
     GameClockFactory,
     NationFactory,
@@ -56,6 +51,11 @@ from tests.fixtures.factories import (
     ScheduledActionFactory,
     TickLogFactory,
 )
+
+# so drop_all/create_all on the shared PG test DB sees its FK into
+# provinces and drops tables in dependency order.
+from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import make_land_province
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 _REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -132,7 +132,7 @@ def registry_guard():
 
 def _utc(dt: datetime) -> datetime:
     """Normalize a possibly-naive DB datetime to aware UTC."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 async def _seed_player(
@@ -141,7 +141,7 @@ async def _seed_player(
     # polyfactory auto-fills relationships; nations=[] keeps the seed exact.
     player = PlayerFactory.build(
         vk_user_id=vk_user_id,
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(UTC),
         nations=[],
     )
     session.add(player)
@@ -200,7 +200,7 @@ class TestAdminStateView:
 
     @pytest.mark.asyncio
     async def test_state_view_content(self, test_db_session):
-        t0 = datetime.now(timezone.utc)
+        t0 = datetime.now(UTC)
         owner = await _seed_player(test_db_session, vk_user_id=1001, created_at=t0)
         free_player = await _seed_player(
             test_db_session,
@@ -285,7 +285,7 @@ class TestAdminStateView:
 
     @pytest.mark.asyncio
     async def test_state_view_caps_lists_at_200(self, test_db_session):
-        base = datetime.now(timezone.utc)
+        base = datetime.now(UTC)
         for i in range(LIST_CAP + 5):
             player = await _seed_player(
                 test_db_session,
@@ -335,8 +335,8 @@ class TestAdminReset:
         test_db_session.add(
             GameClockFactory.build(
                 current_turn=9,
-                last_tick_at=datetime.now(timezone.utc),
-                next_tick_at=datetime.now(timezone.utc),
+                last_tick_at=datetime.now(UTC),
+                next_tick_at=datetime.now(UTC),
             )
         )
         test_db_session.add(
@@ -344,10 +344,10 @@ class TestAdminReset:
         )
         await test_db_session.flush()
 
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         await admin_reset(test_db_session)
         await test_db_session.flush()
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
 
         result = await test_db_session.execute(select(func.count()).select_from(Nation))
         assert result.scalar_one() == 0
@@ -397,7 +397,7 @@ class TestAdminReset:
         clock = result.scalar_one()
         assert clock.current_turn == 0
         assert clock.last_tick_at is None
-        assert _utc(clock.next_tick_at) > datetime.now(timezone.utc)
+        assert _utc(clock.next_tick_at) > datetime.now(UTC)
 
     @pytest.mark.asyncio
     async def test_reset_inserts_missing_clock_row(self, test_db_session):
@@ -505,8 +505,8 @@ class TestAdminEndpointFunctions:
             test_db_session.add(
                 TickLog(
                     turn_number=turn,
-                    started_at=datetime.now(timezone.utc),
-                    finished_at=datetime.now(timezone.utc),
+                    started_at=datetime.now(UTC),
+                    finished_at=datetime.now(UTC),
                     status=TickLogStatus.COMPLETED,
                 )
             )
@@ -598,7 +598,7 @@ class TestAdminEndpointFunctions:
         # Rows inserted WITHOUT explicit ids so they consume the real
         # counter (identity sequence on Postgres, rowid on SQLite): 1,2,3.
         for turn in (1, 2, 3):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             test_db_session.add(
                 TickLog(
                     turn_number=turn,
@@ -619,7 +619,7 @@ class TestAdminEndpointFunctions:
         result = await test_db_session.execute(select(TickLog))
         assert len(result.scalars().all()) == 3
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         new_row = TickLog(
             turn_number=99,
             started_at=now,

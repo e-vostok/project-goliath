@@ -15,13 +15,13 @@ import logging
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator
@@ -31,6 +31,14 @@ from modules._00_core.hooks import (
     snapshot_extension_points,
 )
 from modules._00_core.models import Player, Province
+from tests.core.admin.test_router import (
+    ADMIN_VK_ID,
+    BACKEND_DIR,
+    PG_TEST_URL,
+    USER_VK_ID,
+    _async_url,
+    _reset_pg_schema,
+)
 from tests.fixtures.factories import (
     NationFactory,
     make_consent,
@@ -43,14 +51,6 @@ from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
     make_launch_params,
-)
-from tests.core.admin.test_router import (
-    ADMIN_VK_ID,
-    USER_VK_ID,
-    BACKEND_DIR,
-    PG_TEST_URL,
-    _async_url,
-    _reset_pg_schema,
 )
 
 TARGET_VK_ID = 888111

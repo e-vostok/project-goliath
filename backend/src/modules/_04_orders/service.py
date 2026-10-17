@@ -40,7 +40,7 @@ import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from sqlalchemy import delete, false, func, select, text, update
@@ -184,7 +184,7 @@ class RetryPassStats:
 def _aware(moment: datetime) -> datetime:
     """Naive datetimes are read as UTC (storage convention)."""
     if moment.tzinfo is None:
-        return moment.replace(tzinfo=timezone.utc)
+        return moment.replace(tzinfo=UTC)
     return moment
 
 
@@ -283,7 +283,7 @@ class OrderService:
                 )
             )
         ).scalar_one_or_none()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if existing is not None:
             return SubmitOutcome(
                 _detail_view(existing, now=now, viewer_player_id=player_id),
@@ -397,7 +397,7 @@ class OrderService:
             raise OrderNotFoundError(number)
         return _detail_view(
             order,
-            now=datetime.now(timezone.utc),
+            now=datetime.now(UTC),
             viewer_player_id=viewer_player_id,
         )
 
@@ -528,7 +528,7 @@ class OrderService:
         # while judge_player_id IS NULL. The deadline and reminder
         # timestamps are fixed now by integer arithmetic (Spec 3.4) and
         # never move, whatever the config becomes later.
-        distributed_at = now if now is not None else datetime.now(timezone.utc)
+        distributed_at = now if now is not None else datetime.now(UTC)
         result = await session.execute(
             update(Order)
             .where(
@@ -594,7 +594,7 @@ class OrderService:
         from modules._04_orders.startup import get_orders_config
 
         batch_size = get_orders_config().distribution.batch_size
-        moment = now if now is not None else datetime.now(timezone.utc)
+        moment = now if now is not None else datetime.now(UTC)
         assigned = still_waiting = 0
         reminders_sent = reminders_skipped = errors = 0
 
@@ -764,7 +764,7 @@ class OrderService:
             )
             .order_by(Order.deadline_at)
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             AssignedOrderView(
                 number=order.number,
@@ -840,7 +840,7 @@ class OrderService:
         # 6. Conditional write (INV-O1): the four verdict columns and
         # nothing else, only while the row is still this judge's to
         # decide.
-        verdict_at = datetime.now(timezone.utc)
+        verdict_at = datetime.now(UTC)
         result = await session.execute(
             update(Order)
             .where(

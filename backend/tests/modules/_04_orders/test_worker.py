@@ -14,7 +14,7 @@ selector injection point and the module's own pause table are patched.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -43,12 +43,12 @@ from tests.fixtures.factories import (
 )
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
-NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 async def _order(session, order_id: str) -> Order:

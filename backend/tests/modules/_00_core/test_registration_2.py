@@ -22,17 +22,15 @@ The concurrent-registration color race lives in
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
 
+from alembic import command
 from core.db import get_session
 from main import app
 from modules._00_core.color_policy import hex_to_oklab, oklab_distance
@@ -56,7 +54,7 @@ from modules._00_core.exceptions import (
     ShortNameTakenError,
     SuccessionInvalidError,
 )
-from modules._00_core.models import Nation, Player, Province
+from modules._00_core.models import Nation, Player
 from modules._00_core.service import NationService
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import make_land_province

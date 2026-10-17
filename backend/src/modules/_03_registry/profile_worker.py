@@ -28,7 +28,7 @@ import logging
 import os
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager, suppress
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from sqlalchemy import select
@@ -89,7 +89,7 @@ def request_wake() -> None:
 
 def aware_utc(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def read_vk_group_token(environ: Mapping[str, str] = os.environ) -> str | None:
@@ -272,17 +272,17 @@ class ProfileWorker:
                     self._session_factory,
                     self._client,
                     self._profiles,
-                    datetime.now(timezone.utc),
+                    datetime.now(UTC),
                 )
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("03_registry profile cycle failed")
             else:
-                _last_cycle_at = datetime.now(timezone.utc)
+                _last_cycle_at = datetime.now(UTC)
             try:
                 await asyncio.wait_for(self._wake.wait(), timeout=interval_seconds)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             self._wake.clear()
 

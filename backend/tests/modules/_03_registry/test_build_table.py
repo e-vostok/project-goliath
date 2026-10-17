@@ -6,7 +6,7 @@ Tests for ``build_table`` and the startup config-vs-sources check
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -49,7 +49,7 @@ class TestBuildTable:
             "_registry_config",
             registry_started.model_copy(update={"limits": lowered}),
         )
-        base = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+        base = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
         for i in range(3):
             await seed_player(
                 test_db_session,

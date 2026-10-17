@@ -7,7 +7,7 @@ after all phase handlers have completed successfully.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +41,7 @@ async def finalize_tick(session: AsyncSession, turn_number: int) -> None:
     clock = result.scalar_one()
 
     # Update the clock
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     clock.current_turn = turn_number
     clock.last_tick_at = now
     clock.next_tick_at = next_tick_after(

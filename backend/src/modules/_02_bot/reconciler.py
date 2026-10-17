@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +49,7 @@ async def reconcile_step(
     checks performed (0 when nobody is UNKNOWN or every check failed
     to resolve a vk id).
     """
-    t = now if now is not None else datetime.now(timezone.utc)
+    t = now if now is not None else datetime.now(UTC)
     if not env.group_id or not env.group_id.isdigit():
         return 0
     async with session_factory() as session:

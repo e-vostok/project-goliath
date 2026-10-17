@@ -12,7 +12,6 @@ import math
 import pytest
 
 from modules._01_map import service as service_module
-from modules._01_map.map_data import MapData
 from modules._01_map.service import (
     MapService,
     NodeNotLandError,

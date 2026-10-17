@@ -8,25 +8,16 @@ Enforces all invariants defined in the system specification.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Iterable, Literal, Sequence
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.color_policy import oklab_distance
 from modules._00_core.config_schema import CoreConfig
-from modules._00_core.hooks import (
-    STAGE_AFTER_COUNT,
-    STAGE_AFTER_FREE,
-    OwnershipChange,
-    get_player_delete_hooks,
-    notify_ownership_changed,
-    run_before_all_checks,
-    run_nation_created_hooks,
-    run_registration_checks,
-)
 from modules._00_core.exceptions import (
     CapitalNotInProvincesError,
     ColorTakenError,
@@ -42,6 +33,16 @@ from modules._00_core.exceptions import (
     RetiredProvinceHistoryError,
     RetiredProvinceOwnedError,
     ShortNameTakenError,
+)
+from modules._00_core.hooks import (
+    STAGE_AFTER_COUNT,
+    STAGE_AFTER_FREE,
+    OwnershipChange,
+    get_player_delete_hooks,
+    notify_ownership_changed,
+    run_before_all_checks,
+    run_nation_created_hooks,
+    run_registration_checks,
 )
 from modules._00_core.models import (
     GameClock,
@@ -68,7 +69,7 @@ from modules._00_core.profile_rules import (
 )
 
 if TYPE_CHECKING:
-    from typing import Self
+    pass
 
 
 # PostgreSQL advisory-lock key serializing nation registrations and
@@ -361,7 +362,7 @@ class PlayerService:
             player = Player(
                 id=str(uuid.uuid4()),
                 vk_user_id=vk_user_id,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(player)
             await session.flush()
@@ -792,7 +793,7 @@ class NationService:
             anthem_url=anthem_url,
             capital_province_id=capital_province_id,
             capital_name=capital_name,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             created_turn=turn,
         )
         session.add(nation)
@@ -1272,7 +1273,7 @@ class ScheduledActionService:
             payload=payload,
             turn_number=turn_number,
             status=ScheduledActionStatus.PENDING,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         session.add(action)
         await session.flush()

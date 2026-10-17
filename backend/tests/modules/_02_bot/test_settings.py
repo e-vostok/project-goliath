@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 
-import modules._02_bot.settings as settings
 from modules._02_bot.settings import (
     BotMode,
     get_bot_mode,

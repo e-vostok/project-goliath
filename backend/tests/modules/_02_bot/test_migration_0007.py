@@ -17,13 +17,13 @@ no mocks.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 
@@ -142,7 +142,7 @@ class TestUpgradeToHead:
         engine = sa.create_engine(url)
         try:
             with engine.begin() as conn:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 for key in ("a", "b"):
                     conn.execute(
                         sa.text(

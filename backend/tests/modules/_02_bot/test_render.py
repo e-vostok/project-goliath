@@ -11,7 +11,7 @@ guard.
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import yaml
@@ -26,7 +26,7 @@ from modules._02_bot.render import (
     sanitize_value,
 )
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 _id_seq = 0
 

@@ -9,7 +9,7 @@ environment variable; the TTL comes from CoreConfig.auth.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt as pyjwt
 
@@ -37,7 +37,7 @@ def issue_token(player_id: str, ttl_minutes: int) -> str:
         The encoded JWT string.
     """
     secret = os.environ["JWT_SECRET_KEY"]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": player_id,
         "iat": now,

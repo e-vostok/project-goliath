@@ -9,9 +9,8 @@ interval/chat_url fields. Secrets never appear in responses.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy import select
 
 from modules._02_bot.models import BotConsent
@@ -29,7 +28,7 @@ pytest_plugins = ["tests.modules._02_bot._issue4_fixtures"]
 STATUS_URL = "/api/v1/bot/status"
 REFRESH_URL = "/api/v1/bot/consent/refresh"
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 class TestBotOff:
@@ -139,7 +138,7 @@ class TestActive:
         fake, _runtime = fake_vk_runtime
         player = await add_player(test_db_session, vk_user_id=777004)
         consent = await add_consent(test_db_session, player.id, state="ALLOWED")
-        consent.last_checked_at = datetime.now(timezone.utc)
+        consent.last_checked_at = datetime.now(UTC)
         await test_db_session.commit()
 
         resp = await client.get(STATUS_URL, headers=bearer_headers(player.id))

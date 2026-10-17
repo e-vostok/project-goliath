@@ -13,7 +13,7 @@ so the rendered text is identical on every machine. Two formats exist:
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 # Месяцы в родительном падеже (1..12) — Spec 3.5.
@@ -48,7 +48,7 @@ def real_date_parts(created_at: datetime, tick_timezone: str) -> tuple[str, int]
     convention; SQLite returns them naive for ``timezone=True`` columns).
     """
     if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=timezone.utc)
+        created_at = created_at.replace(tzinfo=UTC)
     local_date = created_at.astimezone(ZoneInfo(tick_timezone)).date()
     text = (
         f"{local_date.day} {_MONTHS_GENITIVE[local_date.month - 1]} {local_date.year}"

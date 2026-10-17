@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import itertools
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from polyfactory.factories.sqlalchemy_factory import SQLAlchemyFactory
-from sqlalchemy import func as sa_func, select as sa_select
+from sqlalchemy import func as sa_func
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.models import (
@@ -38,7 +39,7 @@ from tests.fixtures.profile import VALID_PROFILE
 
 def utcnow():
     """Helper to get current UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class PlayerFactory(SQLAlchemyFactory[Player]):

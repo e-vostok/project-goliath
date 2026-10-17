@@ -11,7 +11,7 @@ bell — silent on rollback, ringing on commit.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -20,19 +20,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules._00_core.models import Nation, Player
 from modules._02_bot.composer import ComposedMessage, RowView
 from modules._02_bot.config_schema import BotConfig, TypeSettings
+from modules._02_bot.models import BotOutbox
 from modules._02_bot.registry import register_notification_type
 from modules._02_bot.render import TemplateError, render_message
 from modules._02_bot.service import BotService, EnqueueResult
-from modules._02_bot.models import BotOutbox
 from tests.fixtures.factories import make_consent, make_outbox_row
 from tests.fixtures.profile import VALID_PROFILE
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 async def _player(session: AsyncSession) -> Player:

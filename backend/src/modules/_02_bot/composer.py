@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from modules._02_bot.config_schema import BotConfig
@@ -21,10 +21,10 @@ from modules._02_bot.config_schema import BotConfig
 
 def _utc(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
-def _age_key(row: "RowView") -> tuple[datetime, int]:
+def _age_key(row: RowView) -> tuple[datetime, int]:
     """Age ordering: oldest row first, id breaks ties deterministically."""
     return (_utc(row.created_at), row.id)
 

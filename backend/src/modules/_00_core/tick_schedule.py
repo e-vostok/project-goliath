@@ -14,7 +14,7 @@ instant while the local time stays fixed.
 from __future__ import annotations
 
 import re
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 TICK_TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -48,7 +48,7 @@ def next_tick_after(now: datetime, tick_time: str, tz_name: str) -> datetime:
             time(hour, minute),
             tzinfo=tz,
         )
-    return candidate.astimezone(timezone.utc)
+    return candidate.astimezone(UTC)
 
 
 def format_game_time(value: datetime | None, tz_name: str) -> str | None:
@@ -72,5 +72,5 @@ def format_game_time(value: datetime | None, tz_name: str) -> str | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=UTC)
     return value.astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M:%S")

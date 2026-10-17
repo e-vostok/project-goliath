@@ -25,7 +25,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +43,8 @@ from modules._02_bot.errors import (
 from modules._02_bot.keyboard import (
     build_help_inline_keyboard,
     build_persistent_keyboard,
+)
+from modules._02_bot.keyboard import (
     dumps as keyboard_dumps,
 )
 from modules._02_bot.limiter import TokenBucket
@@ -72,7 +74,7 @@ _BLOCKED_CODES = frozenset({900, 901, 902})
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 @dataclass
@@ -106,7 +108,7 @@ class Sender:
         self._limiter = limiter
         self._breaker = breaker
         self._monotonic = monotonic
-        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._now = now or (lambda: datetime.now(UTC))
         self._rng = rng
         self._semaphore = asyncio.Semaphore(config.sender.concurrency)
         self.state = SenderState()

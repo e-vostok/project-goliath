@@ -10,9 +10,8 @@ idempotent under the module slug ``02_bot``.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +21,7 @@ from modules._02_bot.admin_hooks import register_bot_admin_hooks
 from modules._02_bot.models import BotConsent, BotOutbox, BotState
 from tests.fixtures.factories import make_consent, make_outbox_row
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 async def _player(session: AsyncSession) -> Player:

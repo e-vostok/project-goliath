@@ -28,7 +28,7 @@ registrars: membership check, never double-register.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +49,7 @@ _TASK_NAMES = ("sender", "digest_watcher", "consent_reconciler", "janitor")
 
 async def bot_state_view(session: AsyncSession) -> dict:
     """Read-only snapshot of the module for the admin panel (Spec 5.4)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     consent_rows = await session.execute(
         select(BotConsent.state, func.count()).group_by(BotConsent.state)
@@ -73,7 +73,7 @@ async def bot_state_view(session: AsyncSession) -> dict:
     if oldest_ready is not None:
         # SQLite returns naive datetimes even for timezone=True columns.
         if oldest_ready.tzinfo is None:
-            oldest_ready = oldest_ready.replace(tzinfo=timezone.utc)
+            oldest_ready = oldest_ready.replace(tzinfo=UTC)
         oldest_ready_age_seconds = round((now - oldest_ready).total_seconds())
     last_digest_turn = (
         await session.execute(select(BotState.last_digest_turn).where(BotState.id == 1))

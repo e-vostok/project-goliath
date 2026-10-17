@@ -8,7 +8,7 @@ fixture — the same functions startup registers. Nothing is mocked.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
@@ -69,7 +69,7 @@ async def _set_turn(session, turn: int) -> None:
             GameClock(
                 id=1,
                 current_turn=turn,
-                next_tick_at=datetime.now(timezone.utc),
+                next_tick_at=datetime.now(UTC),
             )
         )
     else:

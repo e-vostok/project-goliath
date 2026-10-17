@@ -21,8 +21,9 @@ INV-M10 input-hash check (the pipeline validates their structure).
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Literal, Mapping, Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,

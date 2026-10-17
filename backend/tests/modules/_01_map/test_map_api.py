@@ -19,24 +19,25 @@ from __future__ import annotations
 
 import statistics
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-import modules._01_map.api_service as api_service
 import core.db as core_db
+import modules._01_map.api_service as api_service
+from alembic import command
 from core.db import get_session
 from core.tick.orchestrator import TickOrchestrator
 from main import app
-from modules._00_core.models import GameClock, Province
 from modules._00_core.hooks import OwnershipChange
+from modules._00_core.models import GameClock, Province
+from modules._01_map.hooks import register_map_hooks
 from modules._01_map.loader import load_map_data
 from modules._01_map.schemas import (
     MapBordersDTO,
@@ -50,10 +51,8 @@ from modules._01_map.service import (
     init_map_service,
     record_changes,
 )
-from modules._01_map.hooks import register_map_hooks
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import (
-    MAP_MINI_DIR,
     MAP_MINI_LINKED_DIR,
     STARTING_GROUP,
 )
@@ -127,7 +126,7 @@ async def _set_turn(session, turn: int) -> None:
             GameClock(
                 id=1,
                 current_turn=turn,
-                next_tick_at=datetime.now(timezone.utc) + timedelta(days=1),
+                next_tick_at=datetime.now(UTC) + timedelta(days=1),
             )
         )
     else:

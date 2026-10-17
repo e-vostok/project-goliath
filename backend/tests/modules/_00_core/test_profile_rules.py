@@ -25,7 +25,6 @@ from modules._00_core.profile_rules import (
     validate_leader_title,
     validate_vk_article_url,
 )
-from tests.fixtures.profile import VALID_PROFILE
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 

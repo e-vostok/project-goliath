@@ -13,7 +13,7 @@ integer >= 1.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
@@ -73,7 +73,7 @@ def _deadline_text(moment: datetime) -> str:
     # Naive datetimes are read as UTC (SQLite returns naive values even
     # for timezone=True columns — the same convention as admin_hooks).
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
+        moment = moment.replace(tzinfo=UTC)
     return moment.astimezone(ZoneInfo(tz)).strftime("%d.%m.%Y %H:%M")
 
 

@@ -405,8 +405,8 @@ class RegistryConfig(_Strict):
         raise KeyError(table_id)
 
     @classmethod
-    def from_yaml(cls, path: str) -> "RegistryConfig":
-        with open(path, "r", encoding="utf-8") as f:
+    def from_yaml(cls, path: str) -> RegistryConfig:
+        with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         return cls.model_validate(raw)
 

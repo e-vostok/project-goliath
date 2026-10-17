@@ -21,16 +21,16 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     CHAR,
+    JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     UniqueConstraint,
     text,
@@ -198,5 +198,5 @@ def is_overdue(order: Order, now: datetime) -> bool:
     """
     deadline_at = order.deadline_at
     if deadline_at is not None and deadline_at.tzinfo is None:
-        deadline_at = deadline_at.replace(tzinfo=timezone.utc)
+        deadline_at = deadline_at.replace(tzinfo=UTC)
     return order.verdict_at is None and deadline_at is not None and now > deadline_at
