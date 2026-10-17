@@ -13,13 +13,16 @@ import {
   ButtonGroup,
   Div,
   Footnote,
+  FormItem,
   FormStatus,
   Group,
   Header,
+  Input,
   Spinner,
 } from '@vkontakte/vkui';
 
 import { api, ApiError } from '../shared/api-client';
+import type { AdminPlayerDeleteResultDTO } from '../shared/types';
 import { useSession } from '../modules/00_core/hooks/useAuth';
 import { useAdminProbe } from './useAdminProbe';
 
@@ -29,6 +32,48 @@ const RESET_WARNING =
   'Будут удалены все государства, запланированные действия и журнал ' +
   'ходов, провинции освободятся, ход вернётся к 0. Игроки сохранятся. ' +
   'Отменить нельзя.';
+
+const DELETE_WARNING =
+  'Только для тестовых игроков. Удаляет игрока, его государство и все ' +
+  'его данные во всех модулях. Отменить нельзя.';
+
+const DELETE_ERROR_MESSAGES: Record<string, string> = {
+  PLAYER_NOT_FOUND: 'Игрок с таким VK ID не найден.',
+  CONFIRMATION_MISMATCH: 'Повторный VK ID не совпадает с указанным выше.',
+  CANNOT_DELETE_SELF: 'Нельзя удалить собственного игрока.',
+  CANNOT_DELETE_ADMIN: 'Нельзя удалить игрока из списка администраторов.',
+};
+
+function deleteErrorMessage(e: unknown): string {
+  if (e instanceof ApiError) {
+    return DELETE_ERROR_MESSAGES[e.code] ?? `${e.message} (${e.code})`;
+  }
+  return NETWORK_ERROR_MESSAGE;
+}
+
+/** Plain-Russian summary of a delete-preview / delete result payload. */
+function describePlayerDelete(p: AdminPlayerDeleteResultDTO): string {
+  const parts: string[] = [
+    p.nation_name === null
+      ? 'Государства нет'
+      : `Государство «${p.nation_name}» будет удалено, ` +
+        `${p.provinces_released} провинций станут свободными`,
+  ];
+  const ordersDeleted = p.orders_author + p.orders_judge_decided;
+  let ordersPart = `${ordersDeleted} приказов будет удалено`;
+  if (p.orders_judge_undecided > 0) {
+    ordersPart +=
+      `, ${p.orders_judge_undecided} вернутся в очередь ` +
+      'на нового судью';
+  }
+  parts.push(ordersPart);
+  parts.push(
+    `строк в очереди бота: ${p.outbox_rows}, ` +
+      `согласий с ботом: ${p.consent_rows}, ` +
+      `профилей в реестре: ${p.vk_profile_rows}`,
+  );
+  return parts.join('; ') + '.';
+}
 
 export interface AdminBlockProps {
   /** Called after actions that mutate the world (tick, reset). */
@@ -45,6 +90,13 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
   const [output, setOutput] = useState<unknown>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState('');
+  const [deletePreview, setDeletePreview] =
+    useState<AdminPlayerDeleteResultDTO | null>(null);
+  const [deleteDone, setDeleteDone] =
+    useState<AdminPlayerDeleteResultDTO | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!expanded) {
@@ -79,6 +131,52 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
           ? `${e.message} (${e.code})`
           : NETWORK_ERROR_MESSAGE,
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteTarget = deleteTargetId.trim();
+  const canDelete =
+    deleteTarget !== '' && deleteTarget === deleteConfirmId.trim();
+
+  const runDeletePreview = async () => {
+    if (deleteTarget === '') {
+      return;
+    }
+    setBusy(true);
+    setDeleteError(null);
+    setDeleteDone(null);
+    try {
+      setDeletePreview(
+        await api.adminPlayerDeletePreview(token, deleteTarget),
+      );
+    } catch (e) {
+      setDeletePreview(null);
+      setDeleteError(deleteErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runPlayerDelete = async () => {
+    if (!canDelete) {
+      return;
+    }
+    setBusy(true);
+    setDeleteError(null);
+    try {
+      const result = await api.adminPlayerDelete(
+        token,
+        deleteTarget,
+        deleteConfirmId.trim(),
+      );
+      setDeleteDone(result);
+      setDeletePreview(null);
+      setDeleteConfirmId('');
+      onWorldChanged();
+    } catch (e) {
+      setDeleteError(deleteErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -182,6 +280,75 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
           </ButtonGroup>
         </Div>
       )}
+
+      <Div>
+        <Header size="s" style={{ paddingLeft: 0 }}>
+          Удаление игрока
+        </Header>
+        <Footnote style={{ display: 'block', marginBottom: 8 }}>
+          {DELETE_WARNING}
+        </Footnote>
+        {deleteError && (
+          <FormStatus mode="error" title="Действие не выполнено">
+            {deleteError}
+          </FormStatus>
+        )}
+        <FormItem top="VK ID игрока">
+          <Input
+            value={deleteTargetId}
+            inputMode="numeric"
+            aria-label="VK ID игрока"
+            placeholder="Например, 123456789"
+            onChange={(e) => {
+              setDeleteTargetId(e.target.value);
+              setDeletePreview(null);
+              setDeleteDone(null);
+            }}
+          />
+        </FormItem>
+        <Button
+          size="m"
+          mode="secondary"
+          disabled={busy || deleteTarget === ''}
+          onClick={() => void runDeletePreview()}
+        >
+          Показать, что будет удалено
+        </Button>
+        {deletePreview !== null && (
+          <Footnote
+            data-testid="player-delete-preview"
+            style={{ display: 'block', marginTop: 8 }}
+          >
+            {describePlayerDelete(deletePreview)}
+          </Footnote>
+        )}
+        <FormItem top="Повторите VK ID для подтверждения">
+          <Input
+            value={deleteConfirmId}
+            inputMode="numeric"
+            aria-label="Повторите VK ID для подтверждения"
+            onChange={(e) => setDeleteConfirmId(e.target.value)}
+          />
+        </FormItem>
+        <Button
+          size="m"
+          mode="primary"
+          appearance="negative"
+          disabled={busy || !canDelete}
+          onClick={() => void runPlayerDelete()}
+        >
+          Удалить безвозвратно
+        </Button>
+        {deleteDone !== null && (
+          <FormStatus
+            mode="default"
+            title="Игрок удалён"
+            data-testid="player-delete-result"
+          >
+            {describePlayerDelete(deleteDone)}
+          </FormStatus>
+        )}
+      </Div>
 
       {(busy || output !== null) && (
         <Div>

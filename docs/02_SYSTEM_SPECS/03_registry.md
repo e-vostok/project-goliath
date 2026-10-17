@@ -370,6 +370,8 @@ DTO и эндпоинты `00_core`, `01_map`, `02_bot` не меняются. �
 
 `register_state_view("03_registry", fn)` возвращает: идентификаторы таблиц, число игроков и государств, число профилей по статусам (`PENDING`/`OK`/`UNAVAILABLE`), режим задачи профилей (`OFF`/`NO_TOKEN`/`RUNNING`), момент последнего цикла (в памяти процесса). Имён, адресов фото и идентификаторов ВК в ответе нет. Reset-хука нет (D9).
 
+**Удаление игрока.** `register_player_delete_hook("03_registry.player_delete", fn)` удаляет кэш-строку `registry_vk_profiles` игрока; `register_player_preview("03_registry", fn)` отдаёт `vk_profile_rows` (0 или 1) для админского предпросмотра. Оба хука не коммитят: удаление идёт в транзакции `PlayerService.delete_player` и ошибка откатывает её целиком.
+
 ### 5.5. Клиент (VKUI, только desktop)
 
 **Файлы** (`frontend/src/modules/03_registry/`): `api.ts`, `types.ts`, `texts.ts` (тексты интерфейса), `hooks/useRegistryTables.ts`, `hooks/useRegistryRows.ts`, `hooks/useNationOptions.ts` (опции выпадающего списка — 3.7), `lib/tableView.ts` (сортировка, фильтры, поиск — 3.7, чистые функции), `lib/nationOptions.ts` (состав списка государств — 3.7), `lib/cellActions.ts` (реестр действий ячеек), `lib/entryRequest.ts` (разбор `#registry/order-N` и хранение запроса), `components/PanelRegistry.tsx`, `TabStrip.tsx`, `RegistryTable.tsx`, `TableToolbar.tsx`, `FilterPanel.tsx`, `HeaderIcon.tsx` (иконки `header_icon`), `cells/*` (по одной на тип), `RegistryEntryButton.tsx`.

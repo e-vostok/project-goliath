@@ -20,6 +20,7 @@ from modules._00_core.hooks import (
     STAGE_AFTER_COUNT,
     STAGE_AFTER_FREE,
     OwnershipChange,
+    get_player_delete_hooks,
     notify_ownership_changed,
     run_before_all_checks,
     run_nation_created_hooks,
@@ -31,6 +32,7 @@ from modules._00_core.exceptions import (
     NameTakenError,
     NationAlreadyExistsError,
     NationNotFoundError,
+    PlayerNotFoundError,
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
     ProvinceTakenError,
@@ -414,6 +416,66 @@ class PlayerService:
             select(func.count()).select_from(Player)
         )
         return result.scalar_one()
+
+    @staticmethod
+    async def delete_player(
+        session: AsyncSession, player_id: str
+    ) -> None:
+        """
+        Delete a player and everything tied to them (admin tool for
+        test players — irreversible).
+
+        Runs inside the caller's transaction, all-or-nothing; this
+        method never commits. Order:
+
+        1. ``NationService.delete`` for the player's nation, if any —
+           it releases the provinces (INV-6), orphans scheduled actions
+           and writes the release entries to the ownership journal
+           through ``notify_ownership_changed`` in this transaction.
+        2. Every registered ``player_delete`` hook, in registration
+           order — each hook deletes only its own module's rows for
+           this player (data sovereignty, invariant 3). There is NO
+           per-hook savepoint: a raising hook aborts the deletion and
+           the caller's rollback restores everything.
+        3. The ``players`` row itself — a bulk DELETE, not ORM
+           ``session.delete``: an ORM delete would lazy-load
+           ``player.nations`` to null out FKs, which cannot happen in
+           async context (and no nation remains anyway).
+
+        Explicit hook deletes are what actually remove satellite rows —
+        the FK ``ON DELETE CASCADE`` clauses are only a safety net for
+        PostgreSQL; SQLite test schemas may run without enforced foreign
+        keys.
+
+        Raises:
+            PlayerNotFoundError: If the player does not exist.
+        """
+        player = (
+            await session.execute(
+                select(Player).where(Player.id == player_id)
+            )
+        ).scalar_one_or_none()
+        if player is None:
+            raise PlayerNotFoundError(player_id)
+
+        nation = (
+            await session.execute(
+                select(Nation).where(Nation.owner_player_id == player_id)
+            )
+        ).scalar_one_or_none()
+        if nation is not None:
+            await NationService.delete(session, nation.id)
+
+        for hook in get_player_delete_hooks().values():
+            await hook(session, player_id)
+
+        # Flush pending ORM deletes (the nation row) before the bulk
+        # players DELETE: nations.owner_player_id carries a plain FK
+        # without cascade, so the nation must be physically gone first.
+        await session.flush()
+        await session.execute(
+            delete(Player).where(Player.id == player_id)
+        )
 
 
 async def _current_turn(session: AsyncSession) -> int:

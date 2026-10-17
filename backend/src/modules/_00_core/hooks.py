@@ -37,6 +37,15 @@ core operations through two small registries populated at startup:
    exception class, no payload) and never aborts the creation —
    unlike a registration check, a hook can only observe and append.
 
+4. **Player-delete hooks** — satellite clean-up invoked by
+   ``PlayerService.delete_player`` between the nation's deletion and the
+   ``players`` row removal, inside the SAME transaction. Each hook
+   deletes only its own module's rows for the player (data sovereignty,
+   invariant 3) and must never commit. Unlike nation-created hooks there
+   is NO per-hook SAVEPOINT: a raising hook aborts the whole deletion —
+   the caller rolls back and nothing is removed (the operation is
+   all-or-nothing by design; it exists for wiping test players).
+
 All registries are keyed by name; re-registering the same name replaces
 the entry, so application startup stays idempotent across repeated
 lifespan boots in one process. Call order is registration order.
@@ -105,11 +114,18 @@ BeforeAllCheck = Callable[[AsyncSession, str], Awaitable[None]]
 # runs after all creation writes, inside the caller's transaction.
 NationCreatedHook = Callable[[AsyncSession, str, str], Awaitable[None]]
 
+# A player-delete hook sees ``(session, player_id)`` and deletes only its
+# own module's rows for that player, inside the caller's transaction —
+# never commits. A raising hook aborts the whole deletion (no savepoint:
+# the operation is all-or-nothing by design).
+PlayerDeleteHook = Callable[[AsyncSession, str], Awaitable[None]]
+
 _ownership_listeners: dict[str, OwnershipListener] = {}
 _registration_checks: dict[
     CheckStage, dict[str, RegistrationCheck | BeforeAllCheck]
 ] = {stage: {} for stage in _CHECK_STAGES}
 _nation_created_hooks: dict[str, NationCreatedHook] = {}
+_player_delete_hooks: dict[str, PlayerDeleteHook] = {}
 
 
 def register_ownership_listener(
@@ -168,6 +184,24 @@ def register_nation_created_hook(
 def get_nation_created_hooks() -> dict[str, NationCreatedHook]:
     """All nation-created hooks, keyed by name, in registration order."""
     return dict(_nation_created_hooks)
+
+
+def register_player_delete_hook(
+    name: str, hook: PlayerDeleteHook
+) -> None:
+    """
+    Register ``hook`` under ``name``; the same name re-registers
+    (replaces) instead of raising — startup is re-run per lifespan boot.
+    """
+    if name in _player_delete_hooks:
+        logger.info("Replacing player-delete hook '%s'", name)
+    _player_delete_hooks[name] = hook
+    logger.info("Registered player-delete hook '%s'", name)
+
+
+def get_player_delete_hooks() -> dict[str, PlayerDeleteHook]:
+    """All player-delete hooks, keyed by name, in registration order."""
+    return dict(_player_delete_hooks)
 
 
 async def notify_ownership_changed(
@@ -262,22 +296,29 @@ def clear_nation_created_hooks() -> None:
     _nation_created_hooks.clear()
 
 
+def clear_player_delete_hooks() -> None:
+    """Drop all player-delete hooks — test isolation."""
+    _player_delete_hooks.clear()
+
+
 def snapshot_extension_points() -> tuple[
     dict[str, OwnershipListener],
     dict[CheckStage, dict[str, RegistrationCheck | BeforeAllCheck]],
     dict[str, NationCreatedHook],
+    dict[str, PlayerDeleteHook],
 ]:
     """Opaque snapshot of all registries for test isolation fixtures."""
     return (
         dict(_ownership_listeners),
         {stage: dict(checks) for stage, checks in _registration_checks.items()},
         dict(_nation_created_hooks),
+        dict(_player_delete_hooks),
     )
 
 
 def restore_extension_points(snapshot) -> None:
     """Restore a snapshot taken by :func:`snapshot_extension_points`."""
-    listeners, checks, created_hooks = snapshot
+    listeners, checks, created_hooks, delete_hooks = snapshot
     _ownership_listeners.clear()
     _ownership_listeners.update(listeners)
     for stage in _CHECK_STAGES:
@@ -285,3 +326,5 @@ def restore_extension_points(snapshot) -> None:
         _registration_checks[stage].update(checks.get(stage, {}))
     _nation_created_hooks.clear()
     _nation_created_hooks.update(created_hooks)
+    _player_delete_hooks.clear()
+    _player_delete_hooks.update(delete_hooks)

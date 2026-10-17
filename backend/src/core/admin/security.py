@@ -37,6 +37,11 @@ def _admin_vk_user_ids() -> set[int]:
     return {int(part.strip()) for part in raw.split(",") if part.strip()}
 
 
+def is_admin_vk_user(vk_user_id: int) -> bool:
+    """Whether a VK user id is on the admin allowlist (call-time read)."""
+    return vk_user_id in _admin_vk_user_ids()
+
+
 async def require_admin(player: Player = Depends(get_current_player)) -> Player:
     """
     FastAPI dependency: resolve the current player and require admin rights.
@@ -47,6 +52,6 @@ async def require_admin(player: Player = Depends(get_current_player)) -> Player:
     Raises:
         AdminRequiredError: If the player's vk_user_id is not allowlisted.
     """
-    if player.vk_user_id not in _admin_vk_user_ids():
+    if not is_admin_vk_user(player.vk_user_id):
         raise AdminRequiredError()
     return player

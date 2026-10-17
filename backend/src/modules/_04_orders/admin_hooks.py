@@ -17,6 +17,20 @@ Admin hooks of module 04_orders (Spec 5.7).
 - Reset ``"04_orders"``: deletes every order (INV-O14); players and
   ratings live in 00_core and survive — numbering restarts at 1 because
   the number is ``max(number) + 1`` of an empty table.
+- Player delete ``"04_orders.player_delete"``: under the same module
+  advisory lock as submit/distribute/write_verdict — (i) orders where
+  the player is the judge and no verdict exists return to the waiting
+  queue (the five assignment columns become NULL, so the row is a clean
+  SUBMITTED and the worker assigns it again); (ii) orders the player
+  authored are deleted together with their verdict column group;
+  (iii) orders where the player is the judge and a verdict exists are
+  deleted too — the schema cannot keep a verdict without its judge
+  (``ck_orders_verdict_needs_judge``). Runs inside
+  ``PlayerService.delete_player``'s transaction — a raise aborts the
+  whole deletion (no per-hook savepoint).
+- Player preview ``"04_orders"``: returns ``{"orders_author",
+  "orders_judge_undecided", "orders_judge_decided"}`` counts for the
+  admin delete-preview; read-only.
 
 ``register_orders_admin_hooks`` is idempotent like the other modules'
 registrars: membership check, never double-register.
@@ -26,14 +40,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.registry import AdminRegistry
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.hooks import register_player_delete_hook
 from modules._00_core.service import PlayerService
 from modules._00_core.tick_schedule import format_game_time
 from modules._04_orders.models import Order, OrderStage, is_overdue
+from modules._04_orders.service import ORDERS_ADVISORY_LOCK_KEY
 from modules._04_orders.worker import get_last_pass_at, get_worker_mode
 
 MODULE_SLUG = "04_orders"
@@ -186,9 +202,107 @@ async def orders_reset(session: AsyncSession) -> None:
     await session.execute(delete(Order))
 
 
+async def orders_player_delete_preview(
+    session: AsyncSession, player_id: str
+) -> dict:
+    """Counts of this player's orders by role for the delete-preview."""
+    authored = (
+        await session.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.author_player_id == player_id)
+        )
+    ).scalar_one()
+    judged_undecided = (
+        await session.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(
+                Order.judge_player_id == player_id,
+                Order.verdict_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    judged_decided = (
+        await session.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(
+                Order.judge_player_id == player_id,
+                Order.verdict_at.is_not(None),
+            )
+        )
+    ).scalar_one()
+    return {
+        "orders_author": authored,
+        "orders_judge_undecided": judged_undecided,
+        "orders_judge_decided": judged_decided,
+    }
+
+
+async def orders_delete_player(
+    session: AsyncSession, player_id: str
+) -> None:
+    """
+    Remove this module's rows of one player (admin player deletion).
+
+    Runs under the module advisory lock — the same key serializing
+    submit/distribute/write_verdict on PostgreSQL, a no-op on SQLite —
+    so a deletion cannot race an assignment or a verdict. Three steps:
+
+    1. Orders where the player is the judge with no verdict yet go back
+       to the waiting queue: the five assignment columns become NULL
+       together (the all-or-none CHECK is satisfied), the row is a clean
+       SUBMITTED and the worker will assign a new judge — the author
+       keeps a live order.
+    2. Orders the player authored are deleted with their verdict column
+       group.
+    3. Orders where the player is the judge and a verdict exists are
+       deleted — the schema cannot keep a verdict without its judge
+       (``ck_orders_verdict_needs_judge``).
+
+    Explicit statements, not FK cascade: SQLite may run without enforced
+    foreign keys. Inside the caller's transaction; never commits, and a
+    raise rolls the whole player deletion back.
+    """
+    if session.bind.dialect.name == "postgresql":
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": ORDERS_ADVISORY_LOCK_KEY},
+        )
+
+    await session.execute(
+        update(Order)
+        .where(
+            Order.judge_player_id == player_id,
+            Order.verdict_at.is_(None),
+        )
+        .values(
+            judge_player_id=None,
+            distributed_at=None,
+            deadline_at=None,
+            reminder_at=None,
+            reminder_sent_at=None,
+        )
+    )
+    await session.execute(
+        delete(Order).where(Order.author_player_id == player_id)
+    )
+    await session.execute(
+        delete(Order).where(Order.judge_player_id == player_id)
+    )
+
+
 def register_orders_admin_hooks() -> None:
-    """Register the state view and reset; safe on every app boot."""
+    """Register the admin hooks; safe to call on every app boot."""
     if MODULE_SLUG not in AdminRegistry.get_state_view_hooks():
         AdminRegistry.register_state_view(MODULE_SLUG, orders_state_view)
     if MODULE_SLUG not in AdminRegistry.get_reset_hooks():
         AdminRegistry.register_reset(MODULE_SLUG, orders_reset)
+    if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
+        AdminRegistry.register_player_preview(
+            MODULE_SLUG, orders_player_delete_preview
+        )
+    register_player_delete_hook(
+        f"{MODULE_SLUG}.player_delete", orders_delete_player
+    )

@@ -29,6 +29,7 @@ from modules._00_core.models import (
     ScheduledAction,
     TickLog,
 )
+from modules._00_core.service import NationService
 from modules._00_core.tick_schedule import format_game_time, next_tick_after
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,23 @@ async def admin_state_view(session: AsyncSession) -> dict:
     }
 
 
+async def admin_player_delete_preview(
+    session: AsyncSession, player_id: str
+) -> dict:
+    """
+    The 00_core fragment of the admin delete-preview: the player's
+    nation name and how many provinces its deletion would free.
+    Read-only, never commits.
+    """
+    nation = await NationService.player_nation_summary(session, player_id)
+    return {
+        "nation_name": nation.name if nation is not None else None,
+        "provinces_released": (
+            nation.province_count if nation is not None else 0
+        ),
+    }
+
+
 async def admin_reset(session: AsyncSession) -> None:
     """
     Wipe the 00_core world back to a fresh game.
@@ -260,3 +278,7 @@ def register_admin_hooks() -> None:
         AdminRegistry.register_state_view(MODULE_SLUG, admin_state_view)
     if MODULE_SLUG not in AdminRegistry.get_reset_hooks():
         AdminRegistry.register_reset(MODULE_SLUG, admin_reset)
+    if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
+        AdminRegistry.register_player_preview(
+            MODULE_SLUG, admin_player_delete_preview
+        )
