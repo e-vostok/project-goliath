@@ -95,8 +95,10 @@ def _tables(url: str) -> set[str]:
 
 
 def test_migration_0010_up_down_up(tmp_path, monkeypatch):
-    """0010 creates only ``orders``; ``downgrade -1`` drops exactly it
-    and a re-upgrade restores the table (Spec Part 1 «Миграция»)."""
+    """0010 creates only ``orders``; downgrading past it drops exactly
+    that table and a re-upgrade restores it (Spec Part 1 «Миграция»).
+    The explicit ``0009`` target steps over 0011 (its columns live on
+    ``nations``, not on a table of their own)."""
     url = f"sqlite:///{(tmp_path / 'mig.db').as_posix()}"
     monkeypatch.setenv("DATABASE_URL", url)
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
@@ -118,7 +120,7 @@ def test_migration_0010_up_down_up(tmp_path, monkeypatch):
     assert ORDERS_CHECKS <= checks
     assert ORDERS_INDEXES <= indexes
 
-    command.downgrade(cfg, "-1")
+    command.downgrade(cfg, "0009")
     assert _tables(url) == before - {"orders"}
 
     command.upgrade(cfg, "head")

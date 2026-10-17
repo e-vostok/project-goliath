@@ -18,10 +18,22 @@ from urllib.parse import urlsplit
 
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
+    AnthemUrlInvalidError,
+    CapitalNameInvalidError,
+    CoreDomainError,
+    DescriptionInvalidError,
+    FlagInvalidError,
+    GenderInvalidError,
     HistoryUrlInvalidError,
+    LeaderBioInvalidError,
     LeaderNameInvalidError,
     LeaderTitleInvalidError,
+    MottoInvalidError,
+    PortraitInvalidError,
+    ShortNameInvalidError,
+    SuccessionInvalidError,
 )
+from modules._00_core.nation_enums import GENDERS, SUCCESSION_TYPES
 
 # Unicode categories banned from single-line profile text: control
 # characters (Cc, incl. newline/tab) and invisible format chars (Cf,
@@ -31,13 +43,16 @@ _FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cf"})
 # VK article path: "@", then a slug without slashes or whitespace.
 _HISTORY_PATH_RE = re.compile(r"/@[^/\s]+")
 
+# A field validator's error type: a CoreDomainError built from a reason.
+_TextError = type[CoreDomainError]
+
 
 def _validate_text(
     value: str,
     *,
     min_length: int,
     max_length: int,
-    error: type[LeaderNameInvalidError] | type[LeaderTitleInvalidError],
+    error: _TextError,
 ) -> str:
     """Shared Part 3 rule for the single-line profile text fields."""
     text = value.strip()
@@ -45,6 +60,29 @@ def _validate_text(
         raise error(
             f"must be between {min_length} and {max_length} characters, "
             f"got {len(text)}"
+        )
+    if any(
+        unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text
+    ):
+        raise error("contains control or formatting characters")
+    return text
+
+
+def _validate_optional_text(
+    value: str | None,
+    *,
+    max_length: int,
+    error: _TextError,
+) -> str | None:
+    """Optional single-line text: empty after strip stores as NULL."""
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) > max_length:
+        raise error(
+            f"must be at most {max_length} characters, got {len(text)}"
         )
     if any(
         unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text
@@ -140,3 +178,166 @@ def history_url_allowed_hosts() -> tuple[str, ...]:
     """
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     return tuple(config.nation.history_url_allowed_hosts)
+
+
+def validate_short_name(value: str, config: CoreConfig) -> str:
+    """Normalize and check `short_name`; returns the value to store."""
+    return _validate_text(
+        value,
+        min_length=config.nation.short_name_min_length,
+        max_length=config.nation.short_name_max_length,
+        error=ShortNameInvalidError,
+    )
+
+
+def validate_capital_name(value: str, config: CoreConfig) -> str:
+    """Normalize and check `capital_name`; returns the value to store."""
+    return _validate_text(
+        value,
+        min_length=config.nation.capital_name_min_length,
+        max_length=config.nation.capital_name_max_length,
+        error=CapitalNameInvalidError,
+    )
+
+
+def validate_motto(value: str | None, config: CoreConfig) -> str | None:
+    """Optional `motto`: normalized text or None (INV-12)."""
+    return _validate_optional_text(
+        value,
+        max_length=config.nation.motto_max_length,
+        error=MottoInvalidError,
+    )
+
+
+def validate_description(
+    value: str | None, config: CoreConfig
+) -> str | None:
+    """Optional `description`: normalized text or None (INV-12)."""
+    return _validate_optional_text(
+        value,
+        max_length=config.nation.description_max_length,
+        error=DescriptionInvalidError,
+    )
+
+
+def validate_leader_bio(
+    value: str | None, config: CoreConfig
+) -> str | None:
+    """
+    Optional multi-line `leader_bio` (Part 3): CR/LF are folded to `\\n`
+    first, then stripped; a newline is the only allowed control
+    character. Empty after normalization stores as NULL.
+    """
+    if value is None:
+        return None
+    text = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return None
+    max_length = config.nation.leader_bio_max_length
+    if len(text) > max_length:
+        raise LeaderBioInvalidError(
+            f"must be at most {max_length} characters, got {len(text)}"
+        )
+    if any(
+        unicodedata.category(ch) in _FORBIDDEN_CATEGORIES and ch != "\n"
+        for ch in text
+    ):
+        raise LeaderBioInvalidError(
+            "contains control or formatting characters"
+        )
+    return text
+
+
+def validate_gender(value: str, config: CoreConfig) -> str:
+    """`gender` must be one of ``GENDERS`` (code constants, INV-12)."""
+    normalized = value.strip().lower()
+    if normalized not in GENDERS:
+        raise GenderInvalidError(
+            f"must be one of {list(GENDERS)}, got {value!r}"
+        )
+    return normalized
+
+
+def validate_succession_type(value: str, config: CoreConfig) -> str:
+    """`succession_type` must be one of ``SUCCESSION_TYPES``."""
+    normalized = value.strip().lower()
+    if normalized not in SUCCESSION_TYPES:
+        raise SuccessionInvalidError(
+            f"must be one of {list(SUCCESSION_TYPES)}, got {value!r}"
+        )
+    return normalized
+
+
+def validate_anthem_url(
+    value: str | None, config: CoreConfig
+) -> str | None:
+    """
+    Optional `anthem_url` (Part 3, soft check): empty stores NULL;
+    otherwise https scheme, an allowed host, no port/userinfo and no
+    whitespace/control characters. Path, query and fragment are NOT
+    checked — the VK music link format is unconfirmed (NAT-0, N4).
+    """
+    if value is None:
+        return None
+    url = value.strip()
+    if not url:
+        return None
+    max_length = config.nation.anthem_url_max_length
+    if len(url) > max_length:
+        raise AnthemUrlInvalidError(
+            f"must be at most {max_length} characters, got {len(url)}"
+        )
+    if any(
+        ch.isspace() or unicodedata.category(ch) in _FORBIDDEN_CATEGORIES
+        for ch in url
+    ):
+        raise AnthemUrlInvalidError(
+            "contains whitespace or control characters"
+        )
+    try:
+        parsed = urlsplit(url)
+        host = parsed.hostname
+    except ValueError as exc:
+        raise AnthemUrlInvalidError("cannot be parsed") from exc
+    if parsed.scheme != "https":
+        raise AnthemUrlInvalidError("scheme must be https")
+    if host is None or host not in config.nation.anthem_url_allowed_hosts:
+        raise AnthemUrlInvalidError("host is not in the allowed list")
+    # netloc == hostname rejects credentials, ports and case tricks.
+    if parsed.netloc.lower() != host:
+        raise AnthemUrlInvalidError("port or userinfo is not allowed")
+    return url
+
+
+def validate_flag_id(
+    value: str | None, config: CoreConfig
+) -> str | None:
+    """Optional `flag_id`: must name a `catalog.flag_ids` entry (INV-15)."""
+    return _validate_catalog_id(
+        value, config.catalog.flag_ids, FlagInvalidError
+    )
+
+
+def validate_portrait_id(
+    value: str | None, config: CoreConfig
+) -> str | None:
+    """Optional `portrait_id`: must name a `catalog.portrait_ids` entry."""
+    return _validate_catalog_id(
+        value, config.catalog.portrait_ids, PortraitInvalidError
+    )
+
+
+def _validate_catalog_id(
+    value: str | None,
+    catalog: list[str],
+    error: _TextError,
+) -> str | None:
+    """Empty after strip stores NULL; a non-empty id must be listed."""
+    if value is None:
+        return None
+    item = value.strip()
+    if not item:
+        return None
+    if item not in catalog:
+        raise error("is not in the catalog")
+    return item

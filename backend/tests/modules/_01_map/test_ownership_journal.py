@@ -26,6 +26,7 @@ from modules._01_map.service import (
     records_for_province,
 )
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import STARTING_GROUP
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -43,7 +44,11 @@ async def _create_nation(
     province_ids: list[int],
     name: str = "Test Nation",
     color_hex: str = "#FF0000",
+    short_name: str | None = None,
 ) -> Nation:
+    profile = dict(VALID_PROFILE)
+    if short_name is not None:
+        profile["short_name"] = short_name
     return await NationService.create(
         session,
         owner_player_id=player.id,
@@ -51,7 +56,7 @@ async def _create_nation(
         color_hex=color_hex,
         province_ids=province_ids,
         config=CORE_CONFIG,
-        **VALID_PROFILE,
+        **profile,
     )
 
 
@@ -86,16 +91,17 @@ class TestListenerWrites:
 
     @pytest.mark.asyncio
     async def test_create_writes_claim_rows(
-        self, map_db_session, map_hooks
+        self, linked_map_db_session, linked_map_hooks
     ):
-        player = await _create_player(map_db_session)
+        session = linked_map_db_session
+        player = await _create_player(session)
         nation = await _create_nation(
-            map_db_session, player, [1001, 1002, 1003]
+            session, player, list(STARTING_GROUP)
         )
 
-        rows = await _log_rows(map_db_session)
-        assert len(rows) == 3
-        assert [r.province_id for r in rows] == [1001, 1002, 1003]
+        rows = await _log_rows(session)
+        assert len(rows) == 5
+        assert [r.province_id for r in rows] == list(STARTING_GROUP)
         for row in rows:
             assert row.prev_nation_id is None
             assert row.new_nation_id == nation.id
@@ -105,31 +111,33 @@ class TestListenerWrites:
 
     @pytest.mark.asyncio
     async def test_turn_comes_from_game_clock(
-        self, map_db_session, map_hooks
+        self, linked_map_db_session, linked_map_hooks
     ):
-        player = await _create_player(map_db_session)
-        await _set_turn(map_db_session, 7)
-        await _create_nation(map_db_session, player, [1001])
+        player = await _create_player(linked_map_db_session)
+        await _set_turn(linked_map_db_session, 7)
+        await _create_nation(
+            linked_map_db_session, player, list(STARTING_GROUP)
+        )
 
-        rows = await _log_rows(map_db_session)
-        assert [r.turn_number for r in rows] == [7]
+        rows = await _log_rows(linked_map_db_session)
+        assert [r.turn_number for r in rows] == [7] * 5
 
     @pytest.mark.asyncio
     async def test_delete_writes_release_rows(
-        self, map_db_session, map_hooks
+        self, linked_map_db_session, linked_map_hooks
     ):
-        player = await _create_player(map_db_session)
+        player = await _create_player(linked_map_db_session)
         nation = await _create_nation(
-            map_db_session, player, [1001, 1002, 1003]
+            linked_map_db_session, player, list(STARTING_GROUP)
         )
-        await _set_turn(map_db_session, 4)
+        await _set_turn(linked_map_db_session, 4)
 
-        await NationService.delete(map_db_session, nation.id)
+        await NationService.delete(linked_map_db_session, nation.id)
 
-        rows = await _log_rows(map_db_session)
-        assert len(rows) == 6
+        rows = await _log_rows(linked_map_db_session)
+        assert len(rows) == 10
         releases = [r for r in rows if r.new_nation_id is None]
-        assert len(releases) == 3
+        assert len(releases) == 5
         for row in releases:
             assert row.prev_nation_id == nation.id
             assert row.new_nation_name is None
@@ -138,31 +146,30 @@ class TestListenerWrites:
 
     @pytest.mark.asyncio
     async def test_two_nations_order_by_turn_then_id(
-        self, map_db_session, map_hooks
+        self, linked_map_db_session, linked_map_hooks
     ):
-        player_a = await _create_player(map_db_session, vk_user_id=11)
-        player_b = await _create_player(map_db_session, vk_user_id=22)
-        await _set_turn(map_db_session, 1)
+        session = linked_map_db_session
+        player_a = await _create_player(session, vk_user_id=11)
+        player_b = await _create_player(session, vk_user_id=22)
+        await _set_turn(session, 1)
         nation_a = await _create_nation(
-            map_db_session, player_a, [1001], name="A Realm"
+            session, player_a, list(STARTING_GROUP), name="A Realm"
         )
-        await _set_turn(map_db_session, 5)
+        await _set_turn(session, 5)
         nation_b = await _create_nation(
-            map_db_session,
+            session,
             player_b,
-            [1005, 1006],
+            [1009, 1010, 1011, 1012, 1013],
             name="B Realm",
             color_hex="#00FF00",
+            short_name="BRealm",
         )
 
-        rows = await _log_rows(map_db_session)
+        rows = await _log_rows(session)
         ordered = [(r.turn_number, r.id) for r in rows]
         assert ordered == sorted(ordered)
-        assert rows[0].new_nation_id == nation_a.id
-        assert [r.new_nation_id for r in rows[1:]] == [
-            nation_b.id,
-            nation_b.id,
-        ]
+        assert [r.new_nation_id for r in rows[:5]] == [nation_a.id] * 5
+        assert [r.new_nation_id for r in rows[5:]] == [nation_b.id] * 5
 
 
 class TestAtomicity:
@@ -170,36 +177,45 @@ class TestAtomicity:
 
     @pytest.mark.asyncio
     async def test_failing_listener_rolls_back_create(
-        self, map_db_session, map_hooks
+        self, linked_map_db_session, linked_map_hooks
     ):
+        session = linked_map_db_session
+
         async def boom(session, changes):
             raise RuntimeError("listener exploded")
 
         register_ownership_listener("zz_test_boom", boom)
-        player = await _create_player(map_db_session)
+        player = await _create_player(session)
 
         with pytest.raises(RuntimeError, match="listener exploded"):
-            await _create_nation(map_db_session, player, [1001, 1002])
+            await _create_nation(
+                session, player, list(STARTING_GROUP)
+            )
         # The HTTP layer's session context rolls back on the error;
         # replicate that boundary here.
-        await map_db_session.rollback()
+        await session.rollback()
 
-        result = await map_db_session.execute(select(func.count()).select_from(Nation))
+        result = await session.execute(select(func.count()).select_from(Nation))
         assert result.scalar_one() == 0
-        owners = await map_db_session.execute(
-            select(Province.nation_id).where(Province.id.in_([1001, 1002]))
+        owners = await session.execute(
+            select(Province.nation_id).where(
+                Province.id.in_(STARTING_GROUP)
+            )
         )
         assert all(o is None for o in owners.scalars().all())
-        assert await _log_rows(map_db_session) == []
+        assert await _log_rows(session) == []
 
     @pytest.mark.asyncio
     async def test_failing_listener_rolls_back_delete(
-        self, map_db_session, map_hooks
+        self, linked_map_db_session, linked_map_hooks
     ):
-        player = await _create_player(map_db_session)
-        nation = await _create_nation(map_db_session, player, [1001])
+        session = linked_map_db_session
+        player = await _create_player(session)
+        nation = await _create_nation(
+            session, player, list(STARTING_GROUP)
+        )
         nation_id = nation.id
-        await map_db_session.commit()
+        await session.commit()
 
         async def boom(session, changes):
             raise RuntimeError("listener exploded")
@@ -207,15 +223,15 @@ class TestAtomicity:
         register_ownership_listener("zz_test_boom", boom)
 
         with pytest.raises(RuntimeError, match="listener exploded"):
-            await NationService.delete(map_db_session, nation_id)
-        await map_db_session.rollback()
+            await NationService.delete(session, nation_id)
+        await session.rollback()
 
-        kept = await map_db_session.get(Nation, nation_id)
+        kept = await session.get(Nation, nation_id)
         assert kept is not None
-        province = await map_db_session.get(Province, 1001)
+        province = await session.get(Province, 1001)
         assert province.nation_id == nation_id
-        rows = await _log_rows(map_db_session)
-        assert len(rows) == 1  # only the committed create row remains
+        rows = await _log_rows(session)
+        assert len(rows) == 5  # only the committed create rows remain
 
 
 class TestOwnersAtTurn:
@@ -297,12 +313,17 @@ class TestOwnersAtTurn:
 
 class TestRecordsForProvince:
     @pytest.mark.asyncio
-    async def test_ordered_by_turn_then_id(self, map_db_session, map_hooks):
-        player = await _create_player(map_db_session)
-        nation = await _create_nation(map_db_session, player, [1002])
-        await NationService.delete(map_db_session, nation.id)
+    async def test_ordered_by_turn_then_id(
+        self, linked_map_db_session, linked_map_hooks
+    ):
+        session = linked_map_db_session
+        player = await _create_player(session)
+        nation = await _create_nation(
+            session, player, list(STARTING_GROUP)
+        )
+        await NationService.delete(session, nation.id)
 
-        rows = await records_for_province(map_db_session, 1002)
+        rows = await records_for_province(session, 1002)
         assert len(rows) == 2
         assert rows[0].new_nation_id == nation.id
         assert rows[1].new_nation_id is None
@@ -329,11 +350,14 @@ class TestServiceGuards:
             await record_changes(map_db_session, [change])
 
     @pytest.mark.asyncio
-    async def test_clear_all_wipes_journal(self, map_db_session, map_hooks):
-        player = await _create_player(map_db_session)
-        await _create_nation(map_db_session, player, [1001, 1002])
-        assert len(await _log_rows(map_db_session)) == 2
+    async def test_clear_all_wipes_journal(
+        self, linked_map_db_session, linked_map_hooks
+    ):
+        session = linked_map_db_session
+        player = await _create_player(session)
+        await _create_nation(session, player, list(STARTING_GROUP))
+        assert len(await _log_rows(session)) == 5
 
-        await clear_all(map_db_session)
+        await clear_all(session)
 
-        assert await _log_rows(map_db_session) == []
+        assert await _log_rows(session) == []

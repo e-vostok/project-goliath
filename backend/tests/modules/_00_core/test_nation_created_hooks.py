@@ -27,7 +27,10 @@ from modules._00_core.hooks import (
 from modules._00_core.models import Nation, Player, Province
 from modules._00_core.service import NationService
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import (
+    STARTING_GROUP,
+    make_starting_group,
+)
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -53,7 +56,7 @@ async def _create(session, player, province_ids, name="Realm"):
         session,
         owner_player_id=player.id,
         name=name,
-        color_hex="#101010",
+        color_hex="#6A3446",
         province_ids=province_ids,
         config=CORE_CONFIG,
         **VALID_PROFILE,
@@ -75,9 +78,11 @@ class TestNationCreatedHooks:
 
         register_nation_created_hook("test.hook", hook)
         player = await _player(test_db_session, 601)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
-        nation = await _create(test_db_session, player, [1001])
+        nation = await _create(
+            test_db_session, player, list(STARTING_GROUP)
+        )
 
         assert calls == [(player.id, nation.id)]
 
@@ -94,12 +99,13 @@ class TestNationCreatedHooks:
 
         register_nation_created_hook("test.reader", hook)
         player = await _player(test_db_session, 602)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
 
-        nation = await _create(test_db_session, player, [1001, 1002])
+        nation = await _create(
+            test_db_session, player, list(STARTING_GROUP)
+        )
 
-        assert seen == [(nation.id, 2)]
+        assert seen == [(nation.id, 5)]
 
     async def test_hooks_run_in_registration_order(self, test_db_session):
         calls: list[str] = []
@@ -113,9 +119,9 @@ class TestNationCreatedHooks:
         register_nation_created_hook("a", first)
         register_nation_created_hook("b", second)
         player = await _player(test_db_session, 603)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
-        await _create(test_db_session, player, [1001])
+        await _create(test_db_session, player, list(STARTING_GROUP))
 
         assert calls == ["first", "second"]
 
@@ -134,9 +140,9 @@ class TestNationCreatedHooks:
 
         assert list(get_nation_created_hooks()) == ["dup"]
         player = await _player(test_db_session, 604)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
-        await _create(test_db_session, player, [1001])
+        await _create(test_db_session, player, list(STARTING_GROUP))
 
         assert calls == ["new"]
 
@@ -160,10 +166,12 @@ class TestNationCreatedHooks:
         register_nation_created_hook("test.boom", boom)
         register_nation_created_hook("test.after", after)
         player = await _player(test_db_session, 605)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
         with caplog.at_level(logging.WARNING):
-            nation = await _create(test_db_session, player, [1001])
+            nation = await _create(
+                test_db_session, player, list(STARTING_GROUP)
+            )
 
         # The creation is intact and the next hook still ran.
         assert nation.id is not None
@@ -195,17 +203,21 @@ class TestNationCreatedHooks:
 
         register_nation_created_hook("test.cancelled", cancelled)
         player = await _player(test_db_session, 606)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
         with pytest.raises(asyncio.CancelledError):
-            await _create(test_db_session, player, [1001])
+            await _create(
+                test_db_session, player, list(STARTING_GROUP)
+            )
 
     async def test_no_hooks_behaves_as_before(self, test_db_session):
         assert get_nation_created_hooks() == {}
         player = await _player(test_db_session, 607)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
-        nation = await _create(test_db_session, player, [1001])
+        nation = await _create(
+            test_db_session, player, list(STARTING_GROUP)
+        )
 
         assert nation.owner_player_id == player.id
         province = (

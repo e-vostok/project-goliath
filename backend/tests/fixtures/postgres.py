@@ -49,7 +49,7 @@ from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
 )
-from tests.fixtures.provinces import MAP_MINI_DIR
+from tests.fixtures.provinces import MAP_MINI_LINKED_DIR
 from tests.modules._00_core.test_router import TEST_JWT_SECRET, TEST_VK_SECRET
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -257,9 +257,10 @@ async def pg_live_client(
     monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
     monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
     monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
-    # Lifespan startup syncs the mini map into provinces and registers
-    # the 01_map hooks.
-    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
+    # Lifespan startup syncs the linked mini map into provinces and
+    # registers the 01_map hooks — its 1001..1007 land component is the
+    # only test topology with a valid 5-province starting group.
+    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_LINKED_DIR))
 
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()

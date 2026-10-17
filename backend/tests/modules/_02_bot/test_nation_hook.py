@@ -24,7 +24,7 @@ from modules._02_bot.nation_hook import nation_created_hook
 from modules._02_bot.service import BotService
 from modules._02_bot.startup import startup_bot
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import make_starting_group
 from tests.modules._02_bot._issue3_support import (
     add_consent,
     aware,
@@ -82,7 +82,7 @@ def _nation_body(name: str = "Государство Тестовое") -> dict:
     return {
         "name": name,
         "color_hex": "#A1B2C3",
-        "province_ids": [1001, 1002],
+        "province_ids": [1001, 1002, 1003, 1004, 1005],
         **VALID_PROFILE,
     }
 
@@ -131,8 +131,7 @@ class TestNationCreatedHook:
         config = bot_started
         player = await seed_player(test_db_session, vk_user_id=770001)
         await add_consent(test_db_session, player.id, state="ALLOWED")
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         nation_id = await _create_nation(client, player)
@@ -165,8 +164,7 @@ class TestNationCreatedHook:
         """UNKNOWN/DENIED consent -> no reply row, consent untouched."""
         player = await seed_player(test_db_session, vk_user_id=770002)
         await add_consent(test_db_session, player.id, state=state)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         nation_id = await _create_nation(client, player)
@@ -185,8 +183,7 @@ class TestNationCreatedHook:
     ):
         """No consent row -> no reply AND the hook creates no consent."""
         player = await seed_player(test_db_session, vk_user_id=770003)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         nation_id = await _create_nation(client, player)
@@ -201,8 +198,7 @@ class TestNationCreatedHook:
         """OFF mode: even an ALLOWED player gets no row (bot silent)."""
         player = await seed_player(test_db_session, vk_user_id=770004)
         await add_consent(test_db_session, player.id, state="ALLOWED")
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         nation_id = await _create_nation(client, player)
@@ -220,8 +216,7 @@ class TestNationCreatedHook:
         """MISCONFIGURED mode: no row either (Spec 3.11 step 1)."""
         player = await seed_player(test_db_session, vk_user_id=770005)
         await add_consent(test_db_session, player.id, state="ALLOWED")
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         nation_id = await _create_nation(client, player)
@@ -241,8 +236,7 @@ class TestNationCreatedHook:
         nation adds nothing (UNIQUE behind a SAVEPOINT)."""
         player = await seed_player(test_db_session, vk_user_id=770006)
         await add_consent(test_db_session, player.id, state="ALLOWED")
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         nation_id = await _create_nation(client, player)
@@ -280,8 +274,7 @@ class TestNationCreatedHook:
 
         player = await seed_player(test_db_session, vk_user_id=770007)
         await add_consent(test_db_session, player.id, state="ALLOWED")
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         with caplog.at_level(logging.WARNING):

@@ -52,12 +52,17 @@ from modules._01_map.service import (
 )
 from modules._01_map.hooks import register_map_hooks
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import MAP_MINI_DIR
+from tests.fixtures.provinces import (
+    MAP_MINI_DIR,
+    MAP_MINI_LINKED_DIR,
+    STARTING_GROUP,
+)
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
     bearer_headers,
     make_launch_params,
+    seed_nation,
     seed_player,
 )
 from tests.modules._01_map.conftest import (
@@ -134,23 +139,6 @@ async def _set_turn(session, turn: int) -> None:
     await session.flush()
 
 
-async def _create_nation(
-    client, player, name: str, color_hex: str, province_ids: list[int]
-):
-    resp = await client.post(
-        "/api/v1/nations",
-        headers=bearer_headers(player.id),
-        json={
-            "name": name,
-            "color_hex": color_hex,
-            "province_ids": province_ids,
-            **VALID_PROFILE,
-        },
-    )
-    assert resp.status_code == 201, resp.text
-    return resp.json()
-
-
 async def _auth_headers(client, vk_user_id: int) -> dict[str, str]:
     """Register/log in a player through the real VK auth endpoint."""
     resp = await client.post(
@@ -180,7 +168,9 @@ async def live_client(
     monkeypatch.setenv(
         "DATABASE_URL", f"sqlite+aiosqlite:///{db_file.as_posix()}"
     )
-    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
+    # The linked mini map hosts two valid starting groups of exactly
+    # five provinces each (Registration 2.0: min == max == 5).
+    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_LINKED_DIR))
     monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
 
     saved_handlers = {
@@ -572,11 +562,14 @@ class TestState:
     ):
         player_a = await seed_player(map_db_session, vk_user_id=8101)
         player_b = await seed_player(map_db_session, vk_user_id=8102)
-        nation_a = await _create_nation(
-            client, player_a, "Alpha", "#AA1100", [1001, 1002]
+        # /map/state reads live rows — seed the nations directly: the
+        # canonical mini-map's components (4/3/1) cannot host a legal
+        # Registration-2.0 registration (exactly five, connected).
+        nation_a = await seed_nation(
+            map_db_session, player_a, "Alpha", "#AA1100", [1001, 1002]
         )
-        nation_b = await _create_nation(
-            client, player_b, "Bravo", "#2211BB", [1003]
+        nation_b = await seed_nation(
+            map_db_session, player_b, "Bravo", "#2211BB", [1003]
         )
 
         resp = await client.get(
@@ -587,7 +580,7 @@ class TestState:
         assert dto.turn == 0
         assert dto.owners == [[1001, 0], [1002, 0], [1003, 1]]
         assert [str(n.id) for n in dto.nations] == [
-            nation_a["id"], nation_b["id"]
+            nation_a.id, nation_b.id
         ]
         assert dto.nations[0].name == "Alpha"
         assert dto.nations[0].color_hex == "#AA1100"
@@ -672,8 +665,8 @@ class TestState:
         self, client, map_db_session
     ):
         player = await seed_player(map_db_session)
-        await _create_nation(
-            client, player, "Alpha", "#AA1100", [1001]
+        await seed_nation(
+            map_db_session, player, "Alpha", "#AA1100", [1001]
         )
         headers = bearer_headers(player.id)
         plain = (await client.get(STATE_URL, headers=headers)).json()
@@ -696,17 +689,19 @@ class TestState:
         real provinces and nation entry survive the filtering.
         """
         player = await seed_player(map_db_session)
-        nation = await _create_nation(
-            client, player, "Alpha", "#AA1100", [1001]
+        nation = await seed_nation(
+            map_db_session, player, "Alpha", "#AA1100", [1001]
         )
         # An owned row on an id the manifest does not know — the shape
         # a retired-but-owned leftover would have (startup normally
         # refuses this; the read path must still be safe).
         map_db_session.add(
-            Province(id=9999, kind="LAND", nation_id=nation["id"])
+            Province(id=9999, kind="LAND", nation_id=nation.id)
         )
         # A journal claim on the retired id back at turn 0 (a withdrawn
-        # node the journal legitimately remembers).
+        # node the journal legitimately remembers) plus the turn-0
+        # registration claim for 1001 — seed_nation writes live rows
+        # only, the past-turn snapshot reads the journal.
         await record_changes(
             map_db_session,
             [
@@ -718,6 +713,14 @@ class TestState:
                     new_color="#303030",
                     turn=0,
                 ),
+                OwnershipChange(
+                    province_id=1001,
+                    prev_nation_id=None,
+                    new_nation_id=nation.id,
+                    new_name="Alpha",
+                    new_color="#AA1100",
+                    turn=0,
+                ),
             ],
         )
         await _set_turn(map_db_session, 1)
@@ -727,7 +730,7 @@ class TestState:
             (await client.get(STATE_URL, headers=headers)).json()
         )
         assert current.owners == [[1001, 0]]
-        assert [str(n.id) for n in current.nations] == [nation["id"]]
+        assert [str(n.id) for n in current.nations] == [nation.id]
 
         at_0 = (
             await client.get(
@@ -967,7 +970,7 @@ class TestLiveHistory:
                 json={
                     "name": "Alpha",
                     "color_hex": "#AA1100",
-                    "province_ids": [1001, 1002],
+                    "province_ids": list(STARTING_GROUP),
                     **VALID_PROFILE,
                 },
             )
@@ -979,8 +982,9 @@ class TestLiveHistory:
                 json={
                     "name": "Bravo",
                     "color_hex": "#2211BB",
-                    "province_ids": [1003],
+                    "province_ids": [1009, 1010, 1011, 1012, 1013],
                     **VALID_PROFILE,
+                    "short_name": "Bravonia",
                 },
             )
         ).json()
@@ -1006,7 +1010,8 @@ class TestLiveHistory:
         now = await state()
         assert now["turn"] == 0
         assert now["owners"] == [
-            [1001, 0], [1002, 0], [1003, 1]
+            *[[pid, 0] for pid in STARTING_GROUP],
+            *[[pid, 1] for pid in range(1009, 1014)],
         ]
         assert [n["name"] for n in now["nations"]] == [
             "Alpha", "Bravo"
@@ -1043,7 +1048,9 @@ class TestLiveHistory:
 
         current = await state()
         assert current["turn"] == 2
-        assert current["owners"] == [[1003, 0]]
+        assert current["owners"] == [
+            [pid, 0] for pid in range(1009, 1014)
+        ]
         assert current["nations"] == [
             {
                 "id": nation_b["id"],
@@ -1054,7 +1061,10 @@ class TestLiveHistory:
 
         # Past turns keep the deleted nation with id = null.
         at_0 = await state(turn=0)
-        assert at_0["owners"] == [[1001, 0], [1002, 0], [1003, 1]]
+        assert at_0["owners"] == [
+            *[[pid, 0] for pid in STARTING_GROUP],
+            *[[pid, 1] for pid in range(1009, 1014)],
+        ]
         assert at_0["nations"][0] == {
             "id": None,
             "name": "Alpha",

@@ -12,9 +12,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Iterable, Literal, Sequence
 
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core.color_policy import oklab_distance
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.hooks import (
     STAGE_AFTER_COUNT,
@@ -27,7 +28,9 @@ from modules._00_core.hooks import (
     run_registration_checks,
 )
 from modules._00_core.exceptions import (
+    CapitalNotInProvincesError,
     ColorTakenError,
+    ColorTooCloseError,
     FrequencyCapExceededError,
     NameTakenError,
     NationAlreadyExistsError,
@@ -38,6 +41,7 @@ from modules._00_core.exceptions import (
     ProvinceTakenError,
     RetiredProvinceHistoryError,
     RetiredProvinceOwnedError,
+    ShortNameTakenError,
 )
 from modules._00_core.models import (
     GameClock,
@@ -48,13 +52,30 @@ from modules._00_core.models import (
     ScheduledActionStatus,
 )
 from modules._00_core.profile_rules import (
+    validate_anthem_url,
+    validate_capital_name,
+    validate_description,
+    validate_flag_id,
+    validate_gender,
     validate_history_url,
+    validate_leader_bio,
     validate_leader_name,
     validate_leader_title,
+    validate_motto,
+    validate_portrait_id,
+    validate_short_name,
+    validate_succession_type,
 )
 
 if TYPE_CHECKING:
     from typing import Self
+
+
+# PostgreSQL advisory-lock key serializing nation registrations and
+# color checks across every process sharing the database ('NATIONS' as
+# ASCII hex). Must fit bigint; no-op dialects (SQLite) skip it — the
+# single writer needs no lock (Spec Part 2 "Ключ блокировки").
+NATIONS_ADVISORY_LOCK_KEY = 0x4E4154494F4E53
 
 
 class FrequencyRule(str):
@@ -154,7 +175,11 @@ class PlayerRegistryRow:
 
 @dataclass(frozen=True)
 class NationRegistryRow:
-    """One nations-table row for module 03_registry (Spec 03_registry 1.4)."""
+    """
+    One nations-table row for module 03_registry (Spec 03_registry 1.4,
+    Spec 00_core Appendix A1). ``short_name`` and ``flag_id`` are None
+    for nations created before 0.8.0.
+    """
 
     nation_id: str
     name: str
@@ -162,6 +187,11 @@ class NationRegistryRow:
     created_turn: int
     created_at: datetime
     province_count: int
+    short_name: str | None = None
+    flag_id: str | None = None
+
+
+ColorStatus = Literal["OK", "TAKEN", "TOO_CLOSE"]
 
 
 class ProvinceService:
@@ -526,9 +556,78 @@ class GameClockService:
         )
 
 
+async def _take_nations_lock(session: AsyncSession) -> None:
+    """
+    The nations advisory lock (INV-13): serializes the name/short-name/
+    color check-then-write sequence across processes on PostgreSQL —
+    two concurrent registrations with similar colors cannot both pass.
+    Held until the transaction ends; the service never commits. SQLite
+    skips it: the single writer needs no lock.
+    """
+    if session.bind.dialect.name == "postgresql":
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": NATIONS_ADVISORY_LOCK_KEY},
+        )
+
+
+async def _evaluate_color(
+    session: AsyncSession,
+    color_hex: str,
+    config: CoreConfig,
+    exclude_nation_id: str | None = None,
+) -> ColorStatus:
+    """
+    The Part 3 color decision (INV-13), on an uppercase input: exact
+    match against another nation's color -> TAKEN; distance below
+    ``min_distance_reserved`` to a map color -> TOO_CLOSE; distance
+    below ``min_distance_nations`` to another nation's color ->
+    TOO_CLOSE; otherwise OK. Threshold equality passes (strict less).
+    ``exclude_nation_id`` drops one nation from both comparisons.
+    """
+    stmt = select(Nation.color_hex)
+    if exclude_nation_id is not None:
+        stmt = stmt.where(Nation.id != exclude_nation_id)
+    result = await session.execute(stmt)
+    taken = result.scalars().all()
+
+    for existing in taken:
+        if existing.upper() == color_hex:
+            return "TAKEN"
+    for reserved in config.color.reserved:
+        if (
+            oklab_distance(color_hex, reserved.hex)
+            < config.color.min_distance_reserved
+        ):
+            return "TOO_CLOSE"
+    for existing in taken:
+        if (
+            oklab_distance(color_hex, existing)
+            < config.color.min_distance_nations
+        ):
+            return "TOO_CLOSE"
+    return "OK"
+
+
+async def _check_color_or_raise(
+    session: AsyncSession,
+    color_hex: str,
+    config: CoreConfig,
+    exclude_nation_id: str | None = None,
+) -> None:
+    """Raise the domain error matching the color decision."""
+    status = await _evaluate_color(
+        session, color_hex, config, exclude_nation_id
+    )
+    if status == "TAKEN":
+        raise ColorTakenError(color_hex)
+    if status == "TOO_CLOSE":
+        raise ColorTooCloseError(color_hex)
+
+
 class NationService:
     """Service for Nation entity operations."""
-    
+
     @staticmethod
     async def create(
         session: AsyncSession,
@@ -540,47 +639,75 @@ class NationService:
         leader_name: str,
         leader_title: str,
         history_url: str,
+        short_name: str,
+        gender: str,
+        succession_type: str,
+        capital_name: str,
+        capital_province_id: int | None = None,
+        motto: str | None = None,
+        description: str | None = None,
+        leader_bio: str | None = None,
+        flag_id: str | None = None,
+        portrait_id: str | None = None,
+        anthem_url: str | None = None,
     ) -> Nation:
         """
         Create a new nation with the given provinces and profile fields.
 
-        Enforces INV-1 (one nation per player), INV-7 (mandatory profile
-        fields), INV-2 (unique name/color), INV-3 (atomic province
-        assignment), and province count constraints — in exactly the
-        Spec order (00_core Part 2 extended by 01_map Part 5 and
+        The Spec Part 2 check order (extended by 01_map Part 5 and
         02_bot 3.10/3.11): "before_all" satellite checks (they see the
-        player, run before any write) -> INV-1 -> profile fields
-        (leader_name, leader_title, history_url) -> INV-2 -> province
-        existence -> province freedom -> "after_free" satellite checks
-        -> province count -> "after_count" satellite checks -> create ->
-        "nation_created" satellite hooks (after all writes, each under
-        its own SAVEPOINT — a hook failure can never abort the
-        creation). Any check failure persists nothing.
+        player, run before any write) -> INV-1 -> descriptive fields in
+        the fixed order (leader_name, leader_title, gender,
+        succession_type, history_url, anthem_url, short_name, motto,
+        description, leader_bio, flag_id, portrait_id, capital_name —
+        the first violation wins) -> the nations lock -> INV-2 for the
+        name -> INV-11 for the short name -> the color decision
+        (COLOR_TAKEN / COLOR_TOO_CLOSE) -> province existence ->
+        province freedom -> "after_free" checks -> province count ->
+        "after_count" checks -> capital membership
+        (CAPITAL_NOT_IN_PROVINCES) -> creation, the ownership
+        notification and the "nation_created" hooks (after all writes,
+        each under its own SAVEPOINT). Any check failure persists
+        nothing (INV-3).
 
         Args:
             session: The async database session.
             owner_player_id: The player ID who will own the nation.
-            name: The nation name.
+            name: The nation name (normalized by strip).
             color_hex: The nation color in hex format (#RRGGBB).
             province_ids: List of province IDs to assign to the nation.
             config: The core configuration for validation constraints.
             leader_name: The leader's name (normalized and validated).
             leader_title: The leader's title (normalized and validated).
             history_url: Link to the nation's history article.
+            short_name: The nation's short name (unique, INV-11).
+            gender: The leader's gender (code constant).
+            succession_type: How the next leader takes over (code).
+            capital_name: The capital's name.
+            capital_province_id: The capital province; defaults to the
+                first element of ``province_ids`` as sent (INV-14).
+            motto: Optional motto; empty after normalization -> NULL.
+            description: Optional description; empty -> NULL.
+            leader_bio: Optional multi-line leader bio; empty -> NULL.
+            flag_id: Optional catalog flag id (INV-15).
+            portrait_id: Optional catalog portrait id (INV-15).
+            anthem_url: Optional anthem link (soft check, Part 3).
 
         Returns:
             The newly created Nation instance.
 
         Raises:
             NationAlreadyExistsError: If the player already has a nation.
-            LeaderNameInvalidError: If the leader name fails Part 3 checks.
-            LeaderTitleInvalidError: If the leader title fails Part 3 checks.
-            HistoryUrlInvalidError: If the history URL fails Part 3 checks.
             NameTakenError: If the name is already taken.
-            ColorTakenError: If the color is already taken.
+            ShortNameTakenError: If the short name is already taken.
+            ColorTakenError: If the color exactly matches a nation's.
+            ColorTooCloseError: If the color is too close to a nation
+                or a reserved map color.
             ProvinceNotFoundError: If any province ID does not exist.
             ProvinceTakenError: If any province is already owned.
             ProvinceCountOutOfRangeError: If province count violates constraints.
+            CapitalNotInProvincesError: If the capital is not selected.
+            The ``*_INVALID`` errors of Part 5 for failed field checks.
         """
         # Stage "before_all": satellite checks that see the player and
         # run before any write — first in the Spec Part 5 order.
@@ -593,26 +720,45 @@ class NationService:
         if result.scalar_one_or_none() is not None:
             raise NationAlreadyExistsError(owner_player_id)
 
-        # INV-7: profile fields are mandatory and validated before INV-2
-        # (Spec Part 2 check order). The normalized values get stored.
+        # Descriptive fields, validated in the Spec Part 2 fixed order;
+        # the normalized values get stored (INV-7, INV-12).
         leader_name = validate_leader_name(leader_name, config)
         leader_title = validate_leader_title(leader_title, config)
+        gender = validate_gender(gender, config)
+        succession_type = validate_succession_type(succession_type, config)
         history_url = validate_history_url(history_url, config)
+        anthem_url = validate_anthem_url(anthem_url, config)
+        short_name = validate_short_name(short_name, config)
+        motto = validate_motto(motto, config)
+        description = validate_description(description, config)
+        leader_bio = validate_leader_bio(leader_bio, config)
+        flag_id = validate_flag_id(flag_id, config)
+        portrait_id = validate_portrait_id(portrait_id, config)
+        capital_name = validate_capital_name(capital_name, config)
 
-        # INV-2: Check if name is already taken
+        # The lock covers name/short-name/color reads so concurrent
+        # registrations cannot interleave check and insert (INV-13).
+        await _take_nations_lock(session)
+
+        # INV-2: Check if name is already taken (normalized by strip).
+        name = name.strip()
         result = await session.execute(
             select(Nation).where(Nation.name == name)
         )
         if result.scalar_one_or_none() is not None:
             raise NameTakenError(name)
-        
-        # INV-2: Check if color is already taken
+
+        # INV-11: Check if the short name is already taken.
         result = await session.execute(
-            select(Nation).where(Nation.color_hex == color_hex)
+            select(Nation).where(Nation.short_name == short_name)
         )
         if result.scalar_one_or_none() is not None:
-            raise ColorTakenError(color_hex)
-        
+            raise ShortNameTakenError(short_name)
+
+        # INV-13: uppercase normalization before every color check.
+        color_hex = color_hex.upper()
+        await _check_color_or_raise(session, color_hex, config)
+
         # Fetch all provinces to validate they exist and are free
         result = await session.execute(
             select(Province).where(Province.id.in_(province_ids))
@@ -647,6 +793,13 @@ class NationService:
         # Stage "after_count": satellite checks on the sized group.
         await run_registration_checks(STAGE_AFTER_COUNT, session, provinces)
 
+        # INV-14: the capital must be one of the selected provinces;
+        # absent means the first element of province_ids as sent.
+        if capital_province_id is None:
+            capital_province_id = province_ids[0]
+        if capital_province_id not in province_ids:
+            raise CapitalNotInProvincesError(capital_province_id)
+
         # INV-3: Atomic transaction - create nation and assign provinces.
         # created_turn stamps the transaction's current turn (Spec
         # 03_registry 1.4; INV-R9: never changed afterwards).
@@ -659,6 +812,17 @@ class NationService:
             leader_name=leader_name,
             leader_title=leader_title,
             history_url=history_url,
+            short_name=short_name,
+            gender=gender,
+            succession_type=succession_type,
+            motto=motto,
+            description=description,
+            leader_bio=leader_bio,
+            flag_id=flag_id,
+            portrait_id=portrait_id,
+            anthem_url=anthem_url,
+            capital_province_id=capital_province_id,
+            capital_name=capital_name,
             created_at=datetime.now(timezone.utc),
             created_turn=turn,
         )
@@ -769,6 +933,8 @@ class NationService:
                 Nation.created_turn,
                 Nation.created_at,
                 province_count,
+                Nation.short_name,
+                Nation.flag_id,
             )
             .order_by(Nation.created_turn, Nation.created_at, Nation.id)
         )
@@ -780,6 +946,8 @@ class NationService:
                 created_turn=row[3],
                 created_at=row[4],
                 province_count=row[5],
+                short_name=row[6],
+                flag_id=row[7],
             )
             for row in result.all()
         ]
@@ -805,40 +973,49 @@ class NationService:
         leader_name: str | None = None,
         leader_title: str | None = None,
         history_url: str | None = None,
+        short_name: str | None = None,
+        gender: str | None = None,
+        succession_type: str | None = None,
+        motto: str | None = None,
+        description: str | None = None,
+        leader_bio: str | None = None,
+        flag_id: str | None = None,
+        portrait_id: str | None = None,
+        anthem_url: str | None = None,
+        capital_name: str | None = None,
         *,
         config: CoreConfig,
     ) -> Nation:
         """
-        Update a nation's name, color, and/or profile fields.
+        Update a nation's descriptive fields (PATCH semantics, INV-8).
 
-        Enforces INV-2 (unique name/color) and INV-8: a None argument
-        leaves the field unchanged, while a provided value is normalized
-        and validated up front — so a rejected field aborts the whole
-        update before anything is mutated. Profile fields are required
-        and can never be cleared; an empty (post-strip) string is a
-        validation error, not a reset. Legacy nations with NULL profile
-        fields still accept a plain rename/recolor.
+        None/absent means "do not change". A provided value is
+        normalized and validated up front — a rejected field aborts the
+        whole update before anything is mutated. Mandatory fields can
+        never be cleared: an empty (post-strip) value is a validation
+        error, not a reset. Optional fields (motto, description,
+        leader_bio, flag_id, portrait_id, anthem_url) are cleared to
+        NULL by an empty value. Provinces and the capital province are
+        not changeable here (INV-14); ``capital_name`` may only be set
+        on a nation that has a capital — a pre-0.8.0 nation without one
+        can never gain it through editing. Legacy nations with NULL
+        mandatory fields still accept unrelated-field edits.
 
-        Args:
-            session: The async database session.
-            nation_id: The nation ID to update.
-            name: Optional new name.
-            color_hex: Optional new color.
-            leader_name: Optional new leader name.
-            leader_title: Optional new leader title.
-            history_url: Optional new history URL.
-            config: The core configuration for validation constraints.
-
-        Returns:
-            The updated Nation instance.
+        Check order (Spec Part 2): provided descriptive fields in the
+        create order -> the nations lock -> name uniqueness -> short
+        name uniqueness -> the color decision (only when the color
+        changes; the nation itself is excluded) -> write.
 
         Raises:
             NationNotFoundError: If the nation does not exist.
-            LeaderNameInvalidError: If the leader name fails Part 3 checks.
-            LeaderTitleInvalidError: If the leader title fails Part 3 checks.
-            HistoryUrlInvalidError: If the history URL fails Part 3 checks.
-            NameTakenError: If the new name is already taken by another nation.
-            ColorTakenError: If the new color is already taken by another nation.
+            NameTakenError: If the new name is already taken.
+            ShortNameTakenError: If the new short name is already taken.
+            ColorTakenError: If the new color exactly matches a nation's.
+            ColorTooCloseError: If the new color is too close to a
+                nation or a reserved map color.
+            CapitalNotInProvincesError: If capital_name targets a
+                nation without a capital province.
+            The ``*_INVALID`` errors of Part 5 for failed field checks.
         """
         result = await session.execute(
             select(Nation).where(Nation.id == nation_id)
@@ -848,8 +1025,9 @@ class NationService:
         if nation is None:
             raise NationNotFoundError(nation_id)
 
-        # INV-8: validate every provided profile field before any
-        # mutation, so a bad field leaves the whole update untouched.
+        # INV-8: validate every provided field before any mutation, in
+        # the Spec Part 2 field order — a bad field leaves the whole
+        # update untouched.
         new_leader_name = (
             None if leader_name is None
             else validate_leader_name(leader_name, config)
@@ -858,28 +1036,75 @@ class NationService:
             None if leader_title is None
             else validate_leader_title(leader_title, config)
         )
+        new_gender = (
+            None if gender is None
+            else validate_gender(gender, config)
+        )
+        new_succession_type = (
+            None if succession_type is None
+            else validate_succession_type(succession_type, config)
+        )
         new_history_url = (
             None if history_url is None
             else validate_history_url(history_url, config)
         )
+        new_anthem_url = validate_anthem_url(anthem_url, config)
+        new_short_name = (
+            None if short_name is None
+            else validate_short_name(short_name, config)
+        )
+        new_motto = validate_motto(motto, config)
+        new_description = validate_description(description, config)
+        new_leader_bio = validate_leader_bio(leader_bio, config)
+        new_flag_id = validate_flag_id(flag_id, config)
+        new_portrait_id = validate_portrait_id(portrait_id, config)
+        new_capital_name = (
+            None if capital_name is None
+            else validate_capital_name(capital_name, config)
+        )
 
-        if name is not None and name != nation.name:
-            # Check if name is already taken by another nation
+        # The lock covers the name/short-name/color reads and the
+        # subsequent write on PostgreSQL (INV-13).
+        await _take_nations_lock(session)
+
+        if name is not None:
+            new_name = name.strip()
+            if new_name != nation.name:
+                result = await session.execute(
+                    select(Nation).where(
+                        Nation.name == new_name, Nation.id != nation_id
+                    )
+                )
+                if result.scalar_one_or_none() is not None:
+                    raise NameTakenError(new_name)
+            nation.name = new_name
+
+        if new_short_name is not None and new_short_name != nation.short_name:
             result = await session.execute(
-                select(Nation).where(Nation.name == name, Nation.id != nation_id)
+                select(Nation).where(
+                    Nation.short_name == new_short_name,
+                    Nation.id != nation_id,
+                )
             )
             if result.scalar_one_or_none() is not None:
-                raise NameTakenError(name)
-            nation.name = name
-        
-        if color_hex is not None and color_hex != nation.color_hex:
-            # Check if color is already taken by another nation
-            result = await session.execute(
-                select(Nation).where(Nation.color_hex == color_hex, Nation.id != nation_id)
-            )
-            if result.scalar_one_or_none() is not None:
-                raise ColorTakenError(color_hex)
-            nation.color_hex = color_hex
+                raise ShortNameTakenError(new_short_name)
+
+        if color_hex is not None:
+            new_color = color_hex.upper()
+            if new_color != nation.color_hex:
+                await _check_color_or_raise(
+                    session, new_color, config, exclude_nation_id=nation_id
+                )
+                nation.color_hex = new_color
+
+        if new_capital_name is not None:
+            if nation.capital_province_id is None:
+                # A pre-0.8.0 nation has no capital and cannot gain one
+                # through editing (INV-14).
+                raise CapitalNotInProvincesError(
+                    nation.capital_province_id
+                )
+            nation.capital_name = new_capital_name
 
         if new_leader_name is not None:
             nation.leader_name = new_leader_name
@@ -887,8 +1112,46 @@ class NationService:
             nation.leader_title = new_leader_title
         if new_history_url is not None:
             nation.history_url = new_history_url
+        if anthem_url is not None:
+            nation.anthem_url = new_anthem_url
+        if new_short_name is not None:
+            nation.short_name = new_short_name
+        if new_gender is not None:
+            nation.gender = new_gender
+        if new_succession_type is not None:
+            nation.succession_type = new_succession_type
+        if motto is not None:
+            nation.motto = new_motto
+        if description is not None:
+            nation.description = new_description
+        if leader_bio is not None:
+            nation.leader_bio = new_leader_bio
+        if flag_id is not None:
+            nation.flag_id = new_flag_id
+        if portrait_id is not None:
+            nation.portrait_id = new_portrait_id
 
         return nation
+
+    @staticmethod
+    async def color_status(
+        session: AsyncSession,
+        color_hex: str,
+        config: CoreConfig,
+        exclude_nation_id: str | None = None,
+    ) -> ColorStatus:
+        """
+        The Part 3 color decision for the color-check endpoint: the
+        same functions as the write path, but WITHOUT the lock and
+        without any write — an "OK" answer does not guarantee a later
+        creation succeeds (the final decision happens inside
+        ``create`` under the advisory lock). ``exclude_nation_id``
+        removes the caller's own nation from the comparison.
+        Read-only and never commits.
+        """
+        return await _evaluate_color(
+            session, color_hex.upper(), config, exclude_nation_id
+        )
     
     @staticmethod
     async def delete(session: AsyncSession, nation_id: str) -> None:
