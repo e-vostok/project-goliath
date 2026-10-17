@@ -50,13 +50,6 @@ def get_engine():
     return _engine
 
 
-def get_session_maker():
-    """Get the async session maker."""
-    if _async_session_maker is None:
-        raise RuntimeError("Session maker not initialized. Call init_engine() first.")
-    return _async_session_maker
-
-
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency injection helper for FastAPI routes."""
     if _async_session_maker is None:
