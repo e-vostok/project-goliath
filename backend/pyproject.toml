@@ -54,3 +54,7 @@ pythonpath = ["src"]
 markers = [
     "postgres: destructive end-to-end tests against a real PostgreSQL database (require DATABASE_URL_TEST, wipe the target schema)",
 ]
+
+[tool.vulture]
+paths = ["src"]
+min_confidence = 80
