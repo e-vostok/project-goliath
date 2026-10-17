@@ -31,6 +31,7 @@ def bot_isolation(monkeypatch):
     saved_providers = list(bot_registry.get_deadline_audience_providers())
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
+    saved_previews = AdminRegistry.get_player_preview_hooks()
     monkeypatch.setattr(bot_settings, "_runtime_running", False)
     monkeypatch.setattr(bot_settings, "_misconfigured_logged", False)
     monkeypatch.setattr(bot_settings, "_app_id_warned", False)
@@ -45,6 +46,8 @@ def bot_isolation(monkeypatch):
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.clear()
     AdminRegistry._reset_hooks.update(saved_resets)
+    AdminRegistry._player_preview_hooks.clear()
+    AdminRegistry._player_preview_hooks.update(saved_previews)
     bot_signal.install_wake_event(None)
 
 
