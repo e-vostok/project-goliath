@@ -145,7 +145,7 @@ class TestOklabVectors:
     )
     def test_hex_to_oklab(self, hex_color, expected):
         lab = hex_to_oklab(hex_color)
-        for got, want in zip(lab, expected):
+        for got, want in zip(lab, expected, strict=True):
             assert got == pytest.approx(want, abs=1e-5)
 
     @pytest.mark.parametrize(

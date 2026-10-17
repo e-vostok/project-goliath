@@ -29,8 +29,8 @@ from tests.modules._02_bot._issue3_support import (
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )
@@ -209,7 +209,7 @@ class TestGroupReassembly:
                     status="LEASED",
                     attempts=1,
                     lease_until=expired_lease,
-                    lease_token="old-token",
+                    lease_token="old-token",  # noqa: S106
                     group_id=group_id,
                     random_id=424242,
                     render_mode="BATCH",
@@ -236,7 +236,7 @@ class TestGroupReassembly:
             player = await add_member(session)
             group_id = str(uuid.uuid4())
             expired_lease = NOW - timedelta(minutes=5)
-            gone = await add_outbox(
+            await add_outbox(
                 session,
                 player.id,
                 payload=_DIGEST_VARS,
@@ -253,7 +253,7 @@ class TestGroupReassembly:
                 status="LEASED",
                 attempts=1,
                 lease_until=expired_lease,
-                lease_token="old-token",
+                lease_token="old-token",  # noqa: S106
                 group_id=group_id,
                 random_id=111,
                 render_mode="SINGLE",
@@ -276,7 +276,7 @@ class TestSentHistory:
         async with make_session_factory(test_db_engine)() as session:
             capped = await add_member(session)
             # 8 distinct sent groups in the sliding 24h -> cap full.
-            for i in range(cap):
+            for _ in range(cap):
                 await add_outbox(
                     session,
                     capped.id,
@@ -289,7 +289,7 @@ class TestSentHistory:
 
             batched = await add_member(session)
             # 3 singles of the over_cap type inside its 60-min window.
-            for i in range(3):
+            for _ in range(3):
                 await add_outbox(
                     session,
                     batched.id,
@@ -299,7 +299,7 @@ class TestSentHistory:
                     render_mode="SINGLE",
                     sent_at=NOW - timedelta(minutes=10),
                 )
-            for i in range(4):
+            for _ in range(4):
                 await add_outbox(
                     session,
                     batched.id,
@@ -320,7 +320,7 @@ class TestSentHistory:
                 render_mode="BATCH",
                 sent_at=last_batch,
             )
-            for i in range(5):
+            for _ in range(5):
                 await add_outbox(
                     session,
                     windowed.id,

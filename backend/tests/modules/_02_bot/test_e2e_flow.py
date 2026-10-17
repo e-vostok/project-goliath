@@ -1069,7 +1069,7 @@ class TestPgMirror:
     locally, covered by CI)."""
 
     @pytest_asyncio.fixture
-    async def pg_bot(self, pg_url, pg_clean, monkeypatch, mini_map_config):
+    async def pg_bot(self, pg_url, pg_clean, monkeypatch, mini_map_config):  # noqa: F811
         """The live app on the PG test DB with the bot env configured;
         its lifespan runtime is stopped and replaced by a FakeVk one
         over the ``pg_db`` session maker."""
@@ -1137,7 +1137,7 @@ class TestPgMirror:
                 "bot_consents",
                 "bot_vk_events",
             ):
-                await conn.execute(sa.text(f"DELETE FROM {table}"))
+                await conn.execute(sa.text(f"DELETE FROM {table}"))  # noqa: S608
             await conn.execute(sa.text("UPDATE bot_state SET last_digest_turn = 0"))
         fake = FakeVk()
         try:

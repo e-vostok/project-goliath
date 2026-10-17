@@ -39,8 +39,8 @@ pytestmark = pytest.mark.postgres
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )

@@ -222,7 +222,7 @@ class TestManifest:
         edges = {(e["a"], e["b"]): e for e in resp.json()["edges"]}
         assert edges[(1005, 1006)]["multiplier"] == 0.5
         assert edges[(1006, 1007)]["multiplier"] == 0.3
-        for key, edge in edges.items():
+        for _key, edge in edges.items():
             if edge["type"] != "strait":
                 assert edge["multiplier"] is None
         assert edges[(1005, 1006)]["name"]

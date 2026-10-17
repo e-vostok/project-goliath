@@ -34,8 +34,8 @@ from tests.modules._02_bot._issue3_support import (
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )
@@ -163,14 +163,14 @@ class TestJanitor:
                 player.id,
                 status="LEASED",
                 lease_until=NOW - timedelta(minutes=5),
-                lease_token="dead-token",
+                lease_token="dead-token",  # noqa: S106
             )
             live = await add_outbox(
                 session,
                 player.id,
                 status="LEASED",
                 lease_until=NOW + timedelta(minutes=5),
-                lease_token="live-token",
+                lease_token="live-token",  # noqa: S106
             )
             session.add(
                 BotVkEvent(
@@ -198,5 +198,5 @@ class TestJanitor:
         assert rows[stuck.id].status == "PENDING"
         assert rows[stuck.id].lease_token is None
         assert rows[live.id].status == "LEASED"
-        assert rows[live.id].lease_token == "live-token"
+        assert rows[live.id].lease_token == "live-token"  # noqa: S105
         assert events == ["evt-new"]

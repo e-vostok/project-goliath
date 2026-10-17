@@ -17,12 +17,12 @@ from __future__ import annotations
 import time
 from collections import deque
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 
 from modules._02_bot.config_schema import BreakerSettings
 
 
-class BreakerState(str, Enum):
+class BreakerState(StrEnum):
     """Circuit breaker states (Spec 3.5)."""
 
     CLOSED = "CLOSED"

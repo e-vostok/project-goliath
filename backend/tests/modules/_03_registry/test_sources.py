@@ -35,7 +35,7 @@ class TestPlayersTable:
     async def test_rows_numbering_and_fallback_names(
         self, test_db_session, registry_started
     ):
-        p1 = await seed_player(test_db_session, 501001, created_at=T0)
+        await seed_player(test_db_session, 501001, created_at=T0)
         p2 = await seed_player(test_db_session, 501002, created_at=T0.replace(hour=13))
         await seed_nation(test_db_session, p2, "Второе", "#112233", created_turn=0)
 

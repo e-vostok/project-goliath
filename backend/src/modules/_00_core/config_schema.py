@@ -52,7 +52,9 @@ class TickSettings(BaseModel):
     )
     tick_timezone: str = Field(
         default="Europe/Moscow",
-        description="IANA-зона, в которой задано tick_time (резолвится через zoneinfo).",
+        description=(
+            "IANA-зона, в которой задано tick_time (резолвится через zoneinfo)."
+        ),
     )
     tick_interval_hours: int = Field(
         ge=1,

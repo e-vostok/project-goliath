@@ -54,7 +54,7 @@ def _op_is_known_equivalent(op) -> bool:
     )
 
 
-def test_no_model_migration_drift_on_postgres(pg_schema):
+def test_no_model_migration_drift_on_postgres(pg_schema):  # noqa: F811
     """The migrated PostgreSQL schema must structurally match Base.metadata."""
     sync_url = (
         make_url(pg_schema)

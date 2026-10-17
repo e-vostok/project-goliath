@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 import httpx
 
@@ -30,7 +30,7 @@ from modules._02_bot.config_schema import BotConfig
 logger = logging.getLogger(__name__)
 
 
-class SendKind(str, Enum):
+class SendKind(StrEnum):
     """What the VK boundary answered for one messages.send."""
 
     OK = "OK"  # response[0].message_id, no error

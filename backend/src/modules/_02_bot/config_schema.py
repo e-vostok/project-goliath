@@ -117,7 +117,8 @@ def check_template(
             continue
         if unicodedata.category(ch) in ("Cc", "Cf"):
             raise ValueError(
-                f"{label}: недопустимый управляющий или невидимый символ U+{ord(ch):04X}"
+                f"{label}: недопустимый управляющий или невидимый символ "
+                f"U+{ord(ch):04X}"
             )
     names = template_placeholders(text)
     unknown = sorted(set(names) - allowed)
@@ -170,7 +171,9 @@ class SenderSettings(_Strict):
     claim_batch_size: int = Field(
         ge=1,
         le=50,
-        description="Сколько игроков с готовыми сообщениями берётся в работу за проход.",
+        description=(
+            "Сколько игроков с готовыми сообщениями берётся в работу за проход."
+        ),
     )
     concurrency: int = Field(
         ge=1,
@@ -180,12 +183,18 @@ class SenderSettings(_Strict):
     lease_seconds: int = Field(
         ge=30,
         le=900,
-        description="Срок «аренды» взятых в работу строк; по истечении строка возвращается в очередь.",
+        description=(
+            "Срок «аренды» взятых в работу строк; по истечении строка возвращается в "
+            "очередь."
+        ),
     )
     max_requests_per_second: int = Field(
         ge=1,
         le=20,
-        description="Потолок запросов к ВК в секунду (не выше лимита ВК для сообщества: 20, проверка BOT-0, V5).",
+        description=(
+            "Потолок запросов к ВК в секунду (не выше лимита ВК для сообщества: 20, "
+            "проверка BOT-0, V5)."
+        ),
     )
     max_attempts: int = Field(
         ge=1,
@@ -210,14 +219,18 @@ class SenderSettings(_Strict):
     purge_after_days: int = Field(
         ge=1,
         le=90,
-        description="Через сколько суток удаляются завершённые строки очереди и журнал событий ВК.",
+        description=(
+            "Через сколько суток удаляются завершённые строки очереди и журнал событий "
+            "ВК."
+        ),
     )
 
     @model_validator(mode="after")
     def check_backoff(self) -> Self:
         if self.backoff_base_seconds > self.backoff_cap_seconds:
             raise ValueError(
-                "sender.backoff_base_seconds не может превышать sender.backoff_cap_seconds"
+                "sender.backoff_base_seconds не может превышать "
+                "sender.backoff_cap_seconds"
             )
         return self
 
@@ -236,7 +249,9 @@ class BreakerSettings(_Strict):
     failure_ratio: float = Field(
         gt=0.0,
         le=1.0,
-        description="Доля системных сбоев в окне, при которой отправка останавливается.",
+        description=(
+            "Доля системных сбоев в окне, при которой отправка останавливается."
+        ),
     )
     open_seconds: int = Field(
         ge=10,
@@ -259,7 +274,9 @@ class LimitsSettings(_Strict):
     variable_max_length: int = Field(
         ge=20,
         le=500,
-        description="Максимальная длина значения одной переменной после очистки, символы.",
+        description=(
+            "Максимальная длина значения одной переменной после очистки, символы."
+        ),
     )
     message_max_chars: int = Field(
         ge=200,
@@ -270,17 +287,24 @@ class LimitsSettings(_Strict):
 
 class ConsentSettings(_Strict):
     required_for_registration: bool = Field(
-        description="Регистрация государства требует разрешения на сообщения от сообщества (действует только при включённом боте).",
+        description=(
+            "Регистрация государства требует разрешения на сообщения от сообщества "
+            "(действует только при включённом боте)."
+        ),
     )
     recheck_after_seconds: int = Field(
         ge=60,
         le=86400,
-        description="Как долго результат проверки разрешения в ВК считается свежим, сек.",
+        description=(
+            "Как долго результат проверки разрешения в ВК считается свежим, сек."
+        ),
     )
     refresh_min_interval_seconds: int = Field(
         ge=1,
         le=60,
-        description="Минимальный интервал между принудительными проверками одного игрока, сек.",
+        description=(
+            "Минимальный интервал между принудительными проверками одного игрока, сек."
+        ),
     )
     reconcile_sweep_interval_seconds: int = Field(
         ge=60,
@@ -298,7 +322,9 @@ class DeadlineSettings(_Strict):
     offset_minutes: int = Field(
         ge=15,
         le=720,
-        description="За сколько минут до расчёта хода создаётся предупреждение о дедлайне.",
+        description=(
+            "За сколько минут до расчёта хода создаётся предупреждение о дедлайне."
+        ),
     )
 
 
@@ -306,7 +332,10 @@ class TypeSettings(_Strict):
     """Правила одного типа уведомления (каталог Bible, раздел 2)."""
 
     enabled: bool = Field(
-        description="Выключенный тип не создаёт сообщений (постановка отклоняется как TYPE_DISABLED).",
+        description=(
+            "Выключенный тип не создаёт сообщений (постановка отклоняется как "
+            "TYPE_DISABLED)."
+        ),
     )
     priority: Literal["critical", "normal"] = Field(
         description="critical — вперёд очереди и мимо суточного потолка.",
@@ -315,23 +344,35 @@ class TypeSettings(_Strict):
         description="Отправлять только при подтверждённом разрешении игрока.",
     )
     requires_nation: bool = Field(
-        description="Отправлять только владельцу государства; при false проверка государства не выполняется.",
+        description=(
+            "Отправлять только владельцу государства; при false проверка государства "
+            "не выполняется."
+        ),
     )
     counts_toward_cap: bool = Field(
-        description="Учитывается ли сообщение в суточном потолке limits.daily_cap_normal.",
+        description=(
+            "Учитывается ли сообщение в суточном потолке limits.daily_cap_normal."
+        ),
     )
     ttl_minutes: int = Field(
         ge=1,
         le=10080,
-        description="Срок годности с момента постановки, мин; позже сообщение не отправляется.",
+        description=(
+            "Срок годности с момента постановки, мин; позже сообщение не отправляется."
+        ),
     )
     hold_seconds: int = Field(
         ge=0,
         le=3600,
-        description="Выдержка перед отправкой, чтобы близкие события успели слиться, сек.",
+        description=(
+            "Выдержка перед отправкой, чтобы близкие события успели слиться, сек."
+        ),
     )
     merge: Literal["never", "over_cap", "always"] = Field(
-        description="never — не сливать; over_cap — сливать только сверх лимита окна; always — сливать всё готовое.",
+        description=(
+            "never — не сливать; over_cap — сливать только сверх лимита окна; always — "
+            "сливать всё готовое."
+        ),
     )
     max_per_window: int = Field(
         ge=0,
@@ -345,10 +386,16 @@ class TypeSettings(_Strict):
     )
     text: str = Field(min_length=1, description="Шаблон одного сообщения.")
     batch_text: str | None = Field(
-        description="Шаблон слитого сообщения ({count} — число событий); обязателен при merge != never.",
+        description=(
+            "Шаблон слитого сообщения ({count} — число событий); обязателен при merge "
+            "!= never."
+        ),
     )
     line_text: str | None = Field(
-        description="Строка сводного сообщения при превышении суточного потолка ({count}); обязательна при counts_toward_cap.",
+        description=(
+            "Строка сводного сообщения при превышении суточного потолка ({count}); "
+            "обязательна при counts_toward_cap."
+        ),
     )
 
     @model_validator(mode="after")
@@ -362,7 +409,8 @@ class TypeSettings(_Strict):
         if self.priority == "critical":
             if self.counts_toward_cap:
                 raise ValueError(
-                    "critical не может учитываться в суточном потолке (counts_toward_cap = true)"
+                    "critical не может учитываться в суточном потолке "
+                    "(counts_toward_cap = true)"
                 )
             if self.merge != "never":
                 raise ValueError("critical не сливается (merge должен быть never)")
@@ -399,7 +447,10 @@ class HelpLinks(_Strict):
     allowed_hosts: list[str] = Field(
         min_length=1,
         max_length=10,
-        description="Допустимые хосты ссылок кнопок помощи: нижний регистр, без схемы, порта и пути.",
+        description=(
+            "Допустимые хосты ссылок кнопок помощи: нижний регистр, без схемы, порта и "
+            "пути."
+        ),
     )
     rules_url: str | None = Field(
         description="Ссылка на правила; null — кнопка скрыта."
@@ -417,8 +468,8 @@ class HelpLinks(_Strict):
         for host in hosts:
             if _HOSTNAME_RE.match(host) is None:
                 raise ValueError(
-                    f"allowed_hosts: '{host}' не является именем хоста в нижнем регистре "
-                    "без схемы, порта и пути"
+                    f"allowed_hosts: '{host}' не является именем хоста "
+                    "в нижнем регистре без схемы, порта и пути"
                 )
         if len(set(hosts)) != len(hosts):
             raise ValueError("allowed_hosts: дубли недопустимы")
@@ -448,7 +499,10 @@ class ClientSettings(_Strict):
     chat_url_template: str = Field(
         min_length=10,
         max_length=200,
-        description="Ссылка на диалог с сообществом; {group_id} заменяется числовым id сообщества. Хост — из dialog.help.allowed_hosts.",
+        description=(
+            "Ссылка на диалог с сообществом; {group_id} заменяется числовым id "
+            "сообщества. Хост — из dialog.help.allowed_hosts."
+        ),
     )
     consent_poll_interval_seconds: int = Field(
         ge=2,
@@ -458,14 +512,18 @@ class ClientSettings(_Strict):
     consent_poll_timeout_seconds: int = Field(
         ge=10,
         le=600,
-        description="Сколько секунд окно ждёт разрешения после открытия чата, затем показывает кнопку «Проверить».",
+        description=(
+            "Сколько секунд окно ждёт разрешения после открытия чата, затем показывает "
+            "кнопку «Проверить»."
+        ),
     )
 
     @model_validator(mode="after")
     def check_poll(self) -> Self:
         if self.consent_poll_timeout_seconds <= self.consent_poll_interval_seconds:
             raise ValueError(
-                "client.consent_poll_timeout_seconds должен превышать client.consent_poll_interval_seconds"
+                "client.consent_poll_timeout_seconds должен превышать "
+                "client.consent_poll_interval_seconds"
             )
         return self
 
@@ -474,7 +532,10 @@ class DialogSettings(_Strict):
     plate_cooldown_minutes: int = Field(
         ge=1,
         le=1440,
-        description="Не чаще одного раза за это время игроку отправляется плашка на свободный текст, мин.",
+        description=(
+            "Не чаще одного раза за это время игроку отправляется плашка на свободный "
+            "текст, мин."
+        ),
     )
     reply_ttl_minutes: int = Field(
         ge=1,
@@ -510,8 +571,8 @@ class BotConfig(_Strict):
         for key in types:
             if _TYPE_KEY_RE.match(key) is None:
                 raise ValueError(
-                    f"types: ключ '{key}' должен состоять из заглавных латинских букв, цифр и «_» "
-                    "(3–40 символов, начинается с буквы)"
+                    f"types: ключ '{key}' должен состоять из заглавных "
+                    "латинских букв, цифр и «_» (3–40 символов, начинается с буквы)"
                 )
         missing = sorted(set(BUILTIN_TYPE_VARIABLES) - set(types))
         if missing:
@@ -533,7 +594,8 @@ class BotConfig(_Strict):
         deadline = self.types["DEADLINE_WARNING"]
         if deadline.ttl_minutes > self.deadline.offset_minutes:
             raise ValueError(
-                "types.DEADLINE_WARNING.ttl_minutes не может превышать deadline.offset_minutes"
+                "types.DEADLINE_WARNING.ttl_minutes не может превышать "
+                "deadline.offset_minutes"
             )
 
         # 2а. Ссылка на диалог с сообществом: https, один {group_id}, хост разрешён.
@@ -552,7 +614,8 @@ class BotConfig(_Strict):
             raise ValueError("client.chat_url_template должен начинаться с https://")
         if parsed_chat.hostname not in self.dialog.help.allowed_hosts:
             raise ValueError(
-                f"client.chat_url_template: хост '{parsed_chat.hostname}' не входит в dialog.help.allowed_hosts"
+                f"client.chat_url_template: хост '{parsed_chat.hostname}' "
+                "не входит в dialog.help.allowed_hosts"
             )
 
         # 3. Шаблоны типов: переменные и худшая длина.
@@ -601,7 +664,7 @@ class BotConfig(_Strict):
 
         # 5. Сводное сообщение (суточный потолок) помещается в сообщение.
         longest_line = 0
-        for key, t in self.types.items():
+        for _key, t in self.types.items():
             if t.line_text is not None:
                 names = template_placeholders(t.line_text)
                 longest_line = max(

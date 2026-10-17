@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import delete, false, select
 from sqlalchemy import event as sa_event
@@ -56,7 +56,7 @@ __all__ = [
 ]
 
 
-class EnqueueResult(str, Enum):
+class EnqueueResult(StrEnum):
     QUEUED = "QUEUED"
     DUPLICATE = "DUPLICATE"  # то же событие уже в очереди
     SKIPPED_BOT_OFF = "SKIPPED_BOT_OFF"

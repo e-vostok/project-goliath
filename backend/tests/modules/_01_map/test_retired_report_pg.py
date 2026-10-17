@@ -37,7 +37,7 @@ RETIRED_ID = 9999
 
 
 @pytest_asyncio.fixture
-async def pg_report_db(pg_url, pg_clean, monkeypatch, tmp_path, mini_map_config):
+async def pg_report_db(pg_url, pg_clean, monkeypatch, tmp_path, mini_map_config):  # noqa: F811
     """
     DATABASE_URL -> the PG test DB and MAP_DATA_DIR -> a mini-map copy
     with one retired lock id, so ``retired_report.run()`` exercises the

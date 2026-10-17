@@ -105,7 +105,7 @@ def session_factory(test_db_engine):
 
 
 @pytest.fixture
-def orders_bot_started(orders_isolation, bot_env):
+def orders_bot_started(orders_isolation, bot_env):  # noqa: F811
     """
     The production wiring order of ``lifespan`` (Spec D11): extensions
     first — so ``startup_bot()`` validates the ORDER_* types against

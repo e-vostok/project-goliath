@@ -27,7 +27,7 @@ from tests.fixtures.fake_vk import FakeVk
 PROFILES = RegistryConfig.from_yaml(RegistryConfig.get_default_config_path()).profiles
 # Bisect tests must not wait on the configured inter-call pause.
 FAST_PROFILES = PROFILES.model_copy(update={"batch_pause_seconds": 0})
-TEST_TOKEN = "test-group-token-SECRET"
+TEST_TOKEN = "test-group-token-SECRET"  # noqa: S105
 
 
 def make_client(fake: FakeVk, profiles=PROFILES) -> VkProfilesClient:

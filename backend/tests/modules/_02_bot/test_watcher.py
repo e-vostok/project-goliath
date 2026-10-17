@@ -36,8 +36,8 @@ from tests.modules._02_bot._issue3_support import (
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )
@@ -165,7 +165,7 @@ class TestDigestAfterTick:
                 )
             )
             await add_bot_state(session, 0)
-            player = await add_member(session, consent="ALLOWED")
+            await add_member(session, consent="ALLOWED")
             await session.commit()
 
         await digest_watcher_step(sf, bot_config, now=NOW)

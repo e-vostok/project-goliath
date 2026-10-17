@@ -41,7 +41,7 @@ from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import delete, false, func, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -133,7 +133,7 @@ class RegistryOrderView:
     verdict_at: datetime | None
 
 
-class DistributeResult(str, Enum):
+class DistributeResult(StrEnum):
     """The outcome of one distribution attempt (Spec 2.5, 3.3)."""
 
     ASSIGNED = "ASSIGNED"

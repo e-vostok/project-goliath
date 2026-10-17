@@ -54,7 +54,7 @@ class TestRoundTrip:
 
     async def test_consent_round_trip(self, test_db_session):
         player = await _make_player(test_db_session)
-        consent = await make_consent(test_db_session, player)
+        await make_consent(test_db_session, player)
 
         row = (
             await test_db_session.execute(

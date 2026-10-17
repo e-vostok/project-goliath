@@ -258,7 +258,8 @@ class TestTickOrchestrator:
 
     @pytest.mark.asyncio
     async def test_tick_log_persistence_separate_session(self, test_db_session):
-        """Test that tick_log is written in a separate session from the tick transaction."""
+        """Test that tick_log is written in a separate session from the
+        tick transaction."""
         game_clock = await self._create_game_clock(test_db_session)
         initial_turn = game_clock.current_turn
 

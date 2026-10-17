@@ -99,7 +99,8 @@ def test_dev_direct_dependencies_pinned() -> None:
     locked = _parse_lock(DEV_LOCK)
     missing = declared - set(locked)
     assert not missing, (
-        f"declared in pyproject dev extra but missing from requirements-dev.lock: {sorted(missing)}"
+        "declared in pyproject dev extra but missing from "
+        f"requirements-dev.lock: {sorted(missing)}"
     )
 
 

@@ -98,7 +98,7 @@ def _nation_owning(url: str, province_id: int) -> None:
             }
             conn.execute(
                 sa.text(
-                    "INSERT INTO nations "
+                    "INSERT INTO nations "  # noqa: S608
                     "(id, owner_player_id, name, color_hex, created_at"
                     + (", created_turn" if has_created_turn else "")
                     + ") VALUES (:id, :owner, 'Guard Nation', '#123456',"
