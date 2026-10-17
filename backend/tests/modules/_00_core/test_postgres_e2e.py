@@ -14,7 +14,7 @@ Limits come from GET /nations/rules / CoreConfig — never hardcoded.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select, text, update
@@ -36,8 +36,6 @@ from modules._00_core.models import (
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
     pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_live_client,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
@@ -367,7 +365,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
                 "owner": player_id,
                 "name": "Old Realm",
                 "color": "#778899",
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
             },
         )
         await session.execute(

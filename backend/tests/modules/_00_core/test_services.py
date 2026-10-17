@@ -7,7 +7,7 @@ the real test database using factories. No mocking of state.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -800,7 +800,7 @@ class TestNationProfile:
             owner_player_id=player.id,
             name="Legacy Nation",
             color_hex="#123456",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             created_turn=0,
         )
         test_db_session.add(legacy)

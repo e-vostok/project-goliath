@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -55,7 +55,7 @@ REMINDER_HOURS = 54  # deadline * reminder_percent 75 (integer seconds)
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 @pytest_asyncio.fixture
@@ -135,7 +135,7 @@ class TestEndToEnd:
         # One wall-clock tick past the submit so the stage stamps order
         # strictly even on coarse-grained clocks.
         await asyncio.sleep(0.02)
-        t_assign = datetime.now(timezone.utc)
+        t_assign = datetime.now(UTC)
         stats = await OrderService.run_retry_pass(session_factory, now=t_assign)
         assert stats == RetryPassStats(assigned=1)
 
@@ -276,7 +276,7 @@ class TestEndToEnd:
         assert submit.json()["distributed"] is False
 
         stats = await OrderService.run_retry_pass(
-            session_factory, now=datetime.now(timezone.utc)
+            session_factory, now=datetime.now(UTC)
         )
         assert stats.assigned == 0
         assert stats.still_waiting == 1
@@ -289,7 +289,7 @@ class TestEndToEnd:
             judge_id = judge.id
 
         stats = await OrderService.run_retry_pass(
-            session_factory, now=datetime.now(timezone.utc)
+            session_factory, now=datetime.now(UTC)
         )
         assert stats.assigned == 1
         assert stats.errors == 0
@@ -306,7 +306,7 @@ class TestReminderRace:
         """A verdict committed between the pass's candidate read and
         the row claim yields rowcount 0 — no reminder is queued and the
         pass counts it as skipped."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with session_factory() as session:
             author, nation = await seed_author(session, 881201)
             judge = await seed_judge(session, 881202, nation=True, consent="ALLOWED")

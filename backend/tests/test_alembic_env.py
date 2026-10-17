@@ -22,14 +22,14 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 
+import core.settings as core_settings
+from alembic import command
 from core.settings import (
     format_database_target,
     resolve_database_url,
 )
-import core.settings as core_settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 

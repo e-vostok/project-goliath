@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 
 import pytest
@@ -147,8 +147,7 @@ async def _seed_clock(
             id=1,
             current_turn=turn,
             last_tick_at=None,
-            next_tick_at=next_tick_at
-            or datetime.now(timezone.utc) - timedelta(minutes=1),
+            next_tick_at=next_tick_at or datetime.now(UTC) - timedelta(minutes=1),
         )
     )
     await session.flush()
@@ -174,7 +173,7 @@ async def _watch(engine, config) -> None:
 
 async def _deliver(engine, runtime, now: datetime | None = None):
     """Claim + send exactly as ``_sender_step`` does (no task, no sleep)."""
-    t = now or datetime.now(timezone.utc)
+    t = now or datetime.now(UTC)
     async with make_session_factory(engine)() as session:
         groups = await claim_batch(session, runtime._config, runtime._env, t)
         await session.commit()
@@ -365,7 +364,7 @@ async def _next_tick(engine) -> datetime:
                 select(GameClock.next_tick_at).where(GameClock.id == 1)
             )
         ).scalar_one()
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -586,13 +585,13 @@ async def test_e4_vk_outage_tick_health_retry(
     assert row.status == "PENDING"
     assert row.attempts == 1
     assert row.last_error_code == 0  # TRANSPORT
-    assert aware(row.next_attempt_at) > datetime.now(timezone.utc)
+    assert aware(row.next_attempt_at) > datetime.now(UTC)
     assert len(fake.send_requests()) == 2
 
     # VK recovers; with the clock past the backoff the same row —
     # same random_id — goes out exactly once more.
     fake.respond_send_ok(message_id=7777, peer_id=vk_user)
-    later = datetime.now(timezone.utc) + timedelta(seconds=120)
+    later = datetime.now(UTC) + timedelta(seconds=120)
     await _deliver(test_db_engine, runtime, now=later)
 
     sends = fake.send_requests()
@@ -698,7 +697,7 @@ async def test_e6_dialog_round_trip(
     vk_user = 660108
     sf = make_session_factory(test_db_engine)
 
-    next_tick = datetime(2026, 3, 2, 21, 0, tzinfo=timezone.utc)
+    next_tick = datetime(2026, 3, 2, 21, 0, tzinfo=UTC)
     player = await seed_player(test_db_session, vk_user_id=vk_user)
     await _seed_clock(test_db_session, turn=7, next_tick_at=next_tick)
     await test_db_session.commit()
@@ -1075,7 +1074,6 @@ class TestPgMirror:
         its lifespan runtime is stopped and replaced by a FakeVk one
         over the ``pg_db`` session maker."""
         import os
-        from pathlib import Path
 
         from asgi_lifespan import LifespanManager
         from httpx import ASGITransport, AsyncClient
@@ -1274,7 +1272,7 @@ class TestPgMirror:
 
 
 async def _deliver_pg(sf, runtime, now: datetime | None = None):
-    t = now or datetime.now(timezone.utc)
+    t = now or datetime.now(UTC)
     async with sf() as session:
         groups = await claim_batch(session, runtime._config, runtime._env, t)
         await session.commit()

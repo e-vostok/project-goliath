@@ -495,8 +495,8 @@ class MapConfig(_Strict):
     attribution: AttributionSettings
 
     @classmethod
-    def from_yaml(cls, path: str) -> "MapConfig":
-        with open(path, "r", encoding="utf-8") as f:
+    def from_yaml(cls, path: str) -> MapConfig:
+        with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         return cls.model_validate(raw)
 

@@ -14,7 +14,7 @@ must not raise.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -228,7 +228,7 @@ async def admin_reset(session: AsyncSession) -> None:
     await _restart_tick_log_id(session)
 
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     next_tick_at = next_tick_after(
         now, config.tick.tick_time, config.tick.tick_timezone
     )

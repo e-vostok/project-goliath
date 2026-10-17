@@ -38,7 +38,7 @@ registrars: membership check, never double-register.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,14 +60,14 @@ ASSIGNED_LIST_CAP = 50
 def _aware(moment: datetime) -> datetime:
     """Naive datetimes are read as UTC (storage convention)."""
     if moment.tzinfo is None:
-        return moment.replace(tzinfo=timezone.utc)
+        return moment.replace(tzinfo=UTC)
     return moment
 
 
 async def orders_state_view(session: AsyncSession) -> dict:
     """Read-only JSON snapshot of the orders world (Spec 5.7)."""
     tz = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).tick.tick_timezone
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     total = (
         await session.execute(select(func.count()).select_from(Order))

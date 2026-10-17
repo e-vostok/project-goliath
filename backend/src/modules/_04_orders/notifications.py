@@ -17,8 +17,7 @@ from __future__ import annotations
 
 import logging
 import math
-
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -164,7 +163,7 @@ async def notify_reminder(
         return None
     deadline = order.deadline_at
     if deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
+        deadline = deadline.replace(tzinfo=UTC)
     hours_left = max(1, math.ceil((deadline - now).total_seconds() / 3600))
     return await BotService.enqueue(
         session,

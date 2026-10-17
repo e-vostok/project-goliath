@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from dotenv import dotenv_values
@@ -30,6 +29,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, delete, func, select, text
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator, TickPhase
@@ -229,7 +229,7 @@ async def _insert_tick_log(
     finished=False leaves finished_at NULL, like an in-flight RUNNING row.
     Returns the stored started_at instant for exact comparisons.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with get_session_context() as session:
         session.add(
             TickLog(
@@ -484,7 +484,7 @@ class TestAdminTickRun:
     async def test_manual_tick_advances_turn(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         response = await live_client.post("/api/v1/admin/tick/run", headers=headers)
 
@@ -500,7 +500,7 @@ class TestAdminTickRun:
                     CORE_CONFIG.tick.tick_timezone,
                 )
             )
-            for t in (before, datetime.now(timezone.utc))
+            for t in (before, datetime.now(UTC))
         }
         assert body["next_tick_at"] in candidates
         # tick_time 00:00 in tick_timezone -> local wall clock ends 00:00:00.

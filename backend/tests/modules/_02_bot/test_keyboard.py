@@ -14,7 +14,6 @@ import json
 
 import pytest
 
-from modules._02_bot.config_schema import BotConfig
 from modules._02_bot.keyboard import (
     build_help_inline_keyboard,
     build_persistent_keyboard,

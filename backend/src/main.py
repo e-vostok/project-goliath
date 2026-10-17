@@ -13,8 +13,8 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
 import asyncio
 import logging
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse

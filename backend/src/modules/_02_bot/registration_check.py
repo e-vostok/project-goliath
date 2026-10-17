@@ -16,7 +16,7 @@ VK «not allowed» blocks with :class:`ConsentRequiredError`.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 def _aware(value: datetime | None) -> datetime | None:
     """SQLite returns naive datetimes for ``timezone=True`` columns."""
     if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 
@@ -49,7 +49,7 @@ async def check_registration_consent(session: AsyncSession, player_id: str) -> N
     if not config.consent.required_for_registration:
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         row = await consent_mod.get_or_create_consent(session, player_id, now=now)
         # Step 2: already allowed — pass.

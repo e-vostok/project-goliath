@@ -11,16 +11,15 @@ Requires DATABASE_URL_TEST; wipes the public schema like pg_schema does.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import IntegrityError
 
-from tests.fixtures.postgres import _reset_public_schema, _sync_url, pg_url
+from alembic import command
+from tests.fixtures.postgres import _reset_public_schema, _sync_url
 
 pytestmark = pytest.mark.postgres
 

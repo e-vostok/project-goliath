@@ -42,7 +42,6 @@ from modules._01_map.errors import (
     TurnOutOfRangeError,
 )
 from modules._01_map.schemas import (
-    MapBordersDTO,
     MapBordersRulesDTO,
     MapEdgeDTO,
     MapLabelsRulesDTO,

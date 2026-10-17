@@ -27,7 +27,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -131,7 +131,7 @@ class BotRuntime:
                 self._limiter.acquire(),
                 self._config.vk.http_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
         result = await self._vk.is_messages_from_group_allowed(
             int(self._env.group_id), vk_user_id
@@ -240,7 +240,7 @@ class BotRuntime:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
                 continue
-            self._last_pass[name] = datetime.now(timezone.utc)
+            self._last_pass[name] = datetime.now(UTC)
             backoff = 5.0
             await asyncio.sleep(interval_seconds)
 
@@ -251,7 +251,7 @@ class BotRuntime:
                 self._wake.wait(),
                 timeout=self._config.sender.poll_interval_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         self._wake.clear()
         async with self._session_factory() as session:
@@ -259,7 +259,7 @@ class BotRuntime:
                 session,
                 self._config,
                 self._env,
-                datetime.now(timezone.utc),
+                datetime.now(UTC),
             )
             await session.commit()
         await self._sender.process_groups(groups)

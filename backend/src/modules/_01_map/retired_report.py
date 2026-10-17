@@ -32,9 +32,9 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 # Same convention as alembic/env.py: make backend/src importable no
 # matter how the module was reached — `python -m src.modules._01_map.

@@ -9,8 +9,7 @@ DATABASE_URL_TEST; skips like the rest of the postgres suite.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -21,9 +20,7 @@ from modules._01_map import retired_report
 from modules._01_map.models import MapOwnershipLog
 from tests.fixtures.postgres import (
     pg_clean,  # noqa: F401 — resolved through the fixture chain
-    pg_db,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._01_map.conftest import (
@@ -95,7 +92,7 @@ class TestRetiredReportPg:
                 Player(
                     id="player-pg",
                     vk_user_id=777004,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
             )
             session.add(
@@ -104,7 +101,7 @@ class TestRetiredReportPg:
                     owner_player_id="player-pg",
                     name="Pg Owner",
                     color_hex="#334455",
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     created_turn=0,
                     **VALID_PROFILE,
                 )
@@ -121,7 +118,7 @@ class TestRetiredReportPg:
                     new_nation_id="old-nation",
                     new_nation_name="Old Nation",
                     new_nation_color="#112233",
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
             )
             await session.commit()

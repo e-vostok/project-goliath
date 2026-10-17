@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from main import app
 from modules._00_core.config_schema import CoreConfig
@@ -44,12 +44,12 @@ from tests.fixtures.provinces import (
     MAP_MINI_DIR,
     STARTING_GROUP,
 )
-from tests.modules._01_map.conftest import map_config_disconnected
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
     make_launch_params,
 )
+from tests.modules._01_map.conftest import map_config_disconnected
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())

@@ -13,7 +13,7 @@ import hashlib
 import hmac
 import time
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -124,7 +124,7 @@ async def seed_nation(
                 "short_name": short_name or name[:16],
             }
         ),
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         created_turn=0,
     )
     session.add(nation)
@@ -742,7 +742,7 @@ class TestGameClockEndpoint:
     async def test_game_clock_returns_derived_date(self, client, test_db_session):
         """game_date at turn 0 is the calendar epoch — January 2040."""
         player = await seed_player(test_db_session)
-        next_tick = datetime.now(timezone.utc) + timedelta(hours=24)
+        next_tick = datetime.now(UTC) + timedelta(hours=24)
         test_db_session.add(GameClock(id=1, current_turn=0, next_tick_at=next_tick))
         await test_db_session.flush()
 

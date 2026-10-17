@@ -15,7 +15,7 @@ from modules._00_core.exceptions import (
     RetiredProvinceOwnedError,
 )
 from modules._00_core.hooks import OwnershipChange
-from modules._00_core.models import GameClock, Nation, Player, Province
+from modules._00_core.models import GameClock, Player, Province
 from modules._00_core.service import NationService, ProvinceService
 from modules._01_map.models import MapOwnershipLog
 from modules._01_map.service import (
@@ -28,7 +28,6 @@ from modules._01_map.service import (
 )
 from tests.fixtures.postgres import (
     pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )

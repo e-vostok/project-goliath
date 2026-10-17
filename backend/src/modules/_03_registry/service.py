@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,7 +145,7 @@ async def build_table(session: AsyncSession, table_id: str) -> BuiltTable:
         table_id=table.id,
         total=total,
         truncated=truncated,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         rows=[
             RegistryRow(
                 key=row.key,

@@ -18,7 +18,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from modules._01_map.config_schema import FrameConfig, MapConfig
+from modules._01_map.config_schema import MapConfig
 
 
 def _base_config() -> dict:

@@ -11,7 +11,7 @@ internals (Anti-Mock Guard, INV-TICK-ATOMICITY).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -29,11 +29,11 @@ from modules._00_core.models import (
     TickLogStatus,
 )
 from modules._00_core.tick_handler import register_tick_handlers
+from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import STARTING_GROUP
 
 from .test_router import seed_provinces
 from .test_security import TEST_APP_SECRET, make_launch_params
-from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import STARTING_GROUP
 
 TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
 
@@ -78,7 +78,7 @@ async def seed_game_clock(session, current_turn: int = 0) -> GameClock:
         id=1,
         current_turn=current_turn,
         last_tick_at=None,
-        next_tick_at=datetime.now(timezone.utc),
+        next_tick_at=datetime.now(UTC),
     )
     session.add(clock)
     await session.flush()

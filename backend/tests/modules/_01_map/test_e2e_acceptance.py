@@ -25,13 +25,13 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import core.db as core_db
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator
@@ -49,7 +49,6 @@ from tests.fixtures.postgres import (
     ADMIN_VK_ID,
     pg_clean,  # noqa: F401 — autouse per-test data reset
     pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._00_core.test_router import (

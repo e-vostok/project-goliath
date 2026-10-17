@@ -11,17 +11,17 @@ is reset directly for the "never" branch.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import core.health.checks as health_checks
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick import heartbeat
 from core.tick.orchestrator import TickOrchestrator
@@ -113,7 +113,7 @@ async def test_health_never_before_first_beat(live_client, monkeypatch):
 
 async def test_health_stale_after_threshold(live_client):
     threshold = CORE_CONFIG.tick.health_max_heartbeat_age_seconds
-    heartbeat.touch(now=datetime.now(timezone.utc) - timedelta(seconds=threshold + 60))
+    heartbeat.touch(now=datetime.now(UTC) - timedelta(seconds=threshold + 60))
 
     response = await live_client.get("/api/v1/health")
 

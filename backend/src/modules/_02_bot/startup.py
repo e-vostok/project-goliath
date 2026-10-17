@@ -19,7 +19,6 @@ The validated config is kept in a module-level holder for
 from __future__ import annotations
 
 import logging
-
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 

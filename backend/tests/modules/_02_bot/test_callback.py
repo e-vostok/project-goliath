@@ -10,7 +10,6 @@ idempotency, consent signals and the never-answer-``remove`` contract
 
 from __future__ import annotations
 
-import json
 import logging
 
 import pytest

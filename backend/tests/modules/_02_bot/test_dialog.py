@@ -12,12 +12,11 @@ never stored).
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
-from modules._00_core.models import Player
 from modules._02_bot.claim import claim_batch
 from modules._02_bot.models import BotOutbox, BotVkEvent
 from modules._02_bot.settings import read_bot_env
@@ -313,7 +312,7 @@ class TestEndToEnd:
     """Callback -> outbox -> real sender -> FakeVk (Spec 3.3/5.5)."""
 
     async def _deliver(self, engine, runtime):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with make_session_factory(engine)() as session:
             groups = await claim_batch(
                 session,

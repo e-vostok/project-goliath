@@ -20,7 +20,7 @@ every profile row is fresh.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -43,7 +43,7 @@ TABLES_URL = "/api/v1/registry/tables"
 NATIONS_URL = "/api/v1/nations"
 NATIONS_ME_URL = "/api/v1/nations/me"
 
-NOW = datetime(2026, 10, 14, 9, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ async def _seed_clock(session, current_turn: int = 0) -> GameClock:
         id=1,
         current_turn=current_turn,
         last_tick_at=None,
-        next_tick_at=datetime.now(timezone.utc),
+        next_tick_at=datetime.now(UTC),
     )
     session.add(clock)
     await session.flush()
@@ -289,7 +289,7 @@ class TestScenarioB:
             session_factory,
             vk_client,
             profiles,
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
         )
         await vk_client.aclose()
 

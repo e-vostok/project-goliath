@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select, text, update
@@ -37,8 +37,6 @@ from modules._00_core.tick_recovery import (
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
     pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_live_client,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
@@ -65,7 +63,7 @@ async def _make_overdue(pg_db) -> None:
         await session.execute(
             update(GameClock)
             .where(GameClock.id == 1)
-            .values(next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1))
+            .values(next_tick_at=datetime.now(UTC) - timedelta(minutes=1))
         )
         await session.commit()
 
@@ -253,7 +251,7 @@ class TestInterruptedRecovery:
             session.add(
                 TickLog(
                     turn_number=turn_number,
-                    started_at=datetime.now(timezone.utc),
+                    started_at=datetime.now(UTC),
                     status=TickLogStatus.RUNNING,
                 )
             )

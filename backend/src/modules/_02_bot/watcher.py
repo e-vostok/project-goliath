@@ -25,7 +25,7 @@ import logging
 import math
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -55,7 +55,7 @@ async def digest_watcher_step(
     now: datetime | None = None,
 ) -> None:
     """One watcher pass (digest + deadline) in a single commit."""
-    t = now if now is not None else datetime.now(timezone.utc)
+    t = now if now is not None else datetime.now(UTC)
     async with session_factory() as session:
         snapshot = await GameClockService.snapshot(session)
     if snapshot is None or snapshot.current_turn == 0:
@@ -159,7 +159,7 @@ async def _maybe_enqueue_deadline(
         return
     next_tick_at = snapshot.next_tick_at
     if next_tick_at.tzinfo is None:
-        next_tick_at = next_tick_at.replace(tzinfo=timezone.utc)
+        next_tick_at = next_tick_at.replace(tzinfo=UTC)
     offset = timedelta(minutes=config.deadline.offset_minutes)
     if now < next_tick_at - offset:
         return

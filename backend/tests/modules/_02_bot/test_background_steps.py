@@ -13,10 +13,8 @@ from __future__ import annotations
 from datetime import timedelta
 from urllib.parse import parse_qs
 
-import pytest
-from sqlalchemy import func, select
+from sqlalchemy import select
 
-from modules._02_bot import consent as consent_mod
 from modules._02_bot.janitor import janitor_step
 from modules._02_bot.limiter import TokenBucket
 from modules._02_bot.models import BotConsent, BotOutbox, BotVkEvent

@@ -23,17 +23,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import sqlalchemy as sa
-from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 
-from core.db import Base
 import modules._00_core.models  # noqa: F401 — registers all ORM tables
 import modules._01_map.models  # noqa: F401 — registers all ORM tables
 import modules._02_bot.models  # noqa: F401 — registers all ORM tables
 import modules._03_registry.models  # noqa: F401 — registers all ORM tables
 import modules._04_orders.models  # noqa: F401 — registers all ORM tables
+from alembic import command
+from core.db import Base
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 

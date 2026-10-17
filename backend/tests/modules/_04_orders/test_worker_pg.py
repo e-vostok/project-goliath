@@ -15,7 +15,7 @@ tests/fixtures/postgres.py).
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -31,14 +31,13 @@ from tests.fixtures.factories import (
 )
 from tests.fixtures.postgres import (
     pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 
 pytestmark = pytest.mark.postgres
 
-NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 
 async def _seed_player(session, vk_user_id: int):

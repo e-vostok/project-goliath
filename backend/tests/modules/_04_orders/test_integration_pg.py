@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -32,7 +32,6 @@ from modules._04_orders.service import OrderService, RetryPassStats
 from tests.fixtures.factories import make_consent
 from tests.fixtures.postgres import (
     pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
@@ -113,7 +112,7 @@ class TestEndToEndPg:
         # One wall-clock tick past the submit so the stage stamps order
         # strictly even on coarse-grained clocks.
         await asyncio.sleep(0.02)
-        t_assign = datetime.now(timezone.utc)
+        t_assign = datetime.now(UTC)
         stats = await OrderService.run_retry_pass(pg_db, now=t_assign)
         assert stats == RetryPassStats(assigned=1)
 
@@ -222,7 +221,7 @@ class TestEndToEndPg:
         assert submit.status_code == 201
         assert submit.json()["distributed"] is False
 
-        stats = await OrderService.run_retry_pass(pg_db, now=datetime.now(timezone.utc))
+        stats = await OrderService.run_retry_pass(pg_db, now=datetime.now(UTC))
         assert stats.assigned == 0
         assert stats.still_waiting == 1
         async with pg_db() as session:
@@ -233,7 +232,7 @@ class TestEndToEndPg:
             await session.commit()
             judge_id = judge.id
 
-        stats = await OrderService.run_retry_pass(pg_db, now=datetime.now(timezone.utc))
+        stats = await OrderService.run_retry_pass(pg_db, now=datetime.now(UTC))
         assert stats.assigned == 1
         assert stats.errors == 0
         async with pg_db() as session:

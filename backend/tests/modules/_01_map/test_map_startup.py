@@ -10,19 +10,19 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
-import modules._01_map.service as map_service_module
 import core.db as core_db
+import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context, init_engine
 from main import app
@@ -35,8 +35,6 @@ from modules._00_core.hooks import (
     STAGE_AFTER_FREE,
     get_ownership_listeners,
     get_registration_checks,
-    restore_extension_points,
-    snapshot_extension_points,
 )
 from modules._00_core.models import Province
 from modules._01_map.config_schema import MapConfig
@@ -44,13 +42,13 @@ from modules._01_map.loader import MapDataError, load_map_data
 from modules._01_map.models import MapOwnershipLog
 from modules._01_map.startup import resolve_data_dir, startup_map
 from tests.fixtures.provinces import MAP_MINI_DIR
+from tests.modules._00_core.test_router import TEST_JWT_SECRET, TEST_VK_SECRET
 from tests.modules._01_map.conftest import (
     copy_map_mini,
     fix_input_hashes,
     load_lock,
     save_lock,
 )
-from tests.modules._00_core.test_router import TEST_JWT_SECRET, TEST_VK_SECRET
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 REPO_ROOT = BACKEND_DIR.parent
@@ -253,7 +251,7 @@ class TestRetiredNodes:
                 Player(
                     id=player_id,
                     vk_user_id=777002,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
             )
             session.add(
@@ -262,7 +260,7 @@ class TestRetiredNodes:
                     owner_player_id=player_id,
                     name="Retired Owner",
                     color_hex="#102030",
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     created_turn=0,
                     **VALID_PROFILE,
                 )
@@ -305,7 +303,7 @@ class TestRetiredNodes:
                     new_nation_id=None,
                     new_nation_name=None,
                     new_nation_color=None,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
             )
             await session.commit()

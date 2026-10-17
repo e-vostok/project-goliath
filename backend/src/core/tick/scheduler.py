@@ -17,7 +17,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,7 +83,7 @@ async def _read_next_tick_at(
 
     # SQLite returns naive datetimes even for timezone=True columns.
     if next_tick_at.tzinfo is None:
-        next_tick_at = next_tick_at.replace(tzinfo=timezone.utc)
+        next_tick_at = next_tick_at.replace(tzinfo=UTC)
     return next_tick_at
 
 
@@ -142,7 +142,7 @@ async def scheduler_loop(
             # next_tick_at is picked up within one heartbeat interval.
             while True:
                 next_tick_at = await _read_next_tick_at(session_factory)
-                delay = seconds_until(next_tick_at, datetime.now(timezone.utc))
+                delay = seconds_until(next_tick_at, datetime.now(UTC))
                 if delay <= 0:
                     break
                 await asyncio.sleep(min(delay, heartbeat_interval_seconds))

@@ -29,7 +29,6 @@ from modules._01_map.startup import startup_map
 from tests.fixtures.postgres import (
     pg_clean,  # noqa: F401 — resolved through the fixture chain
     pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,
 )
 
 pytestmark = pytest.mark.postgres

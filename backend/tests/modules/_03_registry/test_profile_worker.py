@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
-import pytest
 from sqlalchemy import select
 
 import modules._03_registry.startup as startup_module
@@ -34,7 +33,7 @@ from tests.fixtures.factories import make_vk_profile
 from tests.fixtures.fake_vk import FakeVk
 from tests.modules._03_registry.conftest import seed_player
 
-NOW = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 
 
 def make_client(fake: FakeVk, profiles) -> VkProfilesClient:
@@ -362,7 +361,7 @@ class TestWake:
                 session,
                 player,
                 status="UNAVAILABLE",
-                next_attempt_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                next_attempt_at=datetime.now(UTC) + timedelta(hours=1),
             )
             await session.commit()
             event.clear()

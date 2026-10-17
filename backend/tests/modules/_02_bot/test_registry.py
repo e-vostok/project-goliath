@@ -89,7 +89,7 @@ class TestNotificationTypes:
 
     def test_reregister_same_variables_is_noop(self):
         register_notification_type("ZONE_ALARM", frozenset({"zone"}))
-        register_notification_type("ZONE_ALARM", {"zone", "zone"})
+        register_notification_type("ZONE_ALARM", {"zone"})
         assert get_notification_type("ZONE_ALARM") == frozenset({"zone"})
 
     def test_reregister_conflicting_variables_rejected(self):

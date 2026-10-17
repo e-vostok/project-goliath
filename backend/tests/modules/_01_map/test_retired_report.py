@@ -10,21 +10,21 @@ schema, real map files; nothing is mocked.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from alembic import command
 from modules._00_core.models import Nation, Player, Province
 from modules._01_map import retired_report
 from modules._01_map.models import MapOwnershipLog
-from tests.fixtures.provinces import MAP_MINI_DIR
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import MAP_MINI_DIR
 from tests.modules._01_map.conftest import (
     copy_map_mini,
     fix_input_hashes,
@@ -117,7 +117,7 @@ def _journal_row(province_id: int, turn: int) -> MapOwnershipLog:
         new_nation_id=None,
         new_nation_name=None,
         new_nation_color=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -168,7 +168,7 @@ class TestStop:
                 Player(
                     id="player-retired",
                     vk_user_id=777002,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
             )
             session.add(
@@ -177,7 +177,7 @@ class TestStop:
                     owner_player_id="player-retired",
                     name="Retired Owner",
                     color_hex="#102030",
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     created_turn=0,
                     **VALID_PROFILE,
                 )
@@ -267,7 +267,7 @@ class TestReadOnly:
                 Player(
                     id="player-ro",
                     vk_user_id=777003,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
             )
             session.add(
@@ -276,7 +276,7 @@ class TestReadOnly:
                     owner_player_id="player-ro",
                     name="Read Only",
                     color_hex="#203040",
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     created_turn=0,
                     **VALID_PROFILE,
                 )

@@ -29,7 +29,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, suppress
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -145,10 +145,10 @@ class OrdersWorker:
                 await asyncio.sleep(pause)
                 continue
             failures = 0
-            _last_pass_at = datetime.now(timezone.utc)
+            _last_pass_at = datetime.now(UTC)
             try:
                 await asyncio.wait_for(self._wake.wait(), timeout=interval_seconds)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             self._wake.clear()
 

@@ -10,7 +10,7 @@ returns a wrong shape can never leak malformed JSON to the client.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 from modules._03_registry.registry import Cell
@@ -43,7 +43,7 @@ def cell_datetime(moment: datetime | None, tz: str, mark: str | None = None) -> 
             "mark": mark,
         }
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
+        moment = moment.replace(tzinfo=UTC)
     local = moment.astimezone(ZoneInfo(tz))
     return {
         "date": f"{local.day:02d}.{local.month:02d}.{local.year}",

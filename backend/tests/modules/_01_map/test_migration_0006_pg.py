@@ -12,17 +12,16 @@ Requires DATABASE_URL_TEST; wipes the public schema like pg_schema does.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
-from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import IntegrityError
 
-from tests.fixtures.postgres import _reset_public_schema, _sync_url, pg_url
+from alembic import command
+from tests.fixtures.postgres import _reset_public_schema, _sync_url
 
 pytestmark = pytest.mark.postgres
 
@@ -83,7 +82,7 @@ def _nation_owning(url: str, province_id: int) -> str:
                 {
                     "id": nation_id,
                     "owner": player_id,
-                    "ts": datetime.now(timezone.utc),
+                    "ts": datetime.now(UTC),
                 },
             )
             if province_id:

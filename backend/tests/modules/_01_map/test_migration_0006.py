@@ -18,14 +18,15 @@ no mocks.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import IntegrityError
+
+from alembic import command
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 
@@ -106,7 +107,7 @@ def _nation_owning(url: str, province_id: int) -> None:
                 {
                     "id": nation_id,
                     "owner": player_id,
-                    "ts": datetime.now(timezone.utc),
+                    "ts": datetime.now(UTC),
                 },
             )
             conn.execute(
@@ -187,7 +188,7 @@ class TestUpgradeToHead:
                         "(province_id, turn_number, created_at) "
                         "VALUES (1001, 1, :ts)"
                     ),
-                    {"ts": datetime.now(timezone.utc)},
+                    {"ts": datetime.now(UTC)},
                 )
                 conn.execute(
                     sa.text(
@@ -195,7 +196,7 @@ class TestUpgradeToHead:
                         "(province_id, turn_number, created_at) "
                         "VALUES (1001, 2, :ts)"
                     ),
-                    {"ts": datetime.now(timezone.utc)},
+                    {"ts": datetime.now(UTC)},
                 )
                 ids = [
                     row[0]

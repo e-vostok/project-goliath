@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import fields as dataclass_fields
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -48,7 +48,7 @@ from tests.fixtures.factories import (
 from tests.modules._03_registry.conftest import bearer_headers
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
-NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 VALID_TITLE = "Приказ о ночном марш-броске"
 VALID_SUMMARY = "Перегруппировать резервы до рассвета."
@@ -65,7 +65,7 @@ SETTINGS = JudgeSettings(
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _c(

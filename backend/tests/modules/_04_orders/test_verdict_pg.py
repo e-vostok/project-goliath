@@ -24,7 +24,6 @@ from modules._04_orders.service import OrderDetailView, OrderService
 from tests.fixtures.factories import make_order
 from tests.fixtures.postgres import (
     pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
     pg_schema,  # noqa: F401 — resolved through the fixture chain
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )

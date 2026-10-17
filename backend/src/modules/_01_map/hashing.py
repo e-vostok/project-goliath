@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 HASH_RAW = "raw_sha256"
 HASH_NORMALIZED = "normalized_sha256"

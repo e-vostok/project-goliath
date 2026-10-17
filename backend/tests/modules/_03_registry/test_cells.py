@@ -6,7 +6,7 @@ Spec 04_orders Appendix A): what a constructor emits must satisfy
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from modules._03_registry.cells import (
     cell_action_text,
@@ -20,7 +20,7 @@ def test_new_cell_shapes_match_their_types():
     """``cell_datetime`` / ``cell_action_text`` / ``cell_nation`` emit the
     Spec 1.2 shapes and pass ``cell_matches``; a malformed ``mark`` or a
     nation cell without ``flag_url`` does not."""
-    moment = datetime(2026, 10, 15, 18, 21, tzinfo=timezone.utc)
+    moment = datetime(2026, 10, 15, 18, 21, tzinfo=UTC)
     cell = cell_datetime(moment, "Europe/Moscow")
     assert cell == {
         "date": "15.10.2026",

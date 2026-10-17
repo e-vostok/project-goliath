@@ -7,11 +7,10 @@ DB — the sources are reached exactly the way the endpoint reaches them.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import event, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Province
@@ -22,7 +21,7 @@ from tests.fixtures.factories import make_vk_profile
 from tests.fixtures.provinces import make_land_province, make_sea_province
 from tests.modules._03_registry.conftest import seed_nation, seed_player
 
-T0 = datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 
 
 def _rows_by_key(built) -> dict[str, dict]:
@@ -116,7 +115,7 @@ class TestPlayersTable:
         await seed_player(
             test_db_session,
             501201,
-            created_at=datetime(2026, 10, 13, 22, 30, tzinfo=timezone.utc),
+            created_at=datetime(2026, 10, 13, 22, 30, tzinfo=UTC),
         )
 
         rows = _rows_by_key(await build_table(test_db_session, "players"))

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +37,7 @@ async def janitor_step(
     now: datetime | None = None,
 ) -> None:
     """One sweep: purge old terminal rows + journal, unstick leases."""
-    t = now if now is not None else datetime.now(timezone.utc)
+    t = now if now is not None else datetime.now(UTC)
     cutoff = t - timedelta(days=config.sender.purge_after_days)
     async with session_factory() as session:
         async with session.begin():

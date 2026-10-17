@@ -10,9 +10,9 @@ service never commits by itself. Rows are wiped only by
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +56,7 @@ async def record_changes(
     transaction. Flushes but never commits — INV-M7 keeps the row and
     the ownership mutation in one atomic unit.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for change in changes:
         _validate_consistency(change)
         session.add(

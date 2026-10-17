@@ -13,19 +13,21 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
-    BigInteger,
     CHAR,
+    JSON,
+    BigInteger,
     CheckConstraint,
     DateTime,
-    Enum as SQLEnum,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     SmallInteger,
     String,
     Text,
     func,
+)
+from sqlalchemy import (
+    Enum as SQLEnum,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,7 +41,7 @@ from modules._00_core.player_stats import (
 )
 
 if TYPE_CHECKING:
-    from typing import Self
+    pass
 
 
 class ScheduledActionStatus(str, enum.Enum):

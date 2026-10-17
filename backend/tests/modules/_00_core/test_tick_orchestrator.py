@@ -7,7 +7,7 @@ and proper tick_log persistence across rollbacks.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -15,7 +15,6 @@ from sqlalchemy import select
 from core.tick.orchestrator import TickOrchestrator, TickPhase
 from modules._00_core.models import (
     GameClock,
-    Nation,
     Player,
     ScheduledAction,
     ScheduledActionStatus,
@@ -46,7 +45,7 @@ class TestTickOrchestrator:
             id=1,
             current_turn=0,
             last_tick_at=None,
-            next_tick_at=datetime.now(timezone.utc),
+            next_tick_at=datetime.now(UTC),
         )
         session.add(clock)
         await session.flush()

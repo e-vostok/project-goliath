@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
-import pytest
 from sqlalchemy import select
 
 from modules._02_bot.claim import claim_batch
