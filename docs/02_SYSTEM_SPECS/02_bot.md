@@ -619,6 +619,8 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 
 - **Просмотр состояния** (`register_state_view("02_bot", …)`): `bot_mode` (`OFF` / `MISCONFIGURED` / `READY` / `RUNNING`), состояние отправщика (`RUNNING`/`BREAKER_OPEN`/`HALF_OPEN`/`HALTED_AUTH`), время последнего прохода каждой задачи, счётчики строк очереди по статусам, возраст самой старой готовой строки, число согласий по состояниям, `last_digest_turn`. Секреты не показываются.
 - **Сброс** (`register_reset("02_bot", …)`): удалить все строки `bot_outbox` (INV-B14), `bot_state.last_digest_turn = 0`. Согласия и `bot_vk_events` сохраняются. Хук не коммитит.
+- **Удаление игрока** (`register_player_delete_hook("02_bot.player_delete", …)`): удалить строку `bot_consents` игрока (на ней же живёт состояние диалога — `last_plate_at`) и все его строки `bot_outbox`. Журнал входящих `bot_vk_events` сохраняется: у него нет FK на `players`, только логический `vk_user_id`, и он append-only. Хук не коммитит — ошибка откатывает удаление игрока целиком.
+- **Предпросмотр удаления** (`register_player_preview("02_bot", …)`): счётчики `outbox_rows` и `consent_rows` игрока для админского delete-preview; только чтение.
 
 ### 5.5. Клавиатура бота
 
