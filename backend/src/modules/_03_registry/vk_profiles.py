@@ -77,7 +77,7 @@ def clean_photo_url(value: object) -> str | None:
 class OutcomeKind(str, Enum):
     """What the VK boundary answered for one requested id (Spec 3.4)."""
 
-    OK = "OK"                    # user returned, not deactivated/hidden
+    OK = "OK"  # user returned, not deactivated/hidden
     UNAVAILABLE = "UNAVAILABLE"  # deactivated, hidden or absent
 
 
@@ -98,7 +98,7 @@ class BatchFailure(str, Enum):
     """Why a whole ``users.get`` batch produced no per-player outcome."""
 
     INVALID_TOKEN = "INVALID_TOKEN"  # codes 5, 27, 28 — CRITICAL once
-    RETRY = "RETRY"                  # transport, HTTP 5xx, other codes
+    RETRY = "RETRY"  # transport, HTTP 5xx, other codes
 
 
 @dataclass(frozen=True)
@@ -160,9 +160,7 @@ class VkProfilesClient:
             )
             return None
         if response.status_code >= 500:
-            logger.warning(
-                "vk users.get failed: HTTP %s", response.status_code
-            )
+            logger.warning("vk users.get failed: HTTP %s", response.status_code)
             return None
         return response
 
@@ -185,27 +183,21 @@ class VkProfilesClient:
         call_error = body.get("error")
         if call_error is not None:
             code = (
-                call_error.get("error_code")
-                if isinstance(call_error, dict)
-                else None
+                call_error.get("error_code") if isinstance(call_error, dict) else None
             )
             if not isinstance(code, int):
                 return BatchResult(outcomes={}, failure=BatchFailure.RETRY)
             if code in _BISECT_ERROR_CODES:
                 return await self._bisect(user_ids)
             if code in _INVALID_TOKEN_CODES:
-                logger.warning(
-                    "vk users.get call error: code %s", code
-                )
+                logger.warning("vk users.get call error: code %s", code)
                 return BatchResult(
                     outcomes={},
                     failure=BatchFailure.INVALID_TOKEN,
                     error_code=code,
                 )
             logger.warning("vk users.get call error: code %s", code)
-            return BatchResult(
-                outcomes={}, failure=BatchFailure.RETRY, error_code=code
-            )
+            return BatchResult(outcomes={}, failure=BatchFailure.RETRY, error_code=code)
 
         entries = body.get("response")
         if not isinstance(entries, list):
@@ -242,9 +234,7 @@ class VkProfilesClient:
         """
         if len(user_ids) == 1:
             return BatchResult(
-                outcomes={
-                    user_ids[0]: ProfileOutcome(OutcomeKind.UNAVAILABLE)
-                }
+                outcomes={user_ids[0]: ProfileOutcome(OutcomeKind.UNAVAILABLE)}
             )
         middle = len(user_ids) // 2
         merged: dict[int, ProfileOutcome] = {}

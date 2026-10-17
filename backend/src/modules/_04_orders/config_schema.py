@@ -146,13 +146,9 @@ class LimitsSettings(_Strict):
     @model_validator(mode="after")
     def check_ranges(self) -> Self:
         if self.title_min_length > self.title_max_length:
-            raise ValueError(
-                "title_min_length не может превышать title_max_length"
-            )
+            raise ValueError("title_min_length не может превышать title_max_length")
         if self.summary_min_length > self.summary_max_length:
-            raise ValueError(
-                "summary_min_length не может превышать summary_max_length"
-            )
+            raise ValueError("summary_min_length не может превышать summary_max_length")
         return self
 
 

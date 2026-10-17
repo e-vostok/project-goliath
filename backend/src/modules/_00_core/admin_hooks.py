@@ -77,9 +77,7 @@ async def _restart_tick_log_id(session: AsyncSession) -> None:
             )
         ).scalar_one_or_none()
         if seq_name is not None:
-            await session.execute(
-                text(f"ALTER SEQUENCE {seq_name} RESTART WITH 1")
-            )
+            await session.execute(text(f"ALTER SEQUENCE {seq_name} RESTART WITH 1"))
     else:
         logger.warning(
             "tick_log id counter reset is not implemented for dialect "
@@ -103,9 +101,7 @@ async def admin_state_view(session: AsyncSession) -> dict:
     stays UTC; this is presentation only).
     """
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
-    clock_result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    clock_result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = clock_result.scalar_one_or_none()
 
     players_total = await _count(session, Player)
@@ -119,9 +115,7 @@ async def admin_state_view(session: AsyncSession) -> dict:
     provinces_owned = owned_result.scalar_one()
 
     players_result = await session.execute(
-        select(Player)
-        .order_by(Player.created_at, Player.id)
-        .limit(LIST_CAP)
+        select(Player).order_by(Player.created_at, Player.id).limit(LIST_CAP)
     )
     players = list(players_result.scalars().all())
 
@@ -131,9 +125,7 @@ async def admin_state_view(session: AsyncSession) -> dict:
     nation_id_by_owner = dict(nation_by_owner_result.all())
 
     nations_result = await session.execute(
-        select(Nation)
-        .order_by(Nation.created_at, Nation.id)
-        .limit(LIST_CAP)
+        select(Nation).order_by(Nation.created_at, Nation.id).limit(LIST_CAP)
     )
     nations = list(nations_result.scalars().all())
 
@@ -171,8 +163,7 @@ async def admin_state_view(session: AsyncSession) -> dict:
         },
         "players_total": players_total,
         "nations_total": nations_total,
-        "truncated": players_total > len(players)
-        or nations_total > len(nations),
+        "truncated": players_total > len(players) or nations_total > len(nations),
         "players_truncated": players_total > len(players),
         "players": [
             {
@@ -205,9 +196,7 @@ async def admin_state_view(session: AsyncSession) -> dict:
     }
 
 
-async def admin_player_delete_preview(
-    session: AsyncSession, player_id: str
-) -> dict:
+async def admin_player_delete_preview(session: AsyncSession, player_id: str) -> dict:
     """
     The 00_core fragment of the admin delete-preview: the player's
     nation name and how many provinces its deletion would free.
@@ -216,9 +205,7 @@ async def admin_player_delete_preview(
     nation = await NationService.player_nation_summary(session, player_id)
     return {
         "nation_name": nation.name if nation is not None else None,
-        "provinces_released": (
-            nation.province_count if nation is not None else 0
-        ),
+        "provinces_released": (nation.province_count if nation is not None else 0),
     }
 
 
@@ -246,9 +233,7 @@ async def admin_reset(session: AsyncSession) -> None:
         now, config.tick.tick_time, config.tick.tick_timezone
     )
 
-    clock_result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    clock_result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = clock_result.scalar_one_or_none()
     if clock is None:
         session.add(
@@ -279,6 +264,4 @@ def register_admin_hooks() -> None:
     if MODULE_SLUG not in AdminRegistry.get_reset_hooks():
         AdminRegistry.register_reset(MODULE_SLUG, admin_reset)
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
-        AdminRegistry.register_player_preview(
-            MODULE_SLUG, admin_player_delete_preview
-        )
+        AdminRegistry.register_player_preview(MODULE_SLUG, admin_player_delete_preview)

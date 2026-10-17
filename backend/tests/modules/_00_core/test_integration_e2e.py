@@ -61,14 +61,13 @@ def tick_handlers():
 @pytest_asyncio.fixture
 async def client(test_db_session):
     """HTTP client bound to the real app, backed by the test DB session."""
+
     async def _override_get_session():
         yield test_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
@@ -95,9 +94,7 @@ async def fetch_nation_reservations(session) -> dict[int, str | None]:
 class TestEndToEnd:
     """Full lifecycle: auth -> found nation -> tick (INV-3, atomicity)."""
 
-    async def _auth_and_found_nation(
-        self, client, test_db_session
-    ) -> tuple[str, str]:
+    async def _auth_and_found_nation(self, client, test_db_session) -> tuple[str, str]:
         """
         Drive the two-request entry flow every player takes: signed VK
         launch params -> Bearer JWT -> POST /nations. Returns
@@ -145,9 +142,7 @@ class TestEndToEnd:
 
     async def test_auth_nation_tick_happy_path(self, client, test_db_session):
         """VK auth -> nation founding -> tick: all state lands and turns."""
-        await seed_provinces(
-            test_db_session, [*STARTING_GROUP, 1006]
-        )
+        await seed_provinces(test_db_session, [*STARTING_GROUP, 1006])
         clock = await seed_game_clock(test_db_session)
         initial_turn = clock.current_turn
 
@@ -168,21 +163,15 @@ class TestEndToEnd:
         assert tick_log.finished_at is not None
         assert tick_log.error_message is None
 
-    async def test_failed_tick_rolls_back_together(
-        self, client, test_db_session
-    ):
+    async def test_failed_tick_rolls_back_together(self, client, test_db_session):
         """A blowing-up phase handler must roll back the whole tick
         transaction: in-tick mutations are discarded, committed pre-tick
         state is untouched, and tick_log still records FAILED."""
-        await seed_provinces(
-            test_db_session, [*STARTING_GROUP, 1006]
-        )
+        await seed_provinces(test_db_session, [*STARTING_GROUP, 1006])
         clock = await seed_game_clock(test_db_session)
         initial_turn = clock.current_turn
 
-        _, nation_id = await self._auth_and_found_nation(
-            client, test_db_session
-        )
+        _, nation_id = await self._auth_and_found_nation(client, test_db_session)
 
         async def corrupting_handler(session, turn_number):
             """Dirties tick-scoped state, then blows up.
@@ -190,21 +179,15 @@ class TestEndToEnd:
             The mutations stay pending in the tick transaction; the raise
             must make run_tick propagate so the caller rolls them back.
             """
-            result = await session.execute(
-                select(Nation).where(Nation.id == nation_id)
-            )
+            result = await session.execute(select(Nation).where(Nation.id == nation_id))
             nation = result.scalar_one()
-            result = await session.execute(
-                select(Province).where(Province.id == 1001)
-            )
+            result = await session.execute(select(Province).where(Province.id == 1001))
             province = result.scalar_one()
             nation.name = "Corrupted Name"
             province.nation_id = None
             raise RuntimeError("Simulated tick failure")
 
-        TickOrchestrator.register(
-            TickPhase.PHASE_1_ENVIRONMENT, corrupting_handler
-        )
+        TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, corrupting_handler)
 
         with pytest.raises(RuntimeError, match="Simulated tick failure"):
             await TickOrchestrator.run_tick(test_db_session)

@@ -78,16 +78,13 @@ async def _auth(client, vk_user_id: int) -> tuple[str, str]:
 def _nation_snapshot(nation: Nation) -> dict:
     """Every column of a nation row, as a plain dict."""
     return {
-        column.name: getattr(nation, column.name)
-        for column in Nation.__table__.columns
+        column.name: getattr(nation, column.name) for column in Nation.__table__.columns
     }
 
 
 async def _fetch_nation(pg_db, nation_id: str) -> Nation | None:
     async with pg_db() as session:
-        result = await session.execute(
-            select(Nation).where(Nation.id == nation_id)
-        )
+        result = await session.execute(select(Nation).where(Nation.id == nation_id))
         return result.scalar_one_or_none()
 
 
@@ -105,18 +102,14 @@ async def _seed_provinces(pg_db, ids: list[int]) -> None:
 
 async def _province_owners(pg_db, ids: list[int]) -> dict[int, str | None]:
     async with pg_db() as session:
-        result = await session.execute(
-            select(Province).where(Province.id.in_(ids))
-        )
+        result = await session.execute(select(Province).where(Province.id.in_(ids)))
         return {p.id: p.nation_id for p in result.scalars().all()}
 
 
 async def _assert_world_clean(pg_db, province_ids: list[int]) -> None:
     """No nation rows exist and the given provinces are free."""
     async with pg_db() as session:
-        nations = await session.execute(
-            select(func.count()).select_from(Nation)
-        )
+        nations = await session.execute(select(func.count()).select_from(Nation))
         assert nations.scalar_one() == 0
         owners = await session.execute(
             select(Province.nation_id).where(Province.id.in_(province_ids))
@@ -255,15 +248,12 @@ class TestCreateRejections:
             ("history_url", "HISTORY_URL_INVALID"),
         ],
     )
-    async def test_invalid_profile_field(
-        self, pg_live_client, pg_db, field, code
-    ):
+    async def test_invalid_profile_field(self, pg_live_client, pg_db, field, code):
         # Invalid values derived from the rules, not hardcoded limits:
         # newline (control char), below-min-length, non-https scheme.
         bad_values = {
             "leader_name": "Ivan\nGrozny",
-            "leader_title": "x"
-            * (CORE_CONFIG.nation.leader_title_min_length - 1),
+            "leader_title": "x" * (CORE_CONFIG.nation.leader_title_min_length - 1),
             "history_url": "http://vk.com/@x",
         }
         token, _ = await _auth(pg_live_client, vk_user_id=920001)
@@ -286,9 +276,7 @@ class TestCreateRejections:
         assert payload["detail"]
         await _assert_world_clean(pg_db, [1005])
 
-    async def test_missing_profile_field_is_fastapi_422(
-        self, pg_live_client, pg_db
-    ):
+    async def test_missing_profile_field_is_fastapi_422(self, pg_live_client, pg_db):
         """An absent required field hits pydantic, not the domain layer:
         422 in FastAPI's own shape (a detail list, no domain code)."""
         token, _ = await _auth(pg_live_client, vk_user_id=920002)
@@ -309,9 +297,7 @@ class TestCreateRejections:
         assert "code" not in resp.json()
         await _assert_world_clean(pg_db, [1005])
 
-    async def test_already_exists_beats_profile_validation(
-        self, pg_live_client, pg_db
-    ):
+    async def test_already_exists_beats_profile_validation(self, pg_live_client, pg_db):
         """Spec Part 2 check order: INV-1 precedes profile validation, so
         a second POST with an invalid profile answers 409 — not 422."""
         token, _ = await _auth(pg_live_client, vk_user_id=920003)
@@ -378,10 +364,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
             },
         )
         await session.execute(
-            text(
-                "UPDATE provinces SET nation_id = :nid "
-                "WHERE id IN (1003, 1004)"
-            ),
+            text("UPDATE provinces SET nation_id = :nid WHERE id IN (1003, 1004)"),
             {"nid": nation_id},
         )
         await session.commit()
@@ -477,18 +460,14 @@ async def test_admin_tick_and_state_reset_on_postgres(
     assert body["tick_log"]["status"] == TickLogStatus.COMPLETED.value
 
     async with pg_db() as session:
-        result = await session.execute(
-            select(TickLog).where(TickLog.turn_number == 1)
-        )
+        result = await session.execute(select(TickLog).where(TickLog.turn_number == 1))
         logs = result.scalars().all()
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
         assert logs[0].finished_at is not None
         # The tick must not touch nation profile fields.
         nation = (
-            await session.execute(
-                select(Nation).where(Nation.id == nation_id)
-            )
+            await session.execute(select(Nation).where(Nation.id == nation_id))
         ).scalar_one()
         assert nation.leader_name == VALID_PROFILE["leader_name"]
         assert nation.leader_title == VALID_PROFILE["leader_title"]
@@ -502,9 +481,7 @@ async def test_admin_tick_and_state_reset_on_postgres(
     assert reset.status_code == 200, reset.text
 
     async with pg_db() as session:
-        nations = await session.execute(
-            select(func.count()).select_from(Nation)
-        )
+        nations = await session.execute(select(func.count()).select_from(Nation))
         assert nations.scalar_one() == 0
         provinces = await session.execute(select(Province))
         all_provinces = provinces.scalars().all()
@@ -512,24 +489,18 @@ async def test_admin_tick_and_state_reset_on_postgres(
         assert len(all_provinces) == len(map_mini_linked_node_ids())
         assert all(p.nation_id is None for p in all_provinces)
         clock = (
-            await session.execute(
-                select(GameClock).where(GameClock.id == 1)
-            )
+            await session.execute(select(GameClock).where(GameClock.id == 1))
         ).scalar_one()
         assert clock.current_turn == 0
         assert clock.last_tick_at is None
-        logs = await session.execute(
-            select(func.count()).select_from(TickLog)
-        )
+        logs = await session.execute(select(func.count()).select_from(TickLog))
         assert logs.scalar_one() == 0
         # Players are kept across a world reset.
         players = await session.execute(select(Player.vk_user_id))
         assert players.scalars().all() == [ADMIN_VK_ID]
 
 
-async def test_failed_tick_rolls_back_and_keeps_attempt_history(
-    pg_live_client, pg_db
-):
+async def test_failed_tick_rolls_back_and_keeps_attempt_history(pg_live_client, pg_db):
     """A PHASE_1 handler that dirties state then raises: the whole tick
     transaction rolls back (turn and nation unchanged), tick_log records
     FAILED with the error — and a clean retry lands COMPLETED under the
@@ -558,9 +529,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
         )
         raise RuntimeError("PG tick blew up on purpose")
 
-    TickOrchestrator.register(
-        TickPhase.PHASE_1_ENVIRONMENT, rename_then_fail
-    )
+    TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, rename_then_fail)
 
     tick = await client.post("/api/v1/admin/tick/run", headers=_headers(token))
     assert tick.status_code == 200
@@ -571,21 +540,15 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
 
     async with pg_db() as session:
         nation = (
-            await session.execute(
-                select(Nation).where(Nation.id == nation_id)
-            )
+            await session.execute(select(Nation).where(Nation.id == nation_id))
         ).scalar_one()
         # Rollback: the in-tick rename never committed.
         assert nation.name == "Immutable Realm"
         clock = (
-            await session.execute(
-                select(GameClock).where(GameClock.id == 1)
-            )
+            await session.execute(select(GameClock).where(GameClock.id == 1))
         ).scalar_one()
         assert clock.current_turn == 0
-        result = await session.execute(
-            select(TickLog).order_by(TickLog.id)
-        )
+        result = await session.execute(select(TickLog).order_by(TickLog.id))
         logs = result.scalars().all()
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.FAILED
@@ -601,9 +564,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
 
     async with pg_db() as session:
         result = await session.execute(
-            select(TickLog)
-            .where(TickLog.turn_number == 1)
-            .order_by(TickLog.id)
+            select(TickLog).where(TickLog.turn_number == 1).order_by(TickLog.id)
         )
         logs = result.scalars().all()
     assert [log.status for log in logs] == [

@@ -115,7 +115,7 @@ def run_migrations_online() -> None:
     """
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_database_url()
-    
+
     connectable = create_engine(
         configuration["sqlalchemy.url"],
         poolclass=pool.NullPool,

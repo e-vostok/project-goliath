@@ -32,9 +32,7 @@ EDGE_TYPES: tuple[str, ...] = (
 )
 
 # Spec 3.3: group connectivity counts only these edge types.
-GROUP_EDGE_TYPES: frozenset[str] = frozenset(
-    {EDGE_TYPE_LAND, EDGE_TYPE_STRAIT}
-)
+GROUP_EDGE_TYPES: frozenset[str] = frozenset({EDGE_TYPE_LAND, EDGE_TYPE_STRAIT})
 
 NodeKind = Literal["LAND", "SEA"]
 EdgeType = Literal["land", "coast", "sea", "strait"]

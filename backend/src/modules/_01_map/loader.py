@@ -196,9 +196,7 @@ def _check_limits(manifest: Manifest, config: MapConfig) -> None:
     for e in manifest.edges:
         degree[e.a] = degree.get(e.a, 0) + 1
         degree[e.b] = degree.get(e.b, 0) + 1
-    over = sorted(
-        i for i, d in degree.items() if d > limits.max_edges_per_node
-    )
+    over = sorted(i for i, d in degree.items() if d > limits.max_edges_per_node)
     if over:
         keys = {n.id: n.key for n in manifest.nodes}
         listed = ", ".join(
@@ -238,8 +236,7 @@ def _check_inv_m1(
             keys = sorted(k for k, v in lock.ids.items() if v == i)
             _fail(
                 INV_M1,
-                f"ids.lock.json: id {i} assigned to more than one key: "
-                f"{keys}",
+                f"ids.lock.json: id {i} assigned to more than one key: {keys}",
             )
 
     for n in manifest.nodes:
@@ -274,12 +271,9 @@ def _check_inv_m1(
     # Lock entries with no manifest node are legal (append-only) — listed
     # as warnings, ascending id. Their ids are also returned as the
     # retired-node set for INV-M5 synchronisation (1.9).
-    extra = sorted(
-        (i, k) for k, i in lock.ids.items() if k not in seen_keys
-    )
+    extra = sorted((i, k) for k, i in lock.ids.items() if k not in seen_keys)
     warnings = tuple(
-        f"ids.lock.json entry {key!r} (id {i}) has no manifest node"
-        for i, key in extra
+        f"ids.lock.json entry {key!r} (id {i}) has no manifest node" for i, key in extra
     )
     return warnings, tuple(i for i, _key in extra)
 
@@ -302,8 +296,7 @@ def _check_inv_m2(manifest: Manifest) -> None:
             missing = e.a if na is None else e.b
             _fail(
                 INV_M2,
-                f"manifest.json: {where} endpoint {missing} "
-                f"does not exist",
+                f"manifest.json: {where} endpoint {missing} does not exist",
             )
         kinds = tuple(sorted((na.kind, nb.kind)))
         if kinds != _EDGE_END_KINDS[e.type]:
@@ -322,9 +315,7 @@ def _check_inv_m2(manifest: Manifest) -> None:
                     f"manifest.json: {where} must not carry len",
                 )
             if e.multiplier is not None and not (
-                _STRAIT_MULTIPLIER_MIN
-                <= e.multiplier
-                <= _STRAIT_MULTIPLIER_MAX
+                _STRAIT_MULTIPLIER_MIN <= e.multiplier <= _STRAIT_MULTIPLIER_MAX
             ):
                 _fail(
                     INV_M2,
@@ -348,9 +339,7 @@ def _check_inv_m2(manifest: Manifest) -> None:
 
 
 def _check_inv_m3(manifest: Manifest) -> None:
-    adjacency: dict[int, list[int]] = {
-        n.id: [] for n in manifest.nodes
-    }
+    adjacency: dict[int, list[int]] = {n.id: [] for n in manifest.nodes}
     for e in manifest.edges:
         adjacency[e.a].append(e.b)
         adjacency[e.b].append(e.a)
@@ -368,9 +357,7 @@ def _check_inv_m3(manifest: Manifest) -> None:
     unreachable = sorted(set(adjacency) - seen)
     if unreachable:
         keys = {n.id: n.key for n in manifest.nodes}
-        listed = ", ".join(
-            f"{keys[i]} (id {i})" for i in unreachable[:_MAX_LISTED]
-        )
+        listed = ", ".join(f"{keys[i]} (id {i})" for i in unreachable[:_MAX_LISTED])
         suffix = (
             f" and {len(unreachable) - _MAX_LISTED} more"
             if len(unreachable) > _MAX_LISTED
@@ -383,16 +370,9 @@ def _check_inv_m3(manifest: Manifest) -> None:
         )
 
 
-def _check_inv_m6(
-    manifest: Manifest, geometry: Geometry, borders: Borders
-) -> None:
-    computed = geometry_version(
-        geometry.outside, geometry.paths, geometry.sea_water
-    )
-    if (
-        computed != manifest.geometry_version
-        or computed != geometry.version
-    ):
+def _check_inv_m6(manifest: Manifest, geometry: Geometry, borders: Borders) -> None:
+    computed = geometry_version(geometry.outside, geometry.paths, geometry.sea_water)
+    if computed != manifest.geometry_version or computed != geometry.version:
         _fail(
             INV_M6,
             f"geometry.json recomputed version {computed} differs from "
@@ -406,15 +386,12 @@ def _check_inv_m6(
         extra = sorted(path_ids - node_ids)
         parts = []
         if missing:
-            parts.append(
-                f"missing paths for nodes {missing[:_MAX_LISTED]}"
-            )
+            parts.append(f"missing paths for nodes {missing[:_MAX_LISTED]}")
         if extra:
             parts.append(f"extra paths for ids {extra[:_MAX_LISTED]}")
         _fail(
             INV_M6,
-            "geometry.json paths and manifest nodes differ: "
-            + "; ".join(parts),
+            "geometry.json paths and manifest nodes differ: " + "; ".join(parts),
         )
 
     # map2_1B: the borders file pins the same canonical-hash rule with
@@ -434,25 +411,18 @@ def _check_inv_m6(
             f"manifest.borders_version {manifest.borders_version}",
         )
     pair_keys = set(borders.pairs)
-    land_pairs = {
-        f"{e.a}-{e.b}" for e in manifest.edges if e.type == "land"
-    }
+    land_pairs = {f"{e.a}-{e.b}" for e in manifest.edges if e.type == "land"}
     if pair_keys != land_pairs:
         missing = sorted(land_pairs - pair_keys)
         extra = sorted(pair_keys - land_pairs)
         parts = []
         if missing:
-            parts.append(
-                f"missing pairs for land edges {missing[:_MAX_LISTED]}"
-            )
+            parts.append(f"missing pairs for land edges {missing[:_MAX_LISTED]}")
         if extra:
-            parts.append(
-                f"extra pairs without a land edge {extra[:_MAX_LISTED]}"
-            )
+            parts.append(f"extra pairs without a land edge {extra[:_MAX_LISTED]}")
         _fail(
             INV_M6,
-            "borders.json pairs and manifest land edges differ: "
-            + "; ".join(parts),
+            "borders.json pairs and manifest land edges differ: " + "; ".join(parts),
         )
     coast_ids = {int(k) for k in borders.coasts}
     land_ids = {n.id for n in manifest.nodes if n.kind == KIND_LAND}
@@ -461,15 +431,12 @@ def _check_inv_m6(
         extra = sorted(coast_ids - land_ids)
         parts = []
         if missing:
-            parts.append(
-                f"missing coasts for nodes {missing[:_MAX_LISTED]}"
-            )
+            parts.append(f"missing coasts for nodes {missing[:_MAX_LISTED]}")
         if extra:
             parts.append(f"extra coasts for ids {extra[:_MAX_LISTED]}")
         _fail(
             INV_M6,
-            "borders.json coasts and manifest LAND nodes differ: "
-            + "; ".join(parts),
+            "borders.json coasts and manifest LAND nodes differ: " + "; ".join(parts),
         )
 
 
@@ -541,9 +508,7 @@ def _build_map_data(
     }
     return MapData(
         nodes=MappingProxyType(nodes),
-        nodes_by_key=MappingProxyType(
-            {n.key: n for n in nodes.values()}
-        ),
+        nodes_by_key=MappingProxyType({n.key: n for n in nodes.values()}),
         edges=MappingProxyType(edges),
         adjacency=MappingProxyType(adjacency_t),
         geometry_version=manifest.geometry_version,
@@ -585,6 +550,4 @@ def load_map_data(data_dir: Path, config: MapConfig) -> MapData:
     _check_inv_m6(manifest, geometry, borders)
     _check_inv_m10(data_dir, manifest)
 
-    return _build_map_data(
-        data_dir, manifest, geometry, borders, warnings, retired_ids
-    )
+    return _build_map_data(data_dir, manifest, geometry, borders, warnings, retired_ids)

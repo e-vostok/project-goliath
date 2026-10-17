@@ -40,9 +40,7 @@ def test_new_cell_shapes_match_their_types():
         "mark": "overdue",
     }
     assert cell_matches("datetime", empty)
-    assert not cell_matches(
-        "datetime", {**cell, "mark": "bogus"}
-    )
+    assert not cell_matches("datetime", {**cell, "mark": "bogus"})
     # A half-filled datetime dict is malformed.
     assert not cell_matches("datetime", {**empty, "key": 5})
 
@@ -58,6 +56,4 @@ def test_new_cell_shapes_match_their_types():
     }
     assert cell_matches("nation", nation)
     assert cell_matches("nation", {**nation, "flag_url": "https://x.ru/f.png"})
-    assert not cell_matches(
-        "nation", {"name": "Новгород", "color": "#C0392B"}
-    )
+    assert not cell_matches("nation", {"name": "Новгород", "color": "#C0392B"})

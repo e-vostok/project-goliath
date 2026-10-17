@@ -35,20 +35,17 @@ def next_tick_after(now: datetime, tick_time: str, tz_name: str) -> datetime:
     if now.tzinfo is None:
         raise ValueError("next_tick_after() requires a tz-aware `now`")
     if TICK_TIME_PATTERN.match(tick_time) is None:
-        raise ValueError(
-            f"tick_time must be strict 24h 'HH:MM', got {tick_time!r}"
-        )
+        raise ValueError(f"tick_time must be strict 24h 'HH:MM', got {tick_time!r}")
 
     tz = ZoneInfo(tz_name)
     local_now = now.astimezone(tz)
     hour, minute = (int(part) for part in tick_time.split(":"))
 
-    candidate = datetime.combine(
-        local_now.date(), time(hour, minute), tzinfo=tz
-    )
+    candidate = datetime.combine(local_now.date(), time(hour, minute), tzinfo=tz)
     if candidate <= local_now:
         candidate = datetime.combine(
-            local_now.date() + timedelta(days=1), time(hour, minute),
+            local_now.date() + timedelta(days=1),
+            time(hour, minute),
             tzinfo=tz,
         )
     return candidate.astimezone(timezone.utc)

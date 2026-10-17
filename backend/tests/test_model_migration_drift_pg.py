@@ -56,15 +56,15 @@ def _op_is_known_equivalent(op) -> bool:
 
 def test_no_model_migration_drift_on_postgres(pg_schema):
     """The migrated PostgreSQL schema must structurally match Base.metadata."""
-    sync_url = make_url(pg_schema).set(
-        drivername="postgresql+psycopg2"
-    ).render_as_string(hide_password=False)
+    sync_url = (
+        make_url(pg_schema)
+        .set(drivername="postgresql+psycopg2")
+        .render_as_string(hide_password=False)
+    )
     engine = sa.create_engine(sync_url)
     try:
         with engine.connect() as conn:
-            diffs = compare_metadata(
-                MigrationContext.configure(conn), Base.metadata
-            )
+            diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     finally:
         engine.dispose()
 

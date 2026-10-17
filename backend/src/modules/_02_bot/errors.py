@@ -20,16 +20,16 @@ from enum import Enum
 class ErrorClass(str, Enum):
     """Failure class of one send attempt (Spec 2.7)."""
 
-    SYSTEM = "SYSTEM"                    # 1, 10 — retry, counts
-    RATE_GLOBAL = "RATE_GLOBAL"          # 6, 29 — sender-wide pause, counts
-    FLOOD_PLAYER = "FLOOD_PLAYER"        # 9 — per-player delay, no count
+    SYSTEM = "SYSTEM"  # 1, 10 — retry, counts
+    RATE_GLOBAL = "RATE_GLOBAL"  # 6, 29 — sender-wide pause, counts
+    FLOOD_PLAYER = "FLOOD_PLAYER"  # 9 — per-player delay, no count
     SPAM_RESTRICTED = "SPAM_RESTRICTED"  # 984 — retry + CRITICAL, counts
-    CONSENT_LOST = "CONSENT_LOST"        # 900, 901, 902, 1021 — drop
-    AUTH = "AUTH"                        # 5, 7, 15, 27, 28 — HALTED_AUTH
-    BAD_REQUEST = "BAD_REQUEST"          # 100, 911 — drop, counts
-    TOO_LONG = "TOO_LONG"                # 914 — drop, no count
-    UNKNOWN = "UNKNOWN"                  # any other code — retry, counts
-    TRANSPORT = "TRANSPORT"              # no HTTP-level answer, counts
+    CONSENT_LOST = "CONSENT_LOST"  # 900, 901, 902, 1021 — drop
+    AUTH = "AUTH"  # 5, 7, 15, 27, 28 — HALTED_AUTH
+    BAD_REQUEST = "BAD_REQUEST"  # 100, 911 — drop, counts
+    TOO_LONG = "TOO_LONG"  # 914 — drop, no count
+    UNKNOWN = "UNKNOWN"  # any other code — retry, counts
+    TRANSPORT = "TRANSPORT"  # no HTTP-level answer, counts
 
 
 _CODE_CLASSES: dict[int, ErrorClass] = {

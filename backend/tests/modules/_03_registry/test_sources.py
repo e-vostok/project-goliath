@@ -37,12 +37,8 @@ class TestPlayersTable:
         self, test_db_session, registry_started
     ):
         p1 = await seed_player(test_db_session, 501001, created_at=T0)
-        p2 = await seed_player(
-            test_db_session, 501002, created_at=T0.replace(hour=13)
-        )
-        await seed_nation(
-            test_db_session, p2, "Второе", "#112233", created_turn=0
-        )
+        p2 = await seed_player(test_db_session, 501002, created_at=T0.replace(hour=13))
+        await seed_nation(test_db_session, p2, "Второе", "#112233", created_turn=0)
 
         built = await build_table(test_db_session, "players")
         rows = _rows_by_key(built)
@@ -73,12 +69,8 @@ class TestPlayersTable:
 
         # A newer player appended later leaves existing numbers fixed
         # (Spec D2 / 3.2).
-        await seed_player(
-            test_db_session, 501003, created_at=T0.replace(hour=14)
-        )
-        rows = _rows_by_key(
-            await build_table(test_db_session, "players")
-        )
+        await seed_player(test_db_session, 501003, created_at=T0.replace(hour=14))
+        rows = _rows_by_key(await build_table(test_db_session, "players"))
         assert rows["p1"]["number"] == 1
         assert rows["p2"]["number"] == 2
         assert rows["p3"]["player"]["name"] == "Игрок №3"
@@ -87,9 +79,7 @@ class TestPlayersTable:
         self, test_db_session, registry_started
     ):
         p1 = await seed_player(test_db_session, 501101, created_at=T0)
-        p2 = await seed_player(
-            test_db_session, 501102, created_at=T0.replace(hour=13)
-        )
+        p2 = await seed_player(test_db_session, 501102, created_at=T0.replace(hour=13))
         # OK profile: real name + avatar. PENDING row without names:
         # still the fallback.
         await make_vk_profile(
@@ -121,9 +111,7 @@ class TestPlayersTable:
             "is_fallback": True,
         }
 
-    async def test_joined_uses_tick_timezone(
-        self, test_db_session, registry_started
-    ):
+    async def test_joined_uses_tick_timezone(self, test_db_session, registry_started):
         # 22:30 UTC = 01:30 Europe/Moscow of the NEXT day (Spec 3.5, D7).
         await seed_player(
             test_db_session,
@@ -150,14 +138,10 @@ class TestPlayersTable:
 
         statements: list[str] = []
 
-        def _count(
-            conn, cursor, statement, parameters, context, executemany
-        ):
+        def _count(conn, cursor, statement, parameters, context, executemany):
             statements.append(statement)
 
-        event.listen(
-            test_db_engine.sync_engine, "before_cursor_execute", _count
-        )
+        event.listen(test_db_engine.sync_engine, "before_cursor_execute", _count)
         try:
             await build_table(test_db_session, "players")
         finally:
@@ -175,23 +159,32 @@ class TestNationsTable:
     async def test_numbering_delete_shift_and_province_count(
         self, test_db_session, registry_started
     ):
-        owners = [
-            await seed_player(test_db_session, 502001 + i)
-            for i in range(3)
-        ]
+        owners = [await seed_player(test_db_session, 502001 + i) for i in range(3)]
         # Deliberately out of created_at order vs created_turn: the
         # ordering key is (created_turn, created_at, id).
         n1 = await seed_nation(
-            test_db_session, owners[0], "Первая", "#AA0001",
-            created_turn=2, created_at=T0,
+            test_db_session,
+            owners[0],
+            "Первая",
+            "#AA0001",
+            created_turn=2,
+            created_at=T0,
         )
         n2 = await seed_nation(
-            test_db_session, owners[1], "Вторая", "#AA0002",
-            created_turn=0, created_at=T0.replace(hour=13),
+            test_db_session,
+            owners[1],
+            "Вторая",
+            "#AA0002",
+            created_turn=0,
+            created_at=T0.replace(hour=13),
         )
         n3 = await seed_nation(
-            test_db_session, owners[2], "Третья", "#AA0003",
-            created_turn=2, created_at=T0.replace(hour=14),
+            test_db_session,
+            owners[2],
+            "Третья",
+            "#AA0003",
+            created_turn=2,
+            created_at=T0.replace(hour=14),
         )
         await make_land_province(test_db_session, id=1001)
         await make_land_province(test_db_session, id=1002)
@@ -226,9 +219,7 @@ class TestNationsTable:
 
         # Deleting a nation shifts the numbers after it (Spec 3.3, D2).
         await NationService.delete(test_db_session, n1.id)
-        rows = _rows_by_key(
-            await build_table(test_db_session, "nations")
-        )
+        rows = _rows_by_key(await build_table(test_db_session, "nations"))
         assert rows[n2.id]["number"] == 1
         assert rows[n3.id]["number"] == 2
 
@@ -240,9 +231,7 @@ class TestCoreConfigInjection:
     async def test_source_uses_injected_config_without_disk_read(
         self, test_db_session, registry_isolation, monkeypatch
     ):
-        core_config = CoreConfig.from_yaml(
-            CoreConfig.get_default_config_path()
-        )
+        core_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
         monkeypatch.setattr(
             CoreConfig,
             "from_yaml",
@@ -254,9 +243,7 @@ class TestCoreConfigInjection:
         )
         startup_registry(core_config=core_config)
 
-        player = await seed_player(
-            test_db_session, 503001, created_at=T0
-        )
+        player = await seed_player(test_db_session, 503001, created_at=T0)
         nation = await seed_nation(
             test_db_session, player, "Инъекция", "#00AA44", created_turn=2
         )

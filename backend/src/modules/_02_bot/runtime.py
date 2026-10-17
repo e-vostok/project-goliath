@@ -99,9 +99,7 @@ class BotRuntime:
             self._env.group_id or "0",
             transport=self._transport,
         )
-        self._limiter = TokenBucket(
-            self._config.sender.max_requests_per_second
-        )
+        self._limiter = TokenBucket(self._config.sender.max_requests_per_second)
         self._breaker = CircuitBreaker(self._config.breaker)
         self._sender = Sender(
             self._config,
@@ -156,9 +154,7 @@ class BotRuntime:
         self._tasks = {
             "sender": self._spawn(
                 "sender",
-                lambda: self._periodic(
-                    "sender", 0, self._sender_step
-                ),
+                lambda: self._periodic("sender", 0, self._sender_step),
             ),
             "digest_watcher": self._spawn(
                 "digest_watcher",
@@ -223,9 +219,7 @@ class BotRuntime:
     def _spawn(self, name: str, body) -> asyncio.Task:
         return asyncio.create_task(body(), name=f"bot-{name}")
 
-    async def _periodic(
-        self, name: str, interval_seconds: float, step
-    ) -> None:
+    async def _periodic(self, name: str, interval_seconds: float, step) -> None:
         """
         The supervision loop (Spec 2.5): step -> stamp the pass ->
         sleep; on Exception log, pace 5 s -> 60 s and continue;

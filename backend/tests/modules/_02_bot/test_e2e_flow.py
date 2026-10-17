@@ -154,9 +154,7 @@ async def _seed_clock(
     await session.flush()
 
 
-async def _seed_starting_group(
-    session, *ids: int
-) -> None:
+async def _seed_starting_group(session, *ids: int) -> None:
     """Seed LAND provinces; the default set matches ``_nation_body``
     plus the two five-province groups later bodies claim."""
     for pid in ids or tuple(range(1001, 1016)):
@@ -178,9 +176,7 @@ async def _deliver(engine, runtime, now: datetime | None = None):
     """Claim + send exactly as ``_sender_step`` does (no task, no sleep)."""
     t = now or datetime.now(timezone.utc)
     async with make_session_factory(engine)() as session:
-        groups = await claim_batch(
-            session, runtime._config, runtime._env, t
-        )
+        groups = await claim_batch(session, runtime._config, runtime._env, t)
         await session.commit()
     await runtime._sender.process_groups(groups)
     return groups
@@ -188,9 +184,7 @@ async def _deliver(engine, runtime, now: datetime | None = None):
 
 async def _outbox_rows(engine) -> list[BotOutbox]:
     async with make_session_factory(engine)() as session:
-        return list(
-            (await session.execute(select(BotOutbox))).scalars().all()
-        )
+        return list((await session.execute(select(BotOutbox))).scalars().all())
 
 
 async def _digest_rows(engine) -> list[BotOutbox]:
@@ -198,11 +192,11 @@ async def _digest_rows(engine) -> list[BotOutbox]:
         return list(
             (
                 await session.execute(
-                    select(BotOutbox).where(
-                        BotOutbox.type_key == "TICK_DIGEST"
-                    )
+                    select(BotOutbox).where(BotOutbox.type_key == "TICK_DIGEST")
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
 
@@ -210,9 +204,7 @@ async def _consent_of(engine, player_id: str) -> BotConsent | None:
     async with make_session_factory(engine)() as session:
         return (
             await session.execute(
-                select(BotConsent).where(
-                    BotConsent.player_id == player_id
-                )
+                select(BotConsent).where(BotConsent.player_id == player_id)
             )
         ).scalar_one_or_none()
 
@@ -249,17 +241,12 @@ def _expected(template: str, variables: dict, config) -> str:
 
 def _send_form(request) -> dict[str, str]:
     return {
-        key: values[0]
-        for key, values in parse_qs(request.content.decode()).items()
+        key: values[0] for key, values in parse_qs(request.content.decode()).items()
     }
 
 
 def _button_labels(keyboard: dict) -> list[str]:
-    return [
-        button["action"]["label"]
-        for row in keyboard["buttons"]
-        for button in row
-    ]
+    return [button["action"]["label"] for row in keyboard["buttons"] for button in row]
 
 
 # ---------------------------------------------------------------------------
@@ -359,9 +346,7 @@ async def test_e1_allow_register_digest_sent(
             ),
             "nation_name": "Государство Тестовое",
             "province_count": 5,
-            "next_tick_time": format_game_time(
-                clock_next_tick, TZ_NAME
-            ),
+            "next_tick_time": format_game_time(clock_next_tick, TZ_NAME),
         },
         config,
     )
@@ -388,9 +373,7 @@ async def _next_tick(engine) -> datetime:
 # ---------------------------------------------------------------------------
 
 
-async def test_e2_digest_sent_once_under_repeats(
-    bot_started, file_db_engine
-):
+async def test_e2_digest_sent_once_under_repeats(bot_started, file_db_engine):
     """T1/INV-B5: concurrent watchers claim the turn once; repeats of
     watcher and sender leave exactly one row, one send, turn == 1."""
     config = bot_started
@@ -406,9 +389,7 @@ async def test_e2_digest_sent_once_under_repeats(
     env = read_bot_env()
     fake = FakeVk()
     fake.respond_send_ok(message_id=9001)
-    runtime = BotRuntime(
-        config, env, sf, transport=fake.transport
-    )
+    runtime = BotRuntime(config, env, sf, transport=fake.transport)
     runtime.prepare()
     try:
         # Two watcher passes racing on separate connections: the CAS
@@ -462,9 +443,7 @@ async def test_e3_denied_blocks_failopen_and_off(
     # (a) VK answers is_allowed=0 -> 403 CONSENT_REQUIRED, DENIED stored.
     fake.respond_allowed(False)
     denied = await seed_player(test_db_session, vk_user_id=660103)
-    await _seed_starting_group(
-        test_db_session, *range(1001, 1016)
-    )
+    await _seed_starting_group(test_db_session, *range(1001, 1016))
     await test_db_session.commit()
 
     resp = await client.post(
@@ -475,9 +454,7 @@ async def test_e3_denied_blocks_failopen_and_off(
     assert resp.status_code == 403
     assert resp.json()["code"] == "CONSENT_REQUIRED"
     assert len(fake.requests) == 1
-    assert fake.requests[0].url.path.endswith(
-        "messages.isMessagesFromGroupAllowed"
-    )
+    assert fake.requests[0].url.path.endswith("messages.isMessagesFromGroupAllowed")
     consent = await _consent_of(test_db_engine, denied.id)
     assert consent.state == "DENIED"
     assert consent.last_checked_at is not None
@@ -623,9 +600,7 @@ async def test_e4_vk_outage_tick_health_retry(
     row = (await _digest_rows(test_db_engine))[0]
     assert row.status == "SENT"
     assert row.vk_message_id == 7777
-    assert _send_form(sends[2])["random_id"] == _send_form(
-        sends[1]
-    )["random_id"]
+    assert _send_form(sends[2])["random_id"] == _send_form(sends[1])["random_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -649,9 +624,7 @@ async def test_e5_consent_lost_mid_flight(
     async with make_session_factory(test_db_engine)() as session:
         await _seed_clock(session)
         await add_bot_state(session, 0)
-        player = await add_member(
-            session, consent="ALLOWED", vk_user_id=vk_user
-        )
+        player = await add_member(session, consent="ALLOWED", vk_user_id=vk_user)
         await session.commit()
 
     fake.respond_recipient_error(901)
@@ -686,9 +659,7 @@ async def test_e5_consent_lost_mid_flight(
         ),
     )
     assert resp.status_code == 200
-    assert (await _consent_of(test_db_engine, player.id)).state == (
-        "ALLOWED"
-    )
+    assert (await _consent_of(test_db_engine, player.id)).state == ("ALLOWED")
 
     fake.respond_send_ok(message_id=5555, peer_id=vk_user)
     await _tick(test_db_engine)
@@ -729,9 +700,7 @@ async def test_e6_dialog_round_trip(
 
     next_tick = datetime(2026, 3, 2, 21, 0, tzinfo=timezone.utc)
     player = await seed_player(test_db_session, vk_user_id=vk_user)
-    await _seed_clock(
-        test_db_session, turn=7, next_tick_at=next_tick
-    )
+    await _seed_clock(test_db_session, turn=7, next_tick_at=next_tick)
     await test_db_session.commit()
     fake.respond_send_ok(message_id=1, peer_id=vk_user)
 
@@ -739,9 +708,7 @@ async def test_e6_dialog_round_trip(
     # (open_app present because VK_APP_ID is set in the test env).
     resp = await client.post(
         CALLBACK_URL,
-        json=message_new_body(
-            vk_user, "e6-start", payload='{"command": "start"}'
-        ),
+        json=message_new_body(vk_user, "e6-start", payload='{"command": "start"}'),
     )
     assert resp.status_code == 200
     await _deliver(test_db_engine, runtime)
@@ -758,15 +725,11 @@ async def test_e6_dialog_round_trip(
 
     # Variant: VK_APP_ID unset -> the button disappears, «Помощь» stays.
     env_no_app = replace(read_bot_env(), app_id=None)
-    runtime_no_app = BotRuntime(
-        config, env_no_app, sf, transport=fake.transport
-    )
+    runtime_no_app = BotRuntime(config, env_no_app, sf, transport=fake.transport)
     runtime_no_app.prepare()
     await client.post(
         CALLBACK_URL,
-        json=message_new_body(
-            vk_user, "e6-start-na", payload='{"command": "start"}'
-        ),
+        json=message_new_body(vk_user, "e6-start-na", payload='{"command": "start"}'),
     )
     await _deliver(test_db_engine, runtime_no_app)
     assert len(fake.send_requests()) == 2
@@ -804,9 +767,7 @@ async def test_e6_dialog_round_trip(
     # status -> the fully rendered member status, MEMBER keyboard.
     await client.post(
         CALLBACK_URL,
-        json=message_new_body(
-            vk_user, "e6-status", payload='{"cmd": "status"}'
-        ),
+        json=message_new_body(vk_user, "e6-status", payload='{"cmd": "status"}'),
     )
     await _deliver(test_db_engine, runtime)
     send = fake.send_requests()[-1]
@@ -834,18 +795,14 @@ async def test_e6_dialog_round_trip(
     # help -> inline keyboard with only the non-empty configured links.
     await client.post(
         CALLBACK_URL,
-        json=message_new_body(
-            vk_user, "e6-help", payload='{"cmd": "help"}'
-        ),
+        json=message_new_body(vk_user, "e6-help", payload='{"cmd": "help"}'),
     )
     await _deliver(test_db_engine, runtime)
     send = fake.send_requests()[-1]
     assert _send_form(send)["message"] == config.dialog.texts.help
     keyboard = form_keyboard(send)
     assert keyboard["inline"] is True
-    actions = [
-        b["action"] for row in keyboard["buttons"] for b in row
-    ]
+    actions = [b["action"] for row in keyboard["buttons"] for b in row]
     # regulations_url is null in the shipped config — two links remain.
     assert [a["type"] for a in actions] == ["open_link", "open_link"]
     assert {a["link"] for a in actions} == {
@@ -874,12 +831,8 @@ async def test_e6_dialog_round_trip(
     # INV-B12: the player's message text is stored nowhere.
     async with sf() as session:
         outbox = (await session.execute(select(BotOutbox))).scalars().all()
-        events = (
-            await session.execute(select(BotVkEvent))
-        ).scalars().all()
-    blob = json.dumps(
-        [r.payload for r in outbox], ensure_ascii=False
-    ) + json.dumps(
+        events = (await session.execute(select(BotVkEvent))).scalars().all()
+    blob = json.dumps([r.payload for r in outbox], ensure_ascii=False) + json.dumps(
         [
             {
                 "event_id": e.event_id,
@@ -922,9 +875,7 @@ async def test_e7_bot_off_is_invisible(
     )
     assert resp.status_code == 404
 
-    resp = await client.get(
-        STATUS_URL, headers=bearer_headers(player.id)
-    )
+    resp = await client.get(STATUS_URL, headers=bearer_headers(player.id))
     assert resp.status_code == 200
     assert resp.json()["enabled"] is False
 
@@ -1010,13 +961,9 @@ async def test_e8_world_reset_preserves_consents(
     consent = await _consent_of(test_db_engine, player.id)
     assert consent.state == "ALLOWED"
     async with make_session_factory(test_db_engine)() as session:
-        events = (
-            await session.execute(select(BotVkEvent))
-        ).scalars().all()
+        events = (await session.execute(select(BotVkEvent))).scalars().all()
         nation_count = (
-            await session.execute(
-                select(func.count()).select_from(Nation)
-            )
+            await session.execute(select(func.count()).select_from(Nation))
         ).scalar_one()
     assert len(events) == 1
     assert nation_count == 0
@@ -1077,9 +1024,7 @@ async def test_e9_status_and_refresh_flow(
     await test_db_session.commit()
 
     # UNKNOWN triggers exactly one lazy VK check -> DENIED stored.
-    resp = await client.get(
-        STATUS_URL, headers=bearer_headers(player.id)
-    )
+    resp = await client.get(STATUS_URL, headers=bearer_headers(player.id))
     assert resp.status_code == 200
     body = resp.json()
     assert body["enabled"] is True
@@ -1088,9 +1033,7 @@ async def test_e9_status_and_refresh_flow(
     assert body["throttled"] is False
     assert body["registration_requires_consent"] is True
     assert len(fake.requests) == 1
-    assert fake.requests[0].url.path.endswith(
-        "messages.isMessagesFromGroupAllowed"
-    )
+    assert fake.requests[0].url.path.endswith("messages.isMessagesFromGroupAllowed")
 
     # The player re-allows messages in VK; the callback flips the row.
     await client.post(
@@ -1101,9 +1044,7 @@ async def test_e9_status_and_refresh_flow(
             obj={"user_id": vk_user},
         ),
     )
-    resp = await client.post(
-        REFRESH_URL, headers=bearer_headers(player.id)
-    )
+    resp = await client.post(REFRESH_URL, headers=bearer_headers(player.id))
     assert resp.status_code == 200
     body = resp.json()
     assert body["consent"] == "ALLOWED"
@@ -1112,9 +1053,7 @@ async def test_e9_status_and_refresh_flow(
     assert body["throttled"] is True
     assert len(fake.requests) == 1
 
-    resp = await client.post(
-        REFRESH_URL, headers=bearer_headers(player.id)
-    )
+    resp = await client.post(REFRESH_URL, headers=bearer_headers(player.id))
     assert resp.json()["throttled"] is True
     assert resp.json()["consent"] == "ALLOWED"
     assert len(fake.requests) == 1
@@ -1189,9 +1128,7 @@ class TestPgMirror:
         saved_bot_config = startup_mod._bot_config
 
         engine = create_async_engine(pg_url)
-        sf = async_sessionmaker(
-            engine, class_=AsyncSession, expire_on_commit=False
-        )
+        sf = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         # pg_clean does not cover the bot tables — wipe them here so the
         # two mirrors are independent.
         async with engine.begin() as conn:
@@ -1203,9 +1140,7 @@ class TestPgMirror:
                 "bot_vk_events",
             ):
                 await conn.execute(sa.text(f"DELETE FROM {table}"))
-            await conn.execute(
-                sa.text("UPDATE bot_state SET last_digest_turn = 0")
-            )
+            await conn.execute(sa.text("UPDATE bot_state SET last_digest_turn = 0"))
         fake = FakeVk()
         try:
             async with LifespanManager(app) as manager:
@@ -1289,26 +1224,24 @@ class TestPgMirror:
         assert _send_form(send)["peer_ids"] == str(vk_user)
         async with sf() as session:
             (row,) = (
-                await session.execute(
-                    select(BotOutbox).where(
-                        BotOutbox.type_key == "TICK_DIGEST"
+                (
+                    await session.execute(
+                        select(BotOutbox).where(BotOutbox.type_key == "TICK_DIGEST")
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert row.status == "SENT"
         assert row.vk_message_id == 6464
 
-    async def test_pg_e2_concurrent_watcher_single_digest(
-        self, pg_bot
-    ):
+    async def test_pg_e2_concurrent_watcher_single_digest(self, pg_bot):
         _client, fake, runtime, sf = pg_bot
         config = runtime._config
         fake.respond_send_ok(message_id=7)
 
         async with sf() as session:
-            member = await add_member(
-                session, consent="ALLOWED", vk_user_id=660202
-            )
+            member = await add_member(session, consent="ALLOWED", vk_user_id=660202)
             await session.commit()
 
         async with sf() as session:
@@ -1321,12 +1254,14 @@ class TestPgMirror:
         )
         async with sf() as session:
             rows = (
-                await session.execute(
-                    select(BotOutbox).where(
-                        BotOutbox.type_key == "TICK_DIGEST"
+                (
+                    await session.execute(
+                        select(BotOutbox).where(BotOutbox.type_key == "TICK_DIGEST")
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert len(rows) == 1
         assert rows[0].player_id == member.id
 
@@ -1341,8 +1276,6 @@ class TestPgMirror:
 async def _deliver_pg(sf, runtime, now: datetime | None = None):
     t = now or datetime.now(timezone.utc)
     async with sf() as session:
-        groups = await claim_batch(
-            session, runtime._config, runtime._env, t
-        )
+        groups = await claim_batch(session, runtime._config, runtime._env, t)
         await session.commit()
     await runtime._sender.process_groups(groups)

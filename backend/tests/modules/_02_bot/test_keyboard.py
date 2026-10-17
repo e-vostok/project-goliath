@@ -31,9 +31,7 @@ class TestPersistent:
         assert [b["action"]["type"] for b in row] == ["text", "text"]
         assert row[0]["action"]["label"] == "Статус"
         assert row[1]["action"]["label"] == "Помощь"
-        assert json.loads(row[0]["action"]["payload"]) == {
-            "cmd": "status"
-        }
+        assert json.loads(row[0]["action"]["payload"]) == {"cmd": "status"}
         assert json.loads(row[1]["action"]["payload"]) == {"cmd": "help"}
 
     def test_guest_with_app_id(self, bot_config):
@@ -49,9 +47,7 @@ class TestPersistent:
         assert action["hash"] == "register"
         assert "payload" not in action
 
-    def test_guest_without_app_id_has_no_register_button(
-        self, bot_config
-    ):
+    def test_guest_without_app_id_has_no_register_button(self, bot_config):
         kb = build_persistent_keyboard("GUEST", bot_config, app_id=None)
         [row] = kb["buttons"]
         assert [b["action"]["type"] for b in row] == ["text"]
@@ -97,11 +93,7 @@ class TestDumps:
         assert json.loads(raw) == kb
 
     def test_label_over_limit_rejected(self, bot_config):
-        kb = {
-            "buttons": [
-                [{"action": {"type": "text", "label": "x" * 41}}]
-            ]
-        }
+        kb = {"buttons": [[{"action": {"type": "text", "label": "x" * 41}}]]}
         with pytest.raises(ValueError):
             dumps(kb)
 

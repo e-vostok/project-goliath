@@ -35,14 +35,10 @@ NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 class TestBotOff:
     """With the bot off the module is invisible (Spec 5.2)."""
 
-    async def test_get_status_disabled(
-        self, client, bot_off_env, test_db_session
-    ):
+    async def test_get_status_disabled(self, client, bot_off_env, test_db_session):
         player = await seed_player(test_db_session)
         await test_db_session.commit()
-        resp = await client.get(
-            STATUS_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(STATUS_URL, headers=bearer_headers(player.id))
         assert resp.status_code == 200
         body = resp.json()
         assert body["enabled"] is False
@@ -54,9 +50,7 @@ class TestBotOff:
         assert body["consent_poll_interval_seconds"] is None
         assert body["consent_poll_timeout_seconds"] is None
         # No consent row is created while the bot is off.
-        rows = (
-            await test_db_session.execute(select(BotConsent))
-        ).scalars().all()
+        rows = (await test_db_session.execute(select(BotConsent))).scalars().all()
         assert rows == []
 
     async def test_post_refresh_disabled_409(
@@ -64,9 +58,7 @@ class TestBotOff:
     ):
         player = await seed_player(test_db_session)
         await test_db_session.commit()
-        resp = await client.post(
-            REFRESH_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.post(REFRESH_URL, headers=bearer_headers(player.id))
         assert resp.status_code == 409
         assert resp.json()["code"] == "BOT_DISABLED"
 
@@ -87,9 +79,7 @@ class TestActive:
         player = await seed_player(test_db_session, vk_user_id=777001)
         await test_db_session.commit()
 
-        resp = await client.get(
-            STATUS_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(STATUS_URL, headers=bearer_headers(player.id))
         assert resp.status_code == 200
         body = resp.json()
         assert body["enabled"] is True
@@ -107,9 +97,7 @@ class TestActive:
         # The UNKNOWN state triggered exactly one VK check...
         assert len(fake.requests) == 1
         # ...and a second GET within the minimum interval does not.
-        resp2 = await client.get(
-            STATUS_URL, headers=bearer_headers(player.id)
-        )
+        resp2 = await client.get(STATUS_URL, headers=bearer_headers(player.id))
         assert resp2.json()["consent"] == "ALLOWED"
         assert len(fake.requests) == 1
 
@@ -121,17 +109,13 @@ class TestActive:
         player = await seed_player(test_db_session, vk_user_id=777002)
         await test_db_session.commit()
 
-        first = await client.post(
-            REFRESH_URL, headers=bearer_headers(player.id)
-        )
+        first = await client.post(REFRESH_URL, headers=bearer_headers(player.id))
         assert first.status_code == 200
         assert first.json()["consent"] == "DENIED"
         assert first.json()["throttled"] is False
         assert len(fake.requests) == 1
 
-        second = await client.post(
-            REFRESH_URL, headers=bearer_headers(player.id)
-        )
+        second = await client.post(REFRESH_URL, headers=bearer_headers(player.id))
         assert second.json()["throttled"] is True
         assert second.json()["consent"] == "DENIED"
         assert len(fake.requests) == 1  # no second VK call
@@ -144,9 +128,7 @@ class TestActive:
         player = await seed_player(test_db_session, vk_user_id=777003)
         await test_db_session.commit()
 
-        resp = await client.get(
-            STATUS_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(STATUS_URL, headers=bearer_headers(player.id))
         body = resp.json()
         assert body["consent"] == "UNKNOWN"
         assert body["stale"] is True
@@ -156,15 +138,11 @@ class TestActive:
     ):
         fake, _runtime = fake_vk_runtime
         player = await add_player(test_db_session, vk_user_id=777004)
-        consent = await add_consent(
-            test_db_session, player.id, state="ALLOWED"
-        )
+        consent = await add_consent(test_db_session, player.id, state="ALLOWED")
         consent.last_checked_at = datetime.now(timezone.utc)
         await test_db_session.commit()
 
-        resp = await client.get(
-            STATUS_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(STATUS_URL, headers=bearer_headers(player.id))
         assert resp.json()["consent"] == "ALLOWED"
         assert resp.json()["stale"] is False
         assert fake.requests == []

@@ -125,7 +125,9 @@ async def scheduler_loop(
     # of import-time dependencies on modules.* (which import core.*).
     from modules._00_core.config_schema import CoreConfig
 
-    session_factory = session_maker if session_maker is not None else get_session_context
+    session_factory = (
+        session_maker if session_maker is not None else get_session_context
+    )
     if retry_delay_seconds is None or heartbeat_interval_seconds is None:
         config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
         if retry_delay_seconds is None:
@@ -140,18 +142,14 @@ async def scheduler_loop(
             # next_tick_at is picked up within one heartbeat interval.
             while True:
                 next_tick_at = await _read_next_tick_at(session_factory)
-                delay = seconds_until(
-                    next_tick_at, datetime.now(timezone.utc)
-                )
+                delay = seconds_until(next_tick_at, datetime.now(timezone.utc))
                 if delay <= 0:
                     break
                 await asyncio.sleep(min(delay, heartbeat_interval_seconds))
                 heartbeat.touch()
 
             async with session_factory() as session:
-                outcome = await run_scheduled_tick(
-                    session, enforce_schedule=True
-                )
+                outcome = await run_scheduled_tick(session, enforce_schedule=True)
         except Exception:
             logger.exception(
                 "Tick scheduler iteration failed; retrying in %ss",

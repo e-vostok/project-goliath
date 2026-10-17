@@ -57,9 +57,7 @@ def orders_isolation(monkeypatch):
     # snapshot and restore it like the rest of the process globals.
     saved_types = bot_registry.get_notification_types()
     monkeypatch.setattr(orders_startup_module, "_orders_config", None)
-    monkeypatch.setattr(
-        orders_startup_module, "_orders_allowed_hosts", None
-    )
+    monkeypatch.setattr(orders_startup_module, "_orders_allowed_hosts", None)
     monkeypatch.setattr(registry_startup_module, "_registry_config", None)
     monkeypatch.setattr(registry_startup_module, "_core_config", None)
     monkeypatch.setattr(bot_startup_module, "_bot_config", None)
@@ -73,9 +71,7 @@ def orders_isolation(monkeypatch):
     orders_worker_module.install_wake_event(None)
     registry_module.clear_registry()
     for source in saved_sources.values():
-        registry_module.register_table_source(
-            source.key, source.provides, source.load
-        )
+        registry_module.register_table_source(source.key, source.provides, source.load)
     AdminRegistry._state_view_hooks.clear()
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.clear()
@@ -125,22 +121,19 @@ def orders_bot_started(orders_isolation, bot_env):
 @pytest.fixture(autouse=True)
 def jwt_secret(monkeypatch):
     """A real-length JWT secret for issued Bearer tokens."""
-    monkeypatch.setenv(
-        "JWT_SECRET_KEY", "test-jwt-secret-key-32-bytes-long!!"
-    )
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-32-bytes-long!!")
 
 
 @pytest_asyncio.fixture
 async def client(test_db_session):
     """HTTP client bound to the real app, backed by the test session."""
+
     async def _override_get_session():
         yield test_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 

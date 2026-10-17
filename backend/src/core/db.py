@@ -61,7 +61,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency injection helper for FastAPI routes."""
     if _async_session_maker is None:
         raise RuntimeError("Session maker not initialized. Call init_engine() first.")
-    
+
     async with _async_session_maker() as session:
         yield session
 
@@ -70,5 +70,5 @@ def get_session_context() -> AsyncContextManager[AsyncSession]:
     """Get a session context manager for use outside FastAPI dependencies."""
     if _async_session_maker is None:
         raise RuntimeError("Session maker not initialized. Call init_engine() first.")
-    
+
     return _async_session_maker()

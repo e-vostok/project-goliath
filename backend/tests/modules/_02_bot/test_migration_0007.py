@@ -64,10 +64,7 @@ def _insert_player(url: str) -> str:
     try:
         with engine.begin() as conn:
             conn.execute(
-                sa.text(
-                    "INSERT INTO players (id, vk_user_id) "
-                    "VALUES (:id, 777000002)"
-                ),
+                sa.text("INSERT INTO players (id, vk_user_id) VALUES (:id, 777000002)"),
                 {"id": player_id},
             )
     finally:
@@ -85,16 +82,14 @@ class TestUpgradeToHead:
         engine = sa.create_engine(url)
         try:
             with engine.connect() as conn:
-                row = conn.execute(
-                    sa.text(
-                        "SELECT id, last_digest_turn FROM bot_state"
-                    )
-                ).mappings().one()
+                row = (
+                    conn.execute(sa.text("SELECT id, last_digest_turn FROM bot_state"))
+                    .mappings()
+                    .one()
+                )
                 consents_checks = {
                     c["name"]
-                    for c in sa.inspect(conn).get_check_constraints(
-                        "bot_consents"
-                    )
+                    for c in sa.inspect(conn).get_check_constraints("bot_consents")
                 }
         finally:
             engine.dispose()
@@ -110,14 +105,9 @@ class TestUpgradeToHead:
         try:
             with engine.connect() as conn:
                 insp = sa.inspect(conn)
-                checks = {
-                    c["name"]
-                    for c in insp.get_check_constraints("bot_outbox")
-                }
+                checks = {c["name"] for c in insp.get_check_constraints("bot_outbox")}
                 uniques = insp.get_unique_constraints("bot_outbox")
-                indexes = {
-                    i["name"] for i in insp.get_indexes("bot_outbox")
-                }
+                indexes = {i["name"] for i in insp.get_indexes("bot_outbox")}
                 fks = insp.get_foreign_keys("bot_outbox")
         finally:
             engine.dispose()
@@ -183,9 +173,7 @@ class TestUpgradeToHead:
                 event_ids = [
                     r[0]
                     for r in conn.execute(
-                        sa.text(
-                            "SELECT id FROM bot_vk_events ORDER BY id"
-                        )
+                        sa.text("SELECT id FROM bot_vk_events ORDER BY id")
                     )
                 ]
         finally:
@@ -196,9 +184,7 @@ class TestUpgradeToHead:
 
 
 class TestDowngradeRoundTrip:
-    def test_downgrade_removes_only_bot_tables(
-        self, tmp_path, monkeypatch
-    ):
+    def test_downgrade_removes_only_bot_tables(self, tmp_path, monkeypatch):
         url = _db_url(tmp_path)
         _upgrade(url, "head", monkeypatch)
         before = set(_table_names(url)) - {"alembic_version"}
@@ -224,11 +210,14 @@ class TestDowngradeRoundTrip:
         engine = sa.create_engine(url)
         try:
             with engine.connect() as conn:
-                assert conn.execute(
-                    sa.text(
-                        "SELECT COUNT(*) FROM bot_state WHERE id = 1 "
-                        "AND last_digest_turn = 0"
-                    )
-                ).scalar_one() == 1
+                assert (
+                    conn.execute(
+                        sa.text(
+                            "SELECT COUNT(*) FROM bot_state WHERE id = 1 "
+                            "AND last_digest_turn = 0"
+                        )
+                    ).scalar_one()
+                    == 1
+                )
         finally:
             engine.dispose()

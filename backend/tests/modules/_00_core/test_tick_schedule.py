@@ -43,9 +43,7 @@ def _expected_candidates(before: datetime, after: datetime) -> set[datetime]:
     two entries only when the window straddles a local tick boundary.
     """
     return {
-        next_tick_after(
-            t, CORE_CONFIG.tick.tick_time, CORE_CONFIG.tick.tick_timezone
-        )
+        next_tick_after(t, CORE_CONFIG.tick.tick_time, CORE_CONFIG.tick.tick_timezone)
         for t in (before, after)
     }
 
@@ -53,7 +51,10 @@ def _expected_candidates(before: datetime, after: datetime) -> set[datetime]:
 def _assert_local_midnight(utc_dt: datetime) -> None:
     local = utc_dt.astimezone(TICK_TZ)
     assert (local.hour, local.minute, local.second, local.microsecond) == (
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
     )
 
 
@@ -102,15 +103,11 @@ class TestNextTickAfter:
 
     def test_naive_now_raises_value_error(self):
         with pytest.raises(ValueError):
-            next_tick_after(
-                datetime(2026, 9, 30, 12, 0), "00:00", "Europe/Moscow"
-            )
+            next_tick_after(datetime(2026, 9, 30, 12, 0), "00:00", "Europe/Moscow")
 
     def test_invalid_tick_time_raises_value_error(self):
         with pytest.raises(ValueError):
-            next_tick_after(
-                datetime.now(timezone.utc), "24:00", "Europe/Moscow"
-            )
+            next_tick_after(datetime.now(timezone.utc), "24:00", "Europe/Moscow")
 
 
 class TestFormatGameTime:
@@ -154,9 +151,7 @@ class TestFixedTimeScheduleOnDatabase:
     """DB wiring: finalize_tick, admin reset, and the state view."""
 
     @pytest.mark.asyncio
-    async def test_finalize_tick_sets_next_fixed_local_time(
-        self, test_db_session
-    ):
+    async def test_finalize_tick_sets_next_fixed_local_time(self, test_db_session):
         clock = GameClockFactory.build(current_turn=4)
         test_db_session.add(clock)
         await test_db_session.flush()
@@ -175,9 +170,7 @@ class TestFixedTimeScheduleOnDatabase:
         assert next_tick_at > before
 
     @pytest.mark.asyncio
-    async def test_admin_reset_realigns_to_fixed_local_time(
-        self, test_db_session
-    ):
+    async def test_admin_reset_realigns_to_fixed_local_time(self, test_db_session):
         test_db_session.add(
             GameClockFactory.build(
                 current_turn=9,
@@ -201,9 +194,7 @@ class TestFixedTimeScheduleOnDatabase:
         _assert_local_midnight(next_tick_at)
 
     @pytest.mark.asyncio
-    async def test_state_view_reports_game_timezone_clock(
-        self, test_db_session
-    ):
+    async def test_state_view_reports_game_timezone_clock(self, test_db_session):
         # 2026-10-01 21:00 UTC == 2026-10-02 00:00 Europe/Moscow — the
         # admin view renders it as a plain local string, no offset.
         next_tick = datetime(2026, 10, 1, 21, 0, tzinfo=timezone.utc)

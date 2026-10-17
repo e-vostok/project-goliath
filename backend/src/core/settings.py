@@ -88,16 +88,14 @@ def to_sync_database_url(url: str) -> str:
     if backend == "postgresql":
         if parsed.drivername == "postgresql+psycopg2":
             return url
-        return parsed.set(
-            drivername="postgresql+psycopg2"
-        ).render_as_string(hide_password=False)
+        return parsed.set(drivername="postgresql+psycopg2").render_as_string(
+            hide_password=False
+        )
     if parsed.drivername == "sqlite+aiosqlite":
         return url.replace("+aiosqlite", "", 1)
     for suffix in ("+asyncmy", "+aiomysql", "+aiopg"):
         if parsed.drivername.endswith(suffix):
-            return parsed.set(
-                drivername=backend
-            ).render_as_string(hide_password=False)
+            return parsed.set(drivername=backend).render_as_string(hide_password=False)
     return url
 
 

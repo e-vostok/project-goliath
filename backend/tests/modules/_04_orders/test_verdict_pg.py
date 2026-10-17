@@ -79,23 +79,12 @@ class TestConcurrentVerdict:
             return_exceptions=True,
         )
 
-        wins = [
-            r for r in results if isinstance(r, OrderDetailView)
-        ]
-        losses = [
-            r for r in results
-            if isinstance(r, OrderVerdictExistsError)
-        ]
+        wins = [r for r in results if isinstance(r, OrderDetailView)]
+        losses = [r for r in results if isinstance(r, OrderVerdictExistsError)]
         assert len(wins) == 1, f"expected one verdict, got {results!r}"
-        assert len(losses) == 1, (
-            f"expected one ORDER_VERDICT_EXISTS, got {results!r}"
-        )
+        assert len(losses) == 1, f"expected one ORDER_VERDICT_EXISTS, got {results!r}"
 
         async with pg_db() as session:
-            row = (
-                await session.execute(select(Order))
-            ).scalar_one()
+            row = (await session.execute(select(Order))).scalar_one()
             assert row.verdict_at is not None
-            assert row.verdict_title in {
-                verdict["title"] for verdict in _VERDICTS
-            }
+            assert row.verdict_title in {verdict["title"] for verdict in _VERDICTS}

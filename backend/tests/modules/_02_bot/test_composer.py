@@ -81,9 +81,7 @@ class TestDailyCap:
     def test_over_cap_collapses_to_summary(self, bot_config):
         """T4: m > Cd -> exactly Cd messages, the last one SUMMARY."""
         cap = bot_config.limits.daily_cap_normal  # 8
-        rows = [
-            _row(age_minutes=100 - i) for i in range(cap + 4)
-        ]
+        rows = [_row(age_minutes=100 - i) for i in range(cap + 4)]
         result = compose(rows, _history(), bot_config, NOW)
 
         assert len(result.messages) == cap
@@ -124,10 +122,7 @@ class TestDailyCap:
 class TestMerge:
     def test_over_cap_singles_plus_batch(self, bot_config):
         """T5: 5 dispatches -> 3 singles (max_per_window) + 1 batch of 2."""
-        rows = [
-            _row("DIPLOMATIC_DISPATCH", age_minutes=10 - i)
-            for i in range(5)
-        ]
+        rows = [_row("DIPLOMATIC_DISPATCH", age_minutes=10 - i) for i in range(5)]
         result = compose(rows, _history(), bot_config, NOW)
 
         assert [m.render_mode for m in result.messages] == [
@@ -144,10 +139,7 @@ class TestMerge:
     def test_over_cap_recent_batch_defers_remainder(self, bot_config):
         """T5b: a BATCH of the type inside its window pushes the
         remainder to last_batch_at + window_minutes."""
-        rows = [
-            _row("DIPLOMATIC_DISPATCH", age_minutes=10 - i)
-            for i in range(5)
-        ]
+        rows = [_row("DIPLOMATIC_DISPATCH", age_minutes=10 - i) for i in range(5)]
         last_batch = NOW - timedelta(minutes=30)  # window is 60
         result = compose(
             rows,
@@ -156,17 +148,12 @@ class TestMerge:
             NOW,
         )
 
-        assert [m.render_mode for m in result.messages] == [
-            "SINGLE"
-        ] * 3
+        assert [m.render_mode for m in result.messages] == ["SINGLE"] * 3
         resume = last_batch + timedelta(minutes=60)
         assert result.deferred == {rows[3].id: resume, rows[4].id: resume}
 
     def test_singles_in_window_shrink_free_slots(self, bot_config):
-        rows = [
-            _row("DIPLOMATIC_DISPATCH", age_minutes=10 - i)
-            for i in range(4)
-        ]
+        rows = [_row("DIPLOMATIC_DISPATCH", age_minutes=10 - i) for i in range(4)]
         result = compose(
             rows,
             _history(singles={"DIPLOMATIC_DISPATCH": 2}),
@@ -182,9 +169,7 @@ class TestMerge:
 
     def test_always_merge(self, bot_config):
         """DIRECTIVE_STATUS merge=always: 1 row -> SINGLE, 3 -> BATCH."""
-        one = compose(
-            [_row("DIRECTIVE_STATUS")], _history(), bot_config, NOW
-        )
+        one = compose([_row("DIRECTIVE_STATUS")], _history(), bot_config, NOW)
         assert [m.render_mode for m in one.messages] == ["SINGLE"]
 
         three = compose(
@@ -214,9 +199,7 @@ class TestHeadOfQueue:
             counts_toward_cap=False,
             age_minutes=7,
         )
-        result = compose(
-            [digest, reply, alert], _history(), bot_config, NOW
-        )
+        result = compose([digest, reply, alert], _history(), bot_config, NOW)
 
         assert [m.row_ids[0] for m in result.messages] == [
             alert.id,

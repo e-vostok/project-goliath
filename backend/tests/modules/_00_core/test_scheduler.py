@@ -148,14 +148,10 @@ class TestRunScheduledTick:
         logs = await _fetch_tick_logs(session_maker, turn_number=1)
         assert len(logs) == 2
         assert all(log.status == TickLogStatus.FAILED for log in logs)
-        assert all(
-            "Simulated handler failure" in log.error_message for log in logs
-        )
+        assert all("Simulated handler failure" in log.error_message for log in logs)
 
     @pytest.mark.asyncio
-    async def test_later_successful_attempt_keeps_failure_history(
-        self, session_maker
-    ):
+    async def test_later_successful_attempt_keeps_failure_history(self, session_maker):
         """
         After failures are resolved, the next scheduled tick completes
         and the earlier FAILED rows remain — full attempt history.
@@ -216,10 +212,7 @@ class TestSchedulerLoop:
             await session.execute(
                 update(GameClock)
                 .where(GameClock.id == 1)
-                .values(
-                    next_tick_at=datetime.now(timezone.utc)
-                    - timedelta(minutes=1)
-                )
+                .values(next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1))
             )
 
         TickOrchestrator.register_finalize(finalize_then_overdue)
@@ -244,9 +237,7 @@ class TestSchedulerLoop:
         assert all(log.status == TickLogStatus.COMPLETED for log in logs)
 
     @pytest.mark.asyncio
-    async def test_failed_tick_waits_retry_delay(
-        self, session_maker
-    ):
+    async def test_failed_tick_waits_retry_delay(self, session_maker):
         """
         A persistent failure must not spin in a hot loop: the next_tick
         wait resolves to 0 (next_tick_at rolled back unchanged), so the
@@ -264,9 +255,7 @@ class TestSchedulerLoop:
         TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, failing_handler)
 
         started = time.monotonic()
-        await scheduler_loop(
-            session_maker, max_iterations=2, retry_delay_seconds=1
-        )
+        await scheduler_loop(session_maker, max_iterations=2, retry_delay_seconds=1)
         elapsed = time.monotonic() - started
 
         # Two failed attempts -> two paced retries (~1s each), while the
@@ -302,9 +291,7 @@ class TestSchedulerResilience:
 
         class _DownCM:
             async def __aenter__(self):
-                raise OperationalError(
-                    "SELECT 1", {}, Exception("connection refused")
-                )
+                raise OperationalError("SELECT 1", {}, Exception("connection refused"))
 
             async def __aexit__(self, *exc_info):
                 return False
@@ -380,9 +367,7 @@ class TestSchedulerResilience:
                 await task
 
     @pytest.mark.asyncio
-    async def test_clock_moved_during_sleep_is_honoured(
-        self, session_maker
-    ):
+    async def test_clock_moved_during_sleep_is_honoured(self, session_maker):
         """A world reset rewriting next_tick_at mid-wait takes effect
         within one heartbeat interval — later and earlier moves alike."""
         await _seed_game_clock(
@@ -407,8 +392,7 @@ class TestSchedulerResilience:
                     update(GameClock)
                     .where(GameClock.id == 1)
                     .values(
-                        next_tick_at=datetime.now(timezone.utc)
-                        + timedelta(hours=2)
+                        next_tick_at=datetime.now(timezone.utc) + timedelta(hours=2)
                     )
                 )
                 await session.commit()
@@ -421,8 +405,7 @@ class TestSchedulerResilience:
                     update(GameClock)
                     .where(GameClock.id == 1)
                     .values(
-                        next_tick_at=datetime.now(timezone.utc)
-                        - timedelta(minutes=1)
+                        next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1)
                     )
                 )
                 await session.commit()
@@ -467,9 +450,7 @@ class TestLifespanWiring:
         try:
             async with LifespanManager(app):
                 tasks = [
-                    t
-                    for t in asyncio.all_tasks()
-                    if t.get_name() == "tick-scheduler"
+                    t for t in asyncio.all_tasks() if t.get_name() == "tick-scheduler"
                 ]
                 assert len(tasks) == 1
                 scheduler_task = tasks[0]

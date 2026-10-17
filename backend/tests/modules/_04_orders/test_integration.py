@@ -55,11 +55,7 @@ REMINDER_HOURS = 54  # deadline * reminder_percent 75 (integer seconds)
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 @pytest_asyncio.fixture
@@ -70,15 +66,14 @@ async def orders_client(session_factory):
     sessions on the same shared connection, so ``test_db_session`` must
     not stay open while a pass runs (see test_worker.py).
     """
+
     async def _override_get_session():
         async with session_factory() as session:
             yield session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
@@ -90,9 +85,7 @@ async def _order_row(session, number: int = 1) -> Order:
 
 
 async def _outbox_by_type(session) -> dict[str, BotOutbox]:
-    rows = (
-        (await session.execute(select(BotOutbox))).scalars().all()
-    )
+    rows = (await session.execute(select(BotOutbox))).scalars().all()
     return {row.type_key: row for row in rows}
 
 
@@ -135,9 +128,7 @@ class TestEndToEnd:
         # The second eligible player appears; the worker pass called
         # with a fixed now assigns the judge.
         async with session_factory() as session:
-            judge = await seed_judge(
-                session, 881002, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 881002, nation=True, consent="ALLOWED")
             await session.commit()
             judge_id, judge_vk = judge.id, judge.vk_user_id
 
@@ -145,9 +136,7 @@ class TestEndToEnd:
         # strictly even on coarse-grained clocks.
         await asyncio.sleep(0.02)
         t_assign = datetime.now(timezone.utc)
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=t_assign
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=t_assign)
         assert stats == RetryPassStats(assigned=1)
 
         async with session_factory() as session:
@@ -165,24 +154,18 @@ class TestEndToEnd:
         assert outbox["ORDER_DISTRIBUTED"].player_id == author_id
 
         judge_headers = bearer_headers(judge_id)
-        detail = await orders_client.get(
-            f"{ORDERS_URL}/1", headers=author_headers
-        )
+        detail = await orders_client.get(f"{ORDERS_URL}/1", headers=author_headers)
         bodies.append(detail.text)
         assert detail.json()["distributed"] is True
         assert detail.json()["can_write_verdict"] is False
 
-        queue = await orders_client.get(
-            f"{ORDERS_URL}/assigned", headers=judge_headers
-        )
+        queue = await orders_client.get(f"{ORDERS_URL}/assigned", headers=judge_headers)
         bodies.append(queue.text)
         items = queue.json()["items"]
         assert len(items) == 1
         assert items[0]["number"] == 1
 
-        detail_judge = await orders_client.get(
-            f"{ORDERS_URL}/1", headers=judge_headers
-        )
+        detail_judge = await orders_client.get(f"{ORDERS_URL}/1", headers=judge_headers)
         bodies.append(detail_judge.text)
         assert detail_judge.json()["can_write_verdict"] is True
 
@@ -227,9 +210,7 @@ class TestEndToEnd:
 
         # The Registry source shows the three stages in order.
         startup_registry()
-        table = await orders_client.get(
-            REGISTRY_ORDERS_URL, headers=author_headers
-        )
+        table = await orders_client.get(REGISTRY_ORDERS_URL, headers=author_headers)
         assert table.status_code == 200
         bodies.append(table.text)
         rows = table.json()["rows"]
@@ -237,8 +218,7 @@ class TestEndToEnd:
         assert rows[0]["key"] == "o1"
         cells = rows[0]["cells"]
         keys = [
-            cells[stage]["key"]
-            for stage in ("submitted", "distributed", "verdict")
+            cells[stage]["key"] for stage in ("submitted", "distributed", "verdict")
         ]
         assert all(key is not None for key in keys)
         assert keys[0] <= keys[1] <= keys[2]
@@ -270,9 +250,7 @@ class TestEndToEnd:
         bodies.append(repeat.text)
         assert repeat.json()["number"] == 1
         async with session_factory() as session:
-            count = await session.scalar(
-                select(func.count()).select_from(Order)
-            )
+            count = await session.scalar(select(func.count()).select_from(Order))
             assert count == 1
 
         for text in bodies[-1:]:
@@ -316,9 +294,7 @@ class TestEndToEnd:
         assert stats.assigned == 1
         assert stats.errors == 0
         async with session_factory() as session:
-            assert (
-                await _order_row(session)
-            ).judge_player_id == judge_id
+            assert (await _order_row(session)).judge_player_id == judge_id
 
 
 class TestReminderRace:
@@ -333,9 +309,7 @@ class TestReminderRace:
         now = datetime.now(timezone.utc)
         async with session_factory() as session:
             author, nation = await seed_author(session, 881201)
-            judge = await seed_judge(
-                session, 881202, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 881202, nation=True, consent="ALLOWED")
             order = await make_order(
                 session,
                 author,

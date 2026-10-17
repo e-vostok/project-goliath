@@ -33,9 +33,9 @@ logger = logging.getLogger(__name__)
 class SendKind(str, Enum):
     """What the VK boundary answered for one messages.send."""
 
-    OK = "OK"                  # response[0].message_id, no error
-    ERROR = "ERROR"            # call-level or recipient error code
-    TRANSPORT = "TRANSPORT"    # no parseable answer at all
+    OK = "OK"  # response[0].message_id, no error
+    ERROR = "ERROR"  # call-level or recipient error code
+    TRANSPORT = "TRANSPORT"  # no parseable answer at all
 
 
 @dataclass(frozen=True)
@@ -85,9 +85,7 @@ class VkClient:
             )
             return None
         if response.status_code >= 500:
-            logger.warning(
-                "vk call %s failed: HTTP %s", method, response.status_code
-            )
+            logger.warning("vk call %s failed: HTTP %s", method, response.status_code)
             return None
         return response
 
@@ -132,9 +130,7 @@ class VkClient:
         call_error = body.get("error")
         if call_error is not None:
             code = (
-                call_error.get("error_code")
-                if isinstance(call_error, dict)
-                else None
+                call_error.get("error_code") if isinstance(call_error, dict) else None
             )
             if not isinstance(code, int):
                 return SendOutcome(SendKind.TRANSPORT)
@@ -157,9 +153,7 @@ class VkClient:
             )
             if not isinstance(code, int):
                 return SendOutcome(SendKind.TRANSPORT)
-            logger.warning(
-                "messages.send recipient error: code %s", code
-            )
+            logger.warning("messages.send recipient error: code %s", code)
             return SendOutcome(SendKind.ERROR, code=code)
 
         message_id = first.get("message_id")

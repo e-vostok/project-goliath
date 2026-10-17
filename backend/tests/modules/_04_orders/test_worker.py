@@ -48,11 +48,7 @@ NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 async def _order(session, order_id: str) -> Order:
@@ -65,9 +61,7 @@ async def _reminder_rows(session) -> list[BotOutbox]:
     return (
         (
             await session.execute(
-                select(BotOutbox).where(
-                    BotOutbox.type_key == "ORDER_JUDGE_REMINDER"
-                )
+                select(BotOutbox).where(BotOutbox.type_key == "ORDER_JUDGE_REMINDER")
             )
         )
         .scalars()
@@ -91,9 +85,7 @@ class TestRetryDistribution:
             await session.commit()
             order_id, ghost_id = order.id, ghost.id
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats == RetryPassStats(
             assigned=0,
             still_waiting=1,
@@ -115,16 +107,12 @@ class TestRetryDistribution:
             )
             await session.commit()
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats.assigned == 1
         assert stats.still_waiting == 0
         assert stats.errors == 0
         async with session_factory() as session:
-            assert (
-                await _order(session, order_id)
-            ).judge_player_id == ghost_id
+            assert (await _order(session, order_id)).judge_player_id == ghost_id
 
     async def test_waiting_orders_served_in_submission_order(
         self, session_factory, orders_started, monkeypatch
@@ -133,10 +121,7 @@ class TestRetryDistribution:
         ``(submitted_at, number)`` first (Spec 2.3)."""
         async with session_factory() as session:
             authors = [
-                PlayerFactory.build(
-                    vk_user_id=779010 + i, nations=[]
-                )
-                for i in range(3)
+                PlayerFactory.build(vk_user_id=779010 + i, nations=[]) for i in range(3)
             ]
             session.add_all(authors)
             judge = await seed_judge(session, 779013, nation=True)
@@ -170,13 +155,9 @@ class TestRetryDistribution:
             calls.append(author_id)
             return real_selector(author_id, candidates, settings)
 
-        monkeypatch.setattr(
-            distribution_module, "judge_selector", recording_selector
-        )
+        monkeypatch.setattr(distribution_module, "judge_selector", recording_selector)
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats.assigned == 3
         assert stats.errors == 0
         # submitted_at: author1's order is oldest, then author0, then 2.
@@ -193,12 +174,8 @@ class TestRetryDistribution:
         """A failing order is logged and counted — the pass continues
         with the next one (Spec 2.3)."""
         async with session_factory() as session:
-            author_a = PlayerFactory.build(
-                vk_user_id=779101, nations=[]
-            )
-            author_b = PlayerFactory.build(
-                vk_user_id=779102, nations=[]
-            )
+            author_a = PlayerFactory.build(vk_user_id=779101, nations=[])
+            author_b = PlayerFactory.build(vk_user_id=779102, nations=[])
             session.add_all([author_a, author_b])
             judge = await seed_judge(session, 779103, nation=True)
             first = await make_order(
@@ -220,39 +197,27 @@ class TestRetryDistribution:
                 raise RuntimeError("selector boom")
             return real_selector(author_id, candidates, settings)
 
-        monkeypatch.setattr(
-            distribution_module, "judge_selector", flaky_selector
-        )
+        monkeypatch.setattr(distribution_module, "judge_selector", flaky_selector)
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats.errors == 1
         assert stats.assigned == 1
         assert stats.still_waiting == 0
 
         async with session_factory() as session:
-            assert (
-                await _order(session, first_id)
-            ).judge_player_id is None
-            assert (
-                await _order(session, second_id)
-            ).judge_player_id == judge_id
+            assert (await _order(session, first_id)).judge_player_id is None
+            assert (await _order(session, second_id)).judge_player_id == judge_id
 
 
 class TestReminders:
     """Spec 2.3 step 2 — one reminder per order, never after the deadline."""
 
-    async def test_reminder_queued_once(
-        self, session_factory, orders_bot_started
-    ):
+    async def test_reminder_queued_once(self, session_factory, orders_bot_started):
         """A due reminder enqueues ORDER_JUDGE_REMINDER and marks
         ``reminder_sent_at``; a second pass queues nothing more."""
         async with session_factory() as session:
             author, nation = await seed_author(session, 779201)
-            judge = await seed_judge(
-                session, 779202, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 779202, nation=True, consent="ALLOWED")
             order = await make_order(
                 session,
                 author,
@@ -263,9 +228,7 @@ class TestReminders:
             await session.commit()
             order_id, judge_id = order.id, judge.id
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats.reminders_sent == 1
         assert stats.reminders_skipped == 0
         assert stats.errors == 0
@@ -285,9 +248,7 @@ class TestReminders:
             "order_link": "https://vk.com/app777#registry/order-1",
         }
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats.reminders_sent == 0
         assert stats.reminders_skipped == 0
         async with session_factory() as session:
@@ -300,9 +261,7 @@ class TestReminders:
         still marked, one INFO line (Spec 2.3 — the task was late)."""
         async with session_factory() as session:
             author, nation = await seed_author(session, 779301)
-            judge = await seed_judge(
-                session, 779302, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 779302, nation=True, consent="ALLOWED")
             order = await make_order(
                 session,
                 author,
@@ -313,9 +272,7 @@ class TestReminders:
             await session.commit()
             order_id = order.id
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats.reminders_sent == 0
         assert stats.reminders_skipped == 1
         assert stats.errors == 0
@@ -332,9 +289,7 @@ class TestReminders:
         the reminder stays unmarked and nothing is queued."""
         async with session_factory() as session:
             author, nation = await seed_author(session, 779401)
-            judge = await seed_judge(
-                session, 779402, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 779402, nation=True, consent="ALLOWED")
             order = await make_order(
                 session,
                 author,
@@ -346,9 +301,7 @@ class TestReminders:
             await session.commit()
             order_id = order.id
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats == RetryPassStats()
 
         async with session_factory() as session:
@@ -363,9 +316,7 @@ class TestReminders:
         1.5 h left reads «2», half an hour reads «1»."""
         async with session_factory() as session:
             author, nation = await seed_author(session, 779501)
-            judge = await seed_judge(
-                session, 779502, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 779502, nation=True, consent="ALLOWED")
             for minutes in (90, 30):
                 await make_order(
                     session,
@@ -379,9 +330,7 @@ class TestReminders:
                 )
             await session.commit()
 
-        stats = await OrderService.run_retry_pass(
-            session_factory, now=NOW
-        )
+        stats = await OrderService.run_retry_pass(session_factory, now=NOW)
         assert stats.reminders_sent == 2
         async with session_factory() as session:
             rows = await _reminder_rows(session)
@@ -404,16 +353,10 @@ class TestWorkerLoop:
                 raise RuntimeError("pass boom")
             return await real_pass(factory)
 
-        monkeypatch.setattr(
-            OrderService, "run_retry_pass", staticmethod(flaky_pass)
-        )
-        monkeypatch.setattr(
-            worker_module, "FAILURE_PAUSES_SECONDS", (0.01, 0.01, 0.01)
-        )
+        monkeypatch.setattr(OrderService, "run_retry_pass", staticmethod(flaky_pass))
+        monkeypatch.setattr(worker_module, "FAILURE_PAUSES_SECONDS", (0.01, 0.01, 0.01))
 
-        worker = OrdersWorker(
-            orders_started.distribution, session_factory
-        )
+        worker = OrdersWorker(orders_started.distribution, session_factory)
         await worker.start()
         try:
             assert get_worker_mode() is WorkerMode.RUNNING
@@ -445,9 +388,7 @@ class TestAdminView:
         assert view["worker_mode"] == "STOPPED"
         assert view["last_pass_at"] is None
 
-        monkeypatch.setattr(
-            worker_module, "_mode", WorkerMode.RUNNING
-        )
+        monkeypatch.setattr(worker_module, "_mode", WorkerMode.RUNNING)
         monkeypatch.setattr(worker_module, "_last_pass_at", NOW)
         view = await hook(test_db_session)
         assert view["worker_mode"] == "RUNNING"

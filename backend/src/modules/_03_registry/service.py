@@ -87,9 +87,7 @@ def _default_sort(
     return [row for _, _, row in filled + empty]
 
 
-async def build_table(
-    session: AsyncSession, table_id: str
-) -> BuiltTable:
+async def build_table(session: AsyncSession, table_id: str) -> BuiltTable:
     """
     Build the rows of one configured table (Spec 3.1).
 
@@ -112,9 +110,7 @@ async def build_table(
     if source is None:
         # Startup validated this (Spec 2.5 step 3); reaching it at
         # request time means the registry was reset mid-process.
-        logger.error(
-            "registry table '%s' has no registered source", table.id
-        )
+        logger.error("registry table '%s' has no registered source", table.id)
         raise RegistryProviderError(table_id)
 
     try:
@@ -122,9 +118,7 @@ async def build_table(
     except RegistryDomainError:
         raise
     except Exception:
-        logger.exception(
-            "registry source failed: table=%s", table.id
-        )
+        logger.exception("registry source failed: table=%s", table.id)
         raise RegistryProviderError(table_id)
 
     for row in rows:
@@ -133,16 +127,13 @@ async def build_table(
                 column.type, row.cells[column.source]
             ):
                 logger.error(
-                    "registry provider returned a bad cell: table=%s "
-                    "column=%s",
+                    "registry provider returned a bad cell: table=%s column=%s",
                     table.id,
                     column.id,
                 )
                 raise RegistryProviderError(table_id, column.id)
 
-    sort_column = next(
-        c for c in table.columns if c.id == table.default_sort.column
-    )
+    sort_column = next(c for c in table.columns if c.id == table.default_sort.column)
     rows = _default_sort(rows, sort_column, table.default_sort.direction)
 
     total = len(rows)
@@ -158,10 +149,7 @@ async def build_table(
         rows=[
             RegistryRow(
                 key=row.key,
-                cells={
-                    column.id: row.cells[column.source]
-                    for column in table.columns
-                },
+                cells={column.id: row.cells[column.source] for column in table.columns},
             )
             for row in rows
         ],

@@ -76,9 +76,7 @@ def _secret_ok(value: object, expected: str | None) -> bool:
     """Constant-time secret comparison on bytes (Spec 5.1)."""
     if not isinstance(value, str) or expected is None:
         return False
-    return hmac.compare_digest(
-        value.encode("utf-8"), expected.encode("utf-8")
-    )
+    return hmac.compare_digest(value.encode("utf-8"), expected.encode("utf-8"))
 
 
 async def _event_seen(session: AsyncSession, event_id: str) -> bool:

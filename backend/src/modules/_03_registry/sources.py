@@ -40,9 +40,7 @@ from modules._03_registry.registry import RegistryRow, register_table_source
 PLAYERS_PROVIDES = frozenset(
     {"number", "player", "joined", "level", "judge_rating", "nation"}
 )
-NATIONS_PROVIDES = frozenset(
-    {"number", "name", "flag", "formed", "provinces"}
-)
+NATIONS_PROVIDES = frozenset({"number", "name", "flag", "formed", "provinces"})
 
 
 async def load_players(session: AsyncSession) -> list[RegistryRow]:
@@ -72,9 +70,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     profiles: dict[str, RegistryVkProfile] = {}
     if player_ids:
         result = await session.execute(
-            select(RegistryVkProfile).where(
-                RegistryVkProfile.player_id.in_(player_ids)
-            )
+            select(RegistryVkProfile).where(RegistryVkProfile.player_id.in_(player_ids))
         )
         profiles = {p.player_id: p for p in result.scalars().all()}
 
@@ -102,9 +98,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
                 avatar_url = profile.photo_url
         is_fallback = name == ""
         if is_fallback:
-            name = registry_config.profiles.fallback_name_template.format(
-                number=number
-            )
+            name = registry_config.profiles.fallback_name_template.format(number=number)
         joined_text, joined_key = real_date_parts(
             row.created_at, core_config.tick.tick_timezone
         )

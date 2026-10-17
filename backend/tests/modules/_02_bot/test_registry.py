@@ -29,9 +29,7 @@ from modules._02_bot.registry import (
 
 
 def _load_raw() -> dict:
-    with open(
-        BotConfig.get_default_config_path(), encoding="utf-8"
-    ) as f:
+    with open(BotConfig.get_default_config_path(), encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

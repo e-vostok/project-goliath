@@ -48,9 +48,7 @@ async def janitor_step(
                 )
             )
             await session.execute(
-                delete(BotVkEvent).where(
-                    BotVkEvent.received_at <= cutoff
-                )
+                delete(BotVkEvent).where(BotVkEvent.received_at <= cutoff)
             )
             await session.execute(
                 update(BotOutbox)

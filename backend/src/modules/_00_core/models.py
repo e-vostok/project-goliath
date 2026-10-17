@@ -12,7 +12,21 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CHAR, CheckConstraint, DateTime, Enum as SQLEnum, ForeignKey, Index, Integer, JSON, SmallInteger, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    CHAR,
+    CheckConstraint,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    SmallInteger,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
@@ -30,12 +44,14 @@ if TYPE_CHECKING:
 
 class ScheduledActionStatus(str, enum.Enum):
     """Status of a scheduled action."""
+
     PENDING = "PENDING"
     APPLIED = "APPLIED"
 
 
 class TickLogStatus(str, enum.Enum):
     """Status of a tick execution."""
+
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
@@ -43,12 +59,18 @@ class TickLogStatus(str, enum.Enum):
 
 class Player(Base):
     """Represents a player in the game."""
-    
+
     __tablename__ = "players"
-    
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    vk_user_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), nullable=False)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    vk_user_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), nullable=False
+    )
     # Scale bounds are pinned by ck_players_level_min /
     # ck_players_judge_rating_range (Spec 03_registry 0/D1, 1.2); the
     # constants live in player_stats.py and no config can widen them.
@@ -66,9 +88,7 @@ class Player(Base):
     nations: Mapped[list[Nation]] = relationship(back_populates="owner")
 
     __table_args__ = (
-        CheckConstraint(
-            f"level >= {LEVEL_MIN}", name="ck_players_level_min"
-        ),
+        CheckConstraint(f"level >= {LEVEL_MIN}", name="ck_players_level_min"),
         CheckConstraint(
             f"judge_rating BETWEEN {JUDGE_RATING_MIN} AND {JUDGE_RATING_MAX}",
             name="ck_players_judge_rating_range",
@@ -78,11 +98,15 @@ class Player(Base):
 
 class Nation(Base):
     """Represents a nation (state) in the game."""
-    
+
     __tablename__ = "nations"
-    
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    owner_player_id: Mapped[str] = mapped_column(String(36), ForeignKey("players.id"), nullable=False, unique=True, index=True)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    owner_player_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("players.id"), nullable=False, unique=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     color_hex: Mapped[str] = mapped_column(CHAR(7), nullable=False, unique=True)
     # Descriptive profile fields (Bible §8). NULL only for nations created
@@ -98,23 +122,13 @@ class Nation(Base):
         String(100), nullable=True, unique=True
     )
     gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    succession_type: Mapped[str | None] = mapped_column(
-        String(20), nullable=True
-    )
+    succession_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    description: Mapped[str | None] = mapped_column(
-        String(200), nullable=True
-    )
-    leader_bio: Mapped[str | None] = mapped_column(
-        String(2000), nullable=True
-    )
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    leader_bio: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     flag_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    portrait_id: Mapped[str | None] = mapped_column(
-        String(50), nullable=True
-    )
-    anthem_url: Mapped[str | None] = mapped_column(
-        String(2000), nullable=True
-    )
+    portrait_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    anthem_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     # use_alter + a named FK: nations <-> provinces reference each other
     # (provinces.nation_id already exists), so the capital FK is emitted
     # by a separate ALTER instead of inside CREATE TABLE.
@@ -128,10 +142,10 @@ class Nation(Base):
         ),
         nullable=True,
     )
-    capital_name: Mapped[str | None] = mapped_column(
-        String(100), nullable=True
+    capital_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # The turn the nation was formed on (INV-R9: immutable after
     # creation). No default: NationService.create stamps the transaction's
     # current_turn; pre-0008 rows were backfilled by the migration.
@@ -144,12 +158,12 @@ class Nation(Base):
     provinces: Mapped[list[Province]] = relationship(
         back_populates="nation", foreign_keys="Province.nation_id"
     )
-    scheduled_actions: Mapped[list[ScheduledAction]] = relationship(back_populates="nation")
+    scheduled_actions: Mapped[list[ScheduledAction]] = relationship(
+        back_populates="nation"
+    )
 
     __table_args__ = (
-        CheckConstraint(
-            "created_turn >= 0", name="ck_nations_created_turn_min"
-        ),
+        CheckConstraint("created_turn >= 0", name="ck_nations_created_turn_min"),
     )
 
 
@@ -159,7 +173,9 @@ class Province(Base):
     __tablename__ = "provinces"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    nation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("nations.id"), nullable=True, index=True)
+    nation_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("nations.id"), nullable=True, index=True
+    )
     # LAND — a province a nation can own; SEA — a sea zone, never owned
     # (INV-M4, enforced by ck_provinces_sea_unowned).
     kind: Mapped[str] = mapped_column(
@@ -182,11 +198,18 @@ class Province(Base):
 
 class ScheduledAction(Base):
     """Represents a scheduled game action."""
-    
+
     __tablename__ = "scheduled_actions"
-    
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    nation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("nations.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    nation_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("nations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     module_slug: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     action_type: Mapped[str] = mapped_column(String(50), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -197,12 +220,16 @@ class ScheduledAction(Base):
         default=ScheduledActionStatus.PENDING,
         index=True,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Relationships
     nation: Mapped[Nation | None] = relationship(back_populates="scheduled_actions")
-    
+
     # Composite index for querying pending actions by turn
     __table_args__ = (
         Index("ix_scheduled_actions_turn_status", "turn_number", "status"),
@@ -211,28 +238,34 @@ class ScheduledAction(Base):
 
 class GameClock(Base):
     """Singleton table tracking the game's current turn and tick schedule."""
-    
+
     __tablename__ = "game_clock"
-    
+
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     current_turn: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    last_tick_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    next_tick_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    
-    __table_args__ = (
-        CheckConstraint("id = 1", name="check_game_clock_singleton"),
+    last_tick_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
+    next_tick_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    __table_args__ = (CheckConstraint("id = 1", name="check_game_clock_singleton"),)
 
 
 class TickLog(Base):
     """Audit log for tick executions."""
-    
+
     __tablename__ = "tick_log"
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     turn_number: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     status: Mapped[TickLogStatus] = mapped_column(
         SQLEnum(TickLogStatus, native_enum=False),
         nullable=False,

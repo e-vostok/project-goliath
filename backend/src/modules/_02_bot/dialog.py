@@ -52,9 +52,7 @@ async def handle_event(
     """
     if event.event_type in ("message_allow", "message_deny"):
         # vk_user_id is guaranteed int by the parser for these types.
-        player = await PlayerService.get_or_create(
-            session, event.vk_user_id
-        )
+        player = await PlayerService.get_or_create(session, event.vk_user_id)
         await consent_mod.apply_consent_signal(
             session,
             player.id,
@@ -64,9 +62,7 @@ async def handle_event(
         )
         return
     if event.event_type == "message_new" and event.message is not None:
-        await _handle_message_new(
-            session, config, event.message, event_id, now
-        )
+        await _handle_message_new(session, config, event.message, event_id, now)
 
 
 async def _handle_message_new(
@@ -90,48 +86,68 @@ async def _handle_message_new(
     player = await PlayerService.get_or_create(session, message.from_id)
     await consent_mod.get_or_create_consent(session, player.id, now=now)
 
-    is_first_contact = await _is_first_contact(
-        session, message.from_id, event_id
-    )
+    is_first_contact = await _is_first_contact(session, message.from_id, event_id)
     command = _command(message, config)
 
     # Step 4 — the reply table of Spec 3.9.
     if command == "start" or is_first_contact:
-        nation = await NationService.player_nation_summary(
-            session, player.id
-        )
+        nation = await NationService.player_nation_summary(session, player.id)
         if nation is None:
             await _reply(
-                session, player.id, "start_guest", {}, "AUTO",
-                event_id, now,
+                session,
+                player.id,
+                "start_guest",
+                {},
+                "AUTO",
+                event_id,
+                now,
             )
         else:
             await _reply(
-                session, player.id, "start_member",
-                {"nation_name": nation.name}, "AUTO", event_id, now,
+                session,
+                player.id,
+                "start_member",
+                {"nation_name": nation.name},
+                "AUTO",
+                event_id,
+                now,
             )
         return
 
     if command == "status":
-        nation = await NationService.player_nation_summary(
-            session, player.id
-        )
+        nation = await NationService.player_nation_summary(session, player.id)
         if nation is None:
             await _reply(
-                session, player.id, "start_guest", {}, "AUTO",
-                event_id, now,
+                session,
+                player.id,
+                "start_guest",
+                {},
+                "AUTO",
+                event_id,
+                now,
             )
         else:
             variables = await _status_variables(session, nation)
             await _reply(
-                session, player.id, "status", variables, "AUTO",
-                event_id, now,
+                session,
+                player.id,
+                "status",
+                variables,
+                "AUTO",
+                event_id,
+                now,
             )
         return
 
     if command == "help":
         await _reply(
-            session, player.id, "help", {}, "HELP", event_id, now,
+            session,
+            player.id,
+            "help",
+            {},
+            "HELP",
+            event_id,
+            now,
         )
         return
 
@@ -152,7 +168,13 @@ async def _handle_message_new(
     )
     if result.rowcount == 1:
         await _reply(
-            session, player.id, "plate", {}, "AUTO", event_id, now,
+            session,
+            player.id,
+            "plate",
+            {},
+            "AUTO",
+            event_id,
+            now,
         )
 
 
@@ -206,9 +228,7 @@ def _command(message: MessageNew, config: BotConfig) -> DialogCommand | None:
     return None
 
 
-async def _status_variables(
-    session: AsyncSession, nation
-) -> dict[str, str | int]:
+async def _status_variables(session: AsyncSession, nation) -> dict[str, str | int]:
     """
     The seven ``status`` template variables, computed at handling time —
     the same values the digest watcher builds for ``TICK_DIGEST`` plus
@@ -219,9 +239,7 @@ async def _status_variables(
     snapshot = await GameClockService.snapshot(session)
     turn = snapshot.current_turn if snapshot is not None else 0
     next_tick_time = (
-        format_game_time(
-            snapshot.next_tick_at, core_config.tick.tick_timezone
-        )
+        format_game_time(snapshot.next_tick_at, core_config.tick.tick_timezone)
         if snapshot is not None
         else None
     ) or "—"

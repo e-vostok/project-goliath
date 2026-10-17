@@ -103,9 +103,7 @@ async def province_ids_with_journal(
     return {row[0] for row in result.all()}
 
 
-async def owners_at_turn(
-    session: AsyncSession, turn: int
-) -> dict[int, OwnerAtTurn]:
+async def owners_at_turn(session: AsyncSession, turn: int) -> dict[int, OwnerAtTurn]:
     """
     Snapshot of ownership at ``turn`` (formula 3.5).
 

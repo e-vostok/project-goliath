@@ -42,11 +42,7 @@ def make_client(fake: FakeVk, profiles) -> VkProfilesClient:
 
 
 async def _profiles_by_player(session) -> dict[str, RegistryVkProfile]:
-    rows = (
-        (await session.execute(select(RegistryVkProfile)))
-        .scalars()
-        .all()
-    )
+    rows = (await session.execute(select(RegistryVkProfile))).scalars().all()
     return {row.player_id: row for row in rows}
 
 
@@ -64,9 +60,7 @@ class TestSuccessfulBatch:
         profiles = registry_started.profiles
         async with session_factory() as session:
             await seed_player(session, 601001, created_at=NOW)
-            await seed_player(
-                session, 601002, created_at=NOW.replace(hour=13)
-            )
+            await seed_player(session, 601002, created_at=NOW.replace(hour=13))
             await session.commit()
 
         fake = FakeVk()
@@ -92,9 +86,7 @@ class TestSuccessfulBatch:
             rows = await _profiles_by_player(session)
             statuses = sorted(row.status for row in rows.values())
             assert statuses == ["OK", "OK"]
-            ivan = next(
-                row for row in rows.values() if row.first_name == "Иван"
-            )
+            ivan = next(row for row in rows.values() if row.first_name == "Иван")
             assert ivan.photo_url == "https://sun9-west.userapi.com/a.png"
             assert aware_utc(ivan.next_attempt_at) == NOW + timedelta(
                 hours=profiles.ttl_hours
@@ -120,9 +112,7 @@ class TestUnavailable:
         profiles = registry_started.profiles
         async with session_factory() as session:
             p1 = await seed_player(session, 601101, created_at=NOW)
-            p2 = await seed_player(
-                session, 601102, created_at=NOW.replace(hour=13)
-            )
+            p2 = await seed_player(session, 601102, created_at=NOW.replace(hour=13))
             await make_vk_profile(
                 session,
                 p1,
@@ -186,9 +176,7 @@ class TestBisect:
         )
         async with session_factory() as session:
             players = [
-                await seed_player(
-                    session, 601201 + i, created_at=NOW.replace(hour=i)
-                )
+                await seed_player(session, 601201 + i, created_at=NOW.replace(hour=i))
                 for i in range(3)
             ]
             # Stagger due times into the past so all three are due at
@@ -204,12 +192,8 @@ class TestBisect:
 
         fake = FakeVk()
         fake.respond_call_error(30)
-        fake.respond_users_get(
-            [{"id": 601201, "first_name": "А", "last_name": "Б"}]
-        )
-        fake.respond_users_get(
-            [{"id": 601203, "first_name": "В", "last_name": "Г"}]
-        )
+        fake.respond_users_get([{"id": 601201, "first_name": "А", "last_name": "Б"}])
+        fake.respond_users_get([{"id": 601203, "first_name": "В", "last_name": "Г"}])
         await run_cycle(session_factory, make_client(fake, profiles), profiles, NOW)
 
         forms = [fake.form_of(r) for r in fake.users_get_requests()]
@@ -265,15 +249,9 @@ class TestFailures:
         with caplog.at_level(
             logging.WARNING, logger="modules._03_registry.profile_worker"
         ):
-            await run_cycle(
-                session_factory, client, profiles, NOW + 2 * retry
-            )
-            await run_cycle(
-                session_factory, client, profiles, NOW + 3 * retry
-            )
-        criticals = [
-            r for r in caplog.records if r.levelno >= logging.CRITICAL
-        ]
+            await run_cycle(session_factory, client, profiles, NOW + 2 * retry)
+            await run_cycle(session_factory, client, profiles, NOW + 3 * retry)
+        criticals = [r for r in caplog.records if r.levelno >= logging.CRITICAL]
         assert len(criticals) == 1
         async with session_factory() as session:
             row = (await _profiles_by_player(session))[player.id]
@@ -291,9 +269,7 @@ class TestTtl:
         profiles = registry_started.profiles
         async with session_factory() as session:
             p1 = await seed_player(session, 601401, created_at=NOW)
-            p2 = await seed_player(
-                session, 601402, created_at=NOW.replace(hour=13)
-            )
+            p2 = await seed_player(session, 601402, created_at=NOW.replace(hour=13))
             await make_vk_profile(
                 session,
                 p1,
@@ -337,11 +313,7 @@ class TestModes:
 
         # enabled = false -> OFF, no worker at all.
         off = config.model_copy(
-            update={
-                "profiles": config.profiles.model_copy(
-                    update={"enabled": False}
-                )
-            }
+            update={"profiles": config.profiles.model_copy(update={"enabled": False})}
         )
         monkeypatch.setattr(startup_module, "_registry_config", off)
         assert await start_profile_worker_if_ready(session_factory) is None
@@ -351,19 +323,14 @@ class TestModes:
         monkeypatch.setattr(startup_module, "_registry_config", config)
         monkeypatch.delenv("VK_GROUP_TOKEN", raising=False)
         with caplog.at_level(logging.WARNING):
-            assert (
-                await start_profile_worker_if_ready(session_factory) is None
-            )
+            assert await start_profile_worker_if_ready(session_factory) is None
             # A repeated call must not warn twice (one per process).
-            assert (
-                await start_profile_worker_if_ready(session_factory) is None
-            )
+            assert await start_profile_worker_if_ready(session_factory) is None
         assert get_worker_mode() is WorkerMode.NO_TOKEN
         warnings = [
             r
             for r in caplog.records
-            if r.levelno == logging.WARNING
-            and "VK_GROUP_TOKEN" in r.getMessage()
+            if r.levelno == logging.WARNING and "VK_GROUP_TOKEN" in r.getMessage()
         ]
         assert len(warnings) == 1
 
@@ -395,8 +362,7 @@ class TestWake:
                 session,
                 player,
                 status="UNAVAILABLE",
-                next_attempt_at=datetime.now(timezone.utc)
-                + timedelta(hours=1),
+                next_attempt_at=datetime.now(timezone.utc) + timedelta(hours=1),
             )
             await session.commit()
             event.clear()

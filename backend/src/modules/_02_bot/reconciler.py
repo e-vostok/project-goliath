@@ -77,16 +77,12 @@ async def reconcile_step(
         if vk_user_id is None:
             continue
         await limiter.acquire()
-        answers[player_id] = (
-            await vk_client.is_messages_from_group_allowed(
-                int(env.group_id), vk_user_id
-            )
+        answers[player_id] = await vk_client.is_messages_from_group_allowed(
+            int(env.group_id), vk_user_id
         )
 
     async with session_factory() as session:
         async with session.begin():
             for player_id, allowed in answers.items():
-                await consent_mod.record_vk_check(
-                    session, player_id, allowed, now=t
-                )
+                await consent_mod.record_vk_check(session, player_id, allowed, now=t)
     return len(answers)

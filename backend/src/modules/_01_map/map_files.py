@@ -90,9 +90,7 @@ class ManifestNodeLabel(_Strict):
     y: FiniteFloat
     w: FiniteFloat = Field(gt=0.0)
     h: FiniteFloat = Field(gt=0.0)
-    spine: tuple[
-        FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat
-    ]
+    spine: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
     len: FiniteFloat = Field(gt=0.0)
     thick: FiniteFloat = Field(gt=0.0)
 
@@ -173,9 +171,7 @@ class Geometry(_Strict):
         out = dict(paths)
         for key, value in out.items():
             if not re.fullmatch(_PATH_KEY_RE, key):
-                raise ValueError(
-                    f"geometry path key {key!r} is not a node id"
-                )
+                raise ValueError(f"geometry path key {key!r} is not a node id")
             _svg_path(value)
         return MappingProxyType(out)
 
@@ -209,9 +205,7 @@ class Borders(_Strict):
         out = dict(pairs)
         for key, value in out.items():
             if not re.fullmatch(_PAIR_KEY_RE, key):
-                raise ValueError(
-                    f"borders pair key {key!r} is not an ordered id pair"
-                )
+                raise ValueError(f"borders pair key {key!r} is not an ordered id pair")
             if not value:
                 raise ValueError(f"borders pair {key!r} is empty")
             _svg_path(value)
@@ -219,15 +213,11 @@ class Borders(_Strict):
 
     @field_validator("coasts")
     @classmethod
-    def _coasts_strict(
-        cls, coasts: Mapping[str, str]
-    ) -> Mapping[str, str]:
+    def _coasts_strict(cls, coasts: Mapping[str, str]) -> Mapping[str, str]:
         out = dict(coasts)
         for key, value in out.items():
             if not re.fullmatch(_PATH_KEY_RE, key):
-                raise ValueError(
-                    f"coasts key {key!r} is not a node id"
-                )
+                raise ValueError(f"coasts key {key!r} is not a node id")
             if value:
                 _svg_path(value)
         return MappingProxyType(out)
@@ -252,9 +242,7 @@ class IdsLock(_Strict):
 
     @field_validator("ids")
     @classmethod
-    def _ids_strict(
-        cls, ids: Mapping[str, int]
-    ) -> Mapping[str, int]:
+    def _ids_strict(cls, ids: Mapping[str, int]) -> Mapping[str, int]:
         out = dict(ids)
         for key, value in out.items():
             if not re.fullmatch(_KEY_RE, key):
@@ -271,13 +259,9 @@ class IdsLock(_Strict):
         out = dict(previous_keys)
         for key, chain in out.items():
             if not re.fullmatch(_KEY_RE, key):
-                raise ValueError(
-                    f"previous_keys key {key!r} is not a key slug"
-                )
+                raise ValueError(f"previous_keys key {key!r} is not a key slug")
             if not chain:
-                raise ValueError(
-                    f"previous_keys chain for {key!r} is empty"
-                )
+                raise ValueError(f"previous_keys chain for {key!r} is empty")
             for old in chain:
                 if not re.fullmatch(_KEY_RE, old):
                     raise ValueError(

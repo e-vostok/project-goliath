@@ -41,9 +41,7 @@ async def test_new_player_defaults_and_scale_bounds(test_db_session):
     for bad_field in ({"level": 0}, {"judge_rating": 101}):
         with pytest.raises(IntegrityError):
             async with test_db_session.begin_nested():
-                test_db_session.add(
-                    Player(vk_user_id=next(_vk_seq), **bad_field)
-                )
+                test_db_session.add(Player(vk_user_id=next(_vk_seq), **bad_field))
                 await test_db_session.flush()
 
 

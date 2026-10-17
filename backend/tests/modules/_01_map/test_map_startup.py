@@ -90,9 +90,7 @@ async def _province_kinds(session) -> dict[int, str]:
 
 class TestHappyPath:
     @pytest.mark.asyncio
-    async def test_startup_syncs_mini_map_and_registers(
-        self, booted_db, map_env
-    ):
+    async def test_startup_syncs_mini_map_and_registers(self, booted_db, map_env):
         service = await startup_map()
 
         assert map_service_module._instance is service
@@ -101,23 +99,28 @@ class TestHappyPath:
         async with get_session_context() as session:
             kinds = await _province_kinds(session)
         assert set(kinds) == {
-            1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 2001, 2002
+            1001,
+            1002,
+            1003,
+            1004,
+            1005,
+            1006,
+            1007,
+            1008,
+            2001,
+            2002,
         }
         assert kinds[2001] == "SEA" and kinds[1001] == "LAND"
 
         assert list(get_ownership_listeners()) == ["01_map.ownership_log"]
-        assert list(get_registration_checks(STAGE_AFTER_FREE)) == [
-            "01_map.land_only"
-        ]
+        assert list(get_registration_checks(STAGE_AFTER_FREE)) == ["01_map.land_only"]
         assert list(get_registration_checks(STAGE_AFTER_COUNT)) == [
             "01_map.connected_group"
         ]
         assert "01_map" in AdminRegistry.get_reset_hooks()
 
     @pytest.mark.asyncio
-    async def test_startup_twice_does_not_double_register(
-        self, booted_db, map_env
-    ):
+    async def test_startup_twice_does_not_double_register(self, booted_db, map_env):
         first = await startup_map()
         second = await startup_map()
 
@@ -147,9 +150,7 @@ class TestHappyPath:
 
         async with LifespanManager(app) as manager:
             assert get_ownership_listeners() != {}
-            assert len(
-                map_service_module.get_map_service().all_nodes()
-            ) == 10
+            assert len(map_service_module.get_map_service().all_nodes()) == 10
             transport = ASGITransport(app=manager.app)
             async with AsyncClient(
                 transport=transport, base_url="http://test"
@@ -162,9 +163,7 @@ class TestInvM5:
     """DB/manifest divergence is fatal and leaves hooks unregistered."""
 
     @pytest.mark.asyncio
-    async def test_extra_row_in_db_is_fatal(
-        self, booted_db, map_env
-    ):
+    async def test_extra_row_in_db_is_fatal(self, booted_db, map_env):
         async with get_session_context() as session:
             session.add(Province(id=9999, kind="LAND", nation_id=None))
             await session.commit()
@@ -219,13 +218,9 @@ class TestRetiredNodes:
         yield
 
     @pytest.mark.asyncio
-    async def test_unowned_retired_row_is_removed(
-        self, booted_db, retired_map_env
-    ):
+    async def test_unowned_retired_row_is_removed(self, booted_db, retired_map_env):
         async with get_session_context() as session:
-            session.add(
-                Province(id=self.RETIRED_ID, kind="LAND", nation_id=None)
-            )
+            session.add(Province(id=self.RETIRED_ID, kind="LAND", nation_id=None))
             await session.commit()
 
         service = await startup_map()
@@ -238,9 +233,7 @@ class TestRetiredNodes:
         assert list(get_ownership_listeners()) == ["01_map.ownership_log"]
 
     @pytest.mark.asyncio
-    async def test_retired_id_without_row_is_noop(
-        self, booted_db, retired_map_env
-    ):
+    async def test_retired_id_without_row_is_noop(self, booted_db, retired_map_env):
         service = await startup_map()
 
         assert service.map_data.retired_ids == (self.RETIRED_ID,)
@@ -249,9 +242,7 @@ class TestRetiredNodes:
         assert len(kinds) == 10
 
     @pytest.mark.asyncio
-    async def test_owned_retired_row_is_fatal(
-        self, booted_db, retired_map_env
-    ):
+    async def test_owned_retired_row_is_fatal(self, booted_db, retired_map_env):
         from modules._00_core.models import Nation, Player
         from tests.fixtures.profile import VALID_PROFILE
 
@@ -305,9 +296,7 @@ class TestRetiredNodes:
         """An unowned retired row with journal history cannot be deleted
         (FK + append-only journal) — startup must refuse, not orphan."""
         async with get_session_context() as session:
-            session.add(
-                Province(id=self.RETIRED_ID, kind="LAND", nation_id=None)
-            )
+            session.add(Province(id=self.RETIRED_ID, kind="LAND", nation_id=None))
             session.add(
                 MapOwnershipLog(
                     province_id=self.RETIRED_ID,
@@ -345,9 +334,7 @@ class TestRetiredNodes:
         """A row whose id is in neither manifest nor lock keeps failing
         INV-M5 even when a retired row was correctly removed."""
         async with get_session_context() as session:
-            session.add(
-                Province(id=self.RETIRED_ID, kind="LAND", nation_id=None)
-            )
+            session.add(Province(id=self.RETIRED_ID, kind="LAND", nation_id=None))
             session.add(Province(id=8888, kind="LAND", nation_id=None))
             await session.commit()
 
@@ -364,8 +351,7 @@ class TestRetiredNodes:
 class TestMapDataFailure:
     @pytest.mark.asyncio
     async def test_corrupted_map_file_stops_startup(
-        self, tmp_path, monkeypatch, booted_db, extension_snapshot,
-        mini_map_config
+        self, tmp_path, monkeypatch, booted_db, extension_snapshot, mini_map_config
     ):
         """Touching an input file breaks inputs_sha256 -> INV_M10."""
         data_dir = copy_map_mini(tmp_path)
@@ -391,9 +377,7 @@ class TestRealMap:
         """The production map loads and syncs into an empty test DB
         (map2_11 detach: 1067 active nodes, 58 retired lock ids)."""
         db_file = tmp_path / "real_map.db"
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
         command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
         init_engine(f"sqlite+aiosqlite:///{db_file.as_posix()}")
         monkeypatch.delenv("MAP_DATA_DIR", raising=False)
@@ -426,9 +410,7 @@ class TestRealMap:
         max id) gains exactly that one row, and no retired row is
         removed."""
         db_file = tmp_path / "real_map_pre_split.db"
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
         command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
         init_engine(f"sqlite+aiosqlite:///{db_file.as_posix()}")
         monkeypatch.delenv("MAP_DATA_DIR", raising=False)
@@ -440,11 +422,7 @@ class TestRealMap:
         async with get_session_context() as session:
             await session.execute(
                 sa.insert(Province),
-                [
-                    {"id": i, "kind": kinds[i]}
-                    for i in sorted(kinds)
-                    if i != new_id
-                ],
+                [{"id": i, "kind": kinds[i]} for i in sorted(kinds) if i != new_id],
             )
             await session.commit()
 
