@@ -20,7 +20,7 @@ from modules._02_bot.models import BotConsent
 from modules._02_bot.runtime import install_runtime
 from modules._02_bot.startup import get_bot_config, startup_bot
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import make_starting_group
 from tests.modules._02_bot._issue3_support import (
     add_consent,
     make_session_factory,
@@ -39,7 +39,7 @@ def _nation_body(name: str = "Государство Тестовое") -> dict:
     return {
         "name": name,
         "color_hex": "#A1B2C3",
-        "province_ids": [1001, 1002],
+        "province_ids": [1001, 1002, 1003, 1004, 1005],
         **VALID_PROFILE,
     }
 
@@ -92,8 +92,7 @@ class TestConsentGate:
         fake, _runtime = fake_vk_runtime
         player = await seed_player(test_db_session, vk_user_id=880001)
         await add_consent(test_db_session, player.id, state="ALLOWED")
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         resp = await client.post(
@@ -116,8 +115,7 @@ class TestConsentGate:
         fake, _runtime = fake_vk_runtime
         fake.respond_allowed(False)
         player = await seed_player(test_db_session, vk_user_id=880002)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         resp = await client.post(
@@ -157,8 +155,7 @@ class TestConsentGate:
         fake, _runtime = fake_vk_runtime
         fake.respond_allowed(True)
         player = await seed_player(test_db_session, vk_user_id=880003)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         resp = await client.post(
@@ -206,8 +203,7 @@ class TestFailOpen:
             install_runtime(None)
 
         player = await seed_player(test_db_session, vk_user_id=880004)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         with caplog.at_level(logging.WARNING):
@@ -227,8 +223,7 @@ class TestDisabledPaths:
         self, client, bot_started_off, test_db_session
     ):
         player = await seed_player(test_db_session, vk_user_id=880005)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         resp = await client.post(
@@ -262,8 +257,7 @@ class TestDisabledPaths:
         monkeypatch.setattr(startup_mod, "get_bot_config", lambda: patched)
 
         player = await seed_player(test_db_session, vk_user_id=880006)
-        await make_land_province(test_db_session, id=1001)
-        await make_land_province(test_db_session, id=1002)
+        await make_starting_group(test_db_session)
         await test_db_session.commit()
 
         resp = await client.post(

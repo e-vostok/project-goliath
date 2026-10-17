@@ -20,7 +20,10 @@ from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Player
 from modules._00_core.service import NationService, PlayerService
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import (
+    STARTING_GROUP,
+    make_starting_group,
+)
 
 _vk_seq = itertools.count(42420001)
 
@@ -61,14 +64,14 @@ async def test_created_turn_stamped_on_create_and_immutable(
     player = await PlayerService.get_or_create(
         test_db_session, vk_user_id=next(_vk_seq)
     )
-    await make_land_province(test_db_session, id=1001)
+    await make_starting_group(test_db_session)
 
     nation = await NationService.create(
         test_db_session,
         owner_player_id=player.id,
         name="Turn Nation",
         color_hex="#0A0B0C",
-        province_ids=[1001],
+        province_ids=list(STARTING_GROUP),
         config=config,
         **VALID_PROFILE,
     )

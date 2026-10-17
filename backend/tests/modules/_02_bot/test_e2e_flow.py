@@ -123,14 +123,18 @@ async def file_db_engine(tmp_path):
 def _nation_body(
     name: str = "Государство Тестовое",
     color: str = "#A1B2C3",
-    province_ids: tuple[int, ...] = (1001, 1002),
+    province_ids: tuple[int, ...] = (1001, 1002, 1003, 1004, 1005),
+    short_name: str | None = None,
 ) -> dict:
-    return {
+    body = {
         "name": name,
         "color_hex": color,
         "province_ids": list(province_ids),
         **VALID_PROFILE,
     }
+    if short_name is not None:
+        body["short_name"] = short_name
+    return body
 
 
 async def _seed_clock(
@@ -153,8 +157,9 @@ async def _seed_clock(
 async def _seed_starting_group(
     session, *ids: int
 ) -> None:
-    """Seed LAND provinces; default pair matches ``_nation_body``."""
-    for pid in ids or (1001, 1002):
+    """Seed LAND provinces; the default set matches ``_nation_body``
+    plus the two five-province groups later bodies claim."""
+    for pid in ids or tuple(range(1001, 1016)):
         await make_land_province(session, id=pid)
 
 
@@ -353,7 +358,7 @@ async def test_e1_allow_register_digest_sent(
                 compute_game_date(1, CORE_CONFIG), CORE_CONFIG
             ),
             "nation_name": "Государство Тестовое",
-            "province_count": 2,
+            "province_count": 5,
             "next_tick_time": format_game_time(
                 clock_next_tick, TZ_NAME
             ),
@@ -458,7 +463,7 @@ async def test_e3_denied_blocks_failopen_and_off(
     fake.respond_allowed(False)
     denied = await seed_player(test_db_session, vk_user_id=660103)
     await _seed_starting_group(
-        test_db_session, 1001, 1002, 1003, 1004, 1005, 1006
+        test_db_session, *range(1001, 1016)
     )
     await test_db_session.commit()
 
@@ -512,8 +517,9 @@ async def test_e3_denied_blocks_failopen_and_off(
             headers=bearer_headers(lucky.id),
             json=_nation_body(
                 name="Государство Второе",
-                color="#112233",
-                province_ids=(1003, 1004),
+                color="#AA1100",
+                province_ids=(1006, 1007, 1008, 1009, 1010),
+                short_name="Vtoroye",
             ),
         )
     assert resp.status_code == 201
@@ -536,8 +542,9 @@ async def test_e3_denied_blocks_failopen_and_off(
         headers=bearer_headers(third.id),
         json=_nation_body(
             name="Государство Третье",
-            color="#445566",
-            province_ids=(1005, 1006),
+            color="#3311CC",
+            province_ids=(1011, 1012, 1013, 1014, 1015),
+            short_name="Tretye",
         ),
     )
     assert resp.status_code == 201
@@ -809,7 +816,7 @@ async def test_e6_dialog_round_trip(
             "nation_name": "Государство Тестовое",
             "leader_title": VALID_PROFILE["leader_title"],
             "leader_name": VALID_PROFILE["leader_name"],
-            "province_count": 2,
+            "province_count": 5,
             "turn": 7,
             "game_date": format_game_date(
                 compute_game_date(7, CORE_CONFIG), CORE_CONFIG
@@ -1147,7 +1154,7 @@ class TestPgMirror:
             snapshot_extension_points,
         )
         from tests.fixtures.postgres import _SKIP_REASON
-        from tests.fixtures.provinces import MAP_MINI_DIR
+        from tests.fixtures.provinces import MAP_MINI_LINKED_DIR
         from tests.modules._00_core.test_router import (
             TEST_JWT_SECRET,
             TEST_VK_SECRET,
@@ -1159,7 +1166,7 @@ class TestPgMirror:
         monkeypatch.setenv("DATABASE_URL", pg_url)
         monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
         monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
-        monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
+        monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_LINKED_DIR))
         for name, value in {
             "BOT_ENABLED": "1",
             "VK_GROUP_ID": "12345",

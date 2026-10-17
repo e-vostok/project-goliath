@@ -68,12 +68,16 @@ async def _seed_clock(session, current_turn: int = 0) -> GameClock:
     return clock
 
 
-def _nation_body(name: str, color: str, province_ids: list[int]) -> dict:
+def _nation_body(
+    name: str, color: str, province_ids: list[int]
+) -> dict:
     return {
         "name": name,
         "color_hex": color,
         "province_ids": province_ids,
         **VALID_PROFILE,
+        # INV-11: each nation carries its own short name.
+        "short_name": name[:16],
     }
 
 
@@ -100,16 +104,20 @@ class TestScenarioA:
             )
             for i in range(3)
         ]
-        for province_id in (1001, 1002, 1003):
+        for province_id in range(1001, 1011):
             await make_land_province(test_db_session, id=province_id)
         await _seed_clock(test_db_session)
         await test_db_session.commit()
 
-        # Turn 0: player 1 founds a two-province nation.
+        # Turn 0: player 1 founds a five-province nation.
         resp = await client.post(
             NATIONS_URL,
             headers=bearer_headers(players[0].id),
-            json=_nation_body("Северная Марка", "#AA1111", [1001, 1002]),
+            json=_nation_body(
+                "Северная Марка",
+                "#AA1111",
+                [1001, 1002, 1003, 1004, 1005],
+            ),
         )
         assert resp.status_code == 201
         nation1_id = resp.json()["id"]
@@ -118,11 +126,15 @@ class TestScenarioA:
         outcome = await TickOrchestrator.run_tick(test_db_session)
         assert outcome is TickOutcome.EXECUTED
 
-        # Turn 1: player 2 founds a one-province nation.
+        # Turn 1: player 2 founds a five-province nation.
         resp = await client.post(
             NATIONS_URL,
             headers=bearer_headers(players[1].id),
-            json=_nation_body("Ладожский Союз", "#22BB33", [1003]),
+            json=_nation_body(
+                "Ладожский Союз",
+                "#22BB33",
+                [1006, 1007, 1008, 1009, 1010],
+            ),
         )
         assert resp.status_code == 201
         nation2_id = resp.json()["id"]
@@ -149,7 +161,7 @@ class TestScenarioA:
             "text": game_date_text(compute_game_date(0, CORE_CONFIG)),
             "key": 0,
         }
-        assert n1["cells"]["provinces"] == 2
+        assert n1["cells"]["provinces"] == 5
         assert n2["key"] == nation2_id
         assert n2["cells"]["number"] == 2
         assert n2["cells"]["name"] == "Ладожский Союз"
@@ -157,7 +169,7 @@ class TestScenarioA:
             "text": game_date_text(compute_game_date(1, CORE_CONFIG)),
             "key": 1,
         }
-        assert n2["cells"]["provinces"] == 1
+        assert n2["cells"]["provinces"] == 5
         _assert_no_identifiers(resp.text, players)
 
         # Players: the founders carry their nation, player 3 has none.
@@ -212,7 +224,7 @@ class TestScenarioA:
         assert n2["cells"]["number"] == 1
         assert n2["cells"]["name"] == "Ладожский Союз"
         assert n2["cells"]["formed"]["key"] == 1
-        assert n2["cells"]["provinces"] == 1
+        assert n2["cells"]["provinces"] == 5
         _assert_no_identifiers(resp.text, players)
 
         resp = await client.get(

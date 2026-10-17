@@ -29,7 +29,11 @@ from modules._00_core.hooks import (
 from modules._00_core.models import Nation, Player, Province
 from modules._00_core.service import NationService
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import (
+    STARTING_GROUP,
+    make_land_province,
+    make_starting_group,
+)
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -46,7 +50,7 @@ async def _make_nation(session, player, ids, name="Realm"):
         session,
         owner_player_id=player.id,
         name=name,
-        color_hex="#102030",
+        color_hex="#6A3446",
         province_ids=ids,
         config=CORE_CONFIG,
         **VALID_PROFILE,
@@ -63,11 +67,12 @@ class TestCoreAlone:
         assert get_ownership_listeners() == {}
         player = Player(vk_user_id=777)
         test_db_session.add(player)
-        for pid in (1001, 1002):
-            await make_land_province(test_db_session, id=pid)
+        await make_starting_group(test_db_session)
         await test_db_session.flush()
 
-        nation = await _make_nation(test_db_session, player, [1001, 1002])
+        nation = await _make_nation(
+            test_db_session, player, list(STARTING_GROUP)
+        )
         assert nation.id is not None
 
         await NationService.delete(test_db_session, nation.id)
@@ -221,15 +226,17 @@ class TestWiredIntoNationService:
         register_ownership_listener("watcher", watcher)
         player = Player(vk_user_id=779)
         test_db_session.add(player)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
         await test_db_session.flush()
 
-        nation = await _make_nation(test_db_session, player, [1001])
-        assert len(seen) == 1
+        nation = await _make_nation(
+            test_db_session, player, list(STARTING_GROUP)
+        )
+        assert len(seen) == 5
         assert seen[0].new_nation_id == nation.id
         assert seen[0].prev_nation_id is None
 
         await NationService.delete(test_db_session, nation.id)
-        assert len(seen) == 2
-        assert seen[1].prev_nation_id == nation.id
-        assert seen[1].new_nation_id is None
+        assert len(seen) == 10
+        assert seen[5].prev_nation_id == nation.id
+        assert seen[5].new_nation_id is None

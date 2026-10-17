@@ -40,7 +40,10 @@ from modules._01_map.errors import (
 )
 from modules._01_map.hooks import register_map_hooks
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import MAP_MINI_DIR
+from tests.fixtures.provinces import (
+    MAP_MINI_DIR,
+    STARTING_GROUP,
+)
 from tests.modules._01_map.conftest import map_config_disconnected
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
@@ -59,7 +62,17 @@ async def _player(session, vk_user_id: int) -> Player:
     return player
 
 
-async def _create(session, player, province_ids, name="Realm", color="#101010"):
+async def _create(
+    session,
+    player,
+    province_ids,
+    name="Realm",
+    color="#6A3446",
+    short_name=None,
+):
+    profile = dict(VALID_PROFILE)
+    if short_name is not None:
+        profile["short_name"] = short_name
     return await NationService.create(
         session,
         owner_player_id=player.id,
@@ -67,7 +80,7 @@ async def _create(session, player, province_ids, name="Realm", color="#101010"):
         color_hex=color,
         province_ids=province_ids,
         config=CORE_CONFIG,
-        **VALID_PROFILE,
+        **profile,
     )
 
 
@@ -99,31 +112,44 @@ class TestRegistrationChecks:
     async def test_disconnected_group_rejected(
         self, map_db_session, map_hooks
     ):
-        """1001 and 1005 join only via sea/coast — not connected."""
+        """Five land nodes across two components — {1001..1004} + the
+        coast-only 1008 — pass the count check but fail connectivity."""
         player = await _player(map_db_session, 102)
 
         with pytest.raises(StartingGroupNotConnectedError) as exc_info:
-            await _create(map_db_session, player, [1001, 1005])
+            await _create(
+                map_db_session,
+                player,
+                [1001, 1002, 1003, 1004, 1008],
+            )
 
         assert exc_info.value.code == "STARTING_GROUP_NOT_CONNECTED"
         assert exc_info.value.details == {"component_count": 2}
 
     @pytest.mark.asyncio
-    async def test_strait_pair_accepted(self, map_db_session, map_hooks):
-        """1005-1006 connect through a strait edge — accepted."""
-        player = await _player(map_db_session, 103)
+    async def test_strait_group_accepted(
+        self, linked_map_db_session, linked_map_hooks
+    ):
+        """1001..1005 join through the 1004-1005 strait — accepted."""
+        player = await _player(linked_map_db_session, 103)
 
-        nation = await _create(map_db_session, player, [1005, 1006])
+        nation = await _create(
+            linked_map_db_session, player, list(STARTING_GROUP)
+        )
 
         assert nation.id is not None
 
     @pytest.mark.asyncio
-    async def test_single_province_accepted(
-        self, map_db_session, map_hooks
+    async def test_second_linked_group_accepted(
+        self, linked_map_db_session, linked_map_hooks
     ):
-        player = await _player(map_db_session, 104)
+        player = await _player(linked_map_db_session, 104)
 
-        nation = await _create(map_db_session, player, [1008])
+        nation = await _create(
+            linked_map_db_session,
+            player,
+            [1009, 1010, 1011, 1012, 1013],
+        )
 
         assert nation.id is not None
 
@@ -135,7 +161,9 @@ class TestRegistrationChecks:
         register_map_hooks(flat_map_service, config)
         player = await _player(map_db_session, 105)
 
-        nation = await _create(map_db_session, player, [1001, 1005])
+        nation = await _create(
+            map_db_session, player, [1001, 1002, 1003, 1004, 1008]
+        )
 
         assert nation.id is not None
 
@@ -161,20 +189,22 @@ class TestRegistrationChecks:
 
     @pytest.mark.asyncio
     async def test_occupied_id_beats_map_checks(
-        self, map_db_session, map_hooks
+        self, linked_map_db_session, linked_map_hooks
     ):
-        player_a = await _player(map_db_session, 108)
-        await _create(map_db_session, player_a, [1001, 1002])
-        player_b = await _player(map_db_session, 109)
+        session = linked_map_db_session
+        player_a = await _player(session, 108)
+        await _create(session, player_a, list(STARTING_GROUP))
+        player_b = await _player(session, 109)
 
         # 1001 is taken AND 2001 is sea — freedom check comes first.
         with pytest.raises(ProvinceTakenError):
             await _create(
-                map_db_session,
+                session,
                 player_b,
                 [1001, 2001],
                 name="Second",
-                color="#202020",
+                color="#AA1100",
+                short_name="Second",
             )
 
     @pytest.mark.asyncio
@@ -247,7 +277,7 @@ class TestApiStatus:
             headers=headers,
             json={
                 "name": "Coastal Dream",
-                "color_hex": "#0F1E2D",
+                "color_hex": "#AA1100",
                 "province_ids": [1001, 2001],
                 **VALID_PROFILE,
             },
@@ -267,8 +297,8 @@ class TestApiStatus:
             headers=headers,
             json={
                 "name": "Split Realm",
-                "color_hex": "#3C2B1A",
-                "province_ids": [1001, 1005],
+                "color_hex": "#3311CC",
+                "province_ids": [1001, 1002, 1003, 1004, 1008],
                 **VALID_PROFILE,
             },
         )

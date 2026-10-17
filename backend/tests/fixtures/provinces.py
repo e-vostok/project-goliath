@@ -23,11 +23,32 @@ from modules._00_core.models import Province
 # row and the synced row for the same id always agree on kind.
 MAP_MINI_DIR = Path(__file__).resolve().parent / "map_mini"
 
+# A variant of the mini map with an extra strait edge 1004-1005: the
+# land nodes 1001..1007 form one connected group, so a valid
+# Registration-2.0 starting set of exactly 5 exists (the canonical
+# mini map stays split into components of 4/3/1 on purpose — the
+# connectivity tests rely on that topology).
+MAP_MINI_LINKED_DIR = Path(__file__).resolve().parent / "map_mini_linked"
+
+# The canonical valid starting set: 5 LAND ids, connected on the
+# linked mini-map (1001..1004 land chain + the 1004-1005 strait).
+STARTING_GROUP: tuple[int, ...] = (1001, 1002, 1003, 1004, 1005)
+
 
 def map_mini_node_ids() -> tuple[int, ...]:
     """All node ids of the mini-map fixture, ascending."""
     manifest = json.loads(
         (MAP_MINI_DIR / "manifest.json").read_text(encoding="utf-8")
+    )
+    return tuple(sorted(node["id"] for node in manifest["nodes"]))
+
+
+def map_mini_linked_node_ids() -> tuple[int, ...]:
+    """All node ids of the linked mini-map fixture, ascending."""
+    manifest = json.loads(
+        (MAP_MINI_LINKED_DIR / "manifest.json").read_text(
+            encoding="utf-8"
+        )
     )
     return tuple(sorted(node["id"] for node in manifest["nodes"]))
 
@@ -69,6 +90,19 @@ async def make_sea_province(
 ) -> Province:
     """Insert one SEA zone (id defaults to the next from 2001)."""
     return await _make_province(session, "SEA", id)
+
+
+async def make_starting_group(
+    session: AsyncSession,
+) -> list[int]:
+    """
+    Seed the canonical 5-province starting set (STARTING_GROUP) and
+    return its ids — exactly ``max_provinces_per_nation`` land rows for
+    Registration-2.0 tests.
+    """
+    for pid in STARTING_GROUP:
+        await make_land_province(session, id=pid)
+    return list(STARTING_GROUP)
 
 
 @dataclass(frozen=True)

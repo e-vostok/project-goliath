@@ -33,6 +33,7 @@ from tests.fixtures.postgres import (
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import STARTING_GROUP
 from tests.modules._01_map.conftest import sync_map_nodes
 
 pytestmark = pytest.mark.postgres
@@ -141,10 +142,10 @@ class TestOwnersAtTurnPg:
 class TestListenerOnPg:
     @pytest.mark.asyncio
     async def test_create_and_delete_journal_on_pg(
-        self, pg_db, flat_map_service, map_hooks
+        self, pg_db, linked_map_service, linked_map_hooks
     ):
         async with pg_db() as session:
-            await sync_map_nodes(session, flat_map_service)
+            await sync_map_nodes(session, linked_map_service)
             player = Player(vk_user_id=991001)
             session.add(player)
             await session.flush()
@@ -154,7 +155,7 @@ class TestListenerOnPg:
                 owner_player_id=player.id,
                 name="PG Realm",
                 color_hex="#0A0B0C",
-                province_ids=[1001, 1002, 1003],
+                province_ids=list(STARTING_GROUP),
                 config=CORE_CONFIG,
                 **VALID_PROFILE,
             )
@@ -172,7 +173,7 @@ class TestListenerOnPg:
                 .scalars()
                 .all()
             )
-            assert [r.province_id for r in rows] == [1001, 1002, 1003]
+            assert [r.province_id for r in rows] == list(STARTING_GROUP)
             assert all(
                 r.prev_nation_id is None
                 and r.new_nation_id == nation.id
@@ -198,8 +199,8 @@ class TestListenerOnPg:
                 .scalars()
                 .all()
             )
-            assert len(rows) == 6
-            releases = rows[3:]
+            assert len(rows) == 10
+            releases = rows[5:]
             assert all(
                 r.prev_nation_id == nation.id
                 and r.new_nation_id is None
@@ -288,10 +289,10 @@ class TestRemoveRetiredPg:
 
     @pytest.mark.asyncio
     async def test_owned_retired_row_is_fatal(
-        self, pg_db, flat_map_service, map_hooks
+        self, pg_db, linked_map_service, linked_map_hooks
     ):
         async with pg_db() as session:
-            await sync_map_nodes(session, flat_map_service)
+            await sync_map_nodes(session, linked_map_service)
             player = Player(vk_user_id=992001)
             session.add(player)
             await session.flush()
@@ -300,8 +301,8 @@ class TestRemoveRetiredPg:
                 session,
                 owner_player_id=player.id,
                 name="Retired PG",
-                color_hex="#0D0E0F",
-                province_ids=[1004],
+                color_hex="#6A3446",
+                province_ids=list(STARTING_GROUP),
                 config=CORE_CONFIG,
                 **VALID_PROFILE,
             )
