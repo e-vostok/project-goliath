@@ -23,9 +23,10 @@ from modules._04_orders.models import Order
 from modules._04_orders.service import OrderDetailView, OrderService
 from tests.fixtures.factories import make_order
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.modules._04_orders.test_submission_pg import _seed_author
 
@@ -60,7 +61,9 @@ async def _verdict_and_commit(
 
 class TestConcurrentVerdict:
     async def test_two_concurrent_verdicts_land_exactly_once(
-        self, pg_db, orders_started
+        self,
+        pg_db,
+        orders_started,
     ):
         """INV-O1 under the advisory lock: two simultaneous verdicts
         by the assigned judge — exactly one is written, the loser gets

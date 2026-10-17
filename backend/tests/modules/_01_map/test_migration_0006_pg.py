@@ -21,7 +21,12 @@ from alembic.config import Config
 from sqlalchemy.exc import IntegrityError
 
 from alembic import command
-from tests.fixtures.postgres import _reset_public_schema, _sync_url
+from tests.fixtures.postgres import (
+    # noqa: F401,
+    _reset_public_schema,
+    _sync_url,
+    pg_url,  # noqa: F401
+)
 
 pytestmark = pytest.mark.postgres
 

@@ -27,8 +27,9 @@ from modules._01_map.config_schema import MapConfig
 from modules._01_map.loader import load_map_data
 from modules._01_map.startup import startup_map
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset
     pg_schema,  # noqa: F401 — resolved through the fixture chain
+    pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 
 pytestmark = pytest.mark.postgres
@@ -52,7 +53,7 @@ class _Capture(logging.Handler):
 @pytest.mark.asyncio
 async def test_map2_11_old_manifest_db_gains_one_row(
     pg_url,
-    pg_clean,  # noqa: F811
+    pg_clean,
     monkeypatch,
     extension_snapshot,
 ):

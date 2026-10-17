@@ -30,9 +30,10 @@ from tests.fixtures.factories import (
     make_order,
 )
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 
 pytestmark = pytest.mark.postgres
@@ -60,7 +61,9 @@ async def _seed_player(session, vk_user_id: int):
 
 class TestConcurrentRetryPass:
     async def test_two_passes_assign_once_and_remind_once(
-        self, pg_db, orders_bot_started
+        self,
+        pg_db,
+        orders_bot_started,
     ):
         async with pg_db() as session:
             judge = await _seed_player(session, 779901)

@@ -29,8 +29,10 @@ from alembic import command
 from tests.fixtures.postgres import (
     _reset_public_schema,
     _sync_url,
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_live_client,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import STARTING_GROUP
