@@ -9,6 +9,7 @@
 
 import type {
   AdminMeDTO,
+  AdminPlayerDeleteResultDTO,
   AdminResetResultDTO,
   AdminStateDTO,
   AdminTickLogEntryDTO,
@@ -308,5 +309,42 @@ export const api = {
       token,
       signal,
     });
+  },
+
+  /**
+   * GET /admin/players/{vk_user_id}/delete-preview — the counts of what
+   * an irreversible player deletion would remove (test-player cleanup).
+   */
+  adminPlayerDeletePreview(
+    token: string,
+    vkUserId: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminPlayerDeleteResultDTO>(
+      `/admin/players/${encodeURIComponent(vkUserId)}/delete-preview`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/players/{vk_user_id}/delete — irreversible. The body
+   * carries the retyped id; the backend answers 422 CONFIRMATION_MISMATCH
+   * when it differs from the path id.
+   */
+  adminPlayerDelete(
+    token: string,
+    vkUserId: string,
+    confirmVkUserId: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminPlayerDeleteResultDTO>(
+      `/admin/players/${encodeURIComponent(vkUserId)}/delete`,
+      {
+        method: 'POST',
+        body: { confirm_vk_user_id: confirmVkUserId },
+        token,
+        signal,
+      },
+    );
   },
 };

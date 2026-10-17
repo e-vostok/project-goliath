@@ -122,6 +122,23 @@ export interface AdminResetResultDTO {
   reset: string[];
 }
 
+/**
+ * GET /admin/players/{vk_user_id}/delete-preview and the matching POST
+ * /delete result — the fixed-shape "what disappears with this player"
+ * counts assembled from every module's preview hook.
+ */
+export interface AdminPlayerDeleteResultDTO {
+  vk_user_id: number;
+  nation_name: string | null;
+  provinces_released: number;
+  orders_author: number;
+  orders_judge_undecided: number;
+  orders_judge_decided: number;
+  outbox_rows: number;
+  consent_rows: number;
+  vk_profile_rows: number;
+}
+
 /** Error codes emitted by 00_core (Spec Part 5 + router-internal codes). */
 export const ErrorCodes = {
   NAME_TAKEN: 'NAME_TAKEN',
