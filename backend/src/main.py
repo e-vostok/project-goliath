@@ -190,7 +190,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.6.22",
+    version="0.6.23",
     lifespan=lifespan,
 )
 
@@ -247,6 +247,10 @@ _ERROR_CODE_STATUS = {
     "ORDER_VERDICT_FORBIDDEN": 403,
     "ORDER_VERDICT_EXISTS": 409,
     "ORDER_NUMBER_CONFLICT": 500,
+    "PLAYER_NOT_FOUND": 404,
+    "CONFIRMATION_MISMATCH": 422,
+    "CANNOT_DELETE_SELF": 409,
+    "CANNOT_DELETE_ADMIN": 409,
 }
 
 
