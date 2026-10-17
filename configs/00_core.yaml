@@ -24,19 +24,102 @@ auth:
   jwt_ttl_minutes: 60
 
 nation:
-  nation_name_min_length: 3
+  # Полное название государства (решение Project Owner 17.10.2026: от 2 до 40).
+  nation_name_min_length: 2
   nation_name_max_length: 40
-  min_provinces_per_nation: 1
+  # Краткое название (обязательное, уникальное): от 2 до 16.
+  short_name_min_length: 2
+  short_name_max_length: 16
+  # Стартовые провинции: ровно 5 (решение Project Owner 17.10.2026).
+  # Ключи остаются двумя, чтобы позже число могло зависеть от бонусов.
+  min_provinces_per_nation: 5
   max_provinces_per_nation: 5
   leader_name_min_length: 2
   leader_name_max_length: 60
   leader_title_min_length: 2
   leader_title_max_length: 60
+  # Необязательные тексты: пустое значение допустимо, длина считается только сверху.
+  motto_max_length: 60
+  description_max_length: 100
+  leader_bio_max_length: 500
+  # Название столицы (обязательное; клиент подставляет название провинции из карты).
+  capital_name_min_length: 2
+  capital_name_max_length: 40
   history_url_max_length: 200
   # Допустимые хосты ссылки на историю государства (нижний регистр, без схемы и пути).
+  # m.vk.com добавлен по итогам NAT-0 (N7): мобильная копия адреса статьи.
   history_url_allowed_hosts:
     - "vk.com"
     - "vk.ru"
+    - "m.vk.com"
+  # Необязательная ссылка на гимн (трек или плейлист ВК). Проверяются только
+  # https, хост и длина: формат ссылок на музыку ВК не подтверждён (NAT-0, N4).
+  anthem_url_max_length: 200
+  anthem_url_allowed_hosts:
+    - "vk.com"
+    - "vk.ru"
+    - "m.vk.com"
+
+color:
+  # Минимальное расстояние в пространстве OKLab (чёрный-белый = 1.0) между цветом
+  # нового государства и цветами других государств. Формула — Spec 00_core, Часть 3.
+  # Подбирается на глаз; меньше значение — разрешены более близкие цвета.
+  min_distance_nations: 0.08
+  # То же, но до цветов, занятых картой (вода, свободная суша и т. д.).
+  min_distance_reserved: 0.08
+  # Цвета карты (значения синхронизированы с configs/01_map.yaml, раздел colors;
+  # тест сверки лежит в test_configs_validity.py). Названия попадают в текст ошибки.
+  reserved:
+    - { name: "свободная провинция", hex: "#8C8C8C" }
+    - { name: "море", hex: "#141E26" }
+    - { name: "земли за краем игрового поля", hex: "#2A2A2A" }
+    - { name: "подсветка при наведении", hex: "#FFFFFF" }
+  # Готовая палитра для выбора (36 цветов). Схема проверяет, что цвета палитры
+  # различимы между собой и с цветами карты с запасом не меньше порогов выше.
+  palette:
+    - "#6A3446"
+    - "#BE1253"
+    - "#FD9CBA"
+    - "#971D08"
+    - "#EA5202"
+    - "#D29285"
+    - "#FEBB71"
+    - "#876114"
+    - "#AA8722"
+    - "#CCB034"
+    - "#385107"
+    - "#7FCA23"
+    - "#DBE237"
+    - "#058D1D"
+    - "#478364"
+    - "#83B478"
+    - "#53DAA5"
+    - "#54FC93"
+    - "#9EE9D5"
+    - "#0A6A75"
+    - "#299DAC"
+    - "#63CBFE"
+    - "#2B2DB0"
+    - "#354573"
+    - "#615AB5"
+    - "#0C7CF4"
+    - "#6A0092"
+    - "#8A70FC"
+    - "#9E8BCF"
+    - "#E9C9FE"
+    - "#8F0D6A"
+    - "#A540BB"
+    - "#CC67E3"
+    - "#FA90F8"
+    - "#97617D"
+    - "#F2569C"
+
+catalog:
+  # Идентификаторы готовых флагов и портретов (латиница, цифры, «_»). Файл каждого
+  # идентификатора лежит в frontend/public/assets/nations/flags/<id>.png и
+  # portraits/<id>.png. Списки заполняет единица 4 версии 0.8.0; пока пусты.
+  flag_ids: []
+  portrait_ids: []
 
 calendar:
   # Игровая дата = epoch_start_date + (номер хода × months_per_turn) календарных месяцев.
