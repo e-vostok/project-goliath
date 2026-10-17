@@ -13,9 +13,7 @@ import logging
 import main
 
 
-def test_root_logger_emits_modules_info_and_bad_level_falls_back(
-    monkeypatch, caplog
-):
+def test_root_logger_emits_modules_info_and_bad_level_falls_back(monkeypatch, caplog):
     """
     An invalid LOG_LEVEL falls back to INFO; after configuration a
     ``modules.*`` INFO record propagates to the root handler (the lines
@@ -28,9 +26,7 @@ def test_root_logger_emits_modules_info_and_bad_level_falls_back(
 
     root = logging.getLogger()
     assert root.level == logging.INFO
-    our_handlers = [
-        h for h in root.handlers if h.name == main._LOG_HANDLER_NAME
-    ]
+    our_handlers = [h for h in root.handlers if h.name == main._LOG_HANDLER_NAME]
     assert len(our_handlers) == 1
     assert our_handlers[0].formatter._fmt == main._LOG_FORMAT
 

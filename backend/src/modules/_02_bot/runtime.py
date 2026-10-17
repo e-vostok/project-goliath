@@ -27,7 +27,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,9 +99,7 @@ class BotRuntime:
             self._env.group_id or "0",
             transport=self._transport,
         )
-        self._limiter = TokenBucket(
-            self._config.sender.max_requests_per_second
-        )
+        self._limiter = TokenBucket(self._config.sender.max_requests_per_second)
         self._breaker = CircuitBreaker(self._config.breaker)
         self._sender = Sender(
             self._config,
@@ -133,7 +131,7 @@ class BotRuntime:
                 self._limiter.acquire(),
                 self._config.vk.http_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
         result = await self._vk.is_messages_from_group_allowed(
             int(self._env.group_id), vk_user_id
@@ -156,9 +154,7 @@ class BotRuntime:
         self._tasks = {
             "sender": self._spawn(
                 "sender",
-                lambda: self._periodic(
-                    "sender", 0, self._sender_step
-                ),
+                lambda: self._periodic("sender", 0, self._sender_step),
             ),
             "digest_watcher": self._spawn(
                 "digest_watcher",
@@ -223,9 +219,7 @@ class BotRuntime:
     def _spawn(self, name: str, body) -> asyncio.Task:
         return asyncio.create_task(body(), name=f"bot-{name}")
 
-    async def _periodic(
-        self, name: str, interval_seconds: float, step
-    ) -> None:
+    async def _periodic(self, name: str, interval_seconds: float, step) -> None:
         """
         The supervision loop (Spec 2.5): step -> stamp the pass ->
         sleep; on Exception log, pace 5 s -> 60 s and continue;
@@ -246,7 +240,7 @@ class BotRuntime:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
                 continue
-            self._last_pass[name] = datetime.now(timezone.utc)
+            self._last_pass[name] = datetime.now(UTC)
             backoff = 5.0
             await asyncio.sleep(interval_seconds)
 
@@ -257,7 +251,7 @@ class BotRuntime:
                 self._wake.wait(),
                 timeout=self._config.sender.poll_interval_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         self._wake.clear()
         async with self._session_factory() as session:
@@ -265,7 +259,7 @@ class BotRuntime:
                 session,
                 self._config,
                 self._env,
-                datetime.now(timezone.utc),
+                datetime.now(UTC),
             )
             await session.commit()
         await self._sender.process_groups(groups)

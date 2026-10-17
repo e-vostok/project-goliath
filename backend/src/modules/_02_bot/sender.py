@@ -25,7 +25,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +43,8 @@ from modules._02_bot.errors import (
 from modules._02_bot.keyboard import (
     build_help_inline_keyboard,
     build_persistent_keyboard,
+)
+from modules._02_bot.keyboard import (
     dumps as keyboard_dumps,
 )
 from modules._02_bot.limiter import TokenBucket
@@ -72,11 +74,7 @@ _BLOCKED_CODES = frozenset({900, 901, 902})
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 @dataclass
@@ -110,7 +108,7 @@ class Sender:
         self._limiter = limiter
         self._breaker = breaker
         self._monotonic = monotonic
-        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._now = now or (lambda: datetime.now(UTC))
         self._rng = rng
         self._semaphore = asyncio.Semaphore(config.sender.concurrency)
         self.state = SenderState()
@@ -135,10 +133,11 @@ class Sender:
         results = await asyncio.gather(
             *(_one(group) for group in groups), return_exceptions=True
         )
-        for group, result in zip(groups, results):
+        for group, result in zip(groups, results, strict=True):
             if isinstance(result, BaseException):
                 logger.exception(
-                    "send of group %s crashed", group.group_id,
+                    "send of group %s crashed",
+                    group.group_id,
                     exc_info=result,
                 )
 
@@ -162,19 +161,13 @@ class Sender:
         try:
             text, keyboard_json = await self._render(group)
         except (TemplateError, MessageTooLong) as exc:
-            reason = (
-                "TEMPLATE_ERROR"
-                if isinstance(exc, TemplateError)
-                else "TOO_LONG"
-            )
+            reason = "TEMPLATE_ERROR" if isinstance(exc, TemplateError) else "TOO_LONG"
             await self._write_rows(group, lambda r: self._drop(r, reason))
             return
         except ValueError:
             # keyboard.dumps guard — a config-level bug, not a retry.
             logger.exception("keyboard build failed for a group")
-            await self._write_rows(
-                group, lambda r: self._drop(r, "BAD_REQUEST")
-            )
+            await self._write_rows(group, lambda r: self._drop(r, "BAD_REQUEST"))
             return
 
         outcome = await self._vk.send_message(
@@ -185,9 +178,7 @@ class Sender:
         )
         await self._record_outcome(group, outcome, now)
 
-    async def _recheck_rows(
-        self, group: ClaimedGroup, now: datetime
-    ) -> int | None:
+    async def _recheck_rows(self, group: ClaimedGroup, now: datetime) -> int | None:
         """
         INV-B8: re-read the group's rows under our lease_token; expired
         rows go EXPIRED and the survivors return to PENDING for
@@ -199,11 +190,7 @@ class Sender:
                 db_rows = await self._leased_rows(session, group)
                 if not db_rows:
                     return None
-                expired = [
-                    row
-                    for row in db_rows
-                    if _aware(row.expires_at) <= now
-                ]
+                expired = [row for row in db_rows if _aware(row.expires_at) <= now]
                 if expired:
                     for row in expired:
                         row.status = "EXPIRED"
@@ -216,9 +203,7 @@ class Sender:
                             row.random_id = None
                             row.render_mode = None
                     return None
-            ids = await PlayerService.vk_user_ids(
-                session, [group.player_id]
-            )
+            ids = await PlayerService.vk_user_ids(session, [group.player_id])
         peer_id = ids.get(group.player_id)
         if peer_id is None:
             logger.error(
@@ -249,9 +234,7 @@ class Sender:
             )
         return rows
 
-    async def _render(
-        self, group: ClaimedGroup
-    ) -> tuple[str, str | None]:
+    async def _render(self, group: ClaimedGroup) -> tuple[str, str | None]:
         """Text + keyboard JSON per Spec 3.6/5.5."""
         rows_by_id = {row.id: row for row in group.rows}
         first = group.rows[0]
@@ -260,9 +243,7 @@ class Sender:
             text = render_reply(first, self._config, {})
             help_keyboard = first.payload.get("keyboard") == "HELP"
         else:
-            text = render_message(
-                group.composed_message(), rows_by_id, self._config
-            )
+            text = render_message(group.composed_message(), rows_by_id, self._config)
         if help_keyboard:
             keyboard = build_help_inline_keyboard(self._config)
         else:
@@ -321,9 +302,7 @@ class Sender:
     ) -> None:
         """Map the SendOutcome to row writes + sender-level effects."""
         error_class = (
-            classify_vk_error(outcome.code)
-            if outcome.kind != SendKind.OK
-            else None
+            classify_vk_error(outcome.code) if outcome.kind != SendKind.OK else None
         )
         # The probe reads "VK answered" as success: OK and every
         # uncounted recipient outcome prove reachability.
@@ -360,13 +339,10 @@ class Sender:
             if error_class == ErrorClass.RATE_GLOBAL:
                 self.state.paused_until = max(
                     self.state.paused_until,
-                    self._monotonic()
-                    + self._config.sender.backoff_base_seconds,
+                    self._monotonic() + self._config.sender.backoff_base_seconds,
                 )
             if error_class == ErrorClass.SPAM_RESTRICTED:
-                logger.critical(
-                    "VK spam restriction (984) hit the community sender"
-                )
+                logger.critical("VK spam restriction (984) hit the community sender")
 
             def _back_to_pending(row: BotOutbox) -> None:
                 self._retry(row, code, now)
@@ -394,8 +370,7 @@ class Sender:
         if error_class == ErrorClass.AUTH:
             self.state.halted_auth = True
             logger.critical(
-                "VK access key rejected (code %s) — sender halted until "
-                "restart",
+                "VK access key rejected (code %s) — sender halted until restart",
                 code,
             )
 
@@ -409,12 +384,6 @@ class Sender:
             return
 
         # BAD_REQUEST / TOO_LONG / unreachable default — drop.
-        reason = (
-            "BAD_REQUEST"
-            if error_class == ErrorClass.BAD_REQUEST
-            else "TOO_LONG"
-        )
-        logger.error(
-            "messages.send dropped a group: code %s", code
-        )
+        reason = "BAD_REQUEST" if error_class == ErrorClass.BAD_REQUEST else "TOO_LONG"
+        logger.error("messages.send dropped a group: code %s", code)
         await self._write_rows(group, lambda r: self._drop(r, reason))

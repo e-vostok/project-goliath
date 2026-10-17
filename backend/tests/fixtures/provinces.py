@@ -37,18 +37,14 @@ STARTING_GROUP: tuple[int, ...] = (1001, 1002, 1003, 1004, 1005)
 
 def map_mini_node_ids() -> tuple[int, ...]:
     """All node ids of the mini-map fixture, ascending."""
-    manifest = json.loads(
-        (MAP_MINI_DIR / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((MAP_MINI_DIR / "manifest.json").read_text(encoding="utf-8"))
     return tuple(sorted(node["id"] for node in manifest["nodes"]))
 
 
 def map_mini_linked_node_ids() -> tuple[int, ...]:
     """All node ids of the linked mini-map fixture, ascending."""
     manifest = json.loads(
-        (MAP_MINI_LINKED_DIR / "manifest.json").read_text(
-            encoding="utf-8"
-        )
+        (MAP_MINI_LINKED_DIR / "manifest.json").read_text(encoding="utf-8")
     )
     return tuple(sorted(node["id"] for node in manifest["nodes"]))
 
@@ -57,17 +53,15 @@ _land_ids = itertools.count(1001)
 _sea_ids = itertools.count(2001)
 
 
-async def _make_province(
-    session: AsyncSession, kind: str, id: int | None
-) -> Province:
+async def _make_province(session: AsyncSession, kind: str, id: int | None) -> Province:
     """
     Return the province with `id`, inserting it when absent. The startup
     sync may already have created the row from the mini-map fixture —
     reuse it instead of raising a duplicate-PK error; the factory kind
     and the synced kind agree by construction.
     """
-    province_id = id if id is not None else next(
-        _land_ids if kind == "LAND" else _sea_ids
+    province_id = (
+        id if id is not None else next(_land_ids if kind == "LAND" else _sea_ids)
     )
     existing = await session.get(Province, province_id)
     if existing is not None:
@@ -78,16 +72,12 @@ async def _make_province(
     return province
 
 
-async def make_land_province(
-    session: AsyncSession, id: int | None = None
-) -> Province:
+async def make_land_province(session: AsyncSession, id: int | None = None) -> Province:
     """Insert one LAND province (id defaults to the next from 1001)."""
     return await _make_province(session, "LAND", id)
 
 
-async def make_sea_province(
-    session: AsyncSession, id: int | None = None
-) -> Province:
+async def make_sea_province(session: AsyncSession, id: int | None = None) -> Province:
     """Insert one SEA zone (id defaults to the next from 2001)."""
     return await _make_province(session, "SEA", id)
 

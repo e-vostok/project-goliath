@@ -21,15 +21,15 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy.engine.url import make_url
 
-from core.db import Base
 import modules._00_core.models  # noqa: F401 — registers all ORM tables
 import modules._01_map.models  # noqa: F401 — registers all ORM tables
 import modules._02_bot.models  # noqa: F401 — registers all ORM tables
 import modules._03_registry.models  # noqa: F401 — registers all ORM tables
 import modules._04_orders.models  # noqa: F401 — registers all ORM tables
+from core.db import Base
 from tests.fixtures.postgres import (
-    pg_schema,  # noqa: F401 — session fixture: wipe + alembic upgrade
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — session fixture: wipe + alembic upgrade,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 
 pytestmark = pytest.mark.postgres
@@ -54,17 +54,17 @@ def _op_is_known_equivalent(op) -> bool:
     )
 
 
-def test_no_model_migration_drift_on_postgres(pg_schema):
+def test_no_model_migration_drift_on_postgres(pg_schema):  # noqa: F811
     """The migrated PostgreSQL schema must structurally match Base.metadata."""
-    sync_url = make_url(pg_schema).set(
-        drivername="postgresql+psycopg2"
-    ).render_as_string(hide_password=False)
+    sync_url = (
+        make_url(pg_schema)
+        .set(drivername="postgresql+psycopg2")
+        .render_as_string(hide_password=False)
+    )
     engine = sa.create_engine(sync_url)
     try:
         with engine.connect() as conn:
-            diffs = compare_metadata(
-                MigrationContext.configure(conn), Base.metadata
-            )
+            diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     finally:
         engine.dispose()
 

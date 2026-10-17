@@ -82,9 +82,7 @@ def delete_wiring():
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
 
-    register_ownership_listener(
-        "01_map.ownership_log", ownership_log_listener
-    )
+    register_ownership_listener("01_map.ownership_log", ownership_log_listener)
     register_bot_admin_hooks()
     register_registry_admin_hooks()
     register_orders_admin_hooks()
@@ -155,9 +153,7 @@ async def _seed(session: AsyncSession) -> dict:
     await make_vk_profile(session, other)
 
     authored = await make_order(session, target, nation=target_nation)
-    judged_open = await make_order(
-        session, other, nation=other_nation, judge=target
-    )
+    judged_open = await make_order(session, other, nation=other_nation, judge=target)
     judged_decided = await make_order(
         session,
         other,
@@ -201,21 +197,17 @@ class TestPlayerDelete:
 
         async with session_factory() as session:
             # The player and the nation are gone.
-            assert await _count(
-                session, Player, Player.id == ids["target_id"]
-            ) == 0
-            assert await _count(
-                session, Nation, Nation.id == ids["target_nation_id"]
-            ) == 0
+            assert await _count(session, Player, Player.id == ids["target_id"]) == 0
+            assert (
+                await _count(session, Nation, Nation.id == ids["target_nation_id"]) == 0
+            )
 
             # INV-6: the provinces are freed, never deleted.
             for pid in ids["province_ids"]:
                 province = await session.get(Province, pid)
                 assert province is not None
                 assert province.nation_id is None
-            other_province = await session.get(
-                Province, ids["other_province_id"]
-            )
+            other_province = await session.get(Province, ids["other_province_id"])
             assert other_province.nation_id == ids["other_nation_id"]
 
             # The ownership journal got one release entry per province
@@ -225,17 +217,14 @@ class TestPlayerDelete:
                 (
                     await session.execute(
                         select(MapOwnershipLog).where(
-                            MapOwnershipLog.prev_nation_id
-                            == ids["target_nation_id"]
+                            MapOwnershipLog.prev_nation_id == ids["target_nation_id"]
                         )
                     )
                 )
                 .scalars()
                 .all()
             )
-            assert {row.province_id for row in releases} == set(
-                ids["province_ids"]
-            )
+            assert {row.province_id for row in releases} == set(ids["province_ids"])
             for row in releases:
                 assert row.new_nation_id is None
                 assert row.new_nation_name is None
@@ -248,27 +237,37 @@ class TestPlayerDelete:
             assert action.nation_id is None
 
             # Every module's rows of the target are gone.
-            assert await _count(
-                session, BotConsent, BotConsent.player_id == ids["target_id"]
-            ) == 0
-            assert await _count(
-                session, BotOutbox, BotOutbox.player_id == ids["target_id"]
-            ) == 0
-            assert await _count(
-                session,
-                RegistryVkProfile,
-                RegistryVkProfile.player_id == ids["target_id"],
-            ) == 0
+            assert (
+                await _count(
+                    session, BotConsent, BotConsent.player_id == ids["target_id"]
+                )
+                == 0
+            )
+            assert (
+                await _count(
+                    session, BotOutbox, BotOutbox.player_id == ids["target_id"]
+                )
+                == 0
+            )
+            assert (
+                await _count(
+                    session,
+                    RegistryVkProfile,
+                    RegistryVkProfile.player_id == ids["target_id"],
+                )
+                == 0
+            )
 
             # Orders: authored and decided-as-judge rows are deleted;
             # the undecided judged order went back to the queue with
             # every assignment column NULL (the all-or-none CHECK).
-            assert await _count(
-                session, Order, Order.id == ids["authored_order_id"]
-            ) == 0
-            assert await _count(
-                session, Order, Order.id == ids["judged_decided_order_id"]
-            ) == 0
+            assert (
+                await _count(session, Order, Order.id == ids["authored_order_id"]) == 0
+            )
+            assert (
+                await _count(session, Order, Order.id == ids["judged_decided_order_id"])
+                == 0
+            )
             released = await session.get(Order, ids["judged_open_order_id"])
             assert released is not None
             assert released.judge_player_id is None
@@ -278,23 +277,28 @@ class TestPlayerDelete:
             assert released.reminder_sent_at is None
 
             # The bystander's rows are all untouched.
-            assert await _count(
-                session, Player, Player.id == ids["other_id"]
-            ) == 1
-            assert await _count(
-                session, Nation, Nation.id == ids["other_nation_id"]
-            ) == 1
-            assert await _count(
-                session, BotConsent, BotConsent.player_id == ids["other_id"]
-            ) == 1
-            assert await _count(
-                session, BotOutbox, BotOutbox.player_id == ids["other_id"]
-            ) == 1
-            assert await _count(
-                session,
-                RegistryVkProfile,
-                RegistryVkProfile.player_id == ids["other_id"],
-            ) == 1
+            assert await _count(session, Player, Player.id == ids["other_id"]) == 1
+            assert (
+                await _count(session, Nation, Nation.id == ids["other_nation_id"]) == 1
+            )
+            assert (
+                await _count(
+                    session, BotConsent, BotConsent.player_id == ids["other_id"]
+                )
+                == 1
+            )
+            assert (
+                await _count(session, BotOutbox, BotOutbox.player_id == ids["other_id"])
+                == 1
+            )
+            assert (
+                await _count(
+                    session,
+                    RegistryVkProfile,
+                    RegistryVkProfile.player_id == ids["other_id"],
+                )
+                == 1
+            )
             other_order = await session.get(Order, ids["other_order_id"])
             assert other_order is not None
 
@@ -316,43 +320,48 @@ class TestPlayerDelete:
         with pytest.raises(RuntimeError, match="hook exploded"):
             async with session_factory() as session:
                 async with session.begin():
-                    await PlayerService.delete_player(
-                        session, ids["target_id"]
-                    )
+                    await PlayerService.delete_player(session, ids["target_id"])
 
         async with session_factory() as session:
-            assert await _count(
-                session, Player, Player.id == ids["target_id"]
-            ) == 1
-            assert await _count(
-                session, Nation, Nation.id == ids["target_nation_id"]
-            ) == 1
+            assert await _count(session, Player, Player.id == ids["target_id"]) == 1
+            assert (
+                await _count(session, Nation, Nation.id == ids["target_nation_id"]) == 1
+            )
             for pid in ids["province_ids"]:
                 province = await session.get(Province, pid)
                 assert province.nation_id == ids["target_nation_id"]
             # No journal row survived the rollback.
-            assert await _count(
-                session,
-                MapOwnershipLog,
-                MapOwnershipLog.prev_nation_id
-                == ids["target_nation_id"],
-            ) == 0
+            assert (
+                await _count(
+                    session,
+                    MapOwnershipLog,
+                    MapOwnershipLog.prev_nation_id == ids["target_nation_id"],
+                )
+                == 0
+            )
             action = await session.get(ScheduledAction, ids["action_id"])
             assert action.nation_id == ids["target_nation_id"]
-            assert await _count(
-                session, BotConsent, BotConsent.player_id == ids["target_id"]
-            ) == 1
-            assert await _count(
-                session, BotOutbox, BotOutbox.player_id == ids["target_id"]
-            ) == 2
-            assert await _count(
-                session,
-                RegistryVkProfile,
-                RegistryVkProfile.player_id == ids["target_id"],
-            ) == 1
-            judged_open = await session.get(
-                Order, ids["judged_open_order_id"]
+            assert (
+                await _count(
+                    session, BotConsent, BotConsent.player_id == ids["target_id"]
+                )
+                == 1
             )
+            assert (
+                await _count(
+                    session, BotOutbox, BotOutbox.player_id == ids["target_id"]
+                )
+                == 2
+            )
+            assert (
+                await _count(
+                    session,
+                    RegistryVkProfile,
+                    RegistryVkProfile.player_id == ids["target_id"],
+                )
+                == 1
+            )
+            judged_open = await session.get(Order, ids["judged_open_order_id"])
             assert judged_open.judge_player_id == ids["target_id"]
             for order_id in (
                 ids["authored_order_id"],

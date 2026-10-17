@@ -57,7 +57,7 @@ class ConfirmRequiredError(CoreDomainError):
 
     def __init__(self):
         super().__init__(
-            "Confirmation required: send {\"confirm\": true}",
+            'Confirmation required: send {"confirm": true}',
             "CONFIRM_REQUIRED",
         )
 
@@ -141,8 +141,7 @@ class PlayerDeleteFailedError(CoreDomainError):
 
     def __init__(self, cause: Exception):
         super().__init__(
-            "Player deletion failed and rolled back: "
-            f"{type(cause).__name__}: {cause}",
+            f"Player deletion failed and rolled back: {type(cause).__name__}: {cause}",
             "PLAYER_DELETE_FAILED",
         )
 
@@ -227,9 +226,7 @@ async def admin_state(
 async def admin_tick_log(
     admin: Player = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
-    limit: Annotated[
-        int, Query(ge=1, le=TICK_LOG_MAX_LIMIT)
-    ] = TICK_LOG_DEFAULT_LIMIT,
+    limit: Annotated[int, Query(ge=1, le=TICK_LOG_MAX_LIMIT)] = TICK_LOG_DEFAULT_LIMIT,
 ) -> list[dict]:
     """Newest tick_log rows first (by id). limit outside 1..100 -> 422.
 
@@ -242,9 +239,7 @@ async def admin_tick_log(
     result = await session.execute(
         select(TickLog).order_by(TickLog.id.desc()).limit(limit)
     )
-    return [
-        _tick_log_dict(row, tz_name) for row in result.scalars().all()
-    ]
+    return [_tick_log_dict(row, tz_name) for row in result.scalars().all()]
 
 
 @router.post("/tick/run")
@@ -290,9 +285,7 @@ async def admin_tick_run(
         "current_turn": clock.current_turn,
         "next_tick_at": format_game_time(clock.next_tick_at, tz_name),
         "tick_log": (
-            _tick_log_dict(latest_log, tz_name)
-            if latest_log is not None
-            else None
+            _tick_log_dict(latest_log, tz_name) if latest_log is not None else None
         ),
     }
 
@@ -338,18 +331,14 @@ async def admin_state_reset(
             await hooks[slug](session)
     except Exception as exc:
         await session.rollback()
-        logger.exception(
-            "Admin reset failed while running hook '%s'", failed_slug
-        )
+        logger.exception("Admin reset failed while running hook '%s'", failed_slug)
         raise ResetFailedError(failed_slug, exc) from exc
 
     await session.commit()
     return {"reset": plan}
 
 
-async def _load_player_by_vk_id(
-    session: AsyncSession, vk_user_id: int
-) -> Player:
+async def _load_player_by_vk_id(session: AsyncSession, vk_user_id: int) -> Player:
     """The target's player row or 404 PLAYER_NOT_FOUND."""
     result = await session.execute(
         select(Player).where(Player.vk_user_id == vk_user_id)
@@ -360,9 +349,7 @@ async def _load_player_by_vk_id(
     return player
 
 
-async def _player_delete_preview(
-    session: AsyncSession, player: Player
-) -> dict:
+async def _player_delete_preview(session: AsyncSession, player: Player) -> dict:
     """
     The fixed-shape delete-preview response for one player.
 
@@ -434,9 +421,8 @@ async def admin_player_delete(
         raise CannotDeleteSelfError()
     if is_admin_vk_user(player.vk_user_id):
         raise CannotDeleteAdminError()
-    if (
-        body.confirm_vk_user_id is None
-        or str(body.confirm_vk_user_id).strip() != str(vk_user_id)
+    if body.confirm_vk_user_id is None or str(body.confirm_vk_user_id).strip() != str(
+        vk_user_id
     ):
         raise ConfirmationMismatchError()
 
@@ -445,15 +431,12 @@ async def admin_player_delete(
         await PlayerService.delete_player(session, player.id)
     except Exception as exc:
         await session.rollback()
-        logger.exception(
-            "Admin player delete failed for vk_user_id %s", vk_user_id
-        )
+        logger.exception("Admin player delete failed for vk_user_id %s", vk_user_id)
         raise PlayerDeleteFailedError(exc) from exc
 
     await session.commit()
     logger.warning(
-        "admin_player_delete admin_vk_user_id=%s target_vk_user_id=%s "
-        "counts=%s",
+        "admin_player_delete admin_vk_user_id=%s target_vk_user_id=%s counts=%s",
         admin.vk_user_id,
         vk_user_id,
         preview,

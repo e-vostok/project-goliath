@@ -31,9 +31,7 @@ def _text_button(label: str, payload: dict) -> dict:
         "action": {
             "type": "text",
             "label": label,
-            "payload": json.dumps(
-                payload, ensure_ascii=False, separators=(",", ":")
-            ),
+            "payload": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         }
     }
 

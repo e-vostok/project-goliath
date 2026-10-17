@@ -54,9 +54,7 @@ def test_unrecognised_app_env_warns_but_passes(caplog):
     with caplog.at_level(logging.WARNING):
         validate_production_environment({"APP_ENV": "prodction"})
 
-    assert any(
-        "APP_ENV" in record.getMessage() for record in caplog.records
-    )
+    assert any("APP_ENV" in record.getMessage() for record in caplog.records)
 
 
 @pytest.mark.parametrize("app_env", ["production", "prod", "staging"])
@@ -117,9 +115,7 @@ def test_single_character_jwt_rejected():
 def test_placeholder_jwt_rejected(placeholder):
     """Each known dev placeholder is caught even inside a long key."""
     env = _valid_env()
-    env["JWT_SECRET_KEY"] = (
-        "prefix-" + placeholder + "-suffix-padding-0123456789"
-    )
+    env["JWT_SECRET_KEY"] = "prefix-" + placeholder + "-suffix-padding-0123456789"
     assert len(env["JWT_SECRET_KEY"]) >= 32
     with pytest.raises(ProductionConfigError) as exc_info:
         validate_production_environment(env)
@@ -128,7 +124,7 @@ def test_placeholder_jwt_rejected(placeholder):
 
 def test_placeholder_jwt_match_is_case_insensitive():
     env = _valid_env()
-    env["JWT_SECRET_KEY"] = "My-SECRET-Production-Key-0123456789ab"
+    env["JWT_SECRET_KEY"] = "My-SECRET-Production-Key-0123456789ab"  # noqa: S105
     with pytest.raises(ProductionConfigError) as exc_info:
         validate_production_environment(env)
     assert "JWT_SECRET_KEY" in str(exc_info.value)
@@ -191,7 +187,7 @@ def test_missing_vk_app_secret_rejected():
 
 def test_change_me_vk_app_secret_rejected():
     env = _valid_env()
-    env["VK_APP_SECRET"] = "CHANGE_ME"
+    env["VK_APP_SECRET"] = "CHANGE_ME"  # noqa: S105
     with pytest.raises(ProductionConfigError) as exc_info:
         validate_production_environment(env)
     assert "VK_APP_SECRET" in str(exc_info.value)
@@ -237,9 +233,7 @@ def test_prod_example_template_values_rejected():
     """.env.prod.example as shipped (CHANGE_ME placeholders) must fail."""
     env = {
         key: value
-        for key, value in dotenv_values(
-            REPO_ROOT / ".env.prod.example"
-        ).items()
+        for key, value in dotenv_values(REPO_ROOT / ".env.prod.example").items()
         if value is not None
     }
     assert env["APP_ENV"] == "production"
@@ -266,9 +260,7 @@ async def test_lifespan_refuses_weak_production_jwt(monkeypatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "tiny-key")
     # The remaining strict inputs are valid so the error names ONLY the
     # JWT — and init_engine is never reached, so the host need not exist.
-    monkeypatch.setenv(
-        "DATABASE_URL", "postgresql+asyncpg://u:pw@db:5432/goliath"
-    )
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:pw@db:5432/goliath")
     monkeypatch.setenv("VK_APP_SECRET", "vk-mini-app-secret-8f6e5d4c")
 
     with pytest.raises(ProductionConfigError) as exc_info:

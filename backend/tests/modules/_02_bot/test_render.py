@@ -11,7 +11,7 @@ guard.
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import yaml
@@ -26,7 +26,7 @@ from modules._02_bot.render import (
     sanitize_value,
 )
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 _id_seq = 0
 
@@ -64,9 +64,7 @@ def _by_id(*rows: RowView) -> dict[int, RowView]:
 def _config_with_dispatch_vars() -> BotConfig:
     """Real YAML, but the dispatch batch carries {from_nation} so the
     test can see which source row fed the batch variables."""
-    with open(
-        BotConfig.get_default_config_path(), encoding="utf-8"
-    ) as f:
+    with open(BotConfig.get_default_config_path(), encoding="utf-8") as f:
         data = yaml.safe_load(f)
     data = copy.deepcopy(data)
     data["types"]["DIPLOMATIC_DISPATCH"]["batch_text"] = (
@@ -78,11 +76,7 @@ def _config_with_dispatch_vars() -> BotConfig:
 def _small_config(bot_config: BotConfig, **limit_overrides) -> BotConfig:
     """A copy of the real config with tightened limits."""
     return bot_config.model_copy(
-        update={
-            "limits": bot_config.limits.model_copy(
-                update=limit_overrides
-            )
-        }
+        update={"limits": bot_config.limits.model_copy(update=limit_overrides)}
     )
 
 
@@ -91,9 +85,10 @@ class TestSanitize:
         """T15: VK markup brackets are remapped, Cc/Cf dropped,
         whitespace collapsed."""
         dirty = "  [id1|Иван]\u200b\n\n  ушёл \t "
-        assert sanitize_value(
-            dirty, bot_config.limits.variable_max_length
-        ) == "(id1|Иван) ушёл"
+        assert (
+            sanitize_value(dirty, bot_config.limits.variable_max_length)
+            == "(id1|Иван) ушёл"
+        )
 
     def test_truncation_adds_ellipsis(self, bot_config):
         limit = bot_config.limits.variable_max_length
@@ -127,19 +122,12 @@ class TestRenderMessage:
             {"event_text": "[id5|враг] у ворот"},
         )
         out = render_message(_single(row), _by_id(row), bot_config)
-        assert out == (
-            "БОЕВАЯ ТРЕВОГА. (id5|враг) у ворот "
-            "Откройте кабинет правителя."
-        )
+        assert out == ("БОЕВАЯ ТРЕВОГА. (id5|враг) у ворот Откройте кабинет правителя.")
 
     def test_batch_uses_newest_row_variables(self):
         config = _config_with_dispatch_vars()
-        old = _row(
-            "DIPLOMATIC_DISPATCH", 60, {"from_nation": "Старуха"}
-        )
-        new = _row(
-            "DIPLOMATIC_DISPATCH", 5, {"from_nation": "Новик"}
-        )
+        old = _row("DIPLOMATIC_DISPATCH", 60, {"from_nation": "Старуха"})
+        new = _row("DIPLOMATIC_DISPATCH", 5, {"from_nation": "Новик"})
         message = ComposedMessage(
             row_ids=(old.id, new.id),
             render_mode="BATCH",
@@ -168,9 +156,7 @@ class TestRenderMessage:
                 "next_tick_time": "т",
             },
         )
-        dispatch = _row(
-            "DIPLOMATIC_DISPATCH", 10, {"from_nation": "Н"}
-        )
+        dispatch = _row("DIPLOMATIC_DISPATCH", 10, {"from_nation": "Н"})
         message = ComposedMessage(
             row_ids=(directive.id, digest.id, dispatch.id),
             render_mode="SUMMARY",
@@ -211,9 +197,7 @@ class TestRenderMessage:
                 "next_tick_time": "т",
             },
         )
-        dispatch = _row(
-            "DIPLOMATIC_DISPATCH", 10, {"from_nation": "Н"}
-        )
+        dispatch = _row("DIPLOMATIC_DISPATCH", 10, {"from_nation": "Н"})
         message = ComposedMessage(
             row_ids=(directive.id, digest.id, dispatch.id),
             render_mode="SUMMARY",
@@ -225,9 +209,7 @@ class TestRenderMessage:
                 ("DIPLOMATIC_DISPATCH", 1),
             ),
         )
-        out = render_message(
-            message, _by_id(directive, digest, dispatch), config
-        )
+        out = render_message(message, _by_id(directive, digest, dispatch), config)
         # 3 lines > bundle 2: the oldest (directive) line is dropped.
         assert out.split("\n") == [
             "Ход 1 завершён.",
@@ -238,8 +220,6 @@ class TestRenderMessage:
         # event_text is truncated to variable_max_length=100, so the
         # ceiling must drop below ~144 chars for the guard to fire.
         config = _small_config(bot_config, message_max_chars=100)
-        row = _row(
-            "RED_ALERT", 1, {"event_text": "е" * 100}
-        )
+        row = _row("RED_ALERT", 1, {"event_text": "е" * 100})
         with pytest.raises(MessageTooLong):
             render_message(_single(row), _by_id(row), config)

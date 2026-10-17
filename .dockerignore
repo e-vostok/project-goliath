@@ -31,3 +31,12 @@ tools
 # files (manifest.json, geometry.json, ids.lock.json, boundary.yaml,
 # overrides.yaml, source/map.svg) — keep the rest of data/map/ intact.
 data/map/preview
+
+# scratch / backup / platform junk
+**/*.bak
+**/*.orig
+**/*.tmp
+**/.DS_Store
+**/*.log
+**/.coverage
+**/htmlcov

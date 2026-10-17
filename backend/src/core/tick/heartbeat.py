@@ -10,7 +10,7 @@ answer "is the loop alive".
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 _last_beat_at: datetime | None = None
 
@@ -23,7 +23,7 @@ def touch(now: datetime | None = None) -> None:
     suites exercise the "stale" branch without waiting.
     """
     global _last_beat_at
-    _last_beat_at = now if now is not None else datetime.now(timezone.utc)
+    _last_beat_at = now if now is not None else datetime.now(UTC)
 
 
 def last_beat_at() -> datetime | None:
@@ -35,4 +35,4 @@ def age_seconds() -> float | None:
     """Seconds since the last touch(), or None if never touched."""
     if _last_beat_at is None:
         return None
-    return (datetime.now(timezone.utc) - _last_beat_at).total_seconds()
+    return (datetime.now(UTC) - _last_beat_at).total_seconds()

@@ -8,25 +8,16 @@ Enforces all invariants defined in the system specification.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Iterable, Literal, Sequence
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.color_policy import oklab_distance
 from modules._00_core.config_schema import CoreConfig
-from modules._00_core.hooks import (
-    STAGE_AFTER_COUNT,
-    STAGE_AFTER_FREE,
-    OwnershipChange,
-    get_player_delete_hooks,
-    notify_ownership_changed,
-    run_before_all_checks,
-    run_nation_created_hooks,
-    run_registration_checks,
-)
 from modules._00_core.exceptions import (
     CapitalNotInProvincesError,
     ColorTakenError,
@@ -42,6 +33,16 @@ from modules._00_core.exceptions import (
     RetiredProvinceHistoryError,
     RetiredProvinceOwnedError,
     ShortNameTakenError,
+)
+from modules._00_core.hooks import (
+    STAGE_AFTER_COUNT,
+    STAGE_AFTER_FREE,
+    OwnershipChange,
+    get_player_delete_hooks,
+    notify_ownership_changed,
+    run_before_all_checks,
+    run_nation_created_hooks,
+    run_registration_checks,
 )
 from modules._00_core.models import (
     GameClock,
@@ -68,7 +69,7 @@ from modules._00_core.profile_rules import (
 )
 
 if TYPE_CHECKING:
-    from typing import Self
+    pass
 
 
 # PostgreSQL advisory-lock key serializing nation registrations and
@@ -228,9 +229,7 @@ class ProvinceService:
             raise ValueError("Duplicate node ids in input")
         invalid_kinds = {node.kind for node in nodes} - {"LAND", "SEA"}
         if invalid_kinds:
-            raise ValueError(
-                f"Invalid node kinds in input: {sorted(invalid_kinds)}"
-            )
+            raise ValueError(f"Invalid node kinds in input: {sorted(invalid_kinds)}")
 
         result = await session.execute(select(Province.id, Province.kind))
         existing = {row.id: row.kind for row in result.all()}
@@ -247,10 +246,7 @@ class ProvinceService:
         if added:
             await session.execute(
                 insert(Province),
-                [
-                    {"id": node_id, "kind": spec_by_id[node_id]}
-                    for node_id in added
-                ],
+                [{"id": node_id, "kind": spec_by_id[node_id]} for node_id in added],
             )
 
         return EnsureNodesResult(
@@ -299,9 +295,7 @@ class ProvinceService:
         rows = result.all()
         present = {row[0] for row in rows}
 
-        owned = [
-            (row[0], row[1], row[2]) for row in rows if row[1] is not None
-        ]
+        owned = [(row[0], row[1], row[2]) for row in rows if row[1] is not None]
         if owned:
             raise RetiredProvinceOwnedError(owned)
         blocked = sorted(present & history)
@@ -310,9 +304,7 @@ class ProvinceService:
 
         removable = sorted(present)
         if removable:
-            await session.execute(
-                delete(Province).where(Province.id.in_(removable))
-            )
+            await session.execute(delete(Province).where(Province.id.in_(removable)))
         return RetiredRemovalResult(
             removed=removable,
             absent=sorted(ids - present),
@@ -330,9 +322,7 @@ class ProvinceService:
         ck_provinces_sea_unowned keeps their nation_id NULL.
         """
         result = await session.execute(
-            select(
-                Province.id, Nation.id, Nation.name, Nation.color_hex
-            )
+            select(Province.id, Nation.id, Nation.name, Nation.color_hex)
             .join(Nation, Province.nation_id == Nation.id)
             .order_by(Province.id)
         )
@@ -350,16 +340,16 @@ class ProvinceService:
 
 class PlayerService:
     """Service for Player entity operations."""
-    
+
     @staticmethod
     async def get_or_create(session: AsyncSession, vk_user_id: int) -> Player:
         """
         Get an existing player by vk_user_id, or create a new one.
-        
+
         Args:
             session: The async database session.
             vk_user_id: The VK user ID.
-            
+
         Returns:
             The existing or newly created Player instance.
         """
@@ -367,16 +357,16 @@ class PlayerService:
             select(Player).where(Player.vk_user_id == vk_user_id)
         )
         player = result.scalar_one_or_none()
-        
+
         if player is None:
             player = Player(
                 id=str(uuid.uuid4()),
                 vk_user_id=vk_user_id,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(player)
             await session.flush()
-        
+
         return player
 
     @staticmethod
@@ -442,15 +432,11 @@ class PlayerService:
         satellites that need the total without the rows (Spec
         03_registry 5.4). Read-only and never commits.
         """
-        result = await session.execute(
-            select(func.count()).select_from(Player)
-        )
+        result = await session.execute(select(func.count()).select_from(Player))
         return result.scalar_one()
 
     @staticmethod
-    async def delete_player(
-        session: AsyncSession, player_id: str
-    ) -> None:
+    async def delete_player(session: AsyncSession, player_id: str) -> None:
         """
         Delete a player and everything tied to them (admin tool for
         test players — irreversible).
@@ -481,9 +467,7 @@ class PlayerService:
             PlayerNotFoundError: If the player does not exist.
         """
         player = (
-            await session.execute(
-                select(Player).where(Player.id == player_id)
-            )
+            await session.execute(select(Player).where(Player.id == player_id))
         ).scalar_one_or_none()
         if player is None:
             raise PlayerNotFoundError(player_id)
@@ -503,9 +487,7 @@ class PlayerService:
         # players DELETE: nations.owner_player_id carries a plain FK
         # without cascade, so the nation must be physically gone first.
         await session.flush()
-        await session.execute(
-            delete(Player).where(Player.id == player_id)
-        )
+        await session.execute(delete(Player).where(Player.id == player_id))
 
 
 async def _current_turn(session: AsyncSession) -> int:
@@ -516,9 +498,7 @@ async def _current_turn(session: AsyncSession) -> int:
     bare create_all test schemas may not — in that case the change is
     stamped turn 0 rather than failing the operation.
     """
-    result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = result.scalar_one_or_none()
     return clock.current_turn if clock is not None else 0
 
@@ -543,9 +523,7 @@ class GameClockService:
         ``next_tick_at`` (Spec 02_bot Part 1.3). Returns None when the
         singleton row is absent (unmigrated schema). Never commits.
         """
-        result = await session.execute(
-            select(GameClock).where(GameClock.id == 1)
-        )
+        result = await session.execute(select(GameClock).where(GameClock.id == 1))
         clock = result.scalar_one_or_none()
         if clock is None:
             return None
@@ -595,16 +573,10 @@ async def _evaluate_color(
         if existing.upper() == color_hex:
             return "TAKEN"
     for reserved in config.color.reserved:
-        if (
-            oklab_distance(color_hex, reserved.hex)
-            < config.color.min_distance_reserved
-        ):
+        if oklab_distance(color_hex, reserved.hex) < config.color.min_distance_reserved:
             return "TOO_CLOSE"
     for existing in taken:
-        if (
-            oklab_distance(color_hex, existing)
-            < config.color.min_distance_nations
-        ):
+        if oklab_distance(color_hex, existing) < config.color.min_distance_nations:
             return "TOO_CLOSE"
     return "OK"
 
@@ -616,9 +588,7 @@ async def _check_color_or_raise(
     exclude_nation_id: str | None = None,
 ) -> None:
     """Raise the domain error matching the color decision."""
-    status = await _evaluate_color(
-        session, color_hex, config, exclude_nation_id
-    )
+    status = await _evaluate_color(session, color_hex, config, exclude_nation_id)
     if status == "TAKEN":
         raise ColorTakenError(color_hex)
     if status == "TOO_CLOSE":
@@ -742,9 +712,7 @@ class NationService:
 
         # INV-2: Check if name is already taken (normalized by strip).
         name = name.strip()
-        result = await session.execute(
-            select(Nation).where(Nation.name == name)
-        )
+        result = await session.execute(select(Nation).where(Nation.name == name))
         if result.scalar_one_or_none() is not None:
             raise NameTakenError(name)
 
@@ -782,8 +750,10 @@ class NationService:
 
         # Validate province count constraints
         province_count = len(province_ids)
-        if (province_count < config.nation.min_provinces_per_nation or
-            province_count > config.nation.max_provinces_per_nation):
+        if (
+            province_count < config.nation.min_provinces_per_nation
+            or province_count > config.nation.max_provinces_per_nation
+        ):
             raise ProvinceCountOutOfRangeError(
                 province_count,
                 config.nation.min_provinces_per_nation,
@@ -823,7 +793,7 @@ class NationService:
             anthem_url=anthem_url,
             capital_province_id=capital_province_id,
             capital_name=capital_name,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             created_turn=turn,
         )
         session.add(nation)
@@ -902,9 +872,7 @@ class NationService:
         ids = set(nation_ids)
         if not ids:
             return set()
-        result = await session.execute(
-            select(Nation.id).where(Nation.id.in_(ids))
-        )
+        result = await session.execute(select(Nation.id).where(Nation.id.in_(ids)))
         return set(result.scalars().all())
 
     @staticmethod
@@ -935,8 +903,7 @@ class NationService:
                 province_count,
                 Nation.short_name,
                 Nation.flag_id,
-            )
-            .order_by(Nation.created_turn, Nation.created_at, Nation.id)
+            ).order_by(Nation.created_turn, Nation.created_at, Nation.id)
         )
         return [
             NationRegistryRow(
@@ -959,9 +926,7 @@ class NationService:
         satellites that need the total without the rows (Spec
         03_registry 5.4). Read-only and never commits.
         """
-        result = await session.execute(
-            select(func.count()).select_from(Nation)
-        )
+        result = await session.execute(select(func.count()).select_from(Nation))
         return result.scalar_one()
 
     @staticmethod
@@ -1017,9 +982,7 @@ class NationService:
                 nation without a capital province.
             The ``*_INVALID`` errors of Part 5 for failed field checks.
         """
-        result = await session.execute(
-            select(Nation).where(Nation.id == nation_id)
-        )
+        result = await session.execute(select(Nation).where(Nation.id == nation_id))
         nation = result.scalar_one_or_none()
 
         if nation is None:
@@ -1029,29 +992,25 @@ class NationService:
         # the Spec Part 2 field order — a bad field leaves the whole
         # update untouched.
         new_leader_name = (
-            None if leader_name is None
-            else validate_leader_name(leader_name, config)
+            None if leader_name is None else validate_leader_name(leader_name, config)
         )
         new_leader_title = (
-            None if leader_title is None
+            None
+            if leader_title is None
             else validate_leader_title(leader_title, config)
         )
-        new_gender = (
-            None if gender is None
-            else validate_gender(gender, config)
-        )
+        new_gender = None if gender is None else validate_gender(gender, config)
         new_succession_type = (
-            None if succession_type is None
+            None
+            if succession_type is None
             else validate_succession_type(succession_type, config)
         )
         new_history_url = (
-            None if history_url is None
-            else validate_history_url(history_url, config)
+            None if history_url is None else validate_history_url(history_url, config)
         )
         new_anthem_url = validate_anthem_url(anthem_url, config)
         new_short_name = (
-            None if short_name is None
-            else validate_short_name(short_name, config)
+            None if short_name is None else validate_short_name(short_name, config)
         )
         new_motto = validate_motto(motto, config)
         new_description = validate_description(description, config)
@@ -1059,7 +1018,8 @@ class NationService:
         new_flag_id = validate_flag_id(flag_id, config)
         new_portrait_id = validate_portrait_id(portrait_id, config)
         new_capital_name = (
-            None if capital_name is None
+            None
+            if capital_name is None
             else validate_capital_name(capital_name, config)
         )
 
@@ -1101,9 +1061,7 @@ class NationService:
             if nation.capital_province_id is None:
                 # A pre-0.8.0 nation has no capital and cannot gain one
                 # through editing (INV-14).
-                raise CapitalNotInProvincesError(
-                    nation.capital_province_id
-                )
+                raise CapitalNotInProvincesError(nation.capital_province_id)
             nation.capital_name = new_capital_name
 
         if new_leader_name is not None:
@@ -1152,29 +1110,27 @@ class NationService:
         return await _evaluate_color(
             session, color_hex.upper(), config, exclude_nation_id
         )
-    
+
     @staticmethod
     async def delete(session: AsyncSession, nation_id: str) -> None:
         """
         Delete a nation and free its provinces.
-        
+
         Enforces INV-6: deletion frees provinces instead of deleting them.
-        
+
         Args:
             session: The async database session.
             nation_id: The nation ID to delete.
-            
+
         Raises:
             NationNotFoundError: If the nation does not exist.
         """
-        result = await session.execute(
-            select(Nation).where(Nation.id == nation_id)
-        )
+        result = await session.execute(select(Nation).where(Nation.id == nation_id))
         nation = result.scalar_one_or_none()
-        
+
         if nation is None:
             raise NationNotFoundError(nation_id)
-        
+
         # INV-6: Free all provinces by setting nation_id to NULL
         # Use select to fetch provinces to avoid lazy loading in async context
         result = await session.execute(
@@ -1217,7 +1173,7 @@ class NationService:
 
 class ScheduledActionService:
     """Service for ScheduledAction entity operations."""
-    
+
     @staticmethod
     async def submit(
         session: AsyncSession,
@@ -1231,9 +1187,9 @@ class ScheduledActionService:
     ) -> ScheduledAction:
         """
         Submit a scheduled action for execution.
-        
+
         Enforces INV-FREQUENCY: validates action frequency based on the rule.
-        
+
         Args:
             session: The async database session.
             nation_id: The nation ID submitting the action.
@@ -1243,71 +1199,49 @@ class ScheduledActionService:
             turn_number: The turn number this action is scheduled for.
             frequency_rule: The frequency rule (see FrequencyRule).
             frequency_cap: The cap for MULTIPLE_PER_TURN rule.
-            
+
         Returns:
             The newly created ScheduledAction instance.
-            
+
         Raises:
             FrequencyCapExceededError: If the frequency cap is exceeded.
         """
         # INV-FREQUENCY: Check frequency constraints
         max_allowed = None
-        
+
+        conditions = [
+            ScheduledAction.nation_id == nation_id,
+            ScheduledAction.module_slug == module_slug,
+            ScheduledAction.action_type == action_type,
+            ScheduledAction.status == ScheduledActionStatus.PENDING,
+        ]
+        if frequency_rule in (
+            FrequencyRule.ONCE_PER_TURN,
+            FrequencyRule.MULTIPLE_PER_TURN,
+        ):
+            conditions.append(ScheduledAction.turn_number == turn_number)
+
+        # Count actions for this nation, module, type, on this specific turn
+        result = await session.execute(select(ScheduledAction).where(*conditions))
+        current_count = len(result.scalars().all())
+
         if frequency_rule == FrequencyRule.ONCE_PER_TURN:
             max_allowed = 1
-            # Count actions for this nation, module, type, on this specific turn
-            result = await session.execute(
-                select(ScheduledAction).where(
-                    ScheduledAction.nation_id == nation_id,
-                    ScheduledAction.module_slug == module_slug,
-                    ScheduledAction.action_type == action_type,
-                    ScheduledAction.turn_number == turn_number,
-                    ScheduledAction.status == ScheduledActionStatus.PENDING,
-                )
-            )
-            current_count = len(result.scalars().all())
-            
         elif frequency_rule == FrequencyRule.ONCE_PER_GAME:
             max_allowed = 1
-            # Count actions for this nation, module, type, across all turns
-            result = await session.execute(
-                select(ScheduledAction).where(
-                    ScheduledAction.nation_id == nation_id,
-                    ScheduledAction.module_slug == module_slug,
-                    ScheduledAction.action_type == action_type,
-                    ScheduledAction.status == ScheduledActionStatus.PENDING,
-                )
-            )
-            current_count = len(result.scalars().all())
-            
         elif frequency_rule == FrequencyRule.MULTIPLE_PER_TURN:
             if frequency_cap is None:
                 raise ValueError("frequency_cap is required for MULTIPLE_PER_TURN rule")
             max_allowed = frequency_cap
-            # Count actions for this nation, module, type, on this specific turn
-            result = await session.execute(
-                select(ScheduledAction).where(
-                    ScheduledAction.nation_id == nation_id,
-                    ScheduledAction.module_slug == module_slug,
-                    ScheduledAction.action_type == action_type,
-                    ScheduledAction.turn_number == turn_number,
-                    ScheduledAction.status == ScheduledActionStatus.PENDING,
-                )
-            )
-            current_count = len(result.scalars().all())
-            
         elif frequency_rule == FrequencyRule.UNLIMITED:
-            # No constraint
-            current_count = 0
             max_allowed = float("inf")
-            
         else:
             raise ValueError(f"Unknown frequency rule: {frequency_rule}")
-        
+
         # Check if cap is exceeded
         if current_count >= max_allowed:
             raise FrequencyCapExceededError(action_type, current_count, max_allowed)
-        
+
         # Create the scheduled action
         action = ScheduledAction(
             id=str(uuid.uuid4()),
@@ -1317,9 +1251,9 @@ class ScheduledActionService:
             payload=payload,
             turn_number=turn_number,
             status=ScheduledActionStatus.PENDING,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         session.add(action)
         await session.flush()
-        
+
         return action

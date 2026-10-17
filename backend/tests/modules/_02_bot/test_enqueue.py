@@ -11,7 +11,7 @@ bell — silent on rollback, ringing on commit.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -20,23 +20,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules._00_core.models import Nation, Player
 from modules._02_bot.composer import ComposedMessage, RowView
 from modules._02_bot.config_schema import BotConfig, TypeSettings
+from modules._02_bot.models import BotOutbox
 from modules._02_bot.registry import register_notification_type
 from modules._02_bot.render import TemplateError, render_message
 from modules._02_bot.service import BotService, EnqueueResult
-from modules._02_bot.models import BotOutbox
 from tests.fixtures.factories import make_consent, make_outbox_row
 from tests.fixtures.profile import VALID_PROFILE
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 async def _player(session: AsyncSession) -> Player:
@@ -50,9 +46,7 @@ async def _player(session: AsyncSession) -> Player:
     return player
 
 
-async def _member(
-    session: AsyncSession, *, consent: str | None = "ALLOWED"
-) -> Player:
+async def _member(session: AsyncSession, *, consent: str | None = "ALLOWED") -> Player:
     """A player with a nation row and the given consent state."""
     player = await _player(session)
     session.add(
@@ -125,9 +119,7 @@ def _add_type(
 
 
 class TestQueued:
-    async def test_queued_row_fields(
-        self, test_db_session, bot_started
-    ):
+    async def test_queued_row_fields(self, test_db_session, bot_started):
         """DIRECTIVE_STATUS carries the hold_seconds showcase field."""
         player = await _member(test_db_session)
         result = await BotService.enqueue(
@@ -179,9 +171,7 @@ class TestQueued:
                 select(BotOutbox).where(BotOutbox.player_id == player.id)
             )
         ).scalar_one()
-        assert _aware(row.expires_at) == event_at + timedelta(
-            minutes=360
-        )
+        assert _aware(row.expires_at) == event_at + timedelta(minutes=360)
         assert _aware(row.expires_at) < NOW
 
     async def test_duplicate_event_key(self, test_db_session, bot_started):
@@ -223,9 +213,7 @@ class TestSkipsAndRejects:
         assert result == EnqueueResult.SKIPPED_BOT_OFF
         assert await _outbox_count(test_db_session, player) == 0
 
-    async def test_disabled_type_skipped(
-        self, test_db_session, bot_started
-    ):
+    async def test_disabled_type_skipped(self, test_db_session, bot_started):
         """DEADLINE_WARNING ships disabled in the real config."""
         player = await _member(test_db_session)
         result = await BotService.enqueue(
@@ -270,16 +258,16 @@ class TestSkipsAndRejects:
     @pytest.mark.parametrize(
         "type_key,variables",
         [
-            ("GHOST_TYPE", {}),                          # unregistered
-            ("TICK_DIGEST", {"turn": 7}),                # missing vars
+            ("GHOST_TYPE", {}),  # unregistered
+            ("TICK_DIGEST", {"turn": 7}),  # missing vars
             (
                 "TICK_DIGEST",
                 _DIGEST_VARS | {"extra": "x"},
-            ),                                         # surplus var
+            ),  # surplus var
             (
                 "TICK_DIGEST",
                 _DIGEST_VARS | {"turn": True},
-            ),                                         # bool is rejected
+            ),  # bool is rejected
         ],
     )
     async def test_rejected_invalid(
@@ -378,9 +366,7 @@ class TestRequiresNation:
 class TestConsentedPlayerIds:
     """BotService.consented_player_ids (Spec 04_orders, Appendix B2)."""
 
-    async def test_allowed_subset_and_empty_input(
-        self, test_db_session, bot_started
-    ):
+    async def test_allowed_subset_and_empty_input(self, test_db_session, bot_started):
         allowed = await _player(test_db_session)
         denied = await _player(test_db_session)
         unknown = await _player(test_db_session)
@@ -392,10 +378,7 @@ class TestConsentedPlayerIds:
             test_db_session, [allowed.id, denied.id, unknown.id]
         )
         assert ids == {allowed.id}
-        assert (
-            await BotService.consented_player_ids(test_db_session, [])
-            == set()
-        )
+        assert await BotService.consented_player_ids(test_db_session, []) == set()
 
     async def test_empty_when_bot_off(
         self, test_db_session, bot_isolation, bot_off_env
@@ -403,10 +386,7 @@ class TestConsentedPlayerIds:
         player = await _player(test_db_session)
         await make_consent(test_db_session, player, state="ALLOWED")
         assert (
-            await BotService.consented_player_ids(
-                test_db_session, [player.id]
-            )
-            == set()
+            await BotService.consented_player_ids(test_db_session, [player.id]) == set()
         )
 
 
@@ -428,9 +408,7 @@ class TestLinkVariables:
     """``*_link`` variables (Spec 04_orders, Appendix B2): validated at
     enqueue, re-validated at render, substituted verbatim."""
 
-    async def test_invalid_rejected_valid_verbatim(
-        self, test_db_session, bot_started
-    ):
+    async def test_invalid_rejected_valid_verbatim(self, test_db_session, bot_started):
         _add_type(
             bot_started,
             "ORDER_LINK",
@@ -441,9 +419,9 @@ class TestLinkVariables:
         member = await _member(test_db_session)
 
         for bad in (
-            "http://vk.com/app777#x",        # not https
+            "http://vk.com/app777#x",  # not https
             "https://example.com/app777#x",  # host not allowed
-            "https://vk.com/" + "a" * 300,   # over 300 chars
+            "https://vk.com/" + "a" * 300,  # over 300 chars
             "not a url",
         ):
             result = await BotService.enqueue(
@@ -516,9 +494,7 @@ class TestLinkVariables:
         )
         with pytest.raises(TemplateError):
             render_message(
-                ComposedMessage(
-                    (broken.id,), "SINGLE", "ORDER_LINK", False
-                ),
+                ComposedMessage((broken.id,), "SINGLE", "ORDER_LINK", False),
                 {broken.id: broken_view},
                 bot_started,
             )

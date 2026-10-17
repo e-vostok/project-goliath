@@ -12,12 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from sqlalchemy import select, update
@@ -25,6 +24,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick import heartbeat
 from core.tick.orchestrator import TickOrchestrator, TickOutcome, TickPhase
@@ -68,7 +68,7 @@ async def _seed_game_clock(
     """Persist the game_clock singleton row via a real committed session."""
     clock = GameClockFactory.build(
         current_turn=current_turn,
-        next_tick_at=next_tick_at or datetime.now(timezone.utc),
+        next_tick_at=next_tick_at or datetime.now(UTC),
     )
     async with session_maker() as session:
         session.add(clock)
@@ -85,11 +85,11 @@ class TestSecondsUntil:
     """Pure function: time remaining until the next tick."""
 
     def test_future_timestamp_returns_positive_seconds(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         assert seconds_until(now + timedelta(hours=1), now) == 3600.0
 
     def test_past_timestamp_clamps_to_zero(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         assert seconds_until(now - timedelta(hours=1), now) == 0.0
 
 
@@ -148,14 +148,10 @@ class TestRunScheduledTick:
         logs = await _fetch_tick_logs(session_maker, turn_number=1)
         assert len(logs) == 2
         assert all(log.status == TickLogStatus.FAILED for log in logs)
-        assert all(
-            "Simulated handler failure" in log.error_message for log in logs
-        )
+        assert all("Simulated handler failure" in log.error_message for log in logs)
 
     @pytest.mark.asyncio
-    async def test_later_successful_attempt_keeps_failure_history(
-        self, session_maker
-    ):
+    async def test_later_successful_attempt_keeps_failure_history(self, session_maker):
         """
         After failures are resolved, the next scheduled tick completes
         and the earlier FAILED rows remain — full attempt history.
@@ -216,17 +212,14 @@ class TestSchedulerLoop:
             await session.execute(
                 update(GameClock)
                 .where(GameClock.id == 1)
-                .values(
-                    next_tick_at=datetime.now(timezone.utc)
-                    - timedelta(minutes=1)
-                )
+                .values(next_tick_at=datetime.now(UTC) - timedelta(minutes=1))
             )
 
         TickOrchestrator.register_finalize(finalize_then_overdue)
 
         await _seed_game_clock(
             session_maker,
-            next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            next_tick_at=datetime.now(UTC) - timedelta(minutes=1),
         )
 
         await scheduler_loop(session_maker, max_iterations=2)
@@ -244,9 +237,7 @@ class TestSchedulerLoop:
         assert all(log.status == TickLogStatus.COMPLETED for log in logs)
 
     @pytest.mark.asyncio
-    async def test_failed_tick_waits_retry_delay(
-        self, session_maker
-    ):
+    async def test_failed_tick_waits_retry_delay(self, session_maker):
         """
         A persistent failure must not spin in a hot loop: the next_tick
         wait resolves to 0 (next_tick_at rolled back unchanged), so the
@@ -255,7 +246,7 @@ class TestSchedulerLoop:
         """
         await _seed_game_clock(
             session_maker,
-            next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            next_tick_at=datetime.now(UTC) - timedelta(minutes=1),
         )
 
         async def failing_handler(session, turn_number):
@@ -264,9 +255,7 @@ class TestSchedulerLoop:
         TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, failing_handler)
 
         started = time.monotonic()
-        await scheduler_loop(
-            session_maker, max_iterations=2, retry_delay_seconds=1
-        )
+        await scheduler_loop(session_maker, max_iterations=2, retry_delay_seconds=1)
         elapsed = time.monotonic() - started
 
         # Two failed attempts -> two paced retries (~1s each), while the
@@ -296,15 +285,13 @@ class TestSchedulerResilience:
         """
         await _seed_game_clock(
             session_maker,
-            next_tick_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            next_tick_at=datetime.now(UTC) - timedelta(minutes=1),
         )
         failures_left = {"count": 3}
 
         class _DownCM:
             async def __aenter__(self):
-                raise OperationalError(
-                    "SELECT 1", {}, Exception("connection refused")
-                )
+                raise OperationalError("SELECT 1", {}, Exception("connection refused"))
 
             async def __aexit__(self, *exc_info):
                 return False
@@ -336,7 +323,7 @@ class TestSchedulerResilience:
         propagates out of the wait and out of the retry sleep."""
         await _seed_game_clock(
             session_maker,
-            next_tick_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            next_tick_at=datetime.now(UTC) + timedelta(hours=1),
         )
         task = asyncio.create_task(
             scheduler_loop(
@@ -356,7 +343,7 @@ class TestSchedulerResilience:
         stamps the heartbeat — age never exceeds interval + margin."""
         await _seed_game_clock(
             session_maker,
-            next_tick_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            next_tick_at=datetime.now(UTC) + timedelta(hours=1),
         )
         task = asyncio.create_task(
             scheduler_loop(
@@ -380,14 +367,12 @@ class TestSchedulerResilience:
                 await task
 
     @pytest.mark.asyncio
-    async def test_clock_moved_during_sleep_is_honoured(
-        self, session_maker
-    ):
+    async def test_clock_moved_during_sleep_is_honoured(self, session_maker):
         """A world reset rewriting next_tick_at mid-wait takes effect
         within one heartbeat interval — later and earlier moves alike."""
         await _seed_game_clock(
             session_maker,
-            next_tick_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            next_tick_at=datetime.now(UTC) + timedelta(hours=1),
         )
         task = asyncio.create_task(
             scheduler_loop(
@@ -406,10 +391,7 @@ class TestSchedulerResilience:
                 await session.execute(
                     update(GameClock)
                     .where(GameClock.id == 1)
-                    .values(
-                        next_tick_at=datetime.now(timezone.utc)
-                        + timedelta(hours=2)
-                    )
+                    .values(next_tick_at=datetime.now(UTC) + timedelta(hours=2))
                 )
                 await session.commit()
             await asyncio.sleep(0.2)
@@ -420,10 +402,7 @@ class TestSchedulerResilience:
                 await session.execute(
                     update(GameClock)
                     .where(GameClock.id == 1)
-                    .values(
-                        next_tick_at=datetime.now(timezone.utc)
-                        - timedelta(minutes=1)
-                    )
+                    .values(next_tick_at=datetime.now(UTC) - timedelta(minutes=1))
                 )
                 await session.commit()
             for _ in range(50):
@@ -467,9 +446,7 @@ class TestLifespanWiring:
         try:
             async with LifespanManager(app):
                 tasks = [
-                    t
-                    for t in asyncio.all_tasks()
-                    if t.get_name() == "tick-scheduler"
+                    t for t in asyncio.all_tasks() if t.get_name() == "tick-scheduler"
                 ]
                 assert len(tasks) == 1
                 scheduler_task = tasks[0]

@@ -53,7 +53,9 @@ def _parse_lock(path: Path) -> dict[str, str]:
             continue
         match = PIN_RE.match(line)
         assert match, f"{path.name}:{lineno} is not an exact pin: {raw!r}"
-        assert "," not in match.group(2), f"{path.name}:{lineno} compound specifier: {raw!r}"
+        assert "," not in match.group(2), (
+            f"{path.name}:{lineno} compound specifier: {raw!r}"
+        )
         pins[_norm(match.group(1))] = match.group(2)
     return pins
 
@@ -67,8 +69,12 @@ def _pyproject() -> dict:
 
 
 def test_lock_files_exist() -> None:
-    assert RUNTIME_LOCK.is_file(), "requirements.lock missing — regenerate with uv pip compile"
-    assert DEV_LOCK.is_file(), "requirements-dev.lock missing — regenerate with uv pip compile"
+    assert RUNTIME_LOCK.is_file(), (
+        "requirements.lock missing — regenerate with uv pip compile"
+    )
+    assert DEV_LOCK.is_file(), (
+        "requirements-dev.lock missing — regenerate with uv pip compile"
+    )
 
 
 def test_every_line_is_exact_pin() -> None:
@@ -82,7 +88,9 @@ def test_runtime_direct_dependencies_pinned() -> None:
     declared = _direct_names(project, project["dependencies"])
     locked = _parse_lock(RUNTIME_LOCK)
     missing = declared - set(locked)
-    assert not missing, f"declared in pyproject but missing from requirements.lock: {sorted(missing)}"
+    assert not missing, (
+        f"declared in pyproject but missing from requirements.lock: {sorted(missing)}"
+    )
 
 
 def test_dev_direct_dependencies_pinned() -> None:
@@ -90,7 +98,10 @@ def test_dev_direct_dependencies_pinned() -> None:
     declared = _direct_names(project, project["optional-dependencies"]["dev"])
     locked = _parse_lock(DEV_LOCK)
     missing = declared - set(locked)
-    assert not missing, f"declared in pyproject dev extra but missing from requirements-dev.lock: {sorted(missing)}"
+    assert not missing, (
+        "declared in pyproject dev extra but missing from "
+        f"requirements-dev.lock: {sorted(missing)}"
+    )
 
 
 def test_runtime_lock_subset_of_dev_lock() -> None:
@@ -109,4 +120,6 @@ def test_critical_packages_pinned() -> None:
     for lock in (RUNTIME_LOCK, DEV_LOCK):
         locked = _parse_lock(lock)
         missing = CRITICAL_PACKAGES - set(locked)
-        assert not missing, f"critical packages missing from {lock.name}: {sorted(missing)}"
+        assert not missing, (
+            f"critical packages missing from {lock.name}: {sorted(missing)}"
+        )

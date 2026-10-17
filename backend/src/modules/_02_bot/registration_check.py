@@ -16,7 +16,7 @@ VK «not allowed» blocks with :class:`ConsentRequiredError`.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,13 +31,11 @@ logger = logging.getLogger(__name__)
 def _aware(value: datetime | None) -> datetime | None:
     """SQLite returns naive datetimes for ``timezone=True`` columns."""
     if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 
-async def check_registration_consent(
-    session: AsyncSession, player_id: str
-) -> None:
+async def check_registration_consent(session: AsyncSession, player_id: str) -> None:
     """Spec 3.10 steps 1–5 — ``(session, player_id)`` stage signature."""
     # Step 1: bot off or the feature disabled — pass without VK/writes.
     if not is_bot_active():
@@ -51,11 +49,9 @@ async def check_registration_consent(
     if not config.consent.required_for_registration:
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
-        row = await consent_mod.get_or_create_consent(
-            session, player_id, now=now
-        )
+        row = await consent_mod.get_or_create_consent(session, player_id, now=now)
         # Step 2: already allowed — pass.
         if row.state == "ALLOWED":
             return
@@ -63,19 +59,15 @@ async def check_registration_consent(
         # it (a fresh ALLOWED was already returned above, so a stored
         # fresh non-allowed state blocks without a new VK call).
         last = _aware(row.last_checked_at)
-        if (
-            last is not None
-            and (now - last)
-            < timedelta(
-                seconds=config.consent.refresh_min_interval_seconds
-            )
+        if last is not None and (now - last) < timedelta(
+            seconds=config.consent.refresh_min_interval_seconds
         ):
             raise ConsentRequiredError()
         # Step 4: one on-demand VK check through the live runtime.
         runtime = get_runtime()
-        vk_user_id = (
-            await PlayerService.vk_user_ids(session, [player_id])
-        ).get(player_id)
+        vk_user_id = (await PlayerService.vk_user_ids(session, [player_id])).get(
+            player_id
+        )
         allowed = (
             await runtime.check_allowed(vk_user_id)
             if runtime is not None and vk_user_id is not None
@@ -84,9 +76,7 @@ async def check_registration_consent(
         if allowed is None:
             logger.warning("registration_consent_check_skipped")
             return
-        await consent_mod.record_vk_check(
-            session, player_id, allowed, now=now
-        )
+        await consent_mod.record_vk_check(session, player_id, allowed, now=now)
         if not allowed:
             # Commit BEFORE raising: this stage runs before any
             # registration write, so the caller's rollback discards

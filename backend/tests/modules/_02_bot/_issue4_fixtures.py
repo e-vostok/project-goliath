@@ -29,14 +29,13 @@ def jwt_secret(monkeypatch):
 @pytest_asyncio.fixture
 async def client(test_db_session):
     """HTTP client bound to the real app, backed by the test session."""
+
     async def _override_get_session():
         yield test_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
@@ -57,9 +56,7 @@ def consent_required(bot_started, monkeypatch):
             )
         }
     )
-    monkeypatch.setattr(
-        "modules._02_bot.startup._bot_config", config
-    )
+    monkeypatch.setattr("modules._02_bot.startup._bot_config", config)
     return config
 
 

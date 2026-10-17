@@ -55,7 +55,7 @@ class AuthResponseDTO(BaseModel):
     """Response for POST /api/v1/auth/vk."""
 
     access_token: str
-    token_type: Literal["bearer"] = "bearer"
+    token_type: Literal["bearer"] = "bearer"  # noqa: S105
     expires_in: int
     player: PlayerDTO
 

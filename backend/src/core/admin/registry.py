@@ -99,14 +99,10 @@ class AdminRegistry:
         """
         if module_slug in cls._player_preview_hooks:
             raise ValueError(
-                f"Player-preview hook already registered for module "
-                f"'{module_slug}'"
+                f"Player-preview hook already registered for module '{module_slug}'"
             )
         cls._player_preview_hooks[module_slug] = preview_fn
-        logger.info(
-            f"Registered admin player-preview hook for module "
-            f"'{module_slug}'"
-        )
+        logger.info(f"Registered admin player-preview hook for module '{module_slug}'")
 
     @classmethod
     def get_reset_hooks(cls) -> dict[str, ResetHook]:

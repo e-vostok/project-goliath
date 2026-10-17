@@ -47,15 +47,11 @@ class TestSafeUrls:
 
     def test_unset_dev_url_still_safe(self):
         assert (
-            assert_safe_test_db(
-                "postgresql+asyncpg://t:t@127.0.0.1/goliath_test", None
-            )
+            assert_safe_test_db("postgresql+asyncpg://t:t@127.0.0.1/goliath_test", None)
             is None
         )
         assert (
-            assert_safe_test_db(
-                "postgresql+asyncpg://t:t@127.0.0.1/goliath_test", ""
-            )
+            assert_safe_test_db("postgresql+asyncpg://t:t@127.0.0.1/goliath_test", "")
             is None
         )
 
@@ -65,16 +61,12 @@ class TestRejectedUrls:
 
     def test_name_without_test_suffix(self):
         with pytest.raises(Failed, match="_test"):
-            assert_safe_test_db(
-                "postgresql+asyncpg://t:t@127.0.0.1/goliath", DEV_PG
-            )
+            assert_safe_test_db("postgresql+asyncpg://t:t@127.0.0.1/goliath", DEV_PG)
 
     def test_dev_database_name_is_rejected_even_with_suffix_prefix(self):
         """goliath_dev does not end with _test — the classic foot-gun."""
         with pytest.raises(Failed, match="_test"):
-            assert_safe_test_db(
-                "postgresql://t:t@127.0.0.1/goliath_dev", DEV_SQLITE
-            )
+            assert_safe_test_db("postgresql://t:t@127.0.0.1/goliath_dev", DEV_SQLITE)
 
     def test_same_database_name_as_dev(self):
         """Same name on any host is refused — name comparison is global."""

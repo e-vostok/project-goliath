@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -23,6 +23,7 @@ from dotenv import dotenv_values
 from sqlalchemy import create_engine, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import modules._01_map.models  # noqa: F401 — registers map_ownership_log
 from core.admin.registry import AdminRegistry
 from core.db import Base
 from modules._00_core.admin_hooks import (
@@ -43,11 +44,6 @@ from modules._00_core.models import (
     TickLogStatus,
 )
 from modules._00_core.tick_schedule import next_tick_after
-import modules._01_map.models  # noqa: F401 — registers map_ownership_log
-# so drop_all/create_all on the shared PG test DB sees its FK into
-# provinces and drops tables in dependency order.
-from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
 from tests.fixtures.factories import (
     GameClockFactory,
     NationFactory,
@@ -55,6 +51,11 @@ from tests.fixtures.factories import (
     ScheduledActionFactory,
     TickLogFactory,
 )
+
+# so drop_all/create_all on the shared PG test DB sees its FK into
+# provinces and drops tables in dependency order.
+from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import make_land_province
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 _REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -64,7 +65,7 @@ def _async_driver_url(url: str) -> str:
     """Point a sync PostgreSQL URL at the asyncpg driver."""
     for prefix in ("postgresql://", "postgres://"):
         if url.startswith(prefix):
-            return "postgresql+asyncpg://" + url[len(prefix):]
+            return "postgresql+asyncpg://" + url[len(prefix) :]
     return url
 
 
@@ -73,9 +74,9 @@ def _pg_test_url() -> str | None:
     DATABASE_URL_TEST (env or repo-root .env) when it names a reachable
     PostgreSQL instance, else None — hook tests then stay on SQLite.
     """
-    raw = os.environ.get("DATABASE_URL_TEST") or dotenv_values(
-        _REPO_ROOT / ".env"
-    ).get("DATABASE_URL_TEST")
+    raw = os.environ.get("DATABASE_URL_TEST") or dotenv_values(_REPO_ROOT / ".env").get(
+        "DATABASE_URL_TEST"
+    )
     if not raw or not raw.startswith(("postgresql://", "postgres://", "postgresql+")):
         return None
     try:
@@ -96,11 +97,7 @@ async def test_db_engine() -> Any:
     test so the shared PG database stays isolated between runs.
     """
     pg_url = _pg_test_url()
-    url = (
-        _async_driver_url(pg_url)
-        if pg_url
-        else "sqlite+aiosqlite:///:memory:"
-    )
+    url = _async_driver_url(pg_url) if pg_url else "sqlite+aiosqlite:///:memory:"
     engine = create_async_engine(url, echo=False, future=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -135,7 +132,7 @@ def registry_guard():
 
 def _utc(dt: datetime) -> datetime:
     """Normalize a possibly-naive DB datetime to aware UTC."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 async def _seed_player(
@@ -144,7 +141,7 @@ async def _seed_player(
     # polyfactory auto-fills relationships; nations=[] keeps the seed exact.
     player = PlayerFactory.build(
         vk_user_id=vk_user_id,
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(UTC),
         nations=[],
     )
     session.add(player)
@@ -203,7 +200,7 @@ class TestAdminStateView:
 
     @pytest.mark.asyncio
     async def test_state_view_content(self, test_db_session):
-        t0 = datetime.now(timezone.utc)
+        t0 = datetime.now(UTC)
         owner = await _seed_player(test_db_session, vk_user_id=1001, created_at=t0)
         free_player = await _seed_player(
             test_db_session,
@@ -231,12 +228,12 @@ class TestAdminStateView:
         # Times render as 'YYYY-MM-DD HH:MM:SS' in tick_timezone.
         tz = ZoneInfo(CORE_CONFIG.tick.tick_timezone)
         fmt = "%Y-%m-%d %H:%M:%S"
-        assert view["clock"]["last_tick_at"] == _utc(
-            clock.last_tick_at
-        ).astimezone(tz).strftime(fmt)
-        assert view["clock"]["next_tick_at"] == _utc(
-            clock.next_tick_at
-        ).astimezone(tz).strftime(fmt)
+        assert view["clock"]["last_tick_at"] == _utc(clock.last_tick_at).astimezone(
+            tz
+        ).strftime(fmt)
+        assert view["clock"]["next_tick_at"] == _utc(clock.next_tick_at).astimezone(
+            tz
+        ).strftime(fmt)
 
         assert view["counts"] == {
             "players": 2,
@@ -288,7 +285,7 @@ class TestAdminStateView:
 
     @pytest.mark.asyncio
     async def test_state_view_caps_lists_at_200(self, test_db_session):
-        base = datetime.now(timezone.utc)
+        base = datetime.now(UTC)
         for i in range(LIST_CAP + 5):
             player = await _seed_player(
                 test_db_session,
@@ -334,27 +331,23 @@ class TestAdminReset:
         nation = await _seed_nation(
             test_db_session, owner, "Doomed Nation", "#445566", [1001, 1002]
         )
-        test_db_session.add(
-            ScheduledActionFactory.build(nation=nation)
-        )
+        test_db_session.add(ScheduledActionFactory.build(nation=nation))
         test_db_session.add(
             GameClockFactory.build(
                 current_turn=9,
-                last_tick_at=datetime.now(timezone.utc),
-                next_tick_at=datetime.now(timezone.utc),
+                last_tick_at=datetime.now(UTC),
+                next_tick_at=datetime.now(UTC),
             )
         )
         test_db_session.add(
-            TickLogFactory.build(
-                turn_number=9, status=TickLogStatus.COMPLETED
-            )
+            TickLogFactory.build(turn_number=9, status=TickLogStatus.COMPLETED)
         )
         await test_db_session.flush()
 
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         await admin_reset(test_db_session)
         await test_db_session.flush()
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
 
         result = await test_db_session.execute(select(func.count()).select_from(Nation))
         assert result.scalar_one() == 0
@@ -404,16 +397,14 @@ class TestAdminReset:
         clock = result.scalar_one()
         assert clock.current_turn == 0
         assert clock.last_tick_at is None
-        assert _utc(clock.next_tick_at) > datetime.now(timezone.utc)
+        assert _utc(clock.next_tick_at) > datetime.now(UTC)
 
     @pytest.mark.asyncio
     async def test_reset_inserts_missing_clock_row(self, test_db_session):
         """A populated world without game_clock gets the singleton back."""
         owner = await _seed_player(test_db_session, vk_user_id=4001)
         await _seed_provinces(test_db_session, [1001])
-        await _seed_nation(
-            test_db_session, owner, "Clockless", "#778899", [1001]
-        )
+        await _seed_nation(test_db_session, owner, "Clockless", "#778899", [1001])
 
         await admin_reset(test_db_session)
         await test_db_session.flush()
@@ -424,9 +415,7 @@ class TestAdminReset:
         clock = result.scalar_one()
         assert clock.current_turn == 0
         assert clock.next_tick_at is not None
-        result = await test_db_session.execute(
-            select(func.count()).select_from(Nation)
-        )
+        result = await test_db_session.execute(select(func.count()).select_from(Nation))
         assert result.scalar_one() == 0
 
     @pytest.mark.asyncio
@@ -464,7 +453,8 @@ class TestAdminEndpointFunctions:
         )
         yield
         core_db._engine, core_db._async_session_maker = (
-            saved_engine, saved_maker,
+            saved_engine,
+            saved_maker,
         )
 
     @pytest.fixture(autouse=True)
@@ -515,16 +505,14 @@ class TestAdminEndpointFunctions:
             test_db_session.add(
                 TickLog(
                     turn_number=turn,
-                    started_at=datetime.now(timezone.utc),
-                    finished_at=datetime.now(timezone.utc),
+                    started_at=datetime.now(UTC),
+                    finished_at=datetime.now(UTC),
                     status=TickLogStatus.COMPLETED,
                 )
             )
         await test_db_session.flush()
 
-        rows = await admin_tick_log(
-            admin=None, session=test_db_session, limit=2
-        )
+        rows = await admin_tick_log(admin=None, session=test_db_session, limit=2)
 
         assert [r["turn_number"] for r in rows] == [3, 2]
         assert rows[0]["status"] == "COMPLETED"
@@ -550,9 +538,7 @@ class TestAdminEndpointFunctions:
         assert result["next_tick_at"].endswith(" 00:00:00")
 
     @pytest.mark.asyncio
-    async def test_reset_restarts_tick_log_ids_from_1(
-        self, test_db_session
-    ):
+    async def test_reset_restarts_tick_log_ids_from_1(self, test_db_session):
         """Real ticks push ids past 1; after reset the next row is id 1."""
         from core.admin.router import admin_tick_run
 
@@ -560,9 +546,7 @@ class TestAdminEndpointFunctions:
         await test_db_session.commit()
 
         for _ in range(3):
-            result = await admin_tick_run(
-                admin=None, session=test_db_session
-            )
+            result = await admin_tick_run(admin=None, session=test_db_session)
             assert result["ok"] is True
         assert result["tick_log"]["id"] == 3
 
@@ -576,9 +560,7 @@ class TestAdminEndpointFunctions:
         assert result["tick_log"]["turn_number"] == 1
 
     @pytest.mark.asyncio
-    async def test_reset_on_empty_tick_log_next_id_is_1(
-        self, test_db_session
-    ):
+    async def test_reset_on_empty_tick_log_next_id_is_1(self, test_db_session):
         """Resetting an empty journal is fine and the first tick still
         gets id 1."""
         from core.admin.router import admin_tick_run
@@ -594,9 +576,7 @@ class TestAdminEndpointFunctions:
         assert result["tick_log"]["id"] == 1
 
     @pytest.mark.asyncio
-    async def test_failed_later_hook_rolls_back_id_counter(
-        self, test_db_session
-    ):
+    async def test_failed_later_hook_rolls_back_id_counter(self, test_db_session):
         """A failing hook after 00_core rolls the whole reset back: the
         old tick_log rows return AND the id counter is not restarted —
         the next insert resumes above the restored rows instead of
@@ -618,7 +598,7 @@ class TestAdminEndpointFunctions:
         # Rows inserted WITHOUT explicit ids so they consume the real
         # counter (identity sequence on Postgres, rowid on SQLite): 1,2,3.
         for turn in (1, 2, 3):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             test_db_session.add(
                 TickLog(
                     turn_number=turn,
@@ -639,7 +619,7 @@ class TestAdminEndpointFunctions:
         result = await test_db_session.execute(select(TickLog))
         assert len(result.scalars().all()) == 3
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         new_row = TickLog(
             turn_number=99,
             started_at=now,
@@ -668,9 +648,7 @@ class TestAdminEndpointFunctions:
             StateResetRequest(),
         ):
             with pytest.raises(ConfirmRequiredError):
-                await admin_state_reset(
-                    body=body, admin=None, session=test_db_session
-                )
+                await admin_state_reset(body=body, admin=None, session=test_db_session)
 
         # Success path: all hooks commit, response lists slugs in
         # execution order (reverse registration — only 00_core here).

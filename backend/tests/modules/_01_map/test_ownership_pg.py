@@ -15,7 +15,7 @@ from modules._00_core.exceptions import (
     RetiredProvinceOwnedError,
 )
 from modules._00_core.hooks import OwnershipChange
-from modules._00_core.models import GameClock, Nation, Player, Province
+from modules._00_core.models import GameClock, Player, Province
 from modules._00_core.service import NationService, ProvinceService
 from modules._01_map.models import MapOwnershipLog
 from modules._01_map.service import (
@@ -27,10 +27,10 @@ from modules._01_map.service import (
     records_for_province,
 )
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import STARTING_GROUP
@@ -42,9 +42,7 @@ CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 
 async def _set_turn(session, turn: int) -> None:
-    result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    result = await session.execute(select(GameClock).where(GameClock.id == 1))
     result.scalar_one().current_turn = turn
     await session.flush()
 
@@ -117,9 +115,7 @@ class TestOwnersAtTurnPg:
                 await owners_at_turn(session, -1)
 
     @pytest.mark.asyncio
-    async def test_records_for_province_ordering(
-        self, pg_db, flat_map_service
-    ):
+    async def test_records_for_province_ordering(self, pg_db, flat_map_service):
         async with pg_db() as session:
             await sync_map_nodes(session, flat_map_service)
             await record_changes(
@@ -142,7 +138,10 @@ class TestOwnersAtTurnPg:
 class TestListenerOnPg:
     @pytest.mark.asyncio
     async def test_create_and_delete_journal_on_pg(
-        self, pg_db, linked_map_service, linked_map_hooks
+        self,
+        pg_db,
+        linked_map_service,
+        linked_map_hooks,
     ):
         async with pg_db() as session:
             await sync_map_nodes(session, linked_map_service)
@@ -165,9 +164,7 @@ class TestListenerOnPg:
             rows = (
                 (
                     await session.execute(
-                        select(MapOwnershipLog).order_by(
-                            MapOwnershipLog.id
-                        )
+                        select(MapOwnershipLog).order_by(MapOwnershipLog.id)
                     )
                 )
                 .scalars()
@@ -191,9 +188,7 @@ class TestListenerOnPg:
             rows = (
                 (
                     await session.execute(
-                        select(MapOwnershipLog).order_by(
-                            MapOwnershipLog.id
-                        )
+                        select(MapOwnershipLog).order_by(MapOwnershipLog.id)
                     )
                 )
                 .scalars()
@@ -228,9 +223,7 @@ class TestRemoveRetiredPg:
     """
 
     @pytest.mark.asyncio
-    async def test_unowned_removed_and_history_blocks(
-        self, pg_db, flat_map_service
-    ):
+    async def test_unowned_removed_and_history_blocks(self, pg_db, flat_map_service):
         # Nodes 1007/1008 pretend to be retired by a newer map version;
         # 1008 carries a journal row, 1007 does not.
         async with pg_db() as session:
@@ -251,9 +244,7 @@ class TestRemoveRetiredPg:
             await session.commit()
 
         async with pg_db() as session:
-            history = await province_ids_with_journal(
-                session, [1007, 1008]
-            )
+            history = await province_ids_with_journal(session, [1007, 1008])
             assert history == {1008}
             with pytest.raises(RetiredProvinceHistoryError) as exc_info:
                 await ProvinceService.remove_retired(
@@ -267,17 +258,13 @@ class TestRemoveRetiredPg:
             result = await ProvinceService.remove_retired(
                 session,
                 [1007],
-                history_ids=await province_ids_with_journal(
-                    session, [1007]
-                ),
+                history_ids=await province_ids_with_journal(session, [1007]),
             )
             assert result.removed == [1007]
             await session.commit()
 
         async with pg_db() as session:
-            ids = (
-                await session.execute(select(Province.id))
-            ).scalars().all()
+            ids = (await session.execute(select(Province.id))).scalars().all()
             assert 1007 not in ids
             assert 1008 in ids
             count = await session.execute(
@@ -289,7 +276,10 @@ class TestRemoveRetiredPg:
 
     @pytest.mark.asyncio
     async def test_owned_retired_row_is_fatal(
-        self, pg_db, linked_map_service, linked_map_hooks
+        self,
+        pg_db,
+        linked_map_service,
+        linked_map_hooks,
     ):
         async with pg_db() as session:
             await sync_map_nodes(session, linked_map_service)

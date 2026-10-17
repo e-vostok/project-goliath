@@ -7,7 +7,7 @@ after all phase handlers have completed successfully.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,35 +21,33 @@ from modules._00_core.tick_schedule import next_tick_after
 async def finalize_tick(session: AsyncSession, turn_number: int) -> None:
     """
     Finalize a tick by updating the game clock.
-    
+
     This function:
     - Increments current_turn to the given turn_number
     - Sets last_tick_at to now
     - Sets next_tick_at to the next daily tick_time in tick_timezone.
       Because the schedule is anchored to a fixed local time rather than
       "now + interval", a manual tick does not shift the daily cadence.
-    
+
     Args:
         session: The async database session.
         turn_number: The turn number that just completed.
     """
     # Load the core config
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
-    
+
     # Get the game clock (singleton, id=1)
-    result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = result.scalar_one()
-    
+
     # Update the clock
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     clock.current_turn = turn_number
     clock.last_tick_at = now
     clock.next_tick_at = next_tick_after(
         now, config.tick.tick_time, config.tick.tick_timezone
     )
-    
+
     # Flush to ensure the changes are applied
     await session.flush()
 
@@ -57,7 +55,7 @@ async def finalize_tick(session: AsyncSession, turn_number: int) -> None:
 def register_tick_handlers() -> None:
     """
     Register the 00_core tick handlers with the TickOrchestrator.
-    
+
     This function should be called during application startup to ensure
     the finalize_tick callback is registered.
     """

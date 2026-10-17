@@ -11,17 +11,17 @@ is reset directly for the "never" branch.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import core.health.checks as health_checks
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick import heartbeat
 from core.tick.orchestrator import TickOrchestrator
@@ -66,8 +66,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -75,9 +74,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     AdminRegistry._reset_hooks.clear()
@@ -116,9 +113,7 @@ async def test_health_never_before_first_beat(live_client, monkeypatch):
 
 async def test_health_stale_after_threshold(live_client):
     threshold = CORE_CONFIG.tick.health_max_heartbeat_age_seconds
-    heartbeat.touch(
-        now=datetime.now(timezone.utc) - timedelta(seconds=threshold + 60)
-    )
+    heartbeat.touch(now=datetime.now(UTC) - timedelta(seconds=threshold + 60))
 
     response = await live_client.get("/api/v1/health")
 
@@ -129,18 +124,14 @@ async def test_health_stale_after_threshold(live_client):
     }
 
 
-async def test_health_db_failure_leaks_no_exception_text(
-    live_client, monkeypatch
-):
+async def test_health_db_failure_leaks_no_exception_text(live_client, monkeypatch):
     """Fault injection at get_session_context: the only seam the probe
     uses to reach the engine. The 503 body must carry the status word
     "fail" and NOTHING of the underlying error."""
 
     class _BoomSessionContext:
         async def __aenter__(self):
-            raise RuntimeError(
-                "simulated outage: password=hunter2 host=internal.db"
-            )
+            raise RuntimeError("simulated outage: password=hunter2 host=internal.db")
 
         async def __aexit__(self, *exc_info):
             return False

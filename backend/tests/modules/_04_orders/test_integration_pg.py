@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -31,10 +31,10 @@ from modules._04_orders.models import Order
 from modules._04_orders.service import OrderService, RetryPassStats
 from tests.fixtures.factories import make_consent
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.modules._03_registry.conftest import bearer_headers
 from tests.modules._04_orders.conftest import seed_author, seed_judge
@@ -55,15 +55,14 @@ REMINDER_HOURS = 54  # deadline * reminder_percent 75 (integer seconds)
 async def orders_client(pg_db):
     """HTTP client where every request opens its own session on the
     ``pg_db`` engine — same shape as the SQLite integration client."""
+
     async def _override_get_session():
         async with pg_db() as session:
             yield session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
@@ -75,18 +74,14 @@ async def _order_row(session, number: int = 1) -> Order:
 
 
 async def _outbox_by_type(session) -> dict[str, BotOutbox]:
-    rows = (
-        (await session.execute(select(BotOutbox))).scalars().all()
-    )
+    rows = (await session.execute(select(BotOutbox))).scalars().all()
     return {row.type_key: row for row in rows}
 
 
 class TestEndToEndPg:
     """The whole chain against the migrated PostgreSQL schema."""
 
-    async def test_full_order_cycle(
-        self, orders_client, pg_db, orders_bot_started
-    ):
+    async def test_full_order_cycle(self, orders_client, pg_db, orders_bot_started):
         async with pg_db() as session:
             author, nation = await seed_author(
                 session, 881501, nation_name="Северная Лига"
@@ -111,16 +106,14 @@ class TestEndToEndPg:
         assert body["distributed"] is False
 
         async with pg_db() as session:
-            judge = await seed_judge(
-                session, 881502, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 881502, nation=True, consent="ALLOWED")
             await session.commit()
             judge_id, judge_vk = judge.id, judge.vk_user_id
 
         # One wall-clock tick past the submit so the stage stamps order
         # strictly even on coarse-grained clocks.
         await asyncio.sleep(0.02)
-        t_assign = datetime.now(timezone.utc)
+        t_assign = datetime.now(UTC)
         stats = await OrderService.run_retry_pass(pg_db, now=t_assign)
         assert stats == RetryPassStats(assigned=1)
 
@@ -128,20 +121,14 @@ class TestEndToEndPg:
             order = await _order_row(session)
             assert order.judge_player_id == judge_id
             assert order.distributed_at == t_assign
-            assert order.deadline_at == t_assign + timedelta(
-                hours=DEADLINE_HOURS
-            )
-            assert order.reminder_at == t_assign + timedelta(
-                hours=REMINDER_HOURS
-            )
+            assert order.deadline_at == t_assign + timedelta(hours=DEADLINE_HOURS)
+            assert order.reminder_at == t_assign + timedelta(hours=REMINDER_HOURS)
             outbox = await _outbox_by_type(session)
         assert outbox["ORDER_JUDGE_ASSIGNED"].player_id == judge_id
         assert outbox["ORDER_DISTRIBUTED"].player_id == author_id
 
         judge_headers = bearer_headers(judge_id)
-        queue = await orders_client.get(
-            f"{ORDERS_URL}/assigned", headers=judge_headers
-        )
+        queue = await orders_client.get(f"{ORDERS_URL}/assigned", headers=judge_headers)
         bodies.append(queue.text)
         assert [item["number"] for item in queue.json()["items"]] == [1]
 
@@ -180,15 +167,12 @@ class TestEndToEndPg:
             assert outbox["ORDER_VERDICT_READY"].player_id == author_id
 
         startup_registry()
-        table = await orders_client.get(
-            REGISTRY_ORDERS_URL, headers=author_headers
-        )
+        table = await orders_client.get(REGISTRY_ORDERS_URL, headers=author_headers)
         assert table.status_code == 200
         bodies.append(table.text)
         cells = table.json()["rows"][0]["cells"]
         keys = [
-            cells[stage]["key"]
-            for stage in ("submitted", "distributed", "verdict")
+            cells[stage]["key"] for stage in ("submitted", "distributed", "verdict")
         ]
         assert all(key is not None for key in keys)
         assert keys[0] <= keys[1] <= keys[2]
@@ -197,11 +181,7 @@ class TestEndToEndPg:
         # (Registry cell keys resolve to whole seconds).
         async with pg_db() as session:
             order = await _order_row(session)
-            assert (
-                order.submitted_at
-                < order.distributed_at
-                < order.verdict_at
-            )
+            assert order.submitted_at < order.distributed_at < order.verdict_at
 
         # INV-O5: no response body carries the judge's ids.
         for text in bodies:
@@ -218,16 +198,17 @@ class TestEndToEndPg:
         bodies.append(repeat.text)
         assert repeat.json()["number"] == 1
         async with pg_db() as session:
-            count = await session.scalar(
-                select(func.count()).select_from(Order)
-            )
+            count = await session.scalar(select(func.count()).select_from(Order))
             assert count == 1
         for text in bodies[-1:]:
             assert judge_id not in text
             assert str(judge_vk) not in text
 
     async def test_waiting_order_gets_judge_once_candidate_exists(
-        self, orders_client, pg_db, orders_bot_started
+        self,
+        orders_client,
+        pg_db,
+        orders_bot_started,
     ):
         """No candidate at submit: the order waits; once a reachable
         player appears, the next pass assigns it (Spec 2.3)."""
@@ -244,9 +225,7 @@ class TestEndToEndPg:
         assert submit.status_code == 201
         assert submit.json()["distributed"] is False
 
-        stats = await OrderService.run_retry_pass(
-            pg_db, now=datetime.now(timezone.utc)
-        )
+        stats = await OrderService.run_retry_pass(pg_db, now=datetime.now(UTC))
         assert stats.assigned == 0
         assert stats.still_waiting == 1
         async with pg_db() as session:
@@ -257,12 +236,8 @@ class TestEndToEndPg:
             await session.commit()
             judge_id = judge.id
 
-        stats = await OrderService.run_retry_pass(
-            pg_db, now=datetime.now(timezone.utc)
-        )
+        stats = await OrderService.run_retry_pass(pg_db, now=datetime.now(UTC))
         assert stats.assigned == 1
         assert stats.errors == 0
         async with pg_db() as session:
-            assert (
-                await _order_row(session)
-            ).judge_player_id == judge_id
+            assert (await _order_row(session)).judge_player_id == judge_id

@@ -37,35 +37,43 @@ _API_VERSION_RE = re.compile(r"^5\.\d{1,3}$")
 _API_BASE_URL_RE = re.compile(r"^https://[a-z0-9.-]+(?:/[a-z0-9._-]+)*$")
 
 ColumnType = Literal[
-    "index",        # порядковый номер: целое число
-    "integer",      # целое число
-    "text",         # строка
-    "date",         # дата: {text, key}; key — целое число для сортировки и фильтра
-    "datetime",     # дата и время: {date, time, key, day, mark}
+    "index",  # порядковый номер: целое число
+    "integer",  # целое число
+    "text",  # строка
+    "date",  # дата: {text, key}; key — целое число для сортировки и фильтра
+    "datetime",  # дата и время: {date, time, key, day, mark}
     "action_text",  # кликабельный текст: {text, action}
-    "person",       # аватарка и имя игрока
-    "gauge",        # целое на знаковой шкале (судейский рейтинг)
-    "flag",         # малый флаг: цвет-заглушка или изображение
-    "nation",       # цветовая метка и название государства
+    "person",  # аватарка и имя игрока
+    "gauge",  # целое на знаковой шкале (судейский рейтинг)
+    "flag",  # малый флаг: цвет-заглушка или изображение
+    "nation",  # цветовая метка и название государства
 ]
 
 FilterKind = Literal[
-    "text",          # «содержит»
+    "text",  # «содержит»
     "number_range",  # диапазон «от — до» по числу или ключу сортировки
-    "date_range",    # диапазон календарных дат (по ключу сортировки — число дней)
-    "presence",      # «есть / нет»
+    "date_range",  # диапазон календарных дат (по ключу сортировки — число дней)
+    "presence",  # «есть / нет»
     "select_or_contains",  # выпадающий список известных государств + «содержит»
 ]
 
 IconKey = Literal[
-    "players", "nations", "map", "economy", "army", "diplomacy", "table",
+    "players",
+    "nations",
+    "map",
+    "economy",
+    "army",
+    "diplomacy",
+    "table",
     "orders",
 ]
 
 # Иконка вместо текста заголовка столбца (Spec 5.5): три этапа приказа.
 # Текст title остаётся обязательным — он подсказка и подпись для доступности.
 HeaderIcon = Literal[
-    "stage_submitted", "stage_distributed", "stage_verdict",
+    "stage_submitted",
+    "stage_distributed",
+    "stage_verdict",
 ]
 
 # Какие фильтры допустимы для какого типа столбца. Пустой набор — фильтра нет.
@@ -283,14 +291,10 @@ class ColumnConfig(_Strict):
             )
         # Поиск.
         if self.searchable and self.type not in SEARCHABLE_TYPES:
-            raise ValueError(
-                f"{label}: searchable недопустим для типа {self.type!r}"
-            )
+            raise ValueError(f"{label}: searchable недопустим для типа {self.type!r}")
         # Сортировка.
         if self.sortable and self.type in UNSORTABLE_TYPES:
-            raise ValueError(
-                f"{label}: сортировка недопустима для типа {self.type!r}"
-            )
+            raise ValueError(f"{label}: сортировка недопустима для типа {self.type!r}")
         # Шкала.
         if self.type == "gauge":
             if self.scale_min is None or self.scale_max is None:
@@ -401,8 +405,8 @@ class RegistryConfig(_Strict):
         raise KeyError(table_id)
 
     @classmethod
-    def from_yaml(cls, path: str) -> "RegistryConfig":
-        with open(path, "r", encoding="utf-8") as f:
+    def from_yaml(cls, path: str) -> RegistryConfig:
+        with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         return cls.model_validate(raw)
 

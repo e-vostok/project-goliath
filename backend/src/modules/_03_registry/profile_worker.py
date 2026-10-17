@@ -28,8 +28,8 @@ import logging
 import os
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager, suppress
-from datetime import datetime, timedelta, timezone
-from enum import Enum
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,11 +49,11 @@ logger = logging.getLogger(__name__)
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
-class WorkerMode(str, Enum):
+class WorkerMode(StrEnum):
     """Lifecycle mode of the profile worker (Spec 2.4)."""
 
     OFF = "OFF"
-    NO_TOKEN = "NO_TOKEN"
+    NO_TOKEN = "NO_TOKEN"  # noqa: S105
     RUNNING = "RUNNING"
 
 
@@ -89,11 +89,7 @@ def request_wake() -> None:
 
 def aware_utc(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def read_vk_group_token(environ: Mapping[str, str] = os.environ) -> str | None:
@@ -124,15 +120,9 @@ async def run_cycle(
         async with session_factory() as session:
             async with session.begin():
                 players = await PlayerService.list_for_registry(session)
-                vk_by_player = {
-                    row.player_id: row.vk_user_id for row in players
-                }
+                vk_by_player = {row.player_id: row.vk_user_id for row in players}
                 existing = set(
-                    (
-                        await session.execute(
-                            select(RegistryVkProfile.player_id)
-                        )
-                    )
+                    (await session.execute(select(RegistryVkProfile.player_id)))
                     .scalars()
                     .all()
                 )
@@ -150,9 +140,7 @@ async def run_cycle(
                     (
                         await session.execute(
                             select(RegistryVkProfile)
-                            .where(
-                                RegistryVkProfile.next_attempt_at <= now
-                            )
+                            .where(RegistryVkProfile.next_attempt_at <= now)
                             .order_by(RegistryVkProfile.next_attempt_at)
                             .limit(profiles.batch_size + 1)
                         )
@@ -254,9 +242,7 @@ class ProfileWorker:
         if self._task is not None:
             return
         install_wake_event(self._wake)
-        self._task = asyncio.create_task(
-            self._loop(), name="registry-profiles"
-        )
+        self._task = asyncio.create_task(self._loop(), name="registry-profiles")
         _mode = WorkerMode.RUNNING
 
     async def stop(self) -> None:
@@ -286,19 +272,17 @@ class ProfileWorker:
                     self._session_factory,
                     self._client,
                     self._profiles,
-                    datetime.now(timezone.utc),
+                    datetime.now(UTC),
                 )
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("03_registry profile cycle failed")
             else:
-                _last_cycle_at = datetime.now(timezone.utc)
+                _last_cycle_at = datetime.now(UTC)
             try:
-                await asyncio.wait_for(
-                    self._wake.wait(), timeout=interval_seconds
-                )
-            except asyncio.TimeoutError:
+                await asyncio.wait_for(self._wake.wait(), timeout=interval_seconds)
+            except TimeoutError:
                 pass
             self._wake.clear()
 
@@ -332,8 +316,6 @@ async def start_profile_worker_if_ready(
             )
             _no_token_warned = True
         return None
-    worker = ProfileWorker(
-        profiles, token, session_factory, transport=transport
-    )
+    worker = ProfileWorker(profiles, token, session_factory, transport=transport)
     await worker.start()
     return worker

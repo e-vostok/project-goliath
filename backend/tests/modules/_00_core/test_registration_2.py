@@ -22,17 +22,15 @@ The concurrent-registration color race lives in
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
 
+from alembic import command
 from core.db import get_session
 from main import app
 from modules._00_core.color_policy import hex_to_oklab, oklab_distance
@@ -56,7 +54,7 @@ from modules._00_core.exceptions import (
     ShortNameTakenError,
     SuccessionInvalidError,
 )
-from modules._00_core.models import Nation, Player, Province
+from modules._00_core.models import Nation, Player
 from modules._00_core.service import NationService
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import make_land_province
@@ -96,14 +94,13 @@ def config() -> CoreConfig:
 async def client(test_db_session):
     """HTTP client bound to the real app, backed by the test session
     (the same wiring every core API test uses)."""
+
     async def _override_get_session():
         yield test_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
@@ -120,9 +117,7 @@ async def _land(session, ids: list[int]) -> None:
         await make_land_province(session, id=pid)
 
 
-async def _create(
-    session, player: Player, config: CoreConfig, **overrides
-) -> Nation:
+async def _create(session, player: Player, config: CoreConfig, **overrides) -> Nation:
     kwargs = {
         "owner_player_id": player.id,
         "name": "Testland Realm",
@@ -150,7 +145,7 @@ class TestOklabVectors:
     )
     def test_hex_to_oklab(self, hex_color, expected):
         lab = hex_to_oklab(hex_color)
-        for got, want in zip(lab, expected):
+        for got, want in zip(lab, expected, strict=True):
             assert got == pytest.approx(want, abs=1e-5)
 
     @pytest.mark.parametrize(
@@ -170,9 +165,7 @@ class TestOklabVectors:
         ],
     )
     def test_oklab_distance(self, first, second, expected):
-        assert oklab_distance(first, second) == pytest.approx(
-            expected, abs=1e-5
-        )
+        assert oklab_distance(first, second) == pytest.approx(expected, abs=1e-5)
 
 
 class TestFieldErrorCodes:
@@ -212,9 +205,7 @@ class TestFieldErrorCodes:
         await _land(test_db_session, STARTING)
 
         with pytest.raises(error):
-            await _create(
-                test_db_session, player, config, **{field: value}
-            )
+            await _create(test_db_session, player, config, **{field: value})
 
     @pytest.mark.asyncio
     async def test_short_name_taken(self, test_db_session, config):
@@ -240,9 +231,7 @@ class TestFieldErrorCodes:
         await _land(test_db_session, STARTING)
 
         with pytest.raises(ColorTooCloseError):
-            await _create(
-                test_db_session, player, config, color_hex="#8F8F8F"
-            )
+            await _create(test_db_session, player, config, color_hex="#8F8F8F")
 
     @pytest.mark.asyncio
     async def test_color_too_close_to_nation(self, test_db_session, config):
@@ -265,9 +254,7 @@ class TestFieldErrorCodes:
             )
 
     @pytest.mark.asyncio
-    async def test_capital_not_in_provinces(
-        self, test_db_session, config
-    ):
+    async def test_capital_not_in_provinces(self, test_db_session, config):
         player = await _player(test_db_session)
         await _land(test_db_session, STARTING)
 
@@ -284,9 +271,7 @@ class TestCheckOrder:
     """The Part 2 order lines that Registration 2.0 makes observable."""
 
     @pytest.mark.asyncio
-    async def test_name_taken_before_short_name_taken(
-        self, test_db_session, config
-    ):
+    async def test_name_taken_before_short_name_taken(self, test_db_session, config):
         """INV-2 for the name precedes INV-11: a request that violates
         both answers NAME_TAKEN."""
         player_a = await _player(test_db_session, 510002)
@@ -305,9 +290,7 @@ class TestCheckOrder:
             )
 
     @pytest.mark.asyncio
-    async def test_short_name_taken_before_color(
-        self, test_db_session, config
-    ):
+    async def test_short_name_taken_before_color(self, test_db_session, config):
         """INV-11 precedes the color decision: a taken short name plus
         a taken color answers SHORT_NAME_TAKEN."""
         player_a = await _player(test_db_session, 510002)
@@ -327,9 +310,7 @@ class TestCheckOrder:
             )
 
     @pytest.mark.asyncio
-    async def test_color_before_province_existence(
-        self, test_db_session, config
-    ):
+    async def test_color_before_province_existence(self, test_db_session, config):
         """The color decision precedes the province reads: a taken
         color with nonexistent provinces answers COLOR_TAKEN."""
         player_a = await _player(test_db_session, 510002)
@@ -349,9 +330,7 @@ class TestCheckOrder:
             )
 
     @pytest.mark.asyncio
-    async def test_count_before_capital_membership(
-        self, test_db_session, config
-    ):
+    async def test_count_before_capital_membership(self, test_db_session, config):
         """The province count precedes the capital check (INV-14 is
         verified after ``after_count``): four provinces plus a bad
         capital answers PROVINCE_COUNT_OUT_OF_RANGE."""
@@ -368,9 +347,7 @@ class TestCheckOrder:
             )
 
     @pytest.mark.asyncio
-    async def test_field_order_gender_before_short_name(
-        self, test_db_session, config
-    ):
+    async def test_field_order_gender_before_short_name(self, test_db_session, config):
         """Field checks run in the Part 2 fixed order — gender precedes
         short_name, so the gender error wins when both are bad."""
         player = await _player(test_db_session)
@@ -390,9 +367,7 @@ class TestUpdateSemantics:
     """PATCH semantics for the new fields (INV-8/INV-12/INV-14)."""
 
     @pytest.mark.asyncio
-    async def test_optional_fields_clear_to_null(
-        self, test_db_session, config
-    ):
+    async def test_optional_fields_clear_to_null(self, test_db_session, config):
         """An empty (post-strip) value clears an optional field to NULL;
         absent keeps the previous value."""
         player = await _player(test_db_session)
@@ -422,9 +397,7 @@ class TestUpdateSemantics:
         assert nation.anthem_url == "https://vk.com/audio-2001_1"
 
     @pytest.mark.asyncio
-    async def test_mandatory_empty_is_error_not_clear(
-        self, test_db_session, config
-    ):
+    async def test_mandatory_empty_is_error_not_clear(self, test_db_session, config):
         """INV-8: an empty mandatory field is a validation error."""
         player = await _player(test_db_session)
         await _land(test_db_session, STARTING)
@@ -450,9 +423,7 @@ class TestUpdateSemantics:
         assert nation.gender == "male"
 
     @pytest.mark.asyncio
-    async def test_own_color_excluded_on_update(
-        self, test_db_session, config
-    ):
+    async def test_own_color_excluded_on_update(self, test_db_session, config):
         """Re-submitting the unchanged color is fine; a new color too
         close to another nation is refused; the nation's own color is
         excluded from the comparison."""
@@ -502,9 +473,7 @@ class TestUpdateSemantics:
             )
 
     @pytest.mark.asyncio
-    async def test_capital_name_requires_a_capital(
-        self, test_db_session, config
-    ):
+    async def test_capital_name_requires_a_capital(self, test_db_session, config):
         """INV-14: a pre-0.8.0 nation without a capital province cannot
         gain a capital name through editing."""
         player = await _player(test_db_session)
@@ -525,9 +494,7 @@ class TestUpdateSemantics:
 class TestColorCheckEndpoint:
     """POST /api/v1/nations/color-check — read-only hint (Part 5)."""
 
-    async def test_statuses_and_self_exclusion(
-        self, client, test_db_session
-    ):
+    async def test_statuses_and_self_exclusion(self, client, test_db_session):
         player_a = await seed_player(test_db_session, vk_user_id=520001)
         player_b = await seed_player(test_db_session, vk_user_id=520002)
         await seed_provinces(test_db_session, STARTING)
@@ -541,33 +508,38 @@ class TestColorCheckEndpoint:
 
         # Fresh player's own checks.
         resp = await client.post(
-            url, headers=bearer_headers(player_b.id),
+            url,
+            headers=bearer_headers(player_b.id),
             json={"color_hex": COLOR_C},
         )
         assert resp.status_code == 200
         assert resp.json() == {"status": "OK"}
 
         resp = await client.post(
-            url, headers=bearer_headers(player_b.id),
+            url,
+            headers=bearer_headers(player_b.id),
             json={"color_hex": COLOR_A},
         )
         assert resp.json() == {"status": "TAKEN"}
 
         resp = await client.post(
-            url, headers=bearer_headers(player_b.id),
+            url,
+            headers=bearer_headers(player_b.id),
             json={"color_hex": "#0C7DF5"},
         )
         assert resp.json() == {"status": "TOO_CLOSE"}
 
         resp = await client.post(
-            url, headers=bearer_headers(player_b.id),
+            url,
+            headers=bearer_headers(player_b.id),
             json={"color_hex": "#141E26"},  # the reserved sea color
         )
         assert resp.json() == {"status": "TOO_CLOSE"}
 
         # The owner's own color is excluded — it reads as OK.
         resp = await client.post(
-            url, headers=bearer_headers(player_a.id),
+            url,
+            headers=bearer_headers(player_a.id),
             json={"color_hex": COLOR_A},
         )
         assert resp.json() == {"status": "OK"}
@@ -585,14 +557,10 @@ class TestColorCheckEndpoint:
 class TestPatchEndpoint:
     """PATCH /api/v1/nations/me — Registration 2.0 fields over HTTP."""
 
-    async def test_optional_clear_and_mandatory_empty(
-        self, client, test_db_session
-    ):
+    async def test_optional_clear_and_mandatory_empty(self, client, test_db_session):
         player = await seed_player(test_db_session, vk_user_id=520004)
         await seed_provinces(test_db_session, STARTING)
-        nation = await seed_nation(
-            test_db_session, player, province_ids=STARTING
-        )
+        nation = await seed_nation(test_db_session, player, province_ids=STARTING)
         await test_db_session.execute(
             sa.update(Nation)
             .where(Nation.id == nation.id)
@@ -694,30 +662,28 @@ def test_migration_0011_up_down_up(tmp_path, monkeypatch):
             for name in _NEW_COLUMNS:
                 assert columns[name]["nullable"] is True
 
-            uniques = {
-                u["name"] for u in insp.get_unique_constraints("nations")
-            }
+            uniques = {u["name"] for u in insp.get_unique_constraints("nations")}
             assert "uq_nations_short_name" in uniques
 
             fks = insp.get_foreign_keys("nations")
             capital_fk = next(
-                f
-                for f in fks
-                if f["name"] == "fk_nations_capital_province_id"
+                f for f in fks if f["name"] == "fk_nations_capital_province_id"
             )
             assert capital_fk["referred_table"] == "provinces"
-            assert capital_fk["constrained_columns"] == [
-                "capital_province_id"
-            ]
+            assert capital_fk["constrained_columns"] == ["capital_province_id"]
             assert capital_fk["options"].get("ondelete") == "SET NULL"
 
-            row = conn.execute(
-                sa.text(
-                    "SELECT name, color_hex, created_turn, short_name, "
-                    "capital_province_id FROM nations WHERE id = :id"
-                ),
-                {"id": nation_id},
-            ).mappings().one()
+            row = (
+                conn.execute(
+                    sa.text(
+                        "SELECT name, color_hex, created_turn, short_name, "
+                        "capital_province_id FROM nations WHERE id = :id"
+                    ),
+                    {"id": nation_id},
+                )
+                .mappings()
+                .one()
+            )
             # Existing data untouched; new fields NULL (INV-11 legacy).
             assert row["name"] == "Old Realm"
             assert row["color_hex"] == "#0C7CF4"
@@ -732,9 +698,7 @@ def test_migration_0011_up_down_up(tmp_path, monkeypatch):
     engine = sa.create_engine(url)
     try:
         with engine.connect() as conn:
-            columns = {
-                c["name"] for c in sa.inspect(conn).get_columns("nations")
-            }
+            columns = {c["name"] for c in sa.inspect(conn).get_columns("nations")}
             assert set(_NEW_COLUMNS).isdisjoint(columns)
             # The old row is still there, still intact.
             name = conn.execute(
@@ -750,9 +714,7 @@ def test_migration_0011_up_down_up(tmp_path, monkeypatch):
     engine = sa.create_engine(url)
     try:
         with engine.connect() as conn:
-            columns = {
-                c["name"] for c in sa.inspect(conn).get_columns("nations")
-            }
+            columns = {c["name"] for c in sa.inspect(conn).get_columns("nations")}
             assert set(_NEW_COLUMNS) <= columns
     finally:
         engine.dispose()

@@ -16,13 +16,13 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+import modules._04_orders.config_schema as orders_schema
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Nation
 from modules._00_core.player_stats import JUDGE_RATING_MAX, JUDGE_RATING_MIN
 from modules._01_map.config_schema import MapConfig
 from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
 from modules._03_registry.config_schema import RegistryConfig
-import modules._04_orders.config_schema as orders_schema
 from modules._04_orders.config_schema import OrdersConfig
 from modules._04_orders.models import Order
 
@@ -88,8 +88,17 @@ def _base_config() -> dict:
             "epoch_start_date": "2040-01-01",
             "months_per_turn": 1,
             "month_names": [
-                "январь", "февраль", "март", "апрель", "май", "июнь",
-                "июль", "август", "сентябрь", "октябрь", "ноябрь",
+                "январь",
+                "февраль",
+                "март",
+                "апрель",
+                "май",
+                "июнь",
+                "июль",
+                "август",
+                "сентябрь",
+                "октябрь",
+                "ноябрь",
                 "декабрь",
             ],
         },
@@ -142,11 +151,15 @@ def test_valid_config_loads():
     assert config.nation.capital_name_max_length == 40
     assert config.nation.history_url_max_length == 200
     assert config.nation.history_url_allowed_hosts == [
-        "vk.com", "vk.ru", "m.vk.com",
+        "vk.com",
+        "vk.ru",
+        "m.vk.com",
     ]
     assert config.nation.anthem_url_max_length == 200
     assert config.nation.anthem_url_allowed_hosts == [
-        "vk.com", "vk.ru", "m.vk.com",
+        "vk.com",
+        "vk.ru",
+        "m.vk.com",
     ]
     assert config.color.min_distance_nations == 0.08
     assert config.color.min_distance_reserved == 0.08
@@ -167,9 +180,7 @@ def test_text_bounds_do_not_exceed_column_lengths():
     """Spec 1.3 Part 4: every upper text bound of the shipped config fits
     its ``nations`` column length — any valid value stores without a new
     migration."""
-    config = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    )
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     columns = Nation.__table__.columns
     bounds = {
         "name": config.nation.nation_name_max_length,
@@ -196,14 +207,11 @@ def test_map_color_hexes_are_all_reserved():
     (case-insensitive), so no nation may claim a color the map owns."""
     with open("../configs/01_map.yaml", encoding="utf-8") as f:
         map_colors = yaml.safe_load(f)["colors"]
-    config = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    )
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     reserved = {entry.hex.upper() for entry in config.color.reserved}
     for key in ("neutral_province", "sea", "outside", "hover"):
         assert map_colors[key].upper() in reserved, (
-            f"colors.{key}={map_colors[key]} is missing from "
-            "color.reserved"
+            f"colors.{key}={map_colors[key]} is missing from color.reserved"
         )
 
 
@@ -211,14 +219,10 @@ def test_catalog_ids_have_asset_files():
     """Spec 1.3 Part 4: every catalog id must resolve to a real PNG under
     ``frontend/public/assets/nations/``. Skipped while the shipped lists
     are empty (they are filled by the 0.8.0 unit)."""
-    config = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    )
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     if not config.catalog.flag_ids and not config.catalog.portrait_ids:
         pytest.skip("catalog.*_ids are empty — nothing to resolve yet")
-    assets = (
-        REPO_ROOT / "frontend" / "public" / "assets" / "nations"
-    )
+    assets = REPO_ROOT / "frontend" / "public" / "assets" / "nations"
     for flag_id in config.catalog.flag_ids:
         assert (assets / "flags" / f"{flag_id}.png").is_file()
     for portrait_id in config.catalog.portrait_ids:
@@ -259,9 +263,7 @@ def test_03_registry_config_loads():
     the ``judge_rating`` column must equal the 00_core scale constants —
     the bounds are model properties the config can only repeat for
     drawing (Spec 03_registry 0/D1)."""
-    config = RegistryConfig.from_yaml(
-        RegistryConfig.get_default_config_path()
-    )
+    config = RegistryConfig.from_yaml(RegistryConfig.get_default_config_path())
 
     players = config.table("players")
     gauge = next(c for c in players.columns if c.id == "judge_rating")
@@ -296,15 +298,9 @@ def test_04_orders_config_loads():
     # The min_rating Field bounds repeat the 00_core scale exactly.
     assert orders_schema.JUDGE_RATING_MIN == JUDGE_RATING_MIN
     assert orders_schema.JUDGE_RATING_MAX == JUDGE_RATING_MAX
-    field_meta = orders_schema.JudgeSettings.model_fields[
-        "min_rating"
-    ].metadata
-    assert any(
-        getattr(m, "ge", None) == JUDGE_RATING_MIN for m in field_meta
-    )
-    assert any(
-        getattr(m, "le", None) == JUDGE_RATING_MAX for m in field_meta
-    )
+    field_meta = orders_schema.JudgeSettings.model_fields["min_rating"].metadata
+    assert any(getattr(m, "ge", None) == JUDGE_RATING_MIN for m in field_meta)
+    assert any(getattr(m, "le", None) == JUDGE_RATING_MAX for m in field_meta)
 
 
 def test_04_orders_column_lengths_match_schema():
@@ -313,24 +309,11 @@ def test_04_orders_column_lengths_match_schema():
     Part 1: «Длины колонок равны верхним границам схемы конфига»)."""
     columns = Order.__table__.columns
     assert columns["title"].type.length == orders_schema.TITLE_COLUMN_LENGTH
-    assert (
-        columns["verdict_title"].type.length
-        == orders_schema.TITLE_COLUMN_LENGTH
-    )
-    assert (
-        columns["summary"].type.length == orders_schema.SUMMARY_COLUMN_LENGTH
-    )
-    assert (
-        columns["verdict_summary"].type.length
-        == orders_schema.SUMMARY_COLUMN_LENGTH
-    )
-    assert (
-        columns["article_url"].type.length
-        == orders_schema.URL_COLUMN_LENGTH
-    )
-    assert (
-        columns["verdict_url"].type.length == orders_schema.URL_COLUMN_LENGTH
-    )
+    assert columns["verdict_title"].type.length == orders_schema.TITLE_COLUMN_LENGTH
+    assert columns["summary"].type.length == orders_schema.SUMMARY_COLUMN_LENGTH
+    assert columns["verdict_summary"].type.length == orders_schema.SUMMARY_COLUMN_LENGTH
+    assert columns["article_url"].type.length == orders_schema.URL_COLUMN_LENGTH
+    assert columns["verdict_url"].type.length == orders_schema.URL_COLUMN_LENGTH
 
 
 def test_03_registry_accepts_new_types_and_rejects_bad_combos():
@@ -339,9 +322,7 @@ def test_03_registry_accepts_new_types_and_rejects_bad_combos():
     key and the ``orders`` table icon — and still rejects an
     ``action_text`` column with ``date_range`` and an unknown
     ``header_icon`` value."""
-    with open(
-        RegistryConfig.get_default_config_path(), encoding="utf-8"
-    ) as f:
+    with open(RegistryConfig.get_default_config_path(), encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     data["tables"] = [
@@ -354,23 +335,38 @@ def test_03_registry_accepts_new_types_and_rejects_bad_combos():
             "default_sort": {"column": "number", "direction": "desc"},
             "columns": [
                 {
-                    "id": "number", "title": "№", "type": "index",
-                    "source": "number", "width_px": 56, "sortable": True,
-                    "filters": [], "searchable": False, "stub": False,
+                    "id": "number",
+                    "title": "№",
+                    "type": "index",
+                    "source": "number",
+                    "width_px": 56,
+                    "sortable": True,
+                    "filters": [],
+                    "searchable": False,
+                    "stub": False,
                 },
                 {
-                    "id": "title", "title": "Название",
-                    "type": "action_text", "source": "title",
-                    "width_px": 236, "sortable": True,
-                    "filters": ["text"], "searchable": True, "stub": False,
+                    "id": "title",
+                    "title": "Название",
+                    "type": "action_text",
+                    "source": "title",
+                    "width_px": 236,
+                    "sortable": True,
+                    "filters": ["text"],
+                    "searchable": True,
+                    "stub": False,
                 },
                 {
-                    "id": "submitted", "title": "Подача",
-                    "header_icon": "stage_submitted", "type": "datetime",
-                    "source": "submitted", "width_px": 136,
+                    "id": "submitted",
+                    "title": "Подача",
+                    "header_icon": "stage_submitted",
+                    "type": "datetime",
+                    "source": "submitted",
+                    "width_px": 136,
                     "sortable": True,
                     "filters": ["date_range", "presence"],
-                    "searchable": False, "stub": False,
+                    "searchable": False,
+                    "stub": False,
                 },
             ],
         }
@@ -397,9 +393,7 @@ def test_03_registry_table_over_table_max_width_rejected():
     """03_registry Issue 3b: a table whose ``width_px`` columns sum above
     ``layout.table_max_width_px`` fails validation — the 910 px window
     rule is enforced before the server starts (Spec 03_registry 4.1)."""
-    with open(
-        RegistryConfig.get_default_config_path(), encoding="utf-8"
-    ) as f:
+    with open(RegistryConfig.get_default_config_path(), encoding="utf-8") as f:
         data = yaml.safe_load(f)
     data["tables"][0]["columns"][1]["width_px"] = 600
 
@@ -413,9 +407,7 @@ def test_02_bot_nation_created_rejects_unknown_placeholder():
     """02_bot Issue 7: ``dialog.texts.nation_created`` allows only
     ``{nation_name}`` — an unknown placeholder must fail config loading
     (the same template check the other dialog texts pass)."""
-    with open(
-        BotConfig.get_default_config_path(), encoding="utf-8"
-    ) as f:
+    with open(BotConfig.get_default_config_path(), encoding="utf-8") as f:
         data = yaml.safe_load(f)
     data["dialog"]["texts"]["nation_created"] += " {bogus_var}"
 
@@ -551,21 +543,14 @@ def test_health_max_heartbeat_age_must_exceed_retry_plus_interval(tmp_path):
     a threshold at or below that sum would flap /api/v1/health to
     "stale" on a recoverable transient."""
     # 60 + 30 = 90; exactly at the sum is already too tight.
-    path = _write_config(
-        tmp_path, {"tick": {"health_max_heartbeat_age_seconds": 90}}
-    )
+    path = _write_config(tmp_path, {"tick": {"health_max_heartbeat_age_seconds": 90}})
     with pytest.raises(ValidationError) as exc_info:
         CoreConfig.from_yaml(path)
     assert "health_max_heartbeat_age_seconds" in str(exc_info.value)
 
     # One second above the sum is the tightest valid value.
-    path = _write_config(
-        tmp_path, {"tick": {"health_max_heartbeat_age_seconds": 91}}
-    )
-    assert (
-        CoreConfig.from_yaml(path).tick.health_max_heartbeat_age_seconds
-        == 91
-    )
+    path = _write_config(tmp_path, {"tick": {"health_max_heartbeat_age_seconds": 91}})
+    assert CoreConfig.from_yaml(path).tick.health_max_heartbeat_age_seconds == 91
 
 
 def test_missing_required_field(tmp_path):
@@ -580,9 +565,7 @@ def test_missing_required_field(tmp_path):
 
 def test_calendar_epoch_must_be_first_of_month(tmp_path):
     """epoch_start_date with a day other than 1 is rejected (CAL-1)."""
-    path = _write_config(
-        tmp_path, {"calendar": {"epoch_start_date": "2040-01-15"}}
-    )
+    path = _write_config(tmp_path, {"calendar": {"epoch_start_date": "2040-01-15"}})
 
     with pytest.raises(ValidationError) as exc_info:
         CoreConfig.from_yaml(path)
@@ -591,13 +574,9 @@ def test_calendar_epoch_must_be_first_of_month(tmp_path):
 
 
 @pytest.mark.parametrize("bad_months", [0, 13])
-def test_calendar_months_per_turn_out_of_bounds_rejected(
-    tmp_path, bad_months
-):
+def test_calendar_months_per_turn_out_of_bounds_rejected(tmp_path, bad_months):
     """months_per_turn outside [1, 12] raises ValidationError."""
-    path = _write_config(
-        tmp_path, {"calendar": {"months_per_turn": bad_months}}
-    )
+    path = _write_config(tmp_path, {"calendar": {"months_per_turn": bad_months}})
 
     with pytest.raises(ValidationError) as exc_info:
         CoreConfig.from_yaml(path)
@@ -755,9 +734,7 @@ def test_03_registry_select_or_contains_filter():
     ``select_or_contains`` on a ``nation`` column, rejects it on other
     types and forbids the redundant ``text`` pairing — the kind already
     includes the «содержит» input."""
-    with open(
-        RegistryConfig.get_default_config_path(), encoding="utf-8"
-    ) as f:
+    with open(RegistryConfig.get_default_config_path(), encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     # The shipped config already declares it on both nation columns.
@@ -765,17 +742,13 @@ def test_03_registry_select_or_contains_filter():
     players_nation = next(
         c for c in config.table("players").columns if c.id == "nation"
     )
-    orders_nation = next(
-        c for c in config.table("orders").columns if c.id == "nation"
-    )
+    orders_nation = next(c for c in config.table("orders").columns if c.id == "nation")
     assert players_nation.filters == ["select_or_contains", "presence"]
     assert orders_nation.filters == ["select_or_contains"]
 
     # Not a nation type — rejected.
     bad_type = copy.deepcopy(data)
-    bad_type["tables"][2]["columns"][2]["filters"] = [
-        "select_or_contains"
-    ]
+    bad_type["tables"][2]["columns"][2]["filters"] = ["select_or_contains"]
     with pytest.raises(ValidationError):
         RegistryConfig.model_validate(bad_type)
 

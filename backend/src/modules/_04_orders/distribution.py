@@ -28,9 +28,7 @@ class JudgeCandidate:
     last_assigned_at: datetime | None
 
 
-JudgeSelector = Callable[
-    [str, Sequence[JudgeCandidate], JudgeSettings], str | None
-]
+JudgeSelector = Callable[[str, Sequence[JudgeCandidate], JudgeSettings], str | None]
 
 
 def select_judge_v1(
@@ -52,11 +50,7 @@ def select_judge_v1(
         if c.player_id != author_player_id
         and c.rating >= settings.min_rating
         and c.pending < settings.max_pending_verdicts
-        and (
-            not settings.require_reachable
-            or c.has_nation
-            or c.consented
-        )
+        and (not settings.require_reachable or c.has_nation or c.consented)
     ]
     if not eligible:
         return None

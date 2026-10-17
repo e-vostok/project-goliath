@@ -12,7 +12,6 @@ import math
 import pytest
 
 from modules._01_map import service as service_module
-from modules._01_map.map_data import MapData
 from modules._01_map.service import (
     MapService,
     NodeNotLandError,
@@ -236,6 +235,7 @@ def test_shortest_path_inf_means_impassable(mini_service):
 def test_shortest_path_weighted(mini_service):
     """Non-unit costs: the cheaper coast arm (len 4 via 1007) beats the
     len-6 arm via 1005 — the algorithm weighs edges, not hop count."""
+
     def len_cost(edge):
         return edge.len if edge.len is not None else 2.0
 

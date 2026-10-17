@@ -12,12 +12,11 @@ never stored).
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
-from modules._00_core.models import Player
 from modules._02_bot.claim import claim_batch
 from modules._02_bot.models import BotOutbox, BotVkEvent
 from modules._02_bot.settings import read_bot_env
@@ -64,14 +63,10 @@ async def _replies(session) -> list[BotOutbox]:
 class TestCommands:
     """The Spec 3.9 reply table."""
 
-    async def test_start_command_guest(
-        self, client, bot_started, test_db_session
-    ):
+    async def test_start_command_guest(self, client, bot_started, test_db_session):
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-start", payload='{"command": "start"}'
-            ),
+            json=message_new_body(VK_USER, "e-start", payload='{"command": "start"}'),
         )
         (row,) = await _replies(test_db_session)
         assert row.payload["template"] == "start_guest"
@@ -83,16 +78,12 @@ class TestCommands:
         assert row.counts_toward_cap is False
         assert row.event_key == "vk:e-start"
 
-    async def test_start_command_member(
-        self, client, bot_started, test_db_session
-    ):
+    async def test_start_command_member(self, client, bot_started, test_db_session):
         member = await add_member(test_db_session, vk_user_id=VK_USER)
         await test_db_session.commit()
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-start-m", payload='{"command": "start"}'
-            ),
+            json=message_new_body(VK_USER, "e-start-m", payload='{"command": "start"}'),
         )
         (row,) = await _replies(test_db_session)
         assert row.payload["template"] == "start_member"
@@ -122,13 +113,10 @@ class TestCommands:
         )
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-status", payload='{"cmd": "status"}'
-            ),
+            json=message_new_body(VK_USER, "e-status", payload='{"cmd": "status"}'),
         )
         (row,) = [
-            r for r in await _replies(test_db_session)
-            if r.event_key == "vk:e-status"
+            r for r in await _replies(test_db_session) if r.event_key == "vk:e-status"
         ]
         assert row.payload["template"] == "status"
         assert set(row.payload["vars"]) == {
@@ -155,9 +143,7 @@ class TestCommands:
         )
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-g1", payload='{"cmd": "status"}'
-            ),
+            json=message_new_body(VK_USER, "e-g1", payload='{"cmd": "status"}'),
         )
         rows = await _replies(test_db_session)
         assert [r.payload["template"] for r in rows] == [
@@ -171,9 +157,7 @@ class TestCommands:
         await _warm_contact(client)
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-help", payload='{"cmd": "help"}'
-            ),
+            json=message_new_body(VK_USER, "e-help", payload='{"cmd": "help"}'),
         )
         rows = await _replies(test_db_session)
         row = rows[-1]
@@ -233,9 +217,7 @@ class TestPlateAndIgnore:
         )  # first contact -> greeting
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-p1", payload='{"cmd": "forged"}'
-            ),
+            json=message_new_body(VK_USER, "e-p1", payload='{"cmd": "forged"}'),
         )
         rows = await _replies(test_db_session)
         assert rows[-1].payload["template"] == "plate"
@@ -263,15 +245,17 @@ class TestPlateAndIgnore:
         assert resp.status_code == 200
         assert await _replies(test_db_session) == []
         (journal,) = (
-            await test_db_session.execute(
-                select(BotVkEvent).where(BotVkEvent.event_id == "e-ign")
+            (
+                await test_db_session.execute(
+                    select(BotVkEvent).where(BotVkEvent.event_id == "e-ign")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert journal.event_type == "message_new"
 
-    async def test_reply_needs_no_consent(
-        self, client, bot_started, test_db_session
-    ):
+    async def test_reply_needs_no_consent(self, client, bot_started, test_db_session):
         """A DENIED player still gets a reply row (V7)."""
         player = await add_player(test_db_session, vk_user_id=VK_USER)
         await add_consent(test_db_session, player.id, state="DENIED")
@@ -279,25 +263,19 @@ class TestPlateAndIgnore:
         await _warm_contact(client)
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-denied", payload='{"cmd": "help"}'
-            ),
+            json=message_new_body(VK_USER, "e-denied", payload='{"cmd": "help"}'),
         )
         rows = await _replies(test_db_session)
         row = rows[-1]
         assert row.payload["template"] == "help"
         assert row.player_id == player.id
 
-    async def test_reply_row_fields(
-        self, client, bot_started, test_db_session
-    ):
+    async def test_reply_row_fields(self, client, bot_started, test_db_session):
         """expires_at = now + dialog.reply_ttl_minutes; event_key prefix."""
         await _warm_contact(client)
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-fields", payload='{"cmd": "help"}'
-            ),
+            json=message_new_body(VK_USER, "e-fields", payload='{"cmd": "help"}'),
         )
         rows = await _replies(test_db_session)
         row = rows[-1]
@@ -314,15 +292,9 @@ class TestPlateAndIgnore:
             "/api/v1/bot/callback",
             json=message_new_body(VK_USER, "e-txt", text=mark),
         )
-        outbox = (
-            await test_db_session.execute(select(BotOutbox))
-        ).scalars().all()
-        events = (
-            await test_db_session.execute(select(BotVkEvent))
-        ).scalars().all()
-        blob = json.dumps(
-            [r.payload for r in outbox], ensure_ascii=False
-        ) + json.dumps(
+        outbox = (await test_db_session.execute(select(BotOutbox))).scalars().all()
+        events = (await test_db_session.execute(select(BotVkEvent))).scalars().all()
+        blob = json.dumps([r.payload for r in outbox], ensure_ascii=False) + json.dumps(
             [
                 {
                     "event_id": e.event_id,
@@ -340,7 +312,7 @@ class TestEndToEnd:
     """Callback -> outbox -> real sender -> FakeVk (Spec 3.3/5.5)."""
 
     async def _deliver(self, engine, runtime):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with make_session_factory(engine)() as session:
             groups = await claim_batch(
                 session,
@@ -391,9 +363,7 @@ class TestEndToEnd:
         await self._deliver(test_db_engine, runtime)
         (send,) = fake.send_requests()
         labels = [
-            b["action"]["label"]
-            for row in form_keyboard(send)["buttons"]
-            for b in row
+            b["action"]["label"] for row in form_keyboard(send)["buttons"] for b in row
         ]
         assert labels == ["Статус", "Помощь"]
 
@@ -405,24 +375,14 @@ class TestEndToEnd:
         await _warm_contact(client)
         await client.post(
             "/api/v1/bot/callback",
-            json=message_new_body(
-                VK_USER, "e-e2e-h", payload='{"cmd": "help"}'
-            ),
+            json=message_new_body(VK_USER, "e-e2e-h", payload='{"cmd": "help"}'),
         )
         await self._deliver(test_db_engine, runtime)
         # Two replies went out (warm-up greeting + help) in unspecified
         # order; the help one is the message with open_link actions.
         keyboards = [form_keyboard(r) for r in fake.send_requests()]
-        inline = [
-            kb
-            for kb in keyboards
-            if kb and kb.get("inline") is True
-        ]
+        inline = [kb for kb in keyboards if kb and kb.get("inline") is True]
         (keyboard,) = inline
-        actions = [
-            b["action"] for row in keyboard["buttons"] for b in row
-        ]
+        actions = [b["action"] for row in keyboard["buttons"] for b in row]
         assert all(a["type"] == "open_link" for a in actions)
-        assert any(
-            "vk.ru/@pax_atom-404" in a.get("link", "") for a in actions
-        )
+        assert any("vk.ru/@pax_atom-404" in a.get("link", "") for a in actions)
