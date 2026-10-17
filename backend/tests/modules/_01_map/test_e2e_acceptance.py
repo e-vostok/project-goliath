@@ -47,8 +47,9 @@ from modules._01_map.ownership_service import (
 )
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._00_core.test_router import (

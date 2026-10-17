@@ -27,9 +27,10 @@ from modules._01_map.service import (
     records_for_province,
 )
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import STARTING_GROUP
@@ -137,7 +138,10 @@ class TestOwnersAtTurnPg:
 class TestListenerOnPg:
     @pytest.mark.asyncio
     async def test_create_and_delete_journal_on_pg(
-        self, pg_db, linked_map_service, linked_map_hooks
+        self,
+        pg_db,
+        linked_map_service,
+        linked_map_hooks,
     ):
         async with pg_db() as session:
             await sync_map_nodes(session, linked_map_service)
@@ -272,7 +276,10 @@ class TestRemoveRetiredPg:
 
     @pytest.mark.asyncio
     async def test_owned_retired_row_is_fatal(
-        self, pg_db, linked_map_service, linked_map_hooks
+        self,
+        pg_db,
+        linked_map_service,
+        linked_map_hooks,
     ):
         async with pg_db() as session:
             await sync_map_nodes(session, linked_map_service)

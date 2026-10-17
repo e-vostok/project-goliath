@@ -19,8 +19,10 @@ from modules._00_core.models import Nation, Player, Province
 from modules._01_map import retired_report
 from modules._01_map.models import MapOwnershipLog
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — resolved through the fixture chain
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — resolved through the fixture chain,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._01_map.conftest import (
@@ -68,7 +70,11 @@ async def _table_counts(session) -> dict[str, int]:
 class TestRetiredReportPg:
     @pytest.mark.asyncio
     async def test_ready_with_removable_retired_row(
-        self, pg_report_db, pg_db, flat_map_service, capsys
+        self,
+        pg_report_db,
+        pg_db,
+        flat_map_service,
+        capsys,
     ):
         async with pg_db() as session:
             await sync_map_nodes(session, flat_map_service)
@@ -85,7 +91,10 @@ class TestRetiredReportPg:
 
     @pytest.mark.asyncio
     async def test_owned_and_journalled_retired_row_stops(
-        self, pg_report_db, pg_db, capsys
+        self,
+        pg_report_db,
+        pg_db,
+        capsys,
     ):
         async with pg_db() as session:
             session.add(
@@ -134,7 +143,11 @@ class TestRetiredReportPg:
 
     @pytest.mark.asyncio
     async def test_read_only_on_postgres(
-        self, pg_report_db, pg_db, flat_map_service, capsys
+        self,
+        pg_report_db,
+        pg_db,
+        flat_map_service,
+        capsys,
     ):
         """Row counts of provinces/nations/map_ownership_log unchanged."""
         async with pg_db() as session:

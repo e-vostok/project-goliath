@@ -52,10 +52,10 @@ from modules._02_bot.startup import startup_bot
 from modules._02_bot.watcher import digest_watcher_step
 from tests.fixtures.fake_vk import FakeVk, form_keyboard
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,  # noqa: F401 — resolved through the fixture chain
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain,
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import make_land_province

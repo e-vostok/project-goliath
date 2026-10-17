@@ -31,9 +31,10 @@ from modules._04_orders.models import Order
 from modules._04_orders.service import OrderService, RetryPassStats
 from tests.fixtures.factories import make_consent
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.modules._03_registry.conftest import bearer_headers
 from tests.modules._04_orders.conftest import seed_author, seed_judge
@@ -204,7 +205,10 @@ class TestEndToEndPg:
             assert str(judge_vk) not in text
 
     async def test_waiting_order_gets_judge_once_candidate_exists(
-        self, orders_client, pg_db, orders_bot_started
+        self,
+        orders_client,
+        pg_db,
+        orders_bot_started,
     ):
         """No candidate at submit: the order waits; once a reachable
         player appears, the next pass assigns it (Spec 2.3)."""

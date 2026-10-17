@@ -28,8 +28,8 @@ import modules._03_registry.models  # noqa: F401 — registers all ORM tables
 import modules._04_orders.models  # noqa: F401 — registers all ORM tables
 from core.db import Base
 from tests.fixtures.postgres import (
-    pg_schema,  # noqa: F401 — session fixture: wipe + alembic upgrade
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — session fixture: wipe + alembic upgrade,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 
 pytestmark = pytest.mark.postgres

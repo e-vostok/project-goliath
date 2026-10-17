@@ -46,6 +46,12 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "f
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+# pg fixtures are imported for registration, then shadowed by test params/local fixtures
+"tests/**/*_pg.py" = ["F811"]
+"tests/**/test_postgres_e2e.py" = ["F811"]
+"tests/**/test_e2e_acceptance.py" = ["F811"]
+"tests/**/test_e2e_flow.py" = ["F811"]
+"tests/**/conftest.py" = ["F811"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

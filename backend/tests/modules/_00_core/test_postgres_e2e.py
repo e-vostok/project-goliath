@@ -34,9 +34,11 @@ from modules._00_core.models import (
 )
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_live_client,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import (
@@ -428,7 +430,9 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
 
 
 async def test_admin_tick_and_state_reset_on_postgres(
-    pg_live_client, pg_db, monkeypatch
+    pg_live_client,
+    pg_db,
+    monkeypatch,
 ):
     """Admin founds a nation, fires a real tick, then resets the world:
     nations (and their profiles) go, provinces free, turn rewinds to 0,
