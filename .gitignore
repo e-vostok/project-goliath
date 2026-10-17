@@ -88,3 +88,8 @@ $RECYCLE.BIN/
 # 6. ИНСТРУМЕНТ ПОДГОТОВКИ КАРТЫ (map_pipeline)
 # ==========================================
 tools/map_pipeline/out/
+# scratch / backup / platform junk
+*.bak
+*.orig
+*.tmp
+.DS_Store
