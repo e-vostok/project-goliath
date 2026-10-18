@@ -1,16 +1,25 @@
 /**
- * PanelNationHome — the player's existing nation.
+ * PanelNationHome — the player's existing nation (Spec 1.3 Part 5).
  *
- * Group with a Header showing turn number + game date (GET /game-clock),
- * SimpleCell rows for name / color swatch / province IDs / leader name /
- * leader title / history link, plus edit (PATCH /nations/me — only changed
- * fields are sent) and destructive delete buttons.
+ * The card shows every nation field: flag and portrait images (only
+ * when set — a missing catalog picture leaves no broken icon), full and
+ * short names, motto and description (only when present), the color
+ * swatch, the province list, the capital line («название (провинция
+ * N)», hidden while the nation has no capital), leader name, gender,
+ * title and biography, the succession method with the «Пока без
+ * последствий» caption, and the history/anthem links rendered as real
+ * <a target="_blank" rel="noopener noreferrer"> only when the stored
+ * value starts with "https://" — anything else is plain text (defense
+ * in depth; the server remains the validator). A field that is null on
+ * a pre-0.8.0 nation shows «не указано» — except the optional ones,
+ * which are simply hidden.
  *
- * The history link is rendered as a real <a target="_blank"> only when the
- * stored value starts with "https://" — anything else is plain text
- * (defense in depth; the server remains the validator). Legacy nations
- * created before the profile fields show «не указано» and may be renamed
- * without filling the profile.
+ * «Изменить» opens one form built from the same tab components as the
+ * registration window (provinces and the capital mark stay read-only);
+ * the PATCH /nations/me body carries only the changed fields
+ * (`toUpdateRequest`), a cleared optional field goes as an empty
+ * string, and a legacy nation may be saved partially — its missing
+ * mandatory fields do not block the rest.
  */
 
 import { useEffect, useState } from 'react';
@@ -29,20 +38,22 @@ import { Icon24Write, Icon24Delete } from '@vkontakte/icons';
 
 import { api, ApiError } from '../../../shared/api-client';
 import { useFormDraft } from '../../../shared/formDraft';
-import type {
-  GameClockDTO,
-  NationDTO,
-  NationUpdateRequest,
-} from '../../../shared/types';
+import type { GameClockDTO, NationDTO } from '../../../shared/types';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { nationRulesHints } from './CreateNationFields';
+import { CreateNationEditForm } from './CreateNationEditForm';
 import {
-  CreateNationEditForm,
-  isEditableNationField,
-  type EditableNationField,
-} from './CreateNationEditForm';
-import { mapErrorCodeToField } from './registrationForm';
+  isValidColorHex,
+  mapErrorCodeToField,
+  registrationFormFromDraft,
+  registrationFormFromNation,
+  toUpdateRequest,
+  type NationField,
+  type RegistrationForm,
+} from './registrationForm';
+import { nationErrorText } from './nationErrorTexts';
+import { GENDER_LABELS, SUCCESSION_LABELS } from './nationLabels';
 import { BotConsentRow } from '../../02_bot/components/BotConsentRow';
 import { OrdersBlock } from '../../04_orders/components/OrdersBlock';
 
@@ -52,13 +63,18 @@ export interface PanelNationHomeProps {
   onDeleteRequest: () => void;
 }
 
-/** The edit form's five fields, mirrored into the session draft. */
-interface NationEditDraft {
-  name: string;
-  color: string;
-  leaderName: string;
-  leaderTitle: string;
-  historyUrl: string;
+/** Session-draft key; v1 five-field drafts under 'nation-edit:*' die out. */
+const editDraftKey = (nationId: string) => `nation-edit-v2:${nationId}`;
+
+/** Only https values become real links — anything else is plain text. */
+function externalLink(url: string, label: string) {
+  return url.startsWith('https://') ? (
+    <Link href={url} target="_blank" rel="noopener noreferrer">
+      {label}
+    </Link>
+  ) : (
+    url
+  );
 }
 
 export function PanelNationHome({
@@ -77,28 +93,19 @@ export function PanelNationHome({
     draft: storedDraft,
     setDraft: setStoredDraft,
     clearDraft,
-  } = useFormDraft<NationEditDraft>(`nation-edit:${nation.id}`);
+  } = useFormDraft<RegistrationForm>(editDraftKey(nation.id));
 
   const [clock, setClock] = useState<GameClockDTO | null>(null);
   const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(
-    storedDraft?.name ?? nation.name,
-  );
-  const [editColor, setEditColor] = useState(
-    storedDraft?.color ?? nation.color_hex,
-  );
-  const [editLeaderName, setEditLeaderName] = useState(
-    storedDraft?.leaderName ?? nation.leader_name ?? '',
-  );
-  const [editLeaderTitle, setEditLeaderTitle] = useState(
-    storedDraft?.leaderTitle ?? nation.leader_title ?? '',
-  );
-  const [editHistoryUrl, setEditHistoryUrl] = useState(
-    storedDraft?.historyUrl ?? nation.history_url ?? '',
-  );
+  const [form, setForm] = useState<RegistrationForm>(() => {
+    const seed = registrationFormFromNation(nation);
+    return storedDraft === null
+      ? seed
+      : registrationFormFromDraft({ ...seed, ...storedDraft });
+  });
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
-    Partial<Record<EditableNationField, string>>
+    Partial<Record<NationField, string>>
   >({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -111,86 +118,45 @@ export function PanelNationHome({
     return () => controller.abort();
   }, [token]);
 
-  // While the form is open, mirror the fields into the session draft;
-  // values identical to the nation's own mean nothing is pending.
+  // PATCH body — only fields whose normalized value actually changed.
+  const changes = toUpdateRequest(form, nation);
+
+  // While the form is open, mirror it into the session draft; a form
+  // identical to the nation's own values means nothing is pending.
   useEffect(() => {
     if (!editing) {
       return;
     }
-    const pristine =
-      editName === nation.name &&
-      editColor === nation.color_hex &&
-      editLeaderName === (nation.leader_name ?? '') &&
-      editLeaderTitle === (nation.leader_title ?? '') &&
-      editHistoryUrl === (nation.history_url ?? '');
-    if (pristine) {
+    if (Object.keys(toUpdateRequest(form, nation)).length === 0) {
       clearDraft();
     } else {
-      setStoredDraft({
-        name: editName,
-        color: editColor,
-        leaderName: editLeaderName,
-        leaderTitle: editLeaderTitle,
-        historyUrl: editHistoryUrl,
-      });
+      setStoredDraft(form);
     }
-  }, [
-    editing,
-    editName,
-    editColor,
-    editLeaderName,
-    editLeaderTitle,
-    editHistoryUrl,
-    nation,
-    setStoredDraft,
-    clearDraft,
-  ]);
+  }, [editing, form, nation, setStoredDraft, clearDraft]);
 
-  const trimmed = {
-    name: editName.trim(),
-    leaderName: editLeaderName.trim(),
-    leaderTitle: editLeaderTitle.trim(),
-    historyUrl: editHistoryUrl.trim(),
-  };
-
-  // PATCH body — only fields whose trimmed value actually changed.
-  const changes: NationUpdateRequest = {};
-  if (trimmed.name !== nation.name) {
-    changes.name = trimmed.name;
-  }
-  if (editColor !== nation.color_hex) {
-    changes.color_hex = editColor;
-  }
-  if (trimmed.leaderName !== (nation.leader_name ?? '')) {
-    changes.leader_name = trimmed.leaderName;
-  }
-  if (trimmed.leaderTitle !== (nation.leader_title ?? '')) {
-    changes.leader_title = trimmed.leaderTitle;
-  }
-  if (trimmed.historyUrl !== (nation.history_url ?? '')) {
-    changes.history_url = trimmed.historyUrl;
-  }
-
-  // A field the nation already has must not be emptied; legacy (null)
-  // fields may stay empty — the nation can be renamed without them.
+  // A mandatory field the nation already has must not be emptied;
+  // legacy (null) fields may stay empty — the nation can be edited
+  // without filling them (Spec 1.3: partial legacy edits allowed).
+  const filledNowEmpty = (stored: string | null, edited: string) =>
+    stored !== null && stored !== '' && edited.trim() === '';
   const emptiedFilledField =
-    (nation.leader_name !== null &&
-      nation.leader_name !== '' &&
-      trimmed.leaderName === '') ||
-    (nation.leader_title !== null &&
-      nation.leader_title !== '' &&
-      trimmed.leaderTitle === '') ||
-    (nation.history_url !== null &&
-      nation.history_url !== '' &&
-      trimmed.historyUrl === '');
+    filledNowEmpty(nation.name, form.name) ||
+    filledNowEmpty(nation.short_name, form.shortName) ||
+    filledNowEmpty(nation.leader_name, form.leaderName) ||
+    filledNowEmpty(nation.gender, form.gender) ||
+    filledNowEmpty(nation.leader_title, form.leaderTitle) ||
+    filledNowEmpty(nation.succession_type, form.successionType) ||
+    filledNowEmpty(nation.history_url, form.historyUrl) ||
+    filledNowEmpty(nation.capital_name, form.capitalName);
 
   const canSave =
     Object.keys(changes).length > 0 &&
-    trimmed.name.length >= (rules?.name_min_length ?? 1) &&
+    form.name.trim().length >= (rules?.name_min_length ?? 1) &&
+    isValidColorHex(form.color) &&
     !emptiedFilledField &&
     !submitting;
 
-  const clearFieldError = (field: EditableNationField) =>
+  const clearFieldError = (field: NationField) =>
     setFieldErrors((prev) => {
       if (!(field in prev)) {
         return prev;
@@ -200,15 +166,18 @@ export function PanelNationHome({
       return next;
     });
 
-  const editSetters: Record<EditableNationField, (v: string) => void> = {
-    name: setEditName,
-    color: setEditColor,
-    leaderName: setEditLeaderName,
-    leaderTitle: setEditLeaderTitle,
-    historyUrl: setEditHistoryUrl,
-  };
-  const handleEditChange = (field: EditableNationField, value: string) => {
-    editSetters[field](value);
+  const handleFieldChange = <K extends keyof RegistrationForm>(
+    field: K,
+    value: RegistrationForm[K],
+  ) => {
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'capitalName') {
+        // A hand-typed name is never auto-overwritten again.
+        next.capitalNameEdited = true;
+      }
+      return next;
+    });
     clearFieldError(field);
   };
 
@@ -224,8 +193,10 @@ export function PanelNationHome({
     } catch (error) {
       if (error instanceof ApiError) {
         const field = mapErrorCodeToField(error.code);
-        if (field && isEditableNationField(field)) {
-          setFieldErrors({ [field]: error.message });
+        if (field) {
+          setFieldErrors({
+            [field]: nationErrorText(error.code, rules) ?? error.message,
+          });
         } else {
           setFormError(error.message);
         }
@@ -240,37 +211,62 @@ export function PanelNationHome({
   const resetEdit = () => {
     clearDraft();
     setEditing(false);
-    setEditName(nation.name);
-    setEditColor(nation.color_hex);
-    setEditLeaderName(nation.leader_name ?? '');
-    setEditLeaderTitle(nation.leader_title ?? '');
-    setEditHistoryUrl(nation.history_url ?? '');
+    setForm(registrationFormFromNation(nation));
     setFieldErrors({});
     setFormError(null);
   };
-
-  const history = nation.history_url;
-  const historyCell = !history ? (
-    'не указано'
-  ) : history.startsWith('https://') ? (
-    <Link href={history} target="_blank" rel="noopener noreferrer">
-      Открыть статью
-    </Link>
-  ) : (
-    history
-  );
 
   const headerText = clock
     ? `Ход ${clock.current_turn} · ${clock.game_date_text}`
     : 'Ваше государство';
 
+  const succession = nation.succession_type;
+  const gender = nation.gender;
+
   return (
     <>
       <PanelHeader>{nation.name}</PanelHeader>
       <Group header={<Header size="l">{headerText}</Header>}>
-        <SimpleCell disabled subtitle="Название">
+        {(nation.flag_url || nation.portrait_url) && (
+          <Div
+            style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}
+          >
+            {nation.flag_url && (
+              <img
+                src={nation.flag_url}
+                alt={`Флаг ${nation.name}`}
+                width={96}
+                height={64}
+                style={{ borderRadius: 6, objectFit: 'cover' }}
+              />
+            )}
+            {nation.portrait_url && (
+              <img
+                src={nation.portrait_url}
+                alt={`Портрет лидера ${nation.name}`}
+                width={96}
+                height={128}
+                style={{ borderRadius: 6, objectFit: 'cover' }}
+              />
+            )}
+          </Div>
+        )}
+        <SimpleCell disabled subtitle="Название" multiline>
           {nation.name}
         </SimpleCell>
+        <SimpleCell disabled subtitle="Краткое название" multiline>
+          {nation.short_name || 'не указано'}
+        </SimpleCell>
+        {nation.motto && (
+          <SimpleCell disabled subtitle="Девиз" multiline>
+            {nation.motto}
+          </SimpleCell>
+        )}
+        {nation.description && (
+          <SimpleCell disabled subtitle="Описание" multiline>
+            {nation.description}
+          </SimpleCell>
+        )}
         <SimpleCell
           disabled
           subtitle="Цвет"
@@ -289,20 +285,51 @@ export function PanelNationHome({
         >
           {nation.color_hex}
         </SimpleCell>
-        <SimpleCell disabled subtitle="Провинции">
+        <SimpleCell disabled subtitle="Провинции" multiline>
           {nation.province_ids.length > 0
             ? nation.province_ids.join(', ')
             : 'Нет'}
         </SimpleCell>
-        <SimpleCell disabled subtitle="Лидер">
+        {nation.capital_province_id !== null && (
+          <SimpleCell disabled subtitle="Столица" multiline>
+            {nation.capital_name || 'не указано'} (провинция{' '}
+            {nation.capital_province_id})
+          </SimpleCell>
+        )}
+        <SimpleCell disabled subtitle="Лидер" multiline>
           {nation.leader_name || 'не указано'}
         </SimpleCell>
-        <SimpleCell disabled subtitle="Должность">
+        <SimpleCell disabled subtitle="Пол">
+          {(gender && (GENDER_LABELS[gender] ?? gender)) || 'не указано'}
+        </SimpleCell>
+        <SimpleCell disabled subtitle="Должность" multiline>
           {nation.leader_title || 'не указано'}
         </SimpleCell>
-        <SimpleCell disabled subtitle="История государства">
-          {historyCell}
+        {nation.leader_bio && (
+          <SimpleCell disabled subtitle="Биография лидера" multiline>
+            {nation.leader_bio}
+          </SimpleCell>
+        )}
+        <SimpleCell
+          disabled
+          subtitle="Способ смены лидера"
+          extraSubtitle="Пока без последствий в игре"
+          multiline
+        >
+          {(succession &&
+            (SUCCESSION_LABELS[succession]?.title ?? succession)) ||
+            'не указано'}
         </SimpleCell>
+        <SimpleCell disabled subtitle="История государства" multiline>
+          {nation.history_url
+            ? externalLink(nation.history_url, 'Открыть статью')
+            : 'не указано'}
+        </SimpleCell>
+        {nation.anthem_url && (
+          <SimpleCell disabled subtitle="Гимн" multiline>
+            {externalLink(nation.anthem_url, 'Слушать гимн')}
+          </SimpleCell>
+        )}
         <BotConsentRow />
 
         {formError && (
@@ -313,17 +340,13 @@ export function PanelNationHome({
 
         {editing ? (
           <CreateNationEditForm
-            name={editName}
-            color={editColor}
-            leaderName={editLeaderName}
-            leaderTitle={editLeaderTitle}
-            historyUrl={editHistoryUrl}
+            form={form}
             rules={rules}
             hints={hints}
             errors={fieldErrors}
             submitting={submitting}
             canSave={canSave}
-            onTextChange={handleEditChange}
+            onFieldChange={handleFieldChange}
             onSubmit={handleSave}
             onCancel={resetEdit}
           />

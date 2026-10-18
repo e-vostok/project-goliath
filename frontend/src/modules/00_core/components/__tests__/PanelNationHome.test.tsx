@@ -1,9 +1,12 @@
 /**
- * PanelNationHome — the nation profile cells and the edit form.
+ * PanelNationHome — the nation card and the edit form (Spec 1.3 Part 5).
  *
- * Covers: leader/title/history SimpleCells (with «не указано» for legacy
- * nations), the https-only history link, the PATCH that must carry only
- * changed fields, and inline error mapping inside the edit form.
+ * Covers: the full card (short name, motto/description when present,
+ * capital line, gender/succession labels, flag/portrait images),
+ * «не указано» for the null fields of a pre-0.8.0 nation with the
+ * optional ones simply hidden, the https-only external links, the PATCH
+ * that must carry only changed fields (an emptied optional field goes
+ * as ''), partial saves for legacy nations and inline error mapping.
  */
 
 import { screen, waitFor, within } from '@testing-library/react';
@@ -45,6 +48,7 @@ const NATION: NationDTO = {
   anthem_url: null,
 };
 
+/** All post-0.8.0 fields null, no capital — the legacy card. */
 const LEGACY_NATION: NationDTO = {
   ...NATION,
   short_name: null,
@@ -60,14 +64,14 @@ const LEGACY_NATION: NationDTO = {
 function renderHome(nation: NationDTO = NATION) {
   const onChanged = vi.fn();
   const onDeleteRequest = vi.fn();
-  renderWithProviders(
+  const view = renderWithProviders(
     <PanelNationHome
       nation={nation}
       onChanged={onChanged}
       onDeleteRequest={onDeleteRequest}
     />,
   );
-  return { onChanged, onDeleteRequest };
+  return { onChanged, onDeleteRequest, ...view };
 }
 
 async function openEdit(user: ReturnType<typeof userEvent.setup>) {
@@ -75,23 +79,83 @@ async function openEdit(user: ReturnType<typeof userEvent.setup>) {
   return screen.getByRole('button', { name: 'Сохранить' });
 }
 
+/** Captures PATCH /nations/me bodies; the responder returns `reply`. */
+function capturePatch(reply: NationDTO) {
+  const bodies: unknown[] = [];
+  server.use(
+    http.patch('*/api/v1/nations/me', async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json(reply);
+    }),
+  );
+  return bodies;
+}
+
 beforeEach(registerDefaultHandlers);
 
-describe('PanelNationHome — profile cells', () => {
-  it('renders leader, title and a safe external history link', () => {
-    renderHome();
-    expect(screen.getByText('Иван Грозный')).toBeInTheDocument();
-    expect(screen.getByText('Верховный правитель')).toBeInTheDocument();
+describe('PanelNationHome — the card', () => {
+  it('renders the full card: names, color, provinces, capital, leader, links', () => {
+    const nation: NationDTO = {
+      ...NATION,
+      motto: 'Север помнит всё',
+      description: 'Профиль государства',
+      flag_url: '/assets/nations/flags/flag_stub.png',
+      portrait_url: '/assets/nations/portraits/portrait_stub.png',
+      leader_bio: 'Правил долго и грозно',
+      anthem_url: 'https://vk.com/music/playlist/-1_2',
+    };
+    renderHome(nation);
 
-    const link = screen.getByRole('link', { name: 'Открыть статью' });
-    expect(link).toHaveAttribute('href', NATION.history_url);
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByAltText('Флаг Testia')).toBeInTheDocument();
+    expect(
+      screen.getByAltText('Портрет лидера Testia'),
+    ).toBeInTheDocument();
+    // The header and the «Название» cell both carry the full name.
+    expect(screen.getAllByText('Testia')).toHaveLength(2);
+    expect(screen.getByText('Тестия')).toBeInTheDocument();
+    expect(screen.getByText('Север помнит всё')).toBeInTheDocument();
+    expect(screen.getByText('Профиль государства')).toBeInTheDocument();
+    expect(screen.getByText('#e64545')).toBeInTheDocument();
+    expect(screen.getByText('1, 2')).toBeInTheDocument();
+    expect(
+      screen.getByText('Столицево (провинция 1)'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Иван Грозный')).toBeInTheDocument();
+    expect(screen.getByText('Мужской')).toBeInTheDocument();
+    expect(screen.getByText('Верховный правитель')).toBeInTheDocument();
+    expect(screen.getByText('Правил долго и грозно')).toBeInTheDocument();
+    expect(
+      screen.getByText('Демократические выборы'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Пока без последствий в игре'),
+    ).toBeInTheDocument();
+
+    const history = screen.getByRole('link', { name: 'Открыть статью' });
+    expect(history).toHaveAttribute('href', nation.history_url);
+    expect(history).toHaveAttribute('target', '_blank');
+    expect(history).toHaveAttribute('rel', 'noopener noreferrer');
+    const anthem = screen.getByRole('link', { name: 'Слушать гимн' });
+    expect(anthem).toHaveAttribute('href', nation.anthem_url);
+    expect(anthem).toHaveAttribute('target', '_blank');
+    expect(anthem).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
-  it('shows «не указано» three times for a legacy (null-profile) nation', () => {
+  it('hides the optional cells and the images when they are not set', () => {
+    renderHome();
+    expect(screen.queryByText('Девиз')).not.toBeInTheDocument();
+    expect(screen.queryByText('Описание')).not.toBeInTheDocument();
+    expect(screen.queryByText('Биография лидера')).not.toBeInTheDocument();
+    expect(screen.queryByText('Гимн')).not.toBeInTheDocument();
+    expect(
+      screen.queryByAltText(/Флаг|Портрет/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows «не указано» for the null fields of a legacy nation', () => {
     renderHome(LEGACY_NATION);
-    expect(screen.getAllByText('не указано')).toHaveLength(3);
+    // short name, leader name, gender, leader title, succession, history.
+    expect(screen.getAllByText('не указано')).toHaveLength(6);
     expect(
       screen.queryByRole('link', { name: 'Открыть статью' }),
     ).not.toBeInTheDocument();
@@ -121,16 +185,10 @@ describe('PanelNationHome — edit form', () => {
   });
 
   it('PATCHes only the changed fields and closes on success', async () => {
-    const bodies: unknown[] = [];
-    server.use(
-      http.patch('*/api/v1/nations/me', async ({ request }) => {
-        bodies.push(await request.json());
-        return HttpResponse.json({
-          ...NATION,
-          leader_name: 'Пётр Первый',
-        });
-      }),
-    );
+    const bodies = capturePatch({
+      ...NATION,
+      leader_name: 'Пётр Первый',
+    });
     const { onChanged } = renderHome();
     const user = userEvent.setup();
     const save = await openEdit(user);
@@ -149,14 +207,53 @@ describe('PanelNationHome — edit form', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('lets a legacy nation rename itself without touching the profile', async () => {
-    const bodies: unknown[] = [];
-    server.use(
-      http.patch('*/api/v1/nations/me', async ({ request }) => {
-        bodies.push(await request.json());
-        return HttpResponse.json({ ...LEGACY_NATION, name: 'Новая Тестия' });
-      }),
+  it('legacy nation: no capital line/input; a short-name edit patches only short_name', async () => {
+    const bodies = capturePatch({
+      ...LEGACY_NATION,
+      short_name: 'Тестия',
+    });
+    const { onChanged } = renderHome(LEGACY_NATION);
+
+    // Card: the capital row is hidden and the render is error-free.
+    expect(screen.queryByText('Столица')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    const save = await openEdit(user);
+    // The territory block is read-only and the capital-name input is
+    // hidden — the server refuses capital_name for a nation without one.
+    expect(screen.getByTestId('form-item-provinces')).toBeInTheDocument();
+    expect(screen.queryByTestId('capital-line')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Название столицы'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('open-province-picker'),
+    ).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Краткое название'), 'Тестия');
+    await user.click(save);
+    await waitFor(() =>
+      expect(bodies).toEqual([{ short_name: 'Тестия' }]),
     );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('a cleared optional field is sent as an empty string — motto only', async () => {
+    const mottoNation: NationDTO = { ...NATION, motto: 'Север помнит всё' };
+    const bodies = capturePatch({ ...mottoNation, motto: null });
+    renderHome(mottoNation);
+
+    const user = userEvent.setup();
+    const save = await openEdit(user);
+    await user.clear(screen.getByLabelText('Девиз (необязательно)'));
+    await user.click(save);
+
+    await waitFor(() => expect(bodies).toEqual([{ motto: '' }]));
+  });
+
+  it('lets a legacy nation rename itself without touching the profile', async () => {
+    const bodies = capturePatch({ ...LEGACY_NATION, name: 'Новая Тестия' });
     const { onChanged } = renderHome(LEGACY_NATION);
     const user = userEvent.setup();
     const save = await openEdit(user);
@@ -188,7 +285,7 @@ describe('PanelNationHome — edit form', () => {
     renderHome();
     const save = await openEdit(user);
     // Wait until the rules-driven hint rendered — gating must use it.
-    await within(screen.getByTestId('form-item-edit-name')).findByText(
+    await within(screen.getByTestId('form-item-name')).findByText(
       `от ${RULES.name_min_length} до ${RULES.name_max_length} символов`,
     );
 
@@ -220,24 +317,28 @@ describe('PanelNationHome — edit form', () => {
     );
     await user.click(save);
 
-    const item = screen.getByTestId('form-item-edit-history-url');
+    const item = screen.getByTestId('form-item-history-url');
     await waitFor(() =>
-      expect(within(item).getByText(/VK article/i)).toBeInTheDocument(),
+      expect(
+        within(item).getByText(/должна вести на статью ВКонтакте/i),
+      ).toBeInTheDocument(),
     );
-    // Editing the field clears the inline error.
+    // Editing the field clears the inline error (the static hint stays).
     await user.type(
       screen.getByLabelText('Ссылка на историю государства'),
       'y',
     );
-    expect(within(item).queryByText(/VK article/i)).not.toBeInTheDocument();
+    expect(
+      within(item).queryByText(/должна вести на статью ВКонтакте/i),
+    ).not.toBeInTheDocument();
   });
 
-  it('falls back to the generic banner for errors outside the edit form', async () => {
+  it('falls back to the generic banner for errors with no field mapping', async () => {
     server.use(
       http.patch('*/api/v1/nations/me', () =>
         HttpResponse.json(
-          { detail: 'Province 3 is taken', code: 'PROVINCE_TAKEN' },
-          { status: 409 },
+          { detail: 'Nation not found', code: 'NATION_NOT_FOUND' },
+          { status: 404 },
         ),
       ),
     );
@@ -249,7 +350,7 @@ describe('PanelNationHome — edit form', () => {
     await user.click(save);
 
     await screen.findByText('Не удалось обновить государство');
-    expect(screen.getByText(/Province 3 is taken/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nation not found/i)).toBeInTheDocument();
   });
 });
 

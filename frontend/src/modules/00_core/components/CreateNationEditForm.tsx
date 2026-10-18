@@ -1,81 +1,53 @@
 /**
- * The edit form of PanelNationHome — one form with name, color, leader
- * name, leader title and history link. Purely presentational: the parent
- * owns the values, computes the PATCH diff (`canSave`) and performs the
- * request.
+ * The edit form of PanelNationHome (Spec 1.3 Part 5): the same inputs
+ * as the registration window — the four tab components are reused
+ * verbatim, `CreateNationTabTerritories` in `readOnly` mode, because
+ * provinces and the capital mark never change (INV-14) while the
+ * capital name does. Purely presentational: the parent owns the
+ * RegistrationForm state, computes the PATCH diff (`toUpdateRequest`)
+ * and performs the request.
  */
 
-import {
-  Button,
-  ButtonGroup,
-  Div,
-  FormItem,
-} from '@vkontakte/vkui';
+import { Button, ButtonGroup, Div } from '@vkontakte/vkui';
 
 import type { NationRulesDTO } from '../../../shared/types';
-import {
-  CreateNationTextField,
-  type NationRulesHints,
-} from './CreateNationFields';
-import type { NationField } from './registrationForm';
-
-/**
- * The fields the edit form can show inline — it owns only these five
- * inputs until its Spec 1.3 redesign (Issue 16). Server codes mapping to
- * any other field fall back to the generic banner.
- */
-export type EditableNationField =
-  | 'name'
-  | 'color'
-  | 'leaderName'
-  | 'leaderTitle'
-  | 'historyUrl';
-
-const EDITABLE_NATION_FIELDS: readonly NationField[] = [
-  'name',
-  'color',
-  'leaderName',
-  'leaderTitle',
-  'historyUrl',
-];
-
-export function isEditableNationField(
-  field: NationField,
-): field is EditableNationField {
-  return EDITABLE_NATION_FIELDS.includes(field);
-}
+import type { NationRulesHints, RegistrationTabProps } from './CreateNationFields';
+import type { NationField, RegistrationForm } from './registrationForm';
+import { CreateNationTabSymbols } from './CreateNationTabSymbols';
+import { CreateNationTabLeadership } from './CreateNationTabLeadership';
+import { CreateNationTabHistory } from './CreateNationTabHistory';
+import { CreateNationTabTerritories } from './CreateNationTabTerritories';
 
 export interface CreateNationEditFormProps {
-  name: string;
-  color: string;
-  leaderName: string;
-  leaderTitle: string;
-  historyUrl: string;
+  form: RegistrationForm;
   rules: NationRulesDTO | null;
   hints: NationRulesHints | null;
-  errors: Partial<Record<EditableNationField, string>>;
+  errors: Partial<Record<NationField, string>>;
   submitting: boolean;
   canSave: boolean;
-  onTextChange: (field: EditableNationField, value: string) => void;
+  onFieldChange: RegistrationTabProps['onFieldChange'];
   onSubmit: () => void;
   onCancel: () => void;
 }
 
 export function CreateNationEditForm({
-  name,
-  color,
-  leaderName,
-  leaderTitle,
-  historyUrl,
+  form,
   rules,
   hints,
   errors,
   submitting,
   canSave,
-  onTextChange,
+  onFieldChange,
   onSubmit,
   onCancel,
 }: CreateNationEditFormProps) {
+  const tabProps: RegistrationTabProps = {
+    form,
+    rules,
+    hints,
+    errors,
+    onFieldChange,
+  };
   return (
     <form
       onSubmit={(e) => {
@@ -84,68 +56,10 @@ export function CreateNationEditForm({
       }}
       data-testid="edit-nation-form"
     >
-      <CreateNationTextField
-        id="edit-nation-name"
-        label="Название государства"
-        testId="form-item-edit-name"
-        value={name}
-        maxLength={rules?.name_max_length}
-        error={errors.name}
-        hint={hints?.name}
-        onChange={(v) => onTextChange('name', v)}
-      />
-      <FormItem
-        top="Цвет государства"
-        htmlFor="edit-nation-color"
-        status={errors.color ? 'error' : 'default'}
-        bottom={errors.color}
-        data-testid="form-item-edit-color"
-      >
-        <input
-          id="edit-nation-color"
-          type="color"
-          value={color}
-          onChange={(e) => onTextChange('color', e.currentTarget.value)}
-          style={{
-            width: '100%',
-            height: 36,
-            padding: 0,
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-          }}
-        />
-      </FormItem>
-      <CreateNationTextField
-        id="edit-leader-name"
-        label="Имя лидера"
-        testId="form-item-edit-leader-name"
-        value={leaderName}
-        maxLength={rules?.leader_name_max_length}
-        error={errors.leaderName}
-        hint={hints?.leaderName}
-        onChange={(v) => onTextChange('leaderName', v)}
-      />
-      <CreateNationTextField
-        id="edit-leader-title"
-        label="Должность лидера"
-        testId="form-item-edit-leader-title"
-        value={leaderTitle}
-        maxLength={rules?.leader_title_max_length}
-        error={errors.leaderTitle}
-        hint={hints?.leaderTitle}
-        onChange={(v) => onTextChange('leaderTitle', v)}
-      />
-      <CreateNationTextField
-        id="edit-history-url"
-        label="Ссылка на историю государства"
-        testId="form-item-edit-history-url"
-        value={historyUrl}
-        maxLength={rules?.history_url_max_length}
-        error={errors.historyUrl}
-        hint={hints?.historyUrl}
-        onChange={(v) => onTextChange('historyUrl', v)}
-      />
+      <CreateNationTabSymbols {...tabProps} />
+      <CreateNationTabLeadership {...tabProps} />
+      <CreateNationTabHistory {...tabProps} />
+      <CreateNationTabTerritories {...tabProps} readOnly />
       <Div>
         <ButtonGroup stretched>
           <Button
