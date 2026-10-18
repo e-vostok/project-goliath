@@ -26,6 +26,13 @@ import {
 
 import { server } from '../../../../../vitest.setup';
 import type { NationRulesDTO } from '../../../../shared/types';
+import { writeFormDraft } from '../../../../shared/formDraft';
+import {
+  REGISTRATION_DRAFT_KEY,
+  type ChipOption,
+  type RegistrationForm,
+  type RegistrationTab,
+} from '../registrationForm';
 import { SessionProvider } from '../../hooks/useAuth';
 import { OrdersUiProvider } from '../../../04_orders/OrdersUiProvider';
 import {
@@ -53,14 +60,30 @@ export const SESSION = {
 export const RULES: NationRulesDTO = {
   name_min_length: 4,
   name_max_length: 37,
+  short_name_min_length: 3,
+  short_name_max_length: 15,
+  motto_max_length: 55,
+  description_max_length: 111,
   leader_name_min_length: 2,
   leader_name_max_length: 33,
   leader_title_min_length: 3,
   leader_title_max_length: 44,
+  leader_bio_max_length: 444,
+  capital_name_min_length: 2,
+  capital_name_max_length: 22,
   history_url_max_length: 321,
   history_url_allowed_hosts: ['vk.com', 'm.vk.com'],
-  min_provinces: 2,
-  max_provinces: 7,
+  anthem_url_max_length: 222,
+  anthem_url_allowed_hosts: ['vk.com', 'm.vk.com'],
+  min_provinces: 3,
+  max_provinces: 3,
+  palette: ['#102030', '#a0b0c0'],
+  flags: [{ id: 'flag_stub', url: '/assets/nations/flags/flag_stub.png' }],
+  portraits: [
+    { id: 'portrait_stub', url: '/assets/nations/portraits/portrait_stub.png' },
+  ],
+  genders: ['male', 'female'],
+  succession_types: ['elections', 'appointment', 'criteria', 'inheritance'],
 };
 
 export const FREE_PROVINCES = [
@@ -210,13 +233,64 @@ export function freeLandNodes() {
   );
 }
 
+/** Three chips — exactly RULES.max_provinces, so a seeded form submits. */
+const SEEDED_PROVINCES: ChipOption[] = [1005, 1006, 1007].map((id) => ({
+  value: id,
+  label: `Провинция ${id}`,
+}));
+
 /**
- * Picks provinces through the real ProvincePicker modal: opens it, waits
- * for the map, clicks each id's <path>, presses «Готово».
+ * A RegistrationForm with every required field filled (the optional
+ * texts stay empty, no flag/portrait, no capital mark — the server
+ * defaults the capital to the first province). The UI cannot reach some
+ * fields until Issues 13–15, so tests that need an enabled submit seed
+ * this through the v2 draft.
+ */
+export function completeRegistrationForm(
+  overrides: Partial<RegistrationForm> = {},
+): RegistrationForm {
+  return {
+    name: 'Testia',
+    shortName: 'Тестия',
+    color: '#e64545',
+    motto: '',
+    description: '',
+    flagId: null,
+    leaderName: 'Иван Грозный',
+    gender: 'male',
+    leaderTitle: 'Верховный правитель',
+    leaderBio: '',
+    portraitId: null,
+    successionType: 'elections',
+    historyUrl: 'https://vk.com/@testia-istoriya',
+    anthemUrl: '',
+    provinces: SEEDED_PROVINCES.map((chip) => ({ ...chip })),
+    capitalProvinceId: null,
+    capitalName: 'Столицево',
+    ...overrides,
+  };
+}
+
+/** Seeds the v2 session draft BEFORE the panel renders (read on mount). */
+export function seedRegistrationDraft(
+  overrides: Partial<RegistrationForm> = {},
+): void {
+  writeFormDraft(REGISTRATION_DRAFT_KEY, completeRegistrationForm(overrides));
+}
+
+/** Jumps to a registration tab through its clickable title. */
+export async function goToTab(user: UserEvent, tab: RegistrationTab) {
+  await user.click(screen.getByTestId(`step-title-${tab}`));
+}
+
+/**
+ * Picks provinces through the real ProvincePicker modal on tab 4: opens
+ * it, waits for the map, clicks each id's <path>, presses «Готово».
  * Map clicks use the delegated handler contract: mousedown on the path
  * + mouseup on window (a settled click, not a drag).
  */
 export async function pickProvinces(user: UserEvent, ids: number[]) {
+  await goToTab(user, 4);
   await user.click(screen.getByTestId('open-province-picker'));
   // Wait until the picker's map rendered (manifest+geometry resolved).
   await waitFor(() =>
@@ -241,38 +315,18 @@ export async function pickProvinces(user: UserEvent, ids: number[]) {
   await user.click(screen.getByRole('button', { name: 'Готово' }));
 }
 
-/** Fills every required window-1 field with a valid value (overridable). */
-export async function fillStep1(
-  user: UserEvent,
-  values: {
-    name?: string;
-    leaderName?: string;
-    leaderTitle?: string;
-    /** Province ids to select through the map picker. */
-    provinceIds?: number[];
-  } = {},
-) {
-  const {
-    name = 'Testia',
-    leaderName = 'Иван Грозный',
-    leaderTitle = 'Верховный правитель',
-    // 1003+1004: free and land-connected in MINI_MANIFEST.
-    provinceIds = [1003, 1004],
-  } = values;
-  await user.type(screen.getByLabelText('Название государства'), name);
-  await pickProvinces(user, provinceIds);
-  await user.type(screen.getByLabelText('Имя лидера'), leaderName);
-  await user.type(screen.getByLabelText('Должность лидера'), leaderTitle);
-}
-
-/** Switches to window 2 and fills the history link. */
-export async function fillStep2(
+/** Fills the visible tab-3 fields (history link + optional anthem link). */
+export async function fillTab3(
   user: UserEvent,
   url = 'https://vk.com/@testia-istoriya',
+  anthemUrl?: string,
 ) {
-  await user.click(screen.getByTestId('step-next'));
+  await goToTab(user, 3);
   await user.type(
     screen.getByLabelText('Ссылка на историю государства'),
     url,
   );
+  if (anthemUrl !== undefined) {
+    await user.type(screen.getByLabelText('Ссылка на гимн'), anthemUrl);
+  }
 }

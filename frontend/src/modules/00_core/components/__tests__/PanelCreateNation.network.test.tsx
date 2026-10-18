@@ -5,7 +5,8 @@
  * covers the other failure class: fetch rejects before any HTTP response
  * exists (server unreachable / offline), so no ErrorResponse.code arrives.
  * The panel must fall back to the generic FormStatus banner, not map it to
- * a field or die silently.
+ * a field or die silently. The complete form is seeded through the draft —
+ * some required fields have no inputs until Issues 13–15.
  */
 
 import { screen } from '@testing-library/react';
@@ -15,10 +16,9 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../../../vitest.setup';
 import { PanelCreateNation } from '../PanelCreateNation';
 import {
-  fillStep1,
-  fillStep2,
   registerDefaultHandlers,
   renderWithProviders,
+  seedRegistrationDraft,
 } from './helpers';
 
 beforeEach(registerDefaultHandlers);
@@ -29,11 +29,10 @@ describe('PanelCreateNation — network failure', () => {
       http.post('*/api/v1/nations', () => HttpResponse.error()),
     );
     const onCreated = vi.fn();
+    seedRegistrationDraft();
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
 
     const user = userEvent.setup();
-    await fillStep1(user);
-    await fillStep2(user);
     await user.click(
       screen.getByRole('button', { name: /основать государство/i }),
     );
