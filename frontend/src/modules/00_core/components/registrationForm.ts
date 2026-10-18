@@ -15,7 +15,9 @@
 import { ErrorCodes } from '../../../shared/types';
 import type {
   NationCreateRequest,
+  NationDTO,
   NationRulesDTO,
+  NationUpdateRequest,
 } from '../../../shared/types';
 
 export type RegistrationTab = 1 | 2 | 3 | 4;
@@ -307,4 +309,124 @@ export function toCreateRequest(form: RegistrationForm): NationCreateRequest {
     history_url: form.historyUrl.trim(),
     anthem_url: optionalText(form.anthemUrl),
   };
+}
+
+/**
+ * Seeds the edit form (PanelNationHome) from an existing nation: the
+ * same RegistrationForm model, every missing value as the field's empty
+ * state. Provinces are display-only chips labelled «Провинция N» —
+ * the server never returns province names (Spec 1.3 Part 5: «столица:
+ * название (провинция N)»). `capitalNameEdited` starts true: the stored
+ * capital name is the player's own and must never be auto-overwritten.
+ */
+export function registrationFormFromNation(
+  nation: NationDTO,
+): RegistrationForm {
+  return {
+    name: nation.name,
+    shortName: nation.short_name ?? '',
+    color: nation.color_hex,
+    motto: nation.motto ?? '',
+    description: nation.description ?? '',
+    flagId: nation.flag_id,
+    leaderName: nation.leader_name ?? '',
+    gender: nation.gender ?? '',
+    leaderTitle: nation.leader_title ?? '',
+    leaderBio: nation.leader_bio ?? '',
+    portraitId: nation.portrait_id,
+    successionType: nation.succession_type ?? '',
+    historyUrl: nation.history_url ?? '',
+    anthemUrl: nation.anthem_url ?? '',
+    provinces: nation.province_ids.map((id) => ({
+      value: id,
+      label: `Провинция ${id}`,
+    })),
+    capitalProvinceId: nation.capital_province_id,
+    capitalName: nation.capital_name ?? '',
+    capitalNameEdited: true,
+  };
+}
+
+/**
+ * Builds the PATCH /nations/me body (Spec Part 3, INV-8): only fields
+ * whose normalized value differs from the nation's. An optional field
+ * cleared by the player goes as '' (the server stores NULL); a catalog
+ * pick reset via «Без флага»/«Без портрета» likewise goes as ''. An
+ * emptied value equal to the nation's own (a NULL mandatory field the
+ * player typed into and cleared) is omitted — nothing to change.
+ * `capital_name` is emitted only for a nation that has a capital: the
+ * server refuses the field for pre-0.8.0 nations (INV-14).
+ */
+export function toUpdateRequest(
+  form: RegistrationForm,
+  nation: NationDTO,
+): NationUpdateRequest {
+  const request: NationUpdateRequest = {};
+  const diffText = (
+    edited: string,
+    stored: string | null,
+  ): string | undefined => {
+    const value = edited.trim();
+    return value === (stored ?? '') ? undefined : value;
+  };
+
+  const name = diffText(form.name, nation.name);
+  if (name !== undefined) {
+    request.name = name;
+  }
+  const shortName = diffText(form.shortName, nation.short_name);
+  if (shortName !== undefined) {
+    request.short_name = shortName;
+  }
+  const color = normalizeColorHex(form.color);
+  if (color !== nation.color_hex.toUpperCase()) {
+    request.color_hex = color;
+  }
+  const motto = diffText(form.motto, nation.motto);
+  if (motto !== undefined) {
+    request.motto = motto;
+  }
+  const description = diffText(form.description, nation.description);
+  if (description !== undefined) {
+    request.description = description;
+  }
+  if (form.flagId !== nation.flag_id) {
+    request.flag_id = form.flagId ?? '';
+  }
+  const leaderName = diffText(form.leaderName, nation.leader_name);
+  if (leaderName !== undefined) {
+    request.leader_name = leaderName;
+  }
+  if (form.gender !== (nation.gender ?? '')) {
+    request.gender = form.gender;
+  }
+  const leaderTitle = diffText(form.leaderTitle, nation.leader_title);
+  if (leaderTitle !== undefined) {
+    request.leader_title = leaderTitle;
+  }
+  const leaderBio = diffText(form.leaderBio, nation.leader_bio);
+  if (leaderBio !== undefined) {
+    request.leader_bio = leaderBio;
+  }
+  if (form.portraitId !== nation.portrait_id) {
+    request.portrait_id = form.portraitId ?? '';
+  }
+  if (form.successionType !== (nation.succession_type ?? '')) {
+    request.succession_type = form.successionType;
+  }
+  const historyUrl = diffText(form.historyUrl, nation.history_url);
+  if (historyUrl !== undefined) {
+    request.history_url = historyUrl;
+  }
+  const anthemUrl = diffText(form.anthemUrl, nation.anthem_url);
+  if (anthemUrl !== undefined) {
+    request.anthem_url = anthemUrl;
+  }
+  if (nation.capital_province_id !== null) {
+    const capitalName = diffText(form.capitalName, nation.capital_name);
+    if (capitalName !== undefined) {
+      request.capital_name = capitalName;
+    }
+  }
+  return request;
 }
