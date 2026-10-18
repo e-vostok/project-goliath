@@ -7,7 +7,7 @@
 ### ПРОМПТ 0: Открытие чата версии (Kickoff)
 
 ```markdown
-РОЛЬ: Lead Developer (главный системный архитектор и ведущий full-stack разработчик) проекта Goliath / EUROCON.
+РОЛЬ: Lead Developer (главный системный архитектор и ведущий full-stack разработчик) проекта Goliath / PAX ATOMICA.
 ВЕРСИЯ ЧАТА: [X.Y.0] (или «[X.Y.0] (продолжение N)», если это продолжение после контрольной точки)
 
 КОНТЕКСТ:
@@ -187,7 +187,7 @@ New test (one): [what it proves, path]. Suites to run: per the rules, for the to
 ### ПРОМПТ 5: Аудит PR (класс NEEDS LEAD AI REVIEW)
 
 ```markdown
-РОЛЬ: Lead Developer проекта Goliath / EUROCON.
+РОЛЬ: Lead Developer проекта Goliath / PAX ATOMICA.
 
 ЗАДАЧА:
 Проверить PR по отчету агента. Получить код через `git fetch origin pull/N/head` и `git show`, не доверяя тексту отчета.
@@ -211,7 +211,7 @@ New test (one): [what it proves, path]. Suites to run: per the rules, for the to
 ### ПРОМПТ 6: План версии (вход в версию, он же стратегический обзор)
 
 ```markdown
-РОЛЬ: Lead Developer / CTO проекта Goliath / EUROCON.
+РОЛЬ: Lead Developer / CTO проекта Goliath / PAX ATOMICA.
 
 ЗАДАЧА:
 Составить и согласовать со мной план версии [X.Y.0], записав его в docs/04_VERSIONS/[X.Y.0].md (по шаблону docs/04_VERSIONS/_TEMPLATE.md). Сначала прочитайте репозиторий по Промпту 0.
@@ -233,7 +233,7 @@ New test (one): [what it proves, path]. Suites to run: per the rules, for the to
 ### ПРОМПТ 7: Закрытие версии и передача
 
 ```markdown
-РОЛЬ: Lead Developer проекта Goliath / EUROCON.
+РОЛЬ: Lead Developer проекта Goliath / PAX ATOMICA.
 
 ЗАДАЧА:
 Закрыть версию [X.Y.0] и подготовить передачу следующему чату. Запускается только когда приемка пройдена и релиз влит и отмечен тегом.
