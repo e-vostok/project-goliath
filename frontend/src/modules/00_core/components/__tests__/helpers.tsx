@@ -174,14 +174,18 @@ export function manifestCheckAnswer(
 
 /**
  * Call in beforeEach — registers every GET the 00_core panels fire on
- * mount (unhandled requests are a test failure) plus the 01_map
- * endpoints the ProvincePicker needs when it opens from window 1.
+ * mount (unhandled requests are a test failure), the POST the tab-1
+ * color-check hint fires after its debounce, plus the 01_map endpoints
+ * the ProvincePicker needs when it opens from window 1.
  */
 export function registerDefaultHandlers() {
   resetMswMap();
   clearMapSessionCache();
   server.use(
     http.get('*/api/v1/nations/rules', () => HttpResponse.json(RULES)),
+    http.post('*/api/v1/nations/color-check', () =>
+      HttpResponse.json({ status: 'OK' }),
+    ),
     http.get('*/api/v1/provinces', () => HttpResponse.json(FREE_PROVINCES)),
     http.get('*/api/v1/game-clock', () => HttpResponse.json(GAME_CLOCK)),
     http.get('*/api/v1/map/manifest', () =>

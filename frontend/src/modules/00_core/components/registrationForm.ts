@@ -58,11 +58,28 @@ export type NationField = keyof RegistrationForm;
 /** Session-draft key; v1 drafts under 'nation-create' are ignored. */
 export const REGISTRATION_DRAFT_KEY = 'nation-create-v2';
 
+/**
+ * The server-side DTO format for `color_hex` (Spec Part 5): `#RRGGBB`
+ * upper case. The HEX field tolerates a missing '#' and lower case —
+ * `normalizeColorHex` canonicalizes for the validity check and the
+ * request body, so the stored string is always upper-case on submit.
+ */
+export const HEX_COLOR_PATTERN = /^#[0-9A-F]{6}$/;
+
+export function normalizeColorHex(raw: string): string {
+  const trimmed = raw.trim().toUpperCase();
+  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+}
+
+export function isValidColorHex(raw: string): boolean {
+  return HEX_COLOR_PATTERN.test(normalizeColorHex(raw));
+}
+
 export function emptyRegistrationForm(): RegistrationForm {
   return {
     name: '',
     shortName: '',
-    color: '#e64545',
+    color: '',
     motto: '',
     description: '',
     flagId: null,
@@ -82,13 +99,14 @@ export function emptyRegistrationForm(): RegistrationForm {
 
 /**
  * true when nothing player-authored was entered yet — used to drop the
- * session draft. `color` is excluded: it always holds a pickable default,
- * not user content.
+ * session draft. `color` counts: its initial value is '' and any pick
+ * is user content.
  */
 export function registrationFormIsEmpty(form: RegistrationForm): boolean {
   return (
     form.name === '' &&
     form.shortName === '' &&
+    form.color === '' &&
     form.motto === '' &&
     form.description === '' &&
     form.flagId === null &&
@@ -202,10 +220,12 @@ export function mapErrorCodeToField(code: string): NationField | null {
 
 /**
  * The required fields still missing (Spec Part 5: name, short name,
- * color, leader name, gender, leader title, succession type, history
- * link, exactly rules.max_provinces provinces, capital name). With no
- * rules loaded the province check degrades to "at least one" and the
- * name check to "non-empty", matching the pre-rules fallback gating.
+ * a valid #RRGGBB color, leader name, gender, leader title, succession
+ * type, history link, exactly rules.max_provinces provinces, capital
+ * name). The color counts as filled only when it normalizes to the DTO
+ * format — a half-typed HEX keeps the submit gated. With no rules
+ * loaded the province check degrades to "at least one" and the name
+ * check to "non-empty", matching the pre-rules fallback gating.
  */
 export function missingRequired(
   form: RegistrationForm,
@@ -219,7 +239,7 @@ export function missingRequired(
   if (empty(form.shortName)) {
     missing.push('shortName');
   }
-  if (empty(form.color)) {
+  if (!isValidColorHex(form.color)) {
     missing.push('color');
   }
   if (empty(form.leaderName)) {
@@ -263,7 +283,7 @@ export function toCreateRequest(form: RegistrationForm): NationCreateRequest {
   return {
     name: form.name.trim(),
     short_name: form.shortName.trim(),
-    color_hex: form.color,
+    color_hex: normalizeColorHex(form.color),
     motto: optionalText(form.motto),
     description: optionalText(form.description),
     flag_id: form.flagId,

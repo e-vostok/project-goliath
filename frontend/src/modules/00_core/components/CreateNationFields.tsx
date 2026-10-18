@@ -84,6 +84,8 @@ export interface CreateNationTextFieldProps {
   error?: string;
   hint?: string;
   testId?: string;
+  /** Show a «n / max» length counter inside the field (needs maxLength). */
+  counter?: boolean;
   onChange: (value: string) => void;
 }
 
@@ -96,8 +98,20 @@ export function CreateNationTextField({
   error,
   hint,
   testId,
+  counter = false,
   onChange,
 }: CreateNationTextFieldProps) {
+  const counterNode =
+    counter && maxLength !== undefined ? (
+      <span
+        style={{
+          color: 'var(--vkui--color_text_secondary)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value.length} / {maxLength}
+      </span>
+    ) : undefined;
   return (
     <FormItem
       top={label}
@@ -112,6 +126,7 @@ export function CreateNationTextField({
         maxLength={maxLength}
         onChange={(e) => onChange(e.currentTarget.value)}
         placeholder={placeholder}
+        after={counterNode}
       />
     </FormItem>
   );
