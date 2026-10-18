@@ -52,10 +52,17 @@
  * draw a constant white `colors.hover` fill at
  * `selection.picked_opacity`, the cursor is pointer / not-allowed over
  * selectable / disabled nodes, and the tooltip line is «Название —
- * свободна | занята: … | морская зона, выбрать нельзя». In `view` mode
- * the single inspected province carries the same white fill pulsing
- * between `selection.pulse_min_opacity` and `pulse_max_opacity` (CSS
- * animation; `prefers-reduced-motion` freezes it at the midpoint).
+ * свободна | занята: … | морская зона, выбрать нельзя». The capital
+ * mark (Issue 15): `capitalId` draws its province with a thick dark
+ * outline plus a white star at the label point — a shape, not a colour,
+ * so it reads on any fill. `onNodeContextMenu` reports the right-button
+ * hit-test (the same `data-id` lookup as the left click); in select
+ * mode `contextmenu` is preventDefault'ed over the whole surface where
+ * the browser allows it — view mode keeps the default menu untouched.
+ * In `view` mode the single inspected province carries the same white
+ * fill pulsing between `selection.pulse_min_opacity` and
+ * `pulse_max_opacity` (CSS animation; `prefers-reduced-motion` freezes
+ * it at the midpoint).
  */
 
 import {
@@ -166,11 +173,42 @@ export interface MapViewProps {
   disabledIds?: number[];
   onNodeClick?: (id: number | null) => void;
   onHoverChange?: (id: number | null) => void;
+  /** Select mode: id of the capital-marked province (Issue 15). */
+  capitalId?: number | null;
+  /** Select mode: right-button hit-test — same lookup as the click. */
+  onNodeContextMenu?: (id: number | null) => void;
   focus?: MapViewFocus | null;
 }
 
 /** Wheel zoom step per notch — pure UI feel, not a balance rule. */
 const WHEEL_ZOOM_STEP = 1.25;
+/** Capital mark (select mode): the province's dark outline, screen px. */
+const CAPITAL_OUTLINE_PX = 3;
+/** Capital star: white fill edge in screen px (non-scaling). */
+const CAPITAL_STAR_STROKE_PX = 1.2;
+/** Star tip radius = this share of the node's smaller bbox side… */
+const CAPITAL_STAR_RATIO = 0.24;
+/** …but never smaller than this in map units. */
+const CAPITAL_STAR_MIN_R = 1.4;
+
+/**
+ * Five-point star centred on (cx, cy) in map units — the capital mark's
+ * glyph. Geometry, not a font glyph: it renders identically everywhere
+ * and needs no bundled face.
+ */
+function capitalStarPath(cx: number, cy: number, rOuter: number): string {
+  const rInner = rOuter * 0.42;
+  let d = '';
+  for (let i = 0; i < 10; i += 1) {
+    const r = i % 2 === 0 ? rOuter : rInner;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    d += `${i === 0 ? 'M' : ' L'} ${(cx + r * Math.cos(a)).toFixed(2)} ${(
+      cy +
+      r * Math.sin(a)
+    ).toFixed(2)}`;
+  }
+  return `${d} Z`;
+}
 
 function nodeIdFrom(target: EventTarget | null): number | null {
   const el = target instanceof Element ? target.closest('[data-id]') : null;
@@ -1039,6 +1077,21 @@ export function MapView(props: MapViewProps) {
     setHover(null);
   }, [setHover]);
 
+  // Right button (Issue 15, select mode only): swallow the browser menu
+  // over the whole map surface and report the hit node — the same
+  // `data-id` lookup the settled left click uses (`nodeIdFrom`). View
+  // mode is untouched: no preventDefault, no callback.
+  const onContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (mode !== 'select') {
+        return;
+      }
+      e.preventDefault();
+      props.onNodeContextMenu?.(nodeIdFrom(e.target));
+    },
+    [mode, props.onNodeContextMenu],
+  );
+
   // Label relayout triggers (map2_6): once when the layout inputs
   // change (mount, new manifest/rules, font swap, resize) and once
   // after the bundled font has actually loaded — the canvas then
@@ -1355,6 +1408,10 @@ export function MapView(props: MapViewProps) {
   }, [nodePaths, applySeamBand]);
 
   const selected = props.selectedIds ?? [];
+  const capitalNode =
+    mode === 'select' && props.capitalId != null
+      ? nodesById.get(props.capitalId)
+      : undefined;
   const disabledSet = useMemo(
     () => new Set(props.disabledIds ?? []),
     [props.disabledIds],
@@ -1383,6 +1440,7 @@ export function MapView(props: MapViewProps) {
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
+      onContextMenu={onContextMenu}
       style={{
         position: 'relative',
         width: '100%',
@@ -1851,6 +1909,42 @@ export function MapView(props: MapViewProps) {
               vectorEffect="non-scaling-stroke"
               style={{ display: 'none' }}
             />
+            {/* capital mark (Issue 15, select mode): a thick dark
+                outline around the province plus a white star at its
+                label point — a shape difference, not a colour one, so
+                it reads on any fill. pointerEvents stays off via the
+                parent group: the right-button hit-test lands on the
+                node path underneath, exactly like the left click. */}
+            {capitalNode !== undefined && (
+              <g data-layer="capital" data-capital={capitalNode.id}>
+                <path
+                  d={geometry.paths[capitalNode.id] ?? ''}
+                  fill="none"
+                  stroke={rules.borders.state_color}
+                  strokeWidth={CAPITAL_OUTLINE_PX}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <path
+                  d={capitalStarPath(
+                    capitalNode.label.x,
+                    capitalNode.label.y,
+                    Math.max(
+                      CAPITAL_STAR_MIN_R,
+                      Math.min(
+                        capitalNode.bbox[2] - capitalNode.bbox[0],
+                        capitalNode.bbox[3] - capitalNode.bbox[1],
+                      ) * CAPITAL_STAR_RATIO,
+                    ),
+                  )}
+                  fill={colors.hover}
+                  stroke={rules.borders.state_color}
+                  strokeWidth={CAPITAL_STAR_STROKE_PX}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            )}
           </g>
         </g>
       </svg>
