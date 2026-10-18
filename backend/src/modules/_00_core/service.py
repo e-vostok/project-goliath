@@ -171,6 +171,9 @@ class PlayerRegistryRow:
     nation_id: str | None
     nation_name: str | None
     nation_color: str | None
+    # NULL for nations created before 0.8.0; flag_id is a catalog id.
+    nation_short_name: str | None = None
+    nation_flag_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -417,6 +420,8 @@ class PlayerService:
                 Nation.id,
                 Nation.name,
                 Nation.color_hex,
+                Nation.short_name,
+                Nation.flag_id,
             )
             .outerjoin(Nation, Nation.owner_player_id == Player.id)
             .order_by(Player.created_at, Player.id)
@@ -431,6 +436,8 @@ class PlayerService:
                 nation_id=row[5],
                 nation_name=row[6],
                 nation_color=row[7],
+                nation_short_name=row[8],
+                nation_flag_id=row[9],
             )
             for row in result.all()
         ]

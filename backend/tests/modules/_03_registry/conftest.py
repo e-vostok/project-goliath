@@ -151,14 +151,22 @@ async def seed_nation(
     *,
     created_turn: int = 0,
     created_at: datetime | None = None,
+    short_name: str | None = None,
+    flag_id: str | None = None,
 ) -> Nation:
-    """One nation row; provinces are assigned by the caller."""
+    """One nation row; provinces are assigned by the caller.
+
+    ``short_name``/``flag_id`` default to NULL — the pre-0.8.0 state —
+    so a cell assertion never depends on a factory-generated value.
+    """
     nation = NationFactory.build(
         owner=owner,
         name=name,
         color_hex=color_hex,
         created_turn=created_turn,
         created_at=created_at or datetime.now(timezone.utc),
+        short_name=short_name,
+        flag_id=flag_id,
         provinces=[],
         scheduled_actions=[],
     )
