@@ -10,7 +10,7 @@ the config object and env vars are ever swapped, never the session.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -130,7 +130,7 @@ async def seed_player(
     """One player row with an explicit ``created_at`` order control."""
     player = PlayerFactory.build(
         vk_user_id=vk_user_id,
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(UTC),
         nations=[],
     )
     session.add(player)
@@ -159,7 +159,7 @@ async def seed_nation(
         name=name,
         color_hex=color_hex,
         created_turn=created_turn,
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(UTC),
         short_name=short_name,
         flag_id=flag_id,
         provinces=[],
