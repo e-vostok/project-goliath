@@ -40,8 +40,8 @@ import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from enum import Enum
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from sqlalchemy import delete, false, func, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -133,7 +133,7 @@ class RegistryOrderView:
     verdict_at: datetime | None
 
 
-class DistributeResult(str, Enum):
+class DistributeResult(StrEnum):
     """The outcome of one distribution attempt (Spec 2.5, 3.3)."""
 
     ASSIGNED = "ASSIGNED"
@@ -184,7 +184,7 @@ class RetryPassStats:
 def _aware(moment: datetime) -> datetime:
     """Naive datetimes are read as UTC (storage convention)."""
     if moment.tzinfo is None:
-        return moment.replace(tzinfo=timezone.utc)
+        return moment.replace(tzinfo=UTC)
     return moment
 
 
@@ -283,7 +283,7 @@ class OrderService:
                 )
             )
         ).scalar_one_or_none()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if existing is not None:
             return SubmitOutcome(
                 _detail_view(existing, now=now, viewer_player_id=player_id),
@@ -292,21 +292,15 @@ class OrderService:
 
         # 3. The author must own a nation; its id/name/colour are stored
         # as the immutable snapshot (INV-O6).
-        nation = await NationService.player_nation_summary(
-            session, player_id
-        )
+        nation = await NationService.player_nation_summary(session, player_id)
         if nation is None:
             raise OrderNationRequiredError()
 
         # 4. Author limit: unresolved = any order without a verdict —
         # submitted, distributed and overdue all count (D14, INV-O15).
-        unresolved = await OrderService.unresolved_count(
-            session, player_id=player_id
-        )
+        unresolved = await OrderService.unresolved_count(session, player_id=player_id)
         if unresolved >= config.author.max_unresolved_orders:
-            raise OrderAuthorLimitReachedError(
-                config.author.max_unresolved_orders
-            )
+            raise OrderAuthorLimitReachedError(config.author.max_unresolved_orders)
 
         # 5. Field rules (Spec 2.5) — normalized values get stored.
         title = validate_title(title, config)
@@ -338,9 +332,7 @@ class OrderService:
             async with session.begin_nested():
                 await OrderService.distribute(session, order.id, now=now)
         except Exception:
-            logger.exception(
-                "distribution attempt failed for order %s", order.id
-            )
+            logger.exception("distribution attempt failed for order %s", order.id)
         # The stored row is the truth for the response — the attempt may
         # have assigned the judge or rolled its writes back entirely.
         await session.refresh(order)
@@ -386,8 +378,7 @@ class OrderService:
             except IntegrityError as exc:
                 if not _is_number_conflict(exc):
                     raise
-        logger.error("order number assignment exhausted %s attempts",
-                     NUMBER_ATTEMPTS)
+        logger.error("order number assignment exhausted %s attempts", NUMBER_ATTEMPTS)
         raise OrderNumberConflictError()
 
     @staticmethod
@@ -400,15 +391,13 @@ class OrderService:
         true only for the assigned judge while no verdict exists.
         """
         order = (
-            await session.execute(
-                select(Order).where(Order.number == number)
-            )
+            await session.execute(select(Order).where(Order.number == number))
         ).scalar_one_or_none()
         if order is None:
             raise OrderNotFoundError(number)
         return _detail_view(
             order,
-            now=datetime.now(timezone.utc),
+            now=datetime.now(UTC),
             viewer_player_id=viewer_player_id,
         )
 
@@ -480,9 +469,7 @@ class OrderService:
         # 2. Re-read under the lock; a judge already present means the
         # assignment is done — nothing to do.
         order = (
-            await session.execute(
-                select(Order).where(Order.id == order_id)
-            )
+            await session.execute(select(Order).where(Order.id == order_id))
         ).scalar_one()
         if order.judge_player_id is not None:
             return DistributeResult.ALREADY_ASSIGNED
@@ -541,9 +528,7 @@ class OrderService:
         # while judge_player_id IS NULL. The deadline and reminder
         # timestamps are fixed now by integer arithmetic (Spec 3.4) and
         # never move, whatever the config becomes later.
-        distributed_at = (
-            now if now is not None else datetime.now(timezone.utc)
-        )
+        distributed_at = now if now is not None else datetime.now(UTC)
         result = await session.execute(
             update(Order)
             .where(
@@ -553,10 +538,8 @@ class OrderService:
             .values(
                 judge_player_id=judge_player_id,
                 distributed_at=distributed_at,
-                deadline_at=distributed_at
-                + timedelta(seconds=judge.deadline_seconds),
-                reminder_at=distributed_at
-                + timedelta(seconds=judge.reminder_seconds),
+                deadline_at=distributed_at + timedelta(seconds=judge.deadline_seconds),
+                reminder_at=distributed_at + timedelta(seconds=judge.reminder_seconds),
             )
         )
         if result.rowcount == 0:
@@ -611,7 +594,7 @@ class OrderService:
         from modules._04_orders.startup import get_orders_config
 
         batch_size = get_orders_config().distribution.batch_size
-        moment = now if now is not None else datetime.now(timezone.utc)
+        moment = now if now is not None else datetime.now(UTC)
         assigned = still_waiting = 0
         reminders_sent = reminders_skipped = errors = 0
 
@@ -640,8 +623,7 @@ class OrderService:
             except Exception:
                 errors += 1
                 logger.exception(
-                    "04_orders retry pass: distribute failed for "
-                    "order %s",
+                    "04_orders retry pass: distribute failed for order %s",
                     order_id,
                 )
                 continue
@@ -680,8 +662,7 @@ class OrderService:
             except Exception:
                 errors += 1
                 logger.exception(
-                    "04_orders retry pass: reminder failed for "
-                    "order %s",
+                    "04_orders retry pass: reminder failed for order %s",
                     order.id,
                 )
                 continue
@@ -783,7 +764,7 @@ class OrderService:
             )
             .order_by(Order.deadline_at)
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             AssignedOrderView(
                 number=order.number,
@@ -835,9 +816,7 @@ class OrderService:
 
         # 2. The order exists.
         order = (
-            await session.execute(
-                select(Order).where(Order.number == number)
-            )
+            await session.execute(select(Order).where(Order.number == number))
         ).scalar_one_or_none()
         if order is None:
             raise OrderNotFoundError(number)
@@ -861,7 +840,7 @@ class OrderService:
         # 6. Conditional write (INV-O1): the four verdict columns and
         # nothing else, only while the row is still this judge's to
         # decide.
-        verdict_at = datetime.now(timezone.utc)
+        verdict_at = datetime.now(UTC)
         result = await session.execute(
             update(Order)
             .where(
@@ -880,9 +859,7 @@ class OrderService:
             # The row changed between the read and the update — re-read
             # and answer for the state that actually won.
             fresh = (
-                await session.execute(
-                    select(Order).where(Order.id == order.id)
-                )
+                await session.execute(select(Order).where(Order.id == order.id))
             ).scalar_one()
             if fresh.verdict_at is not None:
                 raise OrderVerdictExistsError(number)
@@ -893,22 +870,14 @@ class OrderService:
         # a failure or a skip must never undo the verdict.
         try:
             async with session.begin_nested():
-                await notify_verdict(
-                    session, order=order, verdict_at=verdict_at
-                )
+                await notify_verdict(session, order=order, verdict_at=verdict_at)
         except Exception:
-            logger.exception(
-                "verdict notification failed for order %s", order.id
-            )
+            logger.exception("verdict notification failed for order %s", order.id)
 
-        return _detail_view(
-            order, now=verdict_at, viewer_player_id=player_id
-        )
+        return _detail_view(order, now=verdict_at, viewer_player_id=player_id)
 
     @staticmethod
-    async def unresolved_count(
-        session: AsyncSession, *, player_id: str
-    ) -> int:
+    async def unresolved_count(session: AsyncSession, *, player_id: str) -> int:
         """
         The author's orders without a verdict — the ``unresolved_orders``
         counter of ``GET /orders/rules`` and the submit limit (INV-O15).

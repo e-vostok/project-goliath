@@ -15,7 +15,7 @@ tests/fixtures/postgres.py).
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -30,22 +30,20 @@ from tests.fixtures.factories import (
     make_order,
 )
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 
 pytestmark = pytest.mark.postgres
 
-NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 
 async def _seed_player(session, vk_user_id: int):
     """A nation owner — a reachable judge, a valid order author."""
-    player = PlayerFactory.build(
-        vk_user_id=vk_user_id, nations=[]
-    )
+    player = PlayerFactory.build(vk_user_id=vk_user_id, nations=[])
     session.add(player)
     await session.flush()
     session.add(
@@ -63,7 +61,9 @@ async def _seed_player(session, vk_user_id: int):
 
 class TestConcurrentRetryPass:
     async def test_two_passes_assign_once_and_remind_once(
-        self, pg_db, orders_bot_started
+        self,
+        pg_db,
+        orders_bot_started,
     ):
         async with pg_db() as session:
             judge = await _seed_player(session, 779901)
@@ -95,9 +95,7 @@ class TestConcurrentRetryPass:
         async with pg_db() as session:
             for order_id in waiting_ids:
                 order = (
-                    await session.execute(
-                        select(Order).where(Order.id == order_id)
-                    )
+                    await session.execute(select(Order).where(Order.id == order_id))
                 ).scalar_one()
                 assert order.judge_player_id is not None
                 assert order.judge_player_id != order.author_player_id
@@ -117,13 +115,9 @@ class TestConcurrentRetryPass:
             assert len(rows) == 1
             assert rows[0].event_key == f"order_reminder:{reminded_id}"
             order = (
-                await session.execute(
-                    select(Order).where(Order.id == reminded_id)
-                )
+                await session.execute(select(Order).where(Order.id == reminded_id))
             ).scalar_one()
             assert order.reminder_sent_at is not None
-        assert (
-            stats_a.reminders_sent + stats_b.reminders_sent == 1
-        )
+        assert stats_a.reminders_sent + stats_b.reminders_sent == 1
         assert stats_a.errors == 0
         assert stats_b.errors == 0

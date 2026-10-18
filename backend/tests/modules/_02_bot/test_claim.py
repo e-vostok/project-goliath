@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
-import pytest
 from sqlalchemy import select
 
 from modules._02_bot.claim import claim_batch
@@ -30,8 +29,8 @@ from tests.modules._02_bot._issue3_support import (
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )
@@ -65,16 +64,12 @@ async def _rows(engine, player_id):
 async def _row(engine, row_id) -> BotOutbox:
     async with make_session_factory(engine)() as session:
         return (
-            await session.execute(
-                select(BotOutbox).where(BotOutbox.id == row_id)
-            )
+            await session.execute(select(BotOutbox).where(BotOutbox.id == row_id))
         ).scalar_one()
 
 
 class TestHousekeeping:
-    async def test_expired_rows_expire_without_vk(
-        self, test_db_engine, bot_config
-    ):
+    async def test_expired_rows_expire_without_vk(self, test_db_engine, bot_config):
         """T6: an expired row flips to EXPIRED inside claim — nothing
         ever reaches a VK call."""
         async with make_session_factory(test_db_engine)() as session:
@@ -91,9 +86,7 @@ class TestHousekeeping:
         assert groups == []
         assert (await _rows(test_db_engine, player.id))[0].status == "EXPIRED"
 
-    async def test_attempts_exhausted_fails(
-        self, test_db_engine, bot_config
-    ):
+    async def test_attempts_exhausted_fails(self, test_db_engine, bot_config):
         async with make_session_factory(test_db_engine)() as session:
             player = await add_member(session)
             await add_outbox(
@@ -112,9 +105,7 @@ class TestHousekeeping:
 
 
 class TestPlayerOrdering:
-    async def test_critical_player_first(
-        self, test_db_engine, bot_config
-    ):
+    async def test_critical_player_first(self, test_db_engine, bot_config):
         """T12: a player with a critical row claims before one with an
         older but ordinary row."""
         async with make_session_factory(test_db_engine)() as session:
@@ -143,9 +134,7 @@ class TestPlayerOrdering:
 
 
 class TestPlayerChecks:
-    async def test_no_consent_and_no_nation_drop(
-        self, test_db_engine, bot_config
-    ):
+    async def test_no_consent_and_no_nation_drop(self, test_db_engine, bot_config):
         async with make_session_factory(test_db_engine)() as session:
             denied = await add_member(session, consent="DENIED")
             nationless = await add_member(session, consent="ALLOWED")
@@ -154,9 +143,7 @@ class TestPlayerChecks:
 
             nation = (
                 await session.execute(
-                    select(Nation).where(
-                        Nation.owner_player_id == nationless.id
-                    )
+                    select(Nation).where(Nation.owner_player_id == nationless.id)
                 )
             ).scalar_one()
             await session.delete(nation)
@@ -166,16 +153,12 @@ class TestPlayerChecks:
 
         groups = await _claim(test_db_engine, bot_config)
         assert groups == []
-        assert (await _rows(test_db_engine, denied.id))[0].drop_reason == (
-            "NO_CONSENT"
-        )
+        assert (await _rows(test_db_engine, denied.id))[0].drop_reason == ("NO_CONSENT")
         assert (await _rows(test_db_engine, nationless.id))[
             0
         ].drop_reason == "NO_NATION"
 
-    async def test_reply_needs_neither(
-        self, test_db_engine, bot_config
-    ):
+    async def test_reply_needs_neither(self, test_db_engine, bot_config):
         """A REPLY row claims even for a guest with no consent."""
         async with make_session_factory(test_db_engine)() as session:
             guest = await add_member(session, consent=None)
@@ -183,9 +166,7 @@ class TestPlayerChecks:
 
             nation = (
                 await session.execute(
-                    select(Nation).where(
-                        Nation.owner_player_id == guest.id
-                    )
+                    select(Nation).where(Nation.owner_player_id == guest.id)
                 )
             ).scalar_one()
             await session.delete(nation)
@@ -209,9 +190,7 @@ class TestPlayerChecks:
 
 
 class TestGroupReassembly:
-    async def test_expired_lease_reclaims_same_group(
-        self, test_db_engine, bot_config
-    ):
+    async def test_expired_lease_reclaims_same_group(self, test_db_engine, bot_config):
         """T8: a crashed worker's leased rows reclaim into the SAME
         group with the SAME random_id."""
         async with make_session_factory(test_db_engine)() as session:
@@ -230,7 +209,7 @@ class TestGroupReassembly:
                     status="LEASED",
                     attempts=1,
                     lease_until=expired_lease,
-                    lease_token="old-token",
+                    lease_token="old-token",  # noqa: S106
                     group_id=group_id,
                     random_id=424242,
                     render_mode="BATCH",
@@ -250,16 +229,14 @@ class TestGroupReassembly:
             seconds=bot_config.sender.lease_seconds
         )
 
-    async def test_broken_group_dissolves(
-        self, test_db_engine, bot_config
-    ):
+    async def test_broken_group_dissolves(self, test_db_engine, bot_config):
         """A group missing a row dissolves: the survivor gets a fresh
         group_id and random_id."""
         async with make_session_factory(test_db_engine)() as session:
             player = await add_member(session)
             group_id = str(uuid.uuid4())
             expired_lease = NOW - timedelta(minutes=5)
-            gone = await add_outbox(
+            await add_outbox(
                 session,
                 player.id,
                 payload=_DIGEST_VARS,
@@ -276,7 +253,7 @@ class TestGroupReassembly:
                 status="LEASED",
                 attempts=1,
                 lease_until=expired_lease,
-                lease_token="old-token",
+                lease_token="old-token",  # noqa: S106
                 group_id=group_id,
                 random_id=111,
                 render_mode="SINGLE",
@@ -288,22 +265,18 @@ class TestGroupReassembly:
         group = groups[0]
         assert group.group_id != group_id
         assert group.random_id != 111
-        assert (await _row(test_db_engine, survivor.id)).group_id == (
-            group.group_id
-        )
+        assert (await _row(test_db_engine, survivor.id)).group_id == (group.group_id)
 
 
 class TestSentHistory:
-    async def test_history_feeds_cap_and_windows(
-        self, test_db_engine, bot_config
-    ):
+    async def test_history_feeds_cap_and_windows(self, test_db_engine, bot_config):
         """Seeded SENT rows drive cap_used, singles_in_window and
         last_batch_at exactly as Spec 3.4 prescribes."""
         cap = bot_config.limits.daily_cap_normal  # 8
         async with make_session_factory(test_db_engine)() as session:
             capped = await add_member(session)
             # 8 distinct sent groups in the sliding 24h -> cap full.
-            for i in range(cap):
+            for _ in range(cap):
                 await add_outbox(
                     session,
                     capped.id,
@@ -316,7 +289,7 @@ class TestSentHistory:
 
             batched = await add_member(session)
             # 3 singles of the over_cap type inside its 60-min window.
-            for i in range(3):
+            for _ in range(3):
                 await add_outbox(
                     session,
                     batched.id,
@@ -326,7 +299,7 @@ class TestSentHistory:
                     render_mode="SINGLE",
                     sent_at=NOW - timedelta(minutes=10),
                 )
-            for i in range(4):
+            for _ in range(4):
                 await add_outbox(
                     session,
                     batched.id,
@@ -347,7 +320,7 @@ class TestSentHistory:
                 render_mode="BATCH",
                 sent_at=last_batch,
             )
-            for i in range(5):
+            for _ in range(5):
                 await add_outbox(
                     session,
                     windowed.id,
@@ -363,9 +336,7 @@ class TestSentHistory:
 
         # cap_used = cap -> no composed messages at all.
         assert capped.id not in by_player
-        assert (await _rows(test_db_engine, capped.id))[-1].status == (
-            "PENDING"
-        )
+        assert (await _rows(test_db_engine, capped.id))[-1].status == ("PENDING")
 
         # singles_in_window = max_per_window -> every row lands in one
         # BATCH.

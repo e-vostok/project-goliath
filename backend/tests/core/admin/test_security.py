@@ -22,7 +22,7 @@ from core.security.jwt import issue_token
 from main import domain_error_handler
 from modules._00_core.models import Player
 
-TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
+TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"  # noqa: S105
 
 
 @pytest.fixture(autouse=True)
@@ -47,9 +47,7 @@ async def admin_client(test_db_session):
 
     test_app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=test_app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     test_app.dependency_overrides.clear()
 
@@ -114,9 +112,7 @@ class TestRequireAdmin:
         assert response.json()["code"] == "UNAUTHORIZED"
 
     @pytest.mark.asyncio
-    async def test_empty_allowlist_fails_closed(
-        self, admin_client, test_db_session
-    ):
+    async def test_empty_allowlist_fails_closed(self, admin_client, test_db_session):
         """With ADMIN_VK_USER_IDS unset, every real vk_user_id is rejected."""
         player = await seed_player(test_db_session, vk_user_id=111)
 
@@ -128,9 +124,7 @@ class TestRequireAdmin:
         assert response.json()["code"] == "ADMIN_REQUIRED"
 
     @pytest.mark.asyncio
-    async def test_direct_call_returns_player(
-        self, test_db_session, monkeypatch
-    ):
+    async def test_direct_call_returns_player(self, test_db_session, monkeypatch):
         """require_admin returns the resolved Player for an allowlisted id."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", "555")
         player = await seed_player(test_db_session, vk_user_id=555)
@@ -153,11 +147,7 @@ class TestRequireAdmin:
         assert exc_info.value.code == "ADMIN_REQUIRED"
 
     @pytest.mark.asyncio
-    async def test_upstream_dependency_raises_unauthorized(
-        self, test_db_session
-    ):
+    async def test_upstream_dependency_raises_unauthorized(self, test_db_session):
         """get_current_player still raises UnauthorizedError on no header."""
         with pytest.raises(UnauthorizedError):
-            await get_current_player(
-                authorization=None, session=test_db_session
-            )
+            await get_current_player(authorization=None, session=test_db_session)

@@ -1,83 +1,42 @@
-# 🏛️ Project Goliath — Asynchronous Grand Strategy Engine 
+# PAX ATOMICA
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![VKUI](https://img.shields.io/badge/VKUI-6.0+-0077FF?style=flat-square&logo=vk&logoColor=white)](https://vkcom.github.io/VKUI/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+Codename: Project Goliath
 
-> **Project Goliath** — это пошаговая асинхронная военно-политическая стратегия (ВПИ) нового поколения, создаваемая для десктопной экосистемы ВКонтакте на стыке глубокого ролевого отыгрыша и современных веб-технологий. Проект объединяет литературный простор соцсети с мощным веб-приложением: интерактивной картой мира, «кабинетом правителя» и тактическим 2D-варгеймом на гексагональной сетке.
+Пошаговая асинхронная военно-политическая стратегия (ВПИ) для десктопной
+экосистемы ВКонтакте: VK Mini App с интерактивной картой мира и «кабинетом
+правителя», VK-бот для уведомлений и приказов, а суточный ход рассчитывает
+детерминированный серверный движок (Tick DAG) — без ручного вмешательства
+и человеческого фактора.
 
----
+## Статус
 
-## ⚡ Ключевые архитектурные особенности
+- Версия: **v0.7.0** (последний тег `v*`)
+- Стек: FastAPI + SQLAlchemy + PostgreSQL · React 18 + TypeScript + Vite + VKUI
 
-* **Детерминированный Tick Engine (DAG):** Суточный ход рассчитывается автономным серверным движком по строгому графу зависимостей (Tick DAG). Никакого человеческого фактора, предвзятости администраторов и ручного сведения Google Таблиц.
-* **Desktop-First UX:** Проектирование под мониторы высокой четкости (1920×1080) с высокой плотностью информации (High Information Density), управлением мышью и клавиатурой и интерактивной SVG-картой.
-* **Тактический 2D-варгейм:** Разрешение военных конфликтов в формате пошаговой тактики на гексах с топографической штабной картой в эстетике классических варгеймов John Tiller.
-* **Config-Safe Pattern:** Полная изоляция игрового баланса в `configs/*.yaml`. Все конфигурации строго валидируются типобезопасными Pydantic-схемами при старте приложения и в CI.
-* **Anti-Mock Guard:** Принцип жесткого тестирования бизнес-логики и смены ходов исключительно на реальной базе данных (SQLite/PostgreSQL in-memory) с использованием изолированных фабрик фикстур. Поверхностные моки состояния запрещены.
-* **Session Auth безопасности VK:** Валидация подписи HMAC-SHA256 и временной метки запуска (`vk_ts`) с мгновенной выдачей сессионного JWT-токена для защиты от Replay-атак.
+## Структура репозитория
 
----
+- `backend/` — сервер API (FastAPI, SQLAlchemy, Alembic, тесты Anti-Mock Guard)
+- `configs/` — боевые конфигурации баланса `*.yaml` (Config-Safe Pattern)
+- `data/` — данные карты мира (манифест, геометрия, исходники)
+- `deploy/` — скрипты и документация выкладки на сервер
+- `docs/` — игровая библия, системные спецификации, дорожные карты модулей
+- `frontend/` — клиент VK Mini App (React + VKUI, Desktop-First)
+- `tools/` — конвейер подготовки карты и служебные утилиты
 
-## 🧩 Структура репозитория (Full-Stack Vertical Slices)
+## Локальный запуск
 
-Каждая геймплейная подсистема представляет собой сквозной вертикальный срез:
+Полная инструкция по поднятию dev-окружения (backend, frontend, миграции,
+тесты на PostgreSQL) — в файле [RUNNING.md](RUNNING.md).
 
-```text
-project-goliath/
-├── docs/
-│   ├── 01_GAME_BIBLE/              # Правила механик на языке геймдизайна
-│   ├── 02_SYSTEM_SPECS/            # Архитектурные спеки, FSM, LaTeX-формулы
-│   ├── 03_ROADMAP/                 # Атомарные списки задач (Issues) по модулям
-│   ├── development_workflow.md     # Производственный стандарт и регламент разработки
-│   └── technical_blueprint.md      # Системный технологический чертеж
-│
-├── configs/                        # Боевые конфигурации баланса движка (*.yaml)
-│
-├── backend/                        # Серверная часть (FastAPI, SQLAlchemy, Alembic)
-│   ├── src/
-│   │   ├── core/                   # Ядро: Auth, Session JWT, Tick DAG Orchestrator
-│   │   ├── modules/                # Модульные вертикальные срезы логики
-│   │   └── main.py                 # Точка входа API
-│   └── tests/                      # Интеграционные тесты (Anti-Mock Guard)
-│
-└── frontend/                       # Клиентское приложение VK Mini App (Desktop)
-    ├── src/
-    │   ├── app/                    # AppShell, Лейаут, навигация, HUD ресурсов
-    │   ├── shared/                 # Базовый API-клиент, утилиты, общие компоненты
-    │   └── modules/                # Модульные панели, модалки и хуки интерфейса
-    └── vite.config.ts
-```
+## Документация
 
----
+- [PROJECT_STATE.md](docs/PROJECT_STATE.md) — текущее состояние проекта
+- [development_workflow.md](docs/development_workflow.md) — регламент разработки
+- [01_GAME_BIBLE/](docs/01_GAME_BIBLE/) — правила механик языком геймдизайна
+- [02_SYSTEM_SPECS/](docs/02_SYSTEM_SPECS/) — архитектурные спеки и модели данных
+- [03_ROADMAP/](docs/03_ROADMAP/) — атомарные задачи (Issues) по модулям
+- [changelog.md](changelog.md) — история релизов
 
-## 🛠️ Технологический стек
+## Лицензия
 
-| Слой | Технологии |
-| :--- | :--- |
-| **Backend** | Python 3.13+, FastAPI, SQLAlchemy 2.0 (AsyncIO), Pydantic v2, Alembic |
-| **Database** | PostgreSQL, asyncpg, SQLite (тестовый in-memory контур) |
-| **Frontend** | React 18, TypeScript, Vite, `@vkontakte/vkui`, `@vkontakte/vk-bridge` |
-| **Simulation** | Двумерный холст (Canvas/SVG), собственный Tick DAG Orchestrator |
-| **Security** | VK Launch Params HMAC-SHA256, PyJWT (Bearer Token Auth) |
-| **CI / Quality** | pytest, pytest-asyncio, flake8/ruff, GitHub Actions |
-
----
-
-## 📌 Версионирование (Semantic Versioning)
-
-Проект использует строгое семантическое версионирование (**SemVer**): `MAJOR.MINOR.PATCH`:
-* **PATCH** (`+0.0.1`): Хотфиксы, корректировка баланса в `configs/*.yaml`.
-* **MINOR** (`+0.1.0`): Полный релиз сквозного геймплейного модуля из `docs/03_ROADMAP/`.
-* **MAJOR** (`+1.0.0`): Релиз ключевого этапа (Playable Alpha, запуск первого соревновательного сезона).
-
-История всех релизов и изменений документируется в changelog.md.
-
----
-
-## 📄 Лицензия
-
-Проект распространяется под лицензией MIT. Подробности в файле LICENSE.
+Проект распространяется под лицензией MIT — см. [LICENSE](LICENSE).

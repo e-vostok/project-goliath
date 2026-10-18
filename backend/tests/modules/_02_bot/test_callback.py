@@ -10,7 +10,6 @@ idempotency, consent signals and the never-answer-``remove`` contract
 
 from __future__ import annotations
 
-import json
 import logging
 
 import pytest
@@ -88,12 +87,12 @@ class TestAvailability:
         ],
         ids=["group-id-int", "group-id-str", "wrong-secret", "no-secret"],
     )
-    async def test_forbidden_403_empty_body(
-        self, client, bot_started, overrides
-    ):
+    async def test_forbidden_403_empty_body(self, client, bot_started, overrides):
         resp = await client.post(
             "/api/v1/bot/callback",
-            json=vk_body("message_allow", event_id="e-403", obj={"user_id": 1}, **overrides),
+            json=vk_body(
+                "message_allow", event_id="e-403", obj={"user_id": 1}, **overrides
+            ),
         )
         assert resp.status_code == 403
         assert resp.content == b""
@@ -119,9 +118,7 @@ class TestProcessing:
     ):
         resp = await client.post(
             "/api/v1/bot/callback",
-            json=vk_body(
-                "message_allow", event_id="e-allow", obj={"user_id": 4242}
-            ),
+            json=vk_body("message_allow", event_id="e-allow", obj={"user_id": 4242}),
         )
         assert resp.status_code == 200
         assert resp.text == "ok"
@@ -164,9 +161,7 @@ class TestProcessing:
                 select(Player).where(Player.vk_user_id == 555)
             )
         ).scalar_one()
-        pending = await add_outbox(
-            test_db_session, player.id, type_key="TICK_DIGEST"
-        )
+        pending = await add_outbox(test_db_session, player.id, type_key="TICK_DIGEST")
         await test_db_session.commit()
 
         resp = await client.post(
@@ -192,9 +187,7 @@ class TestProcessing:
         assert len(rows) == 1
         players = (
             await test_db_session.execute(
-                select(func.count())
-                .select_from(Player)
-                .where(Player.vk_user_id == 777)
+                select(func.count()).select_from(Player).where(Player.vk_user_id == 777)
             )
         ).scalar_one()
         assert players == 1
@@ -204,9 +197,7 @@ class TestProcessing:
     ):
         resp = await client.post(
             "/api/v1/bot/callback",
-            json=vk_body(
-                "message_event", event_id="e-unk", obj={"user_id": 9}
-            ),
+            json=vk_body("message_event", event_id="e-unk", obj={"user_id": 9}),
         )
         assert resp.status_code == 200
         assert resp.text == "ok"
@@ -228,14 +219,10 @@ class TestProcessing:
         assert resp.status_code == 200
         assert resp.text == "ok"
         assert await _journal(test_db_session, "e-bad") == []
-        outbox = (
-            await test_db_session.execute(select(BotOutbox))
-        ).scalars().all()
+        outbox = (await test_db_session.execute(select(BotOutbox))).scalars().all()
         assert outbox == []
 
-    async def test_missing_event_id_skipped(
-        self, client, bot_started, test_db_session
-    ):
+    async def test_missing_event_id_skipped(self, client, bot_started, test_db_session):
         resp = await client.post(
             "/api/v1/bot/callback",
             json=vk_body("message_allow", obj={"user_id": 31337}),
@@ -244,9 +231,7 @@ class TestProcessing:
         assert resp.text == "ok"
         assert await _journal(test_db_session) == []
         players = (
-            await test_db_session.execute(
-                select(func.count()).select_from(Player)
-            )
+            await test_db_session.execute(select(func.count()).select_from(Player))
         ).scalar_one()
         assert players == 0
 
@@ -256,9 +241,7 @@ class TestProcessing:
         async def _boom(*args, **kwargs):
             raise RuntimeError("simulated handler failure")
 
-        monkeypatch.setattr(
-            "modules._02_bot.router.handle_event", _boom
-        )
+        monkeypatch.setattr("modules._02_bot.router.handle_event", _boom)
         resp = await client.post(
             "/api/v1/bot/callback",
             json=vk_body("message_allow", event_id="e-boom", obj={"user_id": 1}),
@@ -271,17 +254,17 @@ class TestProcessing:
 class TestPrivacy:
     """INV-B12: no secret, request body or message text in logs."""
 
-    async def test_nothing_sensitive_in_logs(
-        self, client, bot_started, caplog
-    ):
-        mark_secret = "WRONG-SECRET-DEADBEEF"
+    async def test_nothing_sensitive_in_logs(self, client, bot_started, caplog):
+        mark_secret = "WRONG-SECRET-DEADBEEF"  # noqa: S105
         mark_text = "PLAYER-SECRET-TEXT-XYZ"
         with caplog.at_level(logging.DEBUG):
             await client.post(
                 "/api/v1/bot/callback",
                 json=vk_body(
-                    "message_allow", event_id="e-s1",
-                    obj={"user_id": 1}, secret=mark_secret,
+                    "message_allow",
+                    event_id="e-s1",
+                    obj={"user_id": 1},
+                    secret=mark_secret,
                 ),
             )
             await client.post(

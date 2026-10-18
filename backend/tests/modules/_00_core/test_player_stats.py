@@ -11,7 +11,7 @@ stamps the transaction's current turn and ``update`` never rewrites it
 from __future__ import annotations
 
 import itertools
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -41,9 +41,7 @@ async def test_new_player_defaults_and_scale_bounds(test_db_session):
     for bad_field in ({"level": 0}, {"judge_rating": 101}):
         with pytest.raises(IntegrityError):
             async with test_db_session.begin_nested():
-                test_db_session.add(
-                    Player(vk_user_id=next(_vk_seq), **bad_field)
-                )
+                test_db_session.add(Player(vk_user_id=next(_vk_seq), **bad_field))
                 await test_db_session.flush()
 
 
@@ -57,7 +55,7 @@ async def test_created_turn_stamped_on_create_and_immutable(
         GameClock(
             id=1,
             current_turn=7,
-            next_tick_at=datetime.now(timezone.utc),
+            next_tick_at=datetime.now(UTC),
         )
     )
     await test_db_session.flush()

@@ -29,10 +29,10 @@ from tests.fixtures.factories import (
     make_order,
 )
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 
 pytestmark = pytest.mark.postgres
@@ -76,7 +76,9 @@ async def _seed_author(session, vk_user_id: int) -> Player:
 
 class TestConcurrentSubmit:
     async def test_same_author_one_free_slot_creates_one_order(
-        self, pg_db, orders_started
+        self,
+        pg_db,
+        orders_started,
     ):
         """INV-O15 under the advisory lock: with a single free slot two
         concurrent submissions of one author create exactly one order;
@@ -96,10 +98,7 @@ class TestConcurrentSubmit:
         )
 
         numbers = [r for r in results if isinstance(r, int)]
-        failures = [
-            r for r in results
-            if isinstance(r, OrderAuthorLimitReachedError)
-        ]
+        failures = [r for r in results if isinstance(r, OrderAuthorLimitReachedError)]
         assert len(numbers) == 1, f"expected one order, got {results!r}"
         assert len(failures) == 1, f"expected one refusal, got {results!r}"
 
@@ -112,7 +111,9 @@ class TestConcurrentSubmit:
             assert count == limit
 
     async def test_concurrent_submissions_get_distinct_numbers(
-        self, pg_db, orders_started
+        self,
+        pg_db,
+        orders_started,
     ):
         """Spec 3.5: two simultaneous submissions never share a number."""
         async with pg_db() as session:
@@ -129,8 +130,8 @@ class TestConcurrentSubmit:
         assert {first, second} == {1, 2}
         async with pg_db() as session:
             rows = (
-                await session.execute(
-                    select(Order.number).order_by(Order.number)
-                )
-            ).scalars().all()
+                (await session.execute(select(Order.number).order_by(Order.number)))
+                .scalars()
+                .all()
+            )
             assert list(rows) == [1, 2]

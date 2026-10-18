@@ -1,3 +1,4 @@
+# ruff: noqa: E402 — startup must load_dotenv / set sys.path before app imports
 """
 FastAPI application entry point.
 
@@ -13,8 +14,8 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
 import asyncio
 import logging
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -85,7 +86,7 @@ def configure_logging() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application lifespan manager.
-    
+
     Validates configuration on startup to fail fast if balance values are invalid.
     """
     configure_logging()
@@ -99,7 +100,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         config_path = Path(__file__).parent.parent.parent / "configs" / "00_core.yaml"
         config = CoreConfig.from_yaml(str(config_path))
-        print(f"Configuration validated successfully: {config.model_dump_json(indent=2)}")
+        print(
+            f"Configuration validated successfully: {config.model_dump_json(indent=2)}"
+        )
     except ValidationError as e:
         print(f"Configuration validation failed: {e}")
         raise
@@ -162,16 +165,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Spec 03_registry 2.4: the profile worker starts right after the
     # bot runtime; OFF/NO_TOKEN start nothing and never affect boot
     # (INV-R6).
-    profile_worker = await start_profile_worker_if_ready(
-        get_session_context
-    )
+    profile_worker = await start_profile_worker_if_ready(get_session_context)
 
     # Spec 04_orders 2.3: the retry/reminder worker starts after
     # startup_orders() loaded the config — the module's conscious
     # exception from the Tick DAG (D3).
-    orders_worker = await start_orders_worker_if_ready(
-        get_session_context
-    )
+    orders_worker = await start_orders_worker_if_ready(get_session_context)
 
     yield
 

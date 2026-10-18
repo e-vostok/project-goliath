@@ -29,7 +29,6 @@ import { DateCell } from './cells/DateCell';
 import { DatetimeCell } from './cells/DatetimeCell';
 import { FlagCell } from './cells/FlagCell';
 import { GaugeCell } from './cells/GaugeCell';
-import { IndexCell } from './cells/IndexCell';
 import { IntegerCell } from './cells/IntegerCell';
 import { NationCell } from './cells/NationCell';
 import { PersonCell } from './cells/PersonCell';
@@ -86,7 +85,7 @@ function SortIcon({
 function Cell({ column, value }: { column: RegistryColumnDTO; value: RegistryCell }) {
   switch (column.type) {
     case 'index':
-      return <IndexCell value={value} />;
+      return <IntegerCell value={value} />;
     case 'integer':
       return <IntegerCell value={value} />;
     case 'gauge':

@@ -13,7 +13,7 @@ integer >= 1.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
@@ -48,9 +48,7 @@ def _detail_dto(view: OrderDetailView) -> OrderDetailDTO:
     """Service view -> wire DTO (the nation snapshot as NationMarkDTO)."""
     return OrderDetailDTO(
         number=view.number,
-        nation=NationMarkDTO(
-            name=view.nation_name, color=view.nation_color
-        ),
+        nation=NationMarkDTO(name=view.nation_name, color=view.nation_color),
         title=view.title,
         summary=view.summary,
         article_url=view.article_url,
@@ -71,13 +69,11 @@ def _detail_dto(view: OrderDetailView) -> OrderDetailDTO:
 
 def _deadline_text(moment: datetime) -> str:
     """``DD.MM.YYYY HH:MM`` in tick.tick_timezone (Spec 5.2)."""
-    tz = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).tick.tick_timezone
+    tz = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).tick.tick_timezone
     # Naive datetimes are read as UTC (SQLite returns naive values even
     # for timezone=True columns — the same convention as admin_hooks).
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
+        moment = moment.replace(tzinfo=UTC)
     return moment.astimezone(ZoneInfo(tz)).strftime("%d.%m.%Y %H:%M")
 
 
@@ -85,9 +81,7 @@ def _assigned_dto(view: AssignedOrderView) -> AssignedOrderDTO:
     """Service view -> wire DTO (the nation snapshot as NationMarkDTO)."""
     return AssignedOrderDTO(
         number=view.number,
-        nation=NationMarkDTO(
-            name=view.nation_name, color=view.nation_color
-        ),
+        nation=NationMarkDTO(name=view.nation_name, color=view.nation_color),
         title=view.title,
         summary=view.summary,
         article_url=view.article_url,
@@ -108,9 +102,7 @@ async def get_order_rules(
     from modules._04_orders.startup import get_orders_config
 
     config = get_orders_config()
-    unresolved = await OrderService.unresolved_count(
-        session, player_id=player.id
-    )
+    unresolved = await OrderService.unresolved_count(session, player_id=player.id)
     return OrderRulesDTO(
         title_min_length=config.limits.title_min_length,
         title_max_length=config.limits.title_max_length,
@@ -160,14 +152,10 @@ async def list_assigned_orders(
     """
     response.headers["Cache-Control"] = "no-store"
     views = await OrderService.list_assigned(session, player_id=player.id)
-    return AssignedOrdersDTO(
-        items=[_assigned_dto(view) for view in views]
-    )
+    return AssignedOrdersDTO(items=[_assigned_dto(view) for view in views])
 
 
-@router.post(
-    "/{number}/verdict", response_model=OrderDetailDTO, status_code=201
-)
+@router.post("/{number}/verdict", response_model=OrderDetailDTO, status_code=201)
 async def write_verdict(
     number: Annotated[int, Path(ge=1)],
     body: VerdictCreateRequest,

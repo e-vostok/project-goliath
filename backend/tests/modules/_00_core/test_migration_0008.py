@@ -18,8 +18,9 @@ import uuid
 from pathlib import Path
 
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 
@@ -65,20 +66,29 @@ def test_0008_backfills_created_turn(tmp_path, monkeypatch):
                 )
             )
             players_nations = [
-                ("nation-early", "Early", "#0E0001",
-                 "2026-08-01 12:00:00.000000"),        # before any tick
-                ("nation-mid", "Mid", "#0E0002",
-                 "2026-09-05 12:00:00+00:00"),        # between the ticks
-                ("nation-late", "Late", "#0E0003",
-                 "2026-09-15 12:00:00.000000"),       # after turn 5
+                (
+                    "nation-early",
+                    "Early",
+                    "#0E0001",
+                    "2026-08-01 12:00:00.000000",
+                ),  # before any tick
+                (
+                    "nation-mid",
+                    "Mid",
+                    "#0E0002",
+                    "2026-09-05 12:00:00+00:00",
+                ),  # between the ticks
+                (
+                    "nation-late",
+                    "Late",
+                    "#0E0003",
+                    "2026-09-15 12:00:00.000000",
+                ),  # after turn 5
             ]
             for nation_id, name, color, created in players_nations:
                 player_id = str(uuid.uuid4())
                 conn.execute(
-                    sa.text(
-                        "INSERT INTO players (id, vk_user_id) "
-                        "VALUES (:pid, :vk)"
-                    ),
+                    sa.text("INSERT INTO players (id, vk_user_id) VALUES (:pid, :vk)"),
                     {"pid": player_id, "vk": hash(name) % 10**9},
                 )
                 conn.execute(
@@ -105,17 +115,15 @@ def test_0008_backfills_created_turn(tmp_path, monkeypatch):
     try:
         with engine.connect() as conn:
             rows = dict(
-                conn.execute(
-                    sa.text("SELECT id, created_turn FROM nations")
-                ).all()
+                conn.execute(sa.text("SELECT id, created_turn FROM nations")).all()
             )
             insp = sa.inspect(conn)
-            checks = {
-                c["name"] for c in insp.get_check_constraints("nations")
-            } | {c["name"] for c in insp.get_check_constraints("players")}
-            created_col = {
-                c["name"]: c for c in insp.get_columns("nations")
-            }["created_turn"]
+            checks = {c["name"] for c in insp.get_check_constraints("nations")} | {
+                c["name"] for c in insp.get_check_constraints("players")
+            }
+            created_col = {c["name"]: c for c in insp.get_columns("nations")}[
+                "created_turn"
+            ]
     finally:
         engine.dispose()
 

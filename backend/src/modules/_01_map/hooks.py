@@ -58,21 +58,15 @@ async def check_starting_group_land(
         raise ProvinceNotLandError(sea_ids)
 
 
-def _make_connected_group_check(
-    map_service: MapService, config: MapConfig
-):
-    async def check(
-        session: AsyncSession, provinces: Sequence[Province]
-    ) -> None:
+def _make_connected_group_check(map_service: MapService, config: MapConfig):
+    async def check(session: AsyncSession, provinces: Sequence[Province]) -> None:
         """
         Stage "after_count": the starting group must be connected over
         land+strait edges when starting_group.require_connected is set.
         """
         if not config.starting_group.require_connected:
             return
-        components = map_service.group_components(
-            p.id for p in provinces
-        )
+        components = map_service.group_components(p.id for p in provinces)
         if len(components) > 1:
             raise StartingGroupNotConnectedError(len(components))
 
@@ -90,9 +84,7 @@ def register_map_hooks(map_service: MapService, config: MapConfig) -> None:
     named registries replace same-name entries, and the reset hook is
     guarded by membership — repeated startup does not double-register.
     """
-    register_ownership_listener(
-        f"{MODULE_SLUG}.ownership_log", ownership_log_listener
-    )
+    register_ownership_listener(f"{MODULE_SLUG}.ownership_log", ownership_log_listener)
     register_registration_check(
         STAGE_AFTER_FREE,
         f"{MODULE_SLUG}.land_only",

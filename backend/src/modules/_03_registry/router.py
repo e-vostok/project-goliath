@@ -41,9 +41,7 @@ async def list_registry_tables(
     response.headers["Cache-Control"] = "no-cache"
     config = get_registry_config()
     return RegistryTablesDTO(
-        layout=RegistryLayoutDTO(
-            tabs_position=config.layout.tabs_position
-        ),
+        layout=RegistryLayoutDTO(tabs_position=config.layout.tabs_position),
         tables=[
             RegistryTableDTO(
                 id=table.id,
@@ -91,11 +89,8 @@ async def get_registry_table(
         table_id=built.table_id,
         total=built.total,
         truncated=built.truncated,
-        generated_at=built.generated_at.isoformat(
-            timespec="seconds"
-        ).replace("+00:00", "Z"),
-        rows=[
-            RegistryRowDTO(key=row.key, cells=row.cells)
-            for row in built.rows
-        ],
+        generated_at=built.generated_at.isoformat(timespec="seconds").replace(
+            "+00:00", "Z"
+        ),
+        rows=[RegistryRowDTO(key=row.key, cells=row.cells) for row in built.rows],
     )

@@ -7,15 +7,13 @@ Verifies model constraints, relationships, and invariants without mocking.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from modules._00_core.models import GameClock, Nation, Player, Province, ScheduledAction
-from tests.fixtures.factories import PlayerFactory
 from tests.fixtures.provinces import make_land_province
 
 
@@ -25,14 +23,16 @@ async def test_create_player_happy_path(test_db_session):
     player = Player(
         id=str(uuid.uuid4()),
         vk_user_id=9999999999,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.flush()
-    
-    result = await test_db_session.execute(select(Player).where(Player.vk_user_id == 9999999999))
+
+    result = await test_db_session.execute(
+        select(Player).where(Player.vk_user_id == 9999999999)
+    )
     retrieved_player = result.scalar_one()
-    
+
     assert retrieved_player.id == player.id
     assert retrieved_player.vk_user_id == 9999999999
     assert retrieved_player.created_at is not None
@@ -44,17 +44,17 @@ async def test_duplicate_vk_user_id_constraint(test_db_session):
     player1 = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     player2 = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,  # Same vk_user_id
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
-    
+
     test_db_session.add(player1)
     await test_db_session.flush()
-    
+
     test_db_session.add(player2)
     with pytest.raises(IntegrityError):
         await test_db_session.flush()
@@ -66,25 +66,25 @@ async def test_create_nation_happy_path(test_db_session):
     player = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.flush()
-    
+
     nation = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player.id,
         name="Test Nation",
         color_hex="#00FF00",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
     test_db_session.add(nation)
     await test_db_session.flush()
-    
+
     result = await test_db_session.execute(select(Nation).where(Nation.id == nation.id))
     retrieved_nation = result.scalar_one()
-    
+
     assert retrieved_nation.id == nation.id
     assert retrieved_nation.owner_player_id == player.id
     assert retrieved_nation.name == "Test Nation"
@@ -97,31 +97,31 @@ async def test_duplicate_owner_player_id_constraint(test_db_session):
     player = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.flush()
-    
+
     nation1 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player.id,
         name="Nation 1",
         color_hex="#111111",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player.id,
         name="Nation 2",
         color_hex="#222222",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
-    
+
     test_db_session.add(nation1)
     await test_db_session.flush()
-    
+
     test_db_session.add(nation2)
     with pytest.raises(IntegrityError):
         await test_db_session.flush()
@@ -133,37 +133,37 @@ async def test_duplicate_nation_name_constraint(test_db_session):
     player1 = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     player2 = Player(
         id=str(uuid.uuid4()),
         vk_user_id=2222222222,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player1)
     test_db_session.add(player2)
     await test_db_session.flush()
-    
+
     nation1 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player1.id,
         name="Duplicate Name",
         color_hex="#111111",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player2.id,
         name="Duplicate Name",
         color_hex="#222222",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
-    
+
     test_db_session.add(nation1)
     await test_db_session.flush()
-    
+
     test_db_session.add(nation2)
     with pytest.raises(IntegrityError):
         await test_db_session.flush()
@@ -175,37 +175,37 @@ async def test_duplicate_nation_color_hex_constraint(test_db_session):
     player1 = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     player2 = Player(
         id=str(uuid.uuid4()),
         vk_user_id=2222222222,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player1)
     test_db_session.add(player2)
     await test_db_session.flush()
-    
+
     nation1 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player1.id,
         name="Nation 1",
         color_hex="#ABCDEF",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player2.id,
         name="Nation 2",
         color_hex="#ABCDEF",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
-    
+
     test_db_session.add(nation1)
     await test_db_session.flush()
-    
+
     test_db_session.add(nation2)
     with pytest.raises(IntegrityError):
         await test_db_session.flush()
@@ -217,22 +217,22 @@ async def test_create_scheduled_action_happy_path(test_db_session):
     player = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.flush()
-    
+
     nation = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player.id,
         name="Test Nation",
         color_hex="#FF0000",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
     test_db_session.add(nation)
     await test_db_session.flush()
-    
+
     action = ScheduledAction(
         id=str(uuid.uuid4()),
         nation_id=nation.id,
@@ -241,16 +241,16 @@ async def test_create_scheduled_action_happy_path(test_db_session):
         payload={"test": "data"},
         turn_number=1,
         status="PENDING",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(action)
     await test_db_session.flush()
-    
+
     result = await test_db_session.execute(
         select(ScheduledAction).where(ScheduledAction.id == action.id)
     )
     retrieved_action = result.scalar_one()
-    
+
     assert retrieved_action.id == action.id
     assert retrieved_action.nation_id == nation.id
     assert retrieved_action.module_slug == "test_module"
@@ -263,22 +263,22 @@ async def test_create_scheduled_action_happy_path(test_db_session):
 @pytest.mark.asyncio
 async def test_game_clock_singleton_constraint(test_db_session):
     """Test that only one game_clock row can exist (singleton pattern)."""
-    clock1 = GameClock(id=1, current_turn=0, next_tick_at=datetime.now(timezone.utc))
+    clock1 = GameClock(id=1, current_turn=0, next_tick_at=datetime.now(UTC))
     test_db_session.add(clock1)
     await test_db_session.flush()
-    
+
     # Try to insert a second row with id=1 (PK violation)
-    clock2 = GameClock(id=1, current_turn=1, next_tick_at=datetime.now(timezone.utc))
+    clock2 = GameClock(id=1, current_turn=1, next_tick_at=datetime.now(UTC))
     test_db_session.add(clock2)
     with pytest.raises(IntegrityError):
         await test_db_session.flush()
-    
+
     # After error, need to rollback to continue
     await test_db_session.rollback()
     await test_db_session.begin()
-    
+
     # Try to insert a second row with different id (CHECK constraint violation)
-    clock3 = GameClock(id=2, current_turn=0, next_tick_at=datetime.now(timezone.utc))
+    clock3 = GameClock(id=2, current_turn=0, next_tick_at=datetime.now(UTC))
     test_db_session.add(clock3)
     with pytest.raises(IntegrityError):
         await test_db_session.flush()
@@ -287,7 +287,7 @@ async def test_game_clock_singleton_constraint(test_db_session):
 @pytest.mark.asyncio
 async def test_province_nation_id_nullable(test_db_session):
     """Test that province nation_id can be NULL (free province)."""
-    province = await make_land_province(test_db_session, id=1001)
+    await make_land_province(test_db_session, id=1001)
 
     result = await test_db_session.execute(select(Province).where(Province.id == 1001))
     retrieved_province = result.scalar_one()
@@ -303,18 +303,18 @@ async def test_province_assignment(test_db_session):
     player = Player(
         id=str(uuid.uuid4()),
         vk_user_id=1111111111,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
     )
     test_db_session.add(player)
     await test_db_session.flush()
-    
+
     nation = Nation(
         id=str(uuid.uuid4()),
         owner_player_id=player.id,
         name="Test Nation",
         color_hex="#FF0000",
-        created_at=datetime.now(timezone.utc),
-        created_turn=0
+        created_at=datetime.now(UTC),
+        created_turn=0,
     )
     province = await make_land_province(test_db_session, id=1001)
 
@@ -327,7 +327,7 @@ async def test_province_assignment(test_db_session):
 
     result = await test_db_session.execute(select(Province).where(Province.id == 1001))
     retrieved_province = result.scalar_one()
-    
+
     assert retrieved_province.nation_id == nation.id
 
 

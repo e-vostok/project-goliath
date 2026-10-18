@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Mapping
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ _app_id_warned = False
 _active_runtime: object | None = None
 
 
-class BotMode(str, Enum):
+class BotMode(StrEnum):
     """Lifecycle mode of the module (Spec 1.4)."""
 
     OFF = "OFF"
@@ -78,14 +78,11 @@ def read_bot_env(environ: Mapping[str, str] = os.environ) -> BotEnv:
         )
         _app_id_warned = True
     return BotEnv(
-        enabled=(environ.get("BOT_ENABLED") or "").strip().lower()
-        in _TRUE_VALUES,
+        enabled=(environ.get("BOT_ENABLED") or "").strip().lower() in _TRUE_VALUES,
         group_id=_nonblank(environ.get("VK_GROUP_ID")),
         group_token=_nonblank(environ.get("VK_GROUP_TOKEN")),
         callback_secret=_nonblank(environ.get("VK_CALLBACK_SECRET")),
-        callback_confirmation=_nonblank(
-            environ.get("VK_CALLBACK_CONFIRMATION")
-        ),
+        callback_confirmation=_nonblank(environ.get("VK_CALLBACK_CONFIRMATION")),
         app_id=app_id,
     )
 

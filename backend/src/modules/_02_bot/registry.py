@@ -42,17 +42,13 @@ class BotRegistryError(CoreDomainError):
         super().__init__(message, "BOT_REGISTRY_INVALID")
 
 
-DeadlineAudienceProvider = Callable[
-    [AsyncSession, int], Awaitable[set[str]]
-]
+DeadlineAudienceProvider = Callable[[AsyncSession, int], Awaitable[set[str]]]
 
 _notification_types: dict[str, frozenset[str]] = {}
 _deadline_audience_providers: list[DeadlineAudienceProvider] = []
 
 
-def register_notification_type(
-    key: str, variables: Iterable[str]
-) -> None:
+def register_notification_type(key: str, variables: Iterable[str]) -> None:
     """
     Register one notification type's variable set at startup.
 

@@ -42,7 +42,7 @@ async def get_current_player(
     if authorization is None or not authorization.startswith("Bearer "):
         raise UnauthorizedError("Missing or malformed Authorization header")
 
-    token = authorization[len("Bearer "):]
+    token = authorization[len("Bearer ") :]
     player_id = decode_token(token)
 
     player = await session.get(Player, player_id)

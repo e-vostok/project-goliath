@@ -13,7 +13,7 @@ import hashlib
 import hmac
 import time
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -28,8 +28,8 @@ from modules._00_core.models import GameClock, Nation, Player, Province
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import make_land_province
 
-TEST_VK_SECRET = "test-vk-app-secret"
-TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
+TEST_VK_SECRET = "test-vk-app-secret"  # noqa: S105
+TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"  # noqa: S105
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -67,14 +67,13 @@ def env_secrets(monkeypatch):
 @pytest_asyncio.fixture
 async def client(test_db_session):
     """HTTP client bound to the real app, backed by the test DB session."""
+
     async def _override_get_session():
         yield test_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
@@ -100,8 +99,11 @@ async def seed_provinces(session, ids: list[int]) -> list[Province]:
 
 
 async def seed_nation(
-    session, player: Player, name: str = "Existing Nation",
-    color_hex: str = "#112233", province_ids: list[int] | None = None,
+    session,
+    player: Player,
+    name: str = "Existing Nation",
+    color_hex: str = "#112233",
+    province_ids: list[int] | None = None,
     legacy: bool = False,
     short_name: str | None = None,
 ) -> Nation:
@@ -122,7 +124,7 @@ async def seed_nation(
                 "short_name": short_name or name[:16],
             }
         ),
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         created_turn=0,
     )
     session.add(nation)
@@ -147,7 +149,7 @@ class TestAuthVk:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["token_type"] == "bearer"
+        assert body["token_type"] == "bearer"  # noqa: S105
         assert body["expires_in"] == CORE_CONFIG.auth.jwt_ttl_minutes * 60
         assert body["player"]["vk_user_id"] == 555
         assert body["access_token"]
@@ -178,7 +180,8 @@ class TestAuthVk:
             "/api/v1/auth/vk",
             json={
                 "launch_params": make_launch_params(
-                    vk_user_id=555, secret="wrong-secret"
+                    vk_user_id=555,
+                    secret="wrong-secret",  # noqa: S106
                 )
             },
         )
@@ -207,9 +210,7 @@ class TestPlayersMe:
     async def test_returns_current_player(self, client, test_db_session):
         player = await seed_player(test_db_session)
 
-        resp = await client.get(
-            "/api/v1/players/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/players/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
@@ -222,9 +223,7 @@ class TestNationEndpoints:
 
     async def test_create_nation_happy_path(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(
-            test_db_session, [1001, 1002, 1003, 1004, 1005]
-        )
+        await seed_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -256,13 +255,9 @@ class TestNationEndpoints:
     async def test_get_nations_me(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002])
-        nation = await seed_nation(
-            test_db_session, player, province_ids=[1001, 1002]
-        )
+        nation = await seed_nation(test_db_session, player, province_ids=[1001, 1002])
 
-        resp = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
@@ -272,9 +267,7 @@ class TestNationEndpoints:
     async def test_get_nations_me_not_found(self, client, test_db_session):
         player = await seed_player(test_db_session)
 
-        resp = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 404
         assert resp.json()["code"] == "NATION_NOT_FOUND"
@@ -360,9 +353,7 @@ class TestNationEndpoints:
         assert resp.status_code == 409
         assert resp.json()["code"] == "NATION_ALREADY_EXISTS"
 
-    async def test_create_nation_province_not_found(
-        self, client, test_db_session
-    ):
+    async def test_create_nation_province_not_found(self, client, test_db_session):
         player = await seed_player(test_db_session)
 
         resp = await client.post(
@@ -385,9 +376,7 @@ class TestNationEndpoints:
         player = await seed_player(test_db_session)
         await seed_provinces(
             test_db_session,
-            list(
-                range(1001, 1002 + CORE_CONFIG.nation.max_provinces_per_nation)
-            ),
+            list(range(1001, 1002 + CORE_CONFIG.nation.max_provinces_per_nation)),
         )
 
         resp = await client.post(
@@ -444,9 +433,7 @@ class TestNationEndpoints:
 
         assert resp.status_code == 422
 
-    async def test_create_nation_bad_color_format(
-        self, client, test_db_session
-    ):
+    async def test_create_nation_bad_color_format(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
 
@@ -494,8 +481,11 @@ class TestNationEndpoints:
         await seed_provinces(test_db_session, [1001, 1002])
         await seed_nation(test_db_session, player, name="Mine", province_ids=[1001])
         await seed_nation(
-            test_db_session, other, name="Theirs",
-            color_hex="#445566", province_ids=[1002],
+            test_db_session,
+            other,
+            name="Theirs",
+            color_hex="#445566",
+            province_ids=[1002],
         )
 
         resp = await client.patch(
@@ -522,9 +512,7 @@ class TestNationEndpoints:
     async def test_delete_nation_happy_path(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002])
-        nation = await seed_nation(
-            test_db_session, player, province_ids=[1001, 1002]
-        )
+        nation = await seed_nation(test_db_session, player, province_ids=[1001, 1002])
 
         resp = await client.request(
             "DELETE",
@@ -631,19 +619,13 @@ class TestNationProfileEndpoints:
         assert payload["code"] == code
         assert payload["detail"]
 
-    async def test_get_nations_me_legacy_null_profile(
-        self, client, test_db_session
-    ):
+    async def test_get_nations_me_legacy_null_profile(self, client, test_db_session):
         """A pre-migration nation returns null profile fields."""
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
-        await seed_nation(
-            test_db_session, player, province_ids=[1001], legacy=True
-        )
+        await seed_nation(test_db_session, player, province_ids=[1001], legacy=True)
 
-        resp = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
@@ -662,9 +644,7 @@ class TestNationProfileEndpoints:
         assert body["portrait_id"] is None
         assert body["portrait_url"] is None
 
-    async def test_nations_rules_returns_config_values(
-        self, client, test_db_session
-    ):
+    async def test_nations_rules_returns_config_values(self, client, test_db_session):
         """GET /nations/rules mirrors the loaded CoreConfig."""
         player = await seed_player(test_db_session)
 
@@ -721,9 +701,7 @@ class TestProvincesEndpoint:
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002, 1003])
 
-        resp = await client.get(
-            "/api/v1/provinces", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/provinces", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         assert [p["id"] for p in resp.json()] == [1001, 1002, 1003]
@@ -762,20 +740,14 @@ class TestProvincesEndpoint:
 class TestGameClockEndpoint:
     """Tests for GET /api/v1/game-clock."""
 
-    async def test_game_clock_returns_derived_date(
-        self, client, test_db_session
-    ):
+    async def test_game_clock_returns_derived_date(self, client, test_db_session):
         """game_date at turn 0 is the calendar epoch — January 2040."""
         player = await seed_player(test_db_session)
-        next_tick = datetime.now(timezone.utc) + timedelta(hours=24)
-        test_db_session.add(
-            GameClock(id=1, current_turn=0, next_tick_at=next_tick)
-        )
+        next_tick = datetime.now(UTC) + timedelta(hours=24)
+        test_db_session.add(GameClock(id=1, current_turn=0, next_tick_at=next_tick))
         await test_db_session.flush()
 
-        resp = await client.get(
-            "/api/v1/game-clock", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/game-clock", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()

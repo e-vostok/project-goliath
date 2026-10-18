@@ -16,7 +16,7 @@ no mocks (Anti-Mock Guard).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -29,7 +29,7 @@ from modules._04_orders.service import OrderService
 from tests.fixtures.factories import make_order
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
-NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 
 async def _count(session: AsyncSession, *conditions) -> int:
@@ -104,24 +104,22 @@ class TestOrdersPlayerDeleteHook:
                     select(Nation).where(Nation.owner_player_id == target.id)
                 )
             ).scalar_one()
-            authored = await make_order(
-                session, target, nation=target_nation
-            )
+            authored = await make_order(session, target, nation=target_nation)
             authored_decided = await make_order(
                 session,
                 target,
                 nation=target_nation,
                 judge=author,
-                submitted_at=datetime.now(timezone.utc),
-                verdict_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                submitted_at=datetime.now(UTC),
+                verdict_at=datetime.now(UTC) + timedelta(hours=1),
             )
             judged_decided = await make_order(
                 session,
                 author,
                 nation=author_nation,
                 judge=target,
-                submitted_at=datetime.now(timezone.utc),
-                verdict_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                submitted_at=datetime.now(UTC),
+                verdict_at=datetime.now(UTC) + timedelta(hours=1),
             )
             keep = await make_order(session, author, nation=author_nation)
             await session.commit()

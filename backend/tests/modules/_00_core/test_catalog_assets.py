@@ -69,9 +69,7 @@ async def test_catalog_placeholder_set_end_to_end(client, test_db_session):
     rules = await client.get("/api/v1/nations/rules", headers=headers)
     assert rules.status_code == 200
     body = rules.json()
-    assert [item["id"] for item in body["flags"]] == (
-        CORE_CONFIG.catalog.flag_ids
-    )
+    assert [item["id"] for item in body["flags"]] == (CORE_CONFIG.catalog.flag_ids)
     assert [item["id"] for item in body["portraits"]] == (
         CORE_CONFIG.catalog.portrait_ids
     )

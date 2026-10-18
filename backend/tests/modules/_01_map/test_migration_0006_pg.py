@@ -12,17 +12,21 @@ Requires DATABASE_URL_TEST; wipes the public schema like pg_schema does.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
-from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import IntegrityError
 
-from tests.fixtures.postgres import _reset_public_schema, _sync_url, pg_url
+from alembic import command
+from tests.fixtures.postgres import (
+    # noqa: F401,
+    _reset_public_schema,
+    _sync_url,
+    pg_url,  # noqa: F401
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -64,40 +68,31 @@ def _nation_owning(url: str, province_id: int) -> str:
     try:
         with engine.begin() as conn:
             conn.execute(
-                sa.text(
-                    "INSERT INTO players (id, vk_user_id) "
-                    "VALUES (:id, 42424202)"
-                ),
+                sa.text("INSERT INTO players (id, vk_user_id) VALUES (:id, 42424202)"),
                 {"id": player_id},
             )
             # created_turn exists only from migration 0008 on — the
             # guard tests run this helper against the 0005 schema too.
             has_created_turn = "created_turn" in {
-                c["name"]
-                for c in sa.inspect(conn).get_columns("nations")
+                c["name"] for c in sa.inspect(conn).get_columns("nations")
             }
             conn.execute(
                 sa.text(
-                    "INSERT INTO nations "
+                    "INSERT INTO nations "  # noqa: S608
                     "(id, owner_player_id, name, color_hex, created_at"
                     + (", created_turn" if has_created_turn else "")
                     + ") VALUES (:id, :owner, 'Guard Nation', '#654321',"
-                    " :ts"
-                    + (", 0" if has_created_turn else "")
-                    + ")"
+                    " :ts" + (", 0" if has_created_turn else "") + ")"
                 ),
                 {
                     "id": nation_id,
                     "owner": player_id,
-                    "ts": datetime.now(timezone.utc),
+                    "ts": datetime.now(UTC),
                 },
             )
             if province_id:
                 conn.execute(
-                    sa.text(
-                        "UPDATE provinces SET nation_id = :nid "
-                        "WHERE id = :pid"
-                    ),
+                    sa.text("UPDATE provinces SET nation_id = :nid WHERE id = :pid"),
                     {"nid": nation_id, "pid": province_id},
                 )
     finally:
@@ -112,17 +107,10 @@ def test_upgrade_head_schema_and_data(wiped_pg, monkeypatch):
     try:
         with engine.connect() as conn:
             insp = sa.inspect(conn)
-            provinces_cols = {
-                c["name"] for c in insp.get_columns("provinces")
-            }
+            provinces_cols = {c["name"] for c in insp.get_columns("provinces")}
             tables = insp.get_table_names()
-            checks = {
-                chk["name"]
-                for chk in insp.get_check_constraints("provinces")
-            }
-            indexes = {
-                idx["name"] for idx in insp.get_indexes("map_ownership_log")
-            }
+            checks = {chk["name"] for chk in insp.get_check_constraints("provinces")}
+            indexes = {idx["name"] for idx in insp.get_indexes("map_ownership_log")}
             log_fks = insp.get_foreign_keys("map_ownership_log")
             provinces = conn.execute(
                 sa.text("SELECT COUNT(*) FROM provinces")
@@ -194,13 +182,9 @@ def test_owned_placeholder_aborts_upgrade(wiped_pg, monkeypatch):
     try:
         with engine.connect() as conn:
             insp = sa.inspect(conn)
-            assert "kind" not in {
-                c["name"] for c in insp.get_columns("provinces")
-            }
+            assert "kind" not in {c["name"] for c in insp.get_columns("provinces")}
             assert "map_ownership_log" not in insp.get_table_names()
-            count = conn.execute(
-                sa.text("SELECT COUNT(*) FROM provinces")
-            ).scalar_one()
+            count = conn.execute(sa.text("SELECT COUNT(*) FROM provinces")).scalar_one()
     finally:
         engine.dispose()
     assert count == 100
@@ -214,13 +198,9 @@ def test_downgrade_then_upgrade_roundtrip(wiped_pg, monkeypatch):
     try:
         with engine.connect() as conn:
             insp = sa.inspect(conn)
-            assert "kind" not in {
-                c["name"] for c in insp.get_columns("provinces")
-            }
+            assert "kind" not in {c["name"] for c in insp.get_columns("provinces")}
             assert "map_ownership_log" not in insp.get_table_names()
-            count = conn.execute(
-                sa.text("SELECT COUNT(*) FROM provinces")
-            ).scalar_one()
+            count = conn.execute(sa.text("SELECT COUNT(*) FROM provinces")).scalar_one()
     finally:
         engine.dispose()
     assert count == 100

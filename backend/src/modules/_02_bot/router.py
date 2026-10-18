@@ -17,7 +17,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
@@ -28,8 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.db import get_session
 from core.security.dependencies import get_current_player
 from modules._00_core.models import Player
-from modules._02_bot.consent_sync import sync_consent_with_vk
 from modules._02_bot.config_schema import BotConfig
+from modules._02_bot.consent_sync import sync_consent_with_vk
 from modules._02_bot.dialog import handle_event
 from modules._02_bot.events import (
     CallbackEvent,
@@ -76,9 +76,7 @@ def _secret_ok(value: object, expected: str | None) -> bool:
     """Constant-time secret comparison on bytes (Spec 5.1)."""
     if not isinstance(value, str) or expected is None:
         return False
-    return hmac.compare_digest(
-        value.encode("utf-8"), expected.encode("utf-8")
-    )
+    return hmac.compare_digest(value.encode("utf-8"), expected.encode("utf-8"))
 
 
 async def _event_seen(session: AsyncSession, event_id: str) -> bool:
@@ -155,7 +153,7 @@ async def vk_callback(
         return PlainTextResponse("ok")
 
     config = get_bot_config()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     duplicate = False
     try:
         # Step 8: journal row and event work in one transaction. The

@@ -18,7 +18,6 @@ from modules._00_core.hooks import (
     STAGE_AFTER_FREE,
     OwnershipChange,
     get_ownership_listeners,
-    get_registration_checks,
     notify_ownership_changed,
     register_ownership_listener,
     register_registration_check,
@@ -26,7 +25,7 @@ from modules._00_core.hooks import (
     run_registration_checks,
     snapshot_extension_points,
 )
-from modules._00_core.models import Nation, Player, Province
+from modules._00_core.models import Nation, Player
 from modules._00_core.service import NationService
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import (
@@ -61,18 +60,14 @@ class TestCoreAlone:
     """Empty registries: core behaviour is unchanged (Spec INV-M7)."""
 
     @pytest.mark.asyncio
-    async def test_create_delete_without_listeners(
-        self, test_db_session
-    ):
+    async def test_create_delete_without_listeners(self, test_db_session):
         assert get_ownership_listeners() == {}
         player = Player(vk_user_id=777)
         test_db_session.add(player)
         await make_starting_group(test_db_session)
         await test_db_session.flush()
 
-        nation = await _make_nation(
-            test_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _make_nation(test_db_session, player, list(STARTING_GROUP))
         assert nation.id is not None
 
         await NationService.delete(test_db_session, nation.id)
@@ -84,9 +79,7 @@ class TestCoreAlone:
 
 class TestOwnershipRegistry:
     @pytest.mark.asyncio
-    async def test_notify_calls_in_registration_order(
-        self, test_db_session
-    ):
+    async def test_notify_calls_in_registration_order(self, test_db_session):
         calls = []
 
         async def first(session, changes):
@@ -164,9 +157,7 @@ class TestOwnershipRegistry:
 
 class TestCheckRegistry:
     @pytest.mark.asyncio
-    async def test_stages_run_in_registration_order(
-        self, test_db_session
-    ):
+    async def test_stages_run_in_registration_order(self, test_db_session):
         calls = []
 
         async def first(session, provinces):
@@ -178,20 +169,14 @@ class TestCheckRegistry:
         register_registration_check(STAGE_AFTER_FREE, "f", first)
         register_registration_check(STAGE_AFTER_COUNT, "s", second)
 
-        await run_registration_checks(
-            STAGE_AFTER_FREE, test_db_session, []
-        )
-        await run_registration_checks(
-            STAGE_AFTER_COUNT, test_db_session, []
-        )
+        await run_registration_checks(STAGE_AFTER_FREE, test_db_session, [])
+        await run_registration_checks(STAGE_AFTER_COUNT, test_db_session, [])
         assert calls == ["first", "second"]
 
     @pytest.mark.asyncio
     async def test_unknown_stage_rejected(self):
         with pytest.raises(ValueError, match="Unknown"):
-            register_registration_check(
-                "nonsense", "x", lambda s, p: None
-            )
+            register_registration_check("nonsense", "x", lambda s, p: None)
 
 
 class TestWiredIntoNationService:
@@ -215,9 +200,7 @@ class TestWiredIntoNationService:
         assert exc_info.value.code == "TEST_VETO"
 
     @pytest.mark.asyncio
-    async def test_listener_sees_create_and_delete(
-        self, test_db_session
-    ):
+    async def test_listener_sees_create_and_delete(self, test_db_session):
         seen = []
 
         async def watcher(session, changes):
@@ -229,9 +212,7 @@ class TestWiredIntoNationService:
         await make_starting_group(test_db_session)
         await test_db_session.flush()
 
-        nation = await _make_nation(
-            test_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _make_nation(test_db_session, player, list(STARTING_GROUP))
         assert len(seen) == 5
         assert seen[0].new_nation_id == nation.id
         assert seen[0].prev_nation_id is None

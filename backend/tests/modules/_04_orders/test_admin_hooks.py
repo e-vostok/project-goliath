@@ -52,9 +52,7 @@ async def test_reset_empties_orders_and_restarts_numbering(
     hook = AdminRegistry.get_reset_hooks()[MODULE_SLUG]
     await hook(test_db_session)
 
-    count = await test_db_session.scalar(
-        select(func.count()).select_from(Order)
-    )
+    count = await test_db_session.scalar(select(func.count()).select_from(Order))
     assert count == 0
 
     outcome = await OrderService.submit(
@@ -66,9 +64,7 @@ async def test_reset_empties_orders_and_restarts_numbering(
     assert outcome.view.number == 1
 
 
-async def test_state_view_counts_and_overdue_judge_vk(
-    test_db_session, orders_started
-):
+async def test_state_view_counts_and_overdue_judge_vk(test_db_session, orders_started):
     """The state view reports per-stage counts and overdue rows; the
     judge's ``vk_user_id`` rides along in the overdue entries — the
     only place where a judge is identifiable (Spec 5.7)."""
@@ -80,9 +76,7 @@ async def test_state_view_counts_and_overdue_judge_vk(
 
     now = utcnow()
     # One SUBMITTED, one DISTRIBUTED-and-overdue, one VERDICT.
-    await make_order(
-        test_db_session, author, nation=nation, submitted_at=now
-    )
+    await make_order(test_db_session, author, nation=nation, submitted_at=now)
     await make_order(
         test_db_session,
         author,
@@ -195,9 +189,7 @@ async def test_state_view_assigned_orders_caps_at_fifty(
     author, nation = await seed_author(test_db_session, 770420)
     judge = await seed_judge(test_db_session, 770421)
     for _ in range(51):
-        await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        await make_order(test_db_session, author, nation=nation, judge=judge)
 
     hook = AdminRegistry.get_state_view_hooks()[MODULE_SLUG]
     view = await hook(test_db_session)
@@ -246,14 +238,11 @@ def test_orders_openapi_responses_have_no_judge_field():
                 continue
             for status, response in op.get("responses", {}).items():
                 for media in response.get("content", {}).values():
-                    for node in _schema_nodes(
-                        media.get("schema"), components, set()
-                    ):
+                    for node in _schema_nodes(media.get("schema"), components, set()):
                         for field_name in node.get("properties", {}):
                             if "judge" in field_name.lower():
                                 offenders.append(
-                                    f"{method.upper()} {path} {status}: "
-                                    f"{field_name}"
+                                    f"{method.upper()} {path} {status}: {field_name}"
                                 )
     assert offenders == []
 

@@ -25,7 +25,6 @@ from modules._00_core.profile_rules import (
     validate_leader_title,
     validate_vk_article_url,
 )
-from tests.fixtures.profile import VALID_PROFILE
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -67,9 +66,7 @@ class TestLeaderName:
             validate_leader_name(value, CORE_CONFIG)
 
     def test_strip_stored(self):
-        assert validate_leader_name("  Ivan Grozny  ", CORE_CONFIG) == (
-            "Ivan Grozny"
-        )
+        assert validate_leader_name("  Ivan Grozny  ", CORE_CONFIG) == ("Ivan Grozny")
 
 
 class TestLeaderTitle:
@@ -143,7 +140,8 @@ class TestHistoryUrl:
             "https://[::1/@x",  # unparseable (ValueError -> invalid)
             "",  # empty
             "   ",  # whitespace-only
-            "https://vk.com/@" + "x" * CORE_CONFIG.nation.history_url_max_length,  # over limit
+            "https://vk.com/@"
+            + "x" * CORE_CONFIG.nation.history_url_max_length,  # over limit
         ],
     )
     def test_invalid_urls_rejected(self, value):
@@ -169,9 +167,7 @@ class TestVkArticleUrl:
         # A narrower host list and a tighter cap bind the caller's own
         # limits instead (same error texts).
         with pytest.raises(HistoryUrlInvalidError, match="allowed list"):
-            validate_vk_article_url(
-                url, max_length=200, allowed_hosts=["vk.com"]
-            )
+            validate_vk_article_url(url, max_length=200, allowed_hosts=["vk.com"])
         with pytest.raises(HistoryUrlInvalidError, match="at most 10"):
             validate_vk_article_url(
                 "https://vk.com/@ok",

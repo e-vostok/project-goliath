@@ -12,15 +12,14 @@ disabled), and ``isMessagesFromGroupAllowed`` 1/0/None.
 
 from __future__ import annotations
 
-import pytest
 from urllib.parse import parse_qs
 
-import httpx
+import pytest
 
 from modules._02_bot.vk_client import SendKind, VkClient
 from tests.fixtures.fake_vk import FakeVk
 
-TOKEN = "unit-test-token-not-real"
+TOKEN = "unit-test-token-not-real"  # noqa: S105
 GROUP_ID = "12345"
 
 
@@ -99,9 +98,7 @@ class TestSendMessage:
         elif script == "connect_error":
             fake.fail_connect()
         elif script == "error_string":
-            fake.respond_json(
-                {"response": [{"peer_id": 1, "error": "oops"}]}
-            )
+            fake.respond_json({"response": [{"peer_id": 1, "error": "oops"}]})
         outcome = await _client(bot_config, fake).send_message(
             peer_id=1, random_id=1, message="x"
         )
@@ -117,9 +114,7 @@ class TestSendMessage:
         form = parse_qs(fake.requests[0].content.decode())
         assert "keyboard" not in form
 
-    async def test_token_never_in_url_logs_or_exceptions(
-        self, bot_config, caplog
-    ):
+    async def test_token_never_in_url_logs_or_exceptions(self, bot_config, caplog):
         """INV-B9: the key travels only in the Authorization header."""
         fake = FakeVk()
         fake.fail_timeout()
@@ -145,9 +140,7 @@ class TestIsMessagesFromGroupAllowed:
         assert form["group_id"] == ["12345"]
         assert form["user_id"] == ["7"]
 
-    @pytest.mark.parametrize(
-        "script", ["call_error", "malformed", "timeout"]
-    )
+    @pytest.mark.parametrize("script", ["call_error", "malformed", "timeout"])
     async def test_none_on_failure(self, bot_config, script):
         fake = FakeVk()
         if script == "call_error":
@@ -157,9 +150,7 @@ class TestIsMessagesFromGroupAllowed:
         else:
             fake.fail_timeout()
         client = _client(bot_config, fake)
-        assert (
-            await client.is_messages_from_group_allowed(12345, 7) is None
-        )
+        assert await client.is_messages_from_group_allowed(12345, 7) is None
 
 
 async def test_aclose(bot_config):

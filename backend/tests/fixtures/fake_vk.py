@@ -52,9 +52,7 @@ class FakeVk:
 
     def respond_call_error(self, code: int) -> None:
         """A top-level VK call error (``error.error_code``)."""
-        self.respond_json(
-            {"error": {"error_code": code, "error_msg": "fake error"}}
-        )
+        self.respond_json({"error": {"error_code": code, "error_msg": "fake error"}})
 
     def respond_recipient_error(self, code: int) -> None:
         """A per-recipient error (``response[0].error.code``)."""

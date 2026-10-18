@@ -8,7 +8,7 @@ fixture — the same functions startup registers. Nothing is mocked.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
@@ -62,16 +62,14 @@ async def _create_nation(
 
 async def _set_turn(session, turn: int) -> None:
     """Give the game_clock singleton a turn for the next create."""
-    result = await session.execute(
-        select(GameClock).where(GameClock.id == 1)
-    )
+    result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = result.scalar_one_or_none()
     if clock is None:
         session.add(
             GameClock(
                 id=1,
                 current_turn=turn,
-                next_tick_at=datetime.now(timezone.utc),
+                next_tick_at=datetime.now(UTC),
             )
         )
     else:
@@ -80,9 +78,7 @@ async def _set_turn(session, turn: int) -> None:
 
 
 async def _log_rows(session) -> list[MapOwnershipLog]:
-    result = await session.execute(
-        select(MapOwnershipLog).order_by(MapOwnershipLog.id)
-    )
+    result = await session.execute(select(MapOwnershipLog).order_by(MapOwnershipLog.id))
     return list(result.scalars().all())
 
 
@@ -95,9 +91,7 @@ class TestListenerWrites:
     ):
         session = linked_map_db_session
         player = await _create_player(session)
-        nation = await _create_nation(
-            session, player, list(STARTING_GROUP)
-        )
+        nation = await _create_nation(session, player, list(STARTING_GROUP))
 
         rows = await _log_rows(session)
         assert len(rows) == 5
@@ -115,9 +109,7 @@ class TestListenerWrites:
     ):
         player = await _create_player(linked_map_db_session)
         await _set_turn(linked_map_db_session, 7)
-        await _create_nation(
-            linked_map_db_session, player, list(STARTING_GROUP)
-        )
+        await _create_nation(linked_map_db_session, player, list(STARTING_GROUP))
 
         rows = await _log_rows(linked_map_db_session)
         assert [r.turn_number for r in rows] == [7] * 5
@@ -188,9 +180,7 @@ class TestAtomicity:
         player = await _create_player(session)
 
         with pytest.raises(RuntimeError, match="listener exploded"):
-            await _create_nation(
-                session, player, list(STARTING_GROUP)
-            )
+            await _create_nation(session, player, list(STARTING_GROUP))
         # The HTTP layer's session context rolls back on the error;
         # replicate that boundary here.
         await session.rollback()
@@ -198,9 +188,7 @@ class TestAtomicity:
         result = await session.execute(select(func.count()).select_from(Nation))
         assert result.scalar_one() == 0
         owners = await session.execute(
-            select(Province.nation_id).where(
-                Province.id.in_(STARTING_GROUP)
-            )
+            select(Province.nation_id).where(Province.id.in_(STARTING_GROUP))
         )
         assert all(o is None for o in owners.scalars().all())
         assert await _log_rows(session) == []
@@ -211,9 +199,7 @@ class TestAtomicity:
     ):
         session = linked_map_db_session
         player = await _create_player(session)
-        nation = await _create_nation(
-            session, player, list(STARTING_GROUP)
-        )
+        nation = await _create_nation(session, player, list(STARTING_GROUP))
         nation_id = nation.id
         await session.commit()
 
@@ -318,9 +304,7 @@ class TestRecordsForProvince:
     ):
         session = linked_map_db_session
         player = await _create_player(session)
-        nation = await _create_nation(
-            session, player, list(STARTING_GROUP)
-        )
+        nation = await _create_nation(session, player, list(STARTING_GROUP))
         await NationService.delete(session, nation.id)
 
         rows = await records_for_province(session, 1002)
