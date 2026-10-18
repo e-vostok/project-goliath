@@ -5,8 +5,8 @@
  * gating (msw returns non-default numbers — nothing may be hardcoded),
  * the single POST /nations with the whole form's data, Russian field-level
  * error texts with tab badges, and the v2 session draft. Fields without
- * inputs yet (Issues 13–15) are seeded through the draft — that is the
- * only way to reach an enabled submit this issue.
+ * inputs yet (Issue 15) are seeded through the draft — that is the only
+ * way to reach an enabled submit for them this issue.
  */
 
 import {
@@ -415,6 +415,84 @@ describe('PanelCreateNation — tab 1 symbols', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('PanelCreateNation — tab 2 leadership', () => {
+  it('portrait, gender and a succession card submit their codes; the four cards form one radio group', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post('*/api/v1/nations', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(NATION, { status: 201 });
+      }),
+    );
+    // All required fields filled except the three picked on tab 2.
+    seedRegistrationDraft({ portraitId: null, gender: '', successionType: '' });
+    const onCreated = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    await goToTab(user, 2);
+
+    // The grids render once GET /nations/rules has landed.
+    await user.click(
+      await screen.findByRole('button', { name: 'portrait_stub' }),
+    );
+    const genderItem = screen.getByTestId('form-item-gender');
+    await user.click(
+      within(genderItem).getByRole('radio', { name: 'Женский' }),
+    );
+
+    // Four cards = one radio group: only one checked at a time, clicks
+    // and arrow keys alike (spec order comes from rules.succession_types).
+    const successionItem = screen.getByTestId('form-item-succession');
+    const cards = within(successionItem).getAllByRole('radio');
+    expect(cards).toHaveLength(4);
+    expect(cards.map((c) => c.getAttribute('aria-checked'))).toEqual([
+      'false',
+      'false',
+      'false',
+      'false',
+    ]);
+    for (const title of [
+      'Демократические выборы',
+      'Назначение игроком',
+      'Назначение по критериям',
+      'Наследование',
+    ]) {
+      expect(successionItem).toHaveTextContent(title);
+    }
+    expect(successionItem).toHaveTextContent('Пока без последствий в игре');
+
+    const elections = within(successionItem).getByRole('radio', {
+      name: 'Демократические выборы',
+    });
+    const appointment = within(successionItem).getByRole('radio', {
+      name: 'Назначение игроком',
+    });
+    await user.click(elections);
+    expect(elections).toHaveAttribute('aria-checked', 'true');
+    await user.click(appointment);
+    expect(appointment).toHaveAttribute('aria-checked', 'true');
+    expect(elections).toHaveAttribute('aria-checked', 'false');
+
+    // ArrowDown from «Назначение игроком» selects the next card.
+    fireEvent.keyDown(appointment, { key: 'ArrowDown' });
+    const criteria = within(successionItem).getByRole('radio', {
+      name: 'Назначение по критериям',
+    });
+    expect(criteria).toHaveAttribute('aria-checked', 'true');
+    expect(appointment).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(submitButton());
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
+    expect(bodies).toEqual([
+      expect.objectContaining({
+        portrait_id: 'portrait_stub',
+        gender: 'female',
+        succession_type: 'criteria',
+      }),
+    ]);
   });
 });
 
