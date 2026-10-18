@@ -30,7 +30,10 @@ export interface ChipOption {
  * All create fields of Spec 1.3. Optional text fields hold '' (sent as
  * null), catalog picks hold null, and `capitalProvinceId` is null unless
  * the player explicitly marked a capital — the server then defaults it
- * to the first selected province (INV-14).
+ * to the first selected province (INV-14). `capitalNameEdited` is the
+ * «player typed the capital name by hand» flag: until it is set the
+ * name field follows the effective capital's province name; after a
+ * manual edit it is never auto-overwritten again (Spec Part 5, tab 4).
  */
 export interface RegistrationForm {
   name: string;
@@ -50,6 +53,8 @@ export interface RegistrationForm {
   provinces: ChipOption[];
   capitalProvinceId: number | null;
   capitalName: string;
+  /** Once true, the capital name input stops auto-following the mark. */
+  capitalNameEdited: boolean;
 }
 
 /** Field keys shared by the wizard and the edit form error mapping. */
@@ -94,6 +99,7 @@ export function emptyRegistrationForm(): RegistrationForm {
     provinces: [],
     capitalProvinceId: null,
     capitalName: '',
+    capitalNameEdited: false,
   };
 }
 
@@ -139,6 +145,7 @@ export function registrationFormFromDraft(
   if (!Array.isArray(form.provinces)) {
     form.provinces = [];
   }
+  form.capitalNameEdited = form.capitalNameEdited === true;
   return form;
 }
 
@@ -165,6 +172,7 @@ export function fieldToTab(field: NationField): RegistrationTab {
     case 'provinces':
     case 'capitalProvinceId':
     case 'capitalName':
+    case 'capitalNameEdited':
       return 4;
   }
 }

@@ -3,11 +3,22 @@
  *
  * A large ModalPage: a Search row (results only centre/fit the view —
  * they never toggle the selection), the counter «Выбрано N из M» with
- * «минимум K», the local connectivity indicator, a removable-chips row
- * of the current selection, and a MapView in `select` mode filling the
- * rest. «Готово» is enabled while the count is inside [min, max] from
- * GET /nations/rules and — when manifest.rules.require_connected_start
- * is on — the selection is one component over land/strait edges.
+ * «минимум K» and the capital caption under it, the local connectivity
+ * indicator, a fixed-height removable-chips area of the current
+ * selection (two chip rows, internal scroll, always rendered — the
+ * map below never resizes when chips come and go), and a MapView in
+ * `select` mode filling the rest. «Готово» is enabled while the count
+ * is inside [min, max] from GET /nations/rules and — when
+ * manifest.rules.require_connected_start is on — the selection is one
+ * component over land/strait edges.
+ *
+ * The capital mark (Issue 15): the right mouse button on a SELECTED
+ * province toggles it as capital (one at most; another province moves
+ * the mark; the same one again clears it; anywhere else does nothing),
+ * and every chip carries a small star button doing the same — the
+ * visible fallback for hosts that do not let the page suppress the
+ * browser menu. Removing the capital province clears the mark. The
+ * mark travels home as onDone's third argument (null = none marked).
  *
  * Local checks are advisory (INV-M8): «Готово» first calls
  * POST /map/starting-group/check; a server disagreement or an error
@@ -20,10 +31,13 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Icon16StarAlt } from '@vkontakte/icons';
 import {
   Button,
+  Caption,
   Chip,
   FormStatus,
+  IconButton,
   ModalPage,
   ModalPageHeader,
   Search,
@@ -57,16 +71,26 @@ import { MapView, type MapViewFocus } from './MapView';
 
 /** How long a refusal hint stays visible under the header, ms. */
 const HINT_TIMEOUT_MS = 3000;
+/** Reserved chips block: exactly two chip rows (2×32 + 6 gap) plus
+ *  padding — fixed, so the map below never resizes (backlog «Дёрганье
+ *  карты»). */
+const CHIPS_AREA_HEIGHT = 78;
 
 export interface ProvincePickerProps {
   /** ModalPage nav id inside the caller's ModalRoot. */
   id: string;
   /** Ids already chosen in the form — the picker starts with them. */
   initialSelectedIds?: number[];
+  /** The capital mark inside the initial selection; null = none. */
+  initialCapitalId?: number | null;
   /** min/max provinces from GET /nations/rules; null while unknown. */
   limits: SelectionLimits;
-  /** Success: ordered selected ids plus their display names for chips. */
-  onDone: (ids: number[], names: Map<number, string>) => void;
+  /** Success: ordered ids, their display names, the capital (or null). */
+  onDone: (
+    ids: number[],
+    names: Map<number, string>,
+    capitalId: number | null,
+  ) => void;
   /** Any dismissal (Отмена / Esc / overlay) — the form stays unchanged. */
   onCancel: () => void;
 }
@@ -74,6 +98,7 @@ export interface ProvincePickerProps {
 export function ProvincePicker({
   id,
   initialSelectedIds,
+  initialCapitalId,
   limits,
   onDone,
   onCancel,
@@ -95,6 +120,15 @@ export function ProvincePicker({
 
   const [selection, setSelection] = useState<number[]>(
     () => initialSelectedIds ?? [],
+  );
+  // The capital mark lives in the picker; a mark outside the initial
+  // selection starts as none (the panel re-validates anyway).
+  const [capitalId, setCapitalId] = useState<number | null>(() =>
+    initialCapitalId !== null &&
+    initialCapitalId !== undefined &&
+    (initialSelectedIds ?? []).includes(initialCapitalId)
+      ? initialCapitalId
+      : null,
   );
   const [hint, setHint] = useState<string | null>(null);
   const [serverMessage, setServerMessage] = useState<string | null>(null);
@@ -167,6 +201,10 @@ export function ProvincePicker({
     const result = toggle(selection, id, ctx);
     if (result.ok) {
       setSelection(result.selection);
+      // Deselecting the capital province clears the mark.
+      setCapitalId((prev) =>
+        prev !== null && !result.selection.includes(prev) ? null : prev,
+      );
       setServerMessage(null); // a changed selection voids the old verdict
     } else {
       setHint(refusalHint(result.reason, ctx.max));
@@ -175,7 +213,25 @@ export function ProvincePicker({
 
   const removeId = (id: number) => {
     setSelection((prev) => prev.filter((v) => v !== id));
+    setCapitalId((prev) => (prev === id ? null : prev));
     setServerMessage(null);
+  };
+
+  // Capital mark (Issue 15): one at most, only among the selected.
+  const toggleCapital = (id: number) => {
+    if (!selection.includes(id)) {
+      return;
+    }
+    setCapitalId((prev) => (prev === id ? null : id));
+  };
+
+  // Right button on the map — same hit-test as the left click; only a
+  // SELECTED province toggles, anything else is a no-op.
+  const onNodeContextMenu = (id: number | null) => {
+    if (id === null) {
+      return;
+    }
+    toggleCapital(id);
   };
 
   const requestFocus = (node: MapNodeDTO) => {
@@ -244,7 +300,13 @@ export function ProvincePicker({
           names.set(id, displayName(node));
         }
       }
-      onDone(selection, names);
+      onDone(
+        selection,
+        names,
+        capitalId !== null && selection.includes(capitalId)
+          ? capitalId
+          : null,
+      );
     } catch (error) {
       setServerMessage(
         error instanceof ApiError
@@ -383,10 +445,21 @@ export function ProvincePicker({
               </div>
             )}
           </div>
-          <Text data-testid="picker-count">
-            {countText}
-            {minText !== null ? ` · ${minText}` : ''}
-          </Text>
+          <div>
+            <Text data-testid="picker-count">
+              {countText}
+              {minText !== null ? ` · ${minText}` : ''}
+            </Text>
+            <Caption
+              data-testid="picker-capital-caption"
+              style={{
+                display: 'block',
+                color: 'var(--vkui--color_text_secondary)',
+              }}
+            >
+              Правая кнопка мыши по выбранной провинции — столица
+            </Caption>
+          </div>
           {connectivityText !== null && (
             <Text
               data-testid="picker-connectivity"
@@ -402,18 +475,30 @@ export function ProvincePicker({
           )}
         </div>
 
-        {(selection.length > 0 || hint !== null) && (
+        {/* Chips area — a fixed two-row box with internal scroll,
+            always rendered: the map below keeps a constant height when
+            provinces are added or removed (backlog «Дёрганье карты»).
+            The refusal hint lives inside the same reserved box. */}
+        <div
+          data-testid="picker-chips"
+          style={{
+            boxSizing: 'border-box',
+            height: CHIPS_AREA_HEIGHT,
+            overflowY: 'auto',
+            padding: '4px 12px',
+          }}
+        >
           <div
             style={{
               display: 'flex',
               gap: 6,
               alignItems: 'center',
               flexWrap: 'wrap',
-              padding: '0 12px 8px',
             }}
           >
             {selection.map((sid) => {
               const node = nodesById.get(sid);
+              const isCapital = sid === capitalId;
               return (
                 <Chip
                   key={sid}
@@ -422,6 +507,34 @@ export function ProvincePicker({
                   aria-label={`Удалить ${
                     node ? displayName(node) : String(sid)
                   }`}
+                  after={
+                    <IconButton
+                      aria-label={
+                        isCapital
+                          ? 'Снять отметку столицы'
+                          : 'Сделать столицей'
+                      }
+                      aria-pressed={isCapital}
+                      data-testid={`capital-star-${sid}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCapital(sid);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        blockSize: 24,
+                        inlineSize: 24,
+                        color: isCapital
+                          ? 'var(--vkui--color_icon_accent)'
+                          : 'var(--vkui--color_icon_secondary)',
+                        opacity: isCapital ? 1 : 0.55,
+                      }}
+                    >
+                      <Icon16StarAlt style={{ padding: 0 }} />
+                    </IconButton>
+                  }
                 >
                   {node ? displayName(node) : String(sid)}
                 </Chip>
@@ -438,9 +551,12 @@ export function ProvincePicker({
               </Text>
             )}
           </div>
-        )}
+        </div>
 
-        <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <div
+          data-testid="picker-map"
+          style={{ position: 'relative', flex: 1, minHeight: 0 }}
+        >
           {manifestState.status === 'error' && (
             <div style={{ padding: 24 }}>
               <FormStatus mode="error" title="Не удалось загрузить карту">
@@ -496,7 +612,9 @@ export function ProvincePicker({
               state={mapState.state}
               selectedIds={selection}
               disabledIds={disabledIds}
+              capitalId={capitalId}
               onNodeClick={onNodeClick}
+              onNodeContextMenu={onNodeContextMenu}
               focus={focus}
             />
           )}

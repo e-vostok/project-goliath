@@ -13,7 +13,12 @@
  * for the picker + the viewing screen.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { ModalRoot } from '@vkontakte/vkui';
 
 import { ProvincePicker } from '../components/ProvincePicker';
@@ -91,6 +96,16 @@ function clickNode(id: number) {
 const doneButton = () =>
   screen.getByRole('button', { name: 'Готово' }) as HTMLButtonElement;
 const counter = () => screen.getByTestId('picker-count').textContent;
+
+/** A right-button press on a node — the cancelable contextmenu event. */
+function contextMenuOn(id: number): MouseEvent {
+  const ev = new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+  });
+  fireEvent(nodePath(id), ev);
+  return ev;
+}
 
 describe('ProvincePicker', () => {
   it('shows the counter with min/max and Готово disabled while empty', async () => {
@@ -336,5 +351,113 @@ describe('ProvincePicker', () => {
     // The manifest is revalidated once per mount (If-None-Match 304),
     // but the body is downloaded only once.
     expect(stub.calls.geometry).toBe(1);
+  });
+
+  it('the chips area is a fixed two-row box — the map never resizes (backlog «Дёрганье карты»)', async () => {
+    renderPicker();
+    await pickerReady();
+    const chipsArea = screen.getByTestId('picker-chips');
+    const mapArea = screen.getByTestId('picker-map');
+    // The DOM contract of the fix (jsdom has no layout engine, so the
+    // sizes themselves stay 0 here — the assertion is that the chips
+    // box is ALWAYS mounted with the same reserved height + internal
+    // scroll, hence the flex-1 map area below can never change size).
+    const reservedHeight = chipsArea.style.height;
+    expect(reservedHeight).not.toBe('');
+    expect(chipsArea.style.overflowY).toBe('auto');
+    const mapHeight = () => mapArea.getBoundingClientRect().height;
+    const before = mapHeight();
+
+    // Add provinces → same reserved height, same map height.
+    clickNode(1003);
+    clickNode(1004);
+    expect(screen.getByText('Гамма')).toBeInTheDocument();
+    expect(chipsArea.style.height).toBe(reservedHeight);
+    expect(mapHeight()).toBe(before);
+
+    // Remove one via the chip cross → still the same.
+    fireEvent.click(
+      screen.getByRole('button', { name: /Удалить Гамма/ }),
+    );
+    expect(chipsArea.style.height).toBe(reservedHeight);
+    expect(mapHeight()).toBe(before);
+
+    // The refusal hint lives inside the reserved box too — it cannot
+    // push the map down either.
+    clickNode(2001); // sea → refusal
+    expect(within(chipsArea).getByTestId('picker-hint')).toBeInTheDocument();
+    expect(chipsArea.style.height).toBe(reservedHeight);
+    expect(mapHeight()).toBe(before);
+  });
+
+  it('right button toggles the capital on selected provinces; the chip star mirrors it; onDone passes capitalId', async () => {
+    const { onDone } = renderPicker();
+    await pickerReady();
+    clickNode(1003);
+    clickNode(1004);
+    const capitalMark = () =>
+      document.querySelector('[data-layer="capital"]');
+
+    // RMB on a SELECTED province marks it — the star glyph appears and
+    // the chip's star button fills (aria-pressed).
+    const ev = contextMenuOn(1003);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(capitalMark()?.getAttribute('data-capital')).toBe('1003');
+    expect(screen.getByTestId('capital-star-1003')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(
+      screen.getAllByRole('button', { name: 'Снять отметку столицы' }),
+    ).toHaveLength(1);
+
+    // RMB on ANOTHER selected province moves the mark (one capital).
+    contextMenuOn(1004);
+    expect(capitalMark()?.getAttribute('data-capital')).toBe('1004');
+    expect(screen.getByTestId('capital-star-1003')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+
+    // RMB on the SAME one clears it.
+    contextMenuOn(1004);
+    expect(capitalMark()).toBeNull();
+
+    // RMB on an UNSELECTED province does nothing — but the browser
+    // menu is still suppressed over the map surface.
+    const refused = contextMenuOn(1005);
+    expect(refused.defaultPrevented).toBe(true);
+    expect(capitalMark()).toBeNull();
+
+    // The visible fallback: the chip star button toggles the same way.
+    fireEvent.click(screen.getByTestId('capital-star-1003'));
+    expect(capitalMark()?.getAttribute('data-capital')).toBe('1003');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Снять отметку столицы' }),
+    );
+    expect(capitalMark()).toBeNull();
+
+    // Removing the capital province clears the mark — a map click…
+    contextMenuOn(1003);
+    expect(capitalMark()?.getAttribute('data-capital')).toBe('1003');
+    clickNode(1003); // deselect on the map
+    expect(capitalMark()).toBeNull();
+
+    // …and the chip cross alike.
+    clickNode(1003);
+    contextMenuOn(1003);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Удалить Гамма/ }),
+    );
+    expect(capitalMark()).toBeNull();
+
+    // onDone carries the mark as its third argument.
+    clickNode(1003);
+    contextMenuOn(1004);
+    await waitFor(() => expect(doneButton()).toBeEnabled());
+    fireEvent.click(doneButton());
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(onDone.mock.calls[0][0]).toEqual([1004, 1003]);
+    expect(onDone.mock.calls[0][2]).toBe(1004);
   });
 });
