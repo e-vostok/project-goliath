@@ -10,12 +10,14 @@ single place instead of every test.
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.models import Nation
 from modules._00_core.player_stats import JUDGE_RATING_MAX, JUDGE_RATING_MIN
 from modules._01_map.config_schema import MapConfig
 from modules._02_bot.config_schema import BUILTIN_TYPE_VARIABLES, BotConfig
@@ -23,6 +25,8 @@ from modules._03_registry.config_schema import RegistryConfig
 import modules._04_orders.config_schema as orders_schema
 from modules._04_orders.config_schema import OrdersConfig
 from modules._04_orders.models import Order
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _base_config() -> dict:
@@ -42,16 +46,43 @@ def _base_config() -> dict:
             "jwt_ttl_minutes": 60,
         },
         "nation": {
-            "nation_name_min_length": 3,
+            "nation_name_min_length": 2,
             "nation_name_max_length": 40,
-            "min_provinces_per_nation": 1,
+            "short_name_min_length": 2,
+            "short_name_max_length": 16,
+            "min_provinces_per_nation": 5,
             "max_provinces_per_nation": 5,
             "leader_name_min_length": 2,
             "leader_name_max_length": 60,
             "leader_title_min_length": 2,
             "leader_title_max_length": 60,
+            "motto_max_length": 60,
+            "description_max_length": 100,
+            "leader_bio_max_length": 500,
+            "capital_name_min_length": 2,
+            "capital_name_max_length": 40,
             "history_url_max_length": 200,
             "history_url_allowed_hosts": ["vk.com", "vk.ru"],
+            "anthem_url_max_length": 200,
+            "anthem_url_allowed_hosts": ["vk.com", "vk.ru"],
+        },
+        "color": {
+            "min_distance_nations": 0.08,
+            "min_distance_reserved": 0.08,
+            "reserved": [
+                {"name": "свободная провинция", "hex": "#8C8C8C"},
+                {"name": "море", "hex": "#141E26"},
+                {
+                    "name": "земли за краем игрового поля",
+                    "hex": "#2A2A2A",
+                },
+                {"name": "подсветка при наведении", "hex": "#FFFFFF"},
+            ],
+            "palette": ["#6A3446", "#BE1253", "#058D1D", "#0C7CF4"],
+        },
+        "catalog": {
+            "flag_ids": [],
+            "portrait_ids": [],
         },
         "calendar": {
             "epoch_start_date": "2040-01-01",
@@ -94,20 +125,119 @@ def test_valid_config_loads():
     assert config.tick.health_max_heartbeat_age_seconds == 180
     assert config.auth.vk_ts_freshness_window_minutes == 30
     assert config.auth.jwt_ttl_minutes == 60
-    assert config.nation.nation_name_min_length == 3
+    assert config.nation.nation_name_min_length == 2
     assert config.nation.nation_name_max_length == 40
-    assert config.nation.min_provinces_per_nation == 1
+    assert config.nation.short_name_min_length == 2
+    assert config.nation.short_name_max_length == 16
+    assert config.nation.min_provinces_per_nation == 5
     assert config.nation.max_provinces_per_nation == 5
     assert config.nation.leader_name_min_length == 2
     assert config.nation.leader_name_max_length == 60
     assert config.nation.leader_title_min_length == 2
     assert config.nation.leader_title_max_length == 60
+    assert config.nation.motto_max_length == 60
+    assert config.nation.description_max_length == 100
+    assert config.nation.leader_bio_max_length == 500
+    assert config.nation.capital_name_min_length == 2
+    assert config.nation.capital_name_max_length == 40
     assert config.nation.history_url_max_length == 200
-    assert config.nation.history_url_allowed_hosts == ["vk.com", "vk.ru"]
+    assert config.nation.history_url_allowed_hosts == [
+        "vk.com", "vk.ru", "m.vk.com",
+    ]
+    assert config.nation.anthem_url_max_length == 200
+    assert config.nation.anthem_url_allowed_hosts == [
+        "vk.com", "vk.ru", "m.vk.com",
+    ]
+    assert config.color.min_distance_nations == 0.08
+    assert config.color.min_distance_reserved == 0.08
+    assert len(config.color.reserved) == 4
+    assert len(config.color.palette) == 36
+    assert config.catalog.flag_ids == [
+        f"flag_placeholder_{i}" for i in range(1, 7)
+    ]
+    assert config.catalog.portrait_ids == [
+        f"portrait_placeholder_{i}" for i in range(1, 7)
+    ]
     assert str(config.calendar.epoch_start_date) == "2040-01-01"
     assert config.calendar.months_per_turn == 1
     assert config.calendar.month_names[0] == "январь"
     assert config.calendar.month_names[11] == "декабрь"
+
+
+# --- Spec 1.3 Part 4: cross-artifact guards --------------------------------
+
+
+def test_text_bounds_do_not_exceed_column_lengths():
+    """Spec 1.3 Part 4: every upper text bound of the shipped config fits
+    its ``nations`` column length — any valid value stores without a new
+    migration."""
+    config = CoreConfig.from_yaml(
+        CoreConfig.get_default_config_path()
+    )
+    columns = Nation.__table__.columns
+    bounds = {
+        "name": config.nation.nation_name_max_length,
+        "short_name": config.nation.short_name_max_length,
+        "leader_name": config.nation.leader_name_max_length,
+        "leader_title": config.nation.leader_title_max_length,
+        "motto": config.nation.motto_max_length,
+        "description": config.nation.description_max_length,
+        "leader_bio": config.nation.leader_bio_max_length,
+        "capital_name": config.nation.capital_name_max_length,
+        "history_url": config.nation.history_url_max_length,
+        "anthem_url": config.nation.anthem_url_max_length,
+    }
+    for column_name, bound in bounds.items():
+        assert bound <= columns[column_name].type.length, (
+            f"nation.{column_name}: config bound {bound} exceeds the "
+            f"column length {columns[column_name].type.length}"
+        )
+
+
+def test_map_color_hexes_are_all_reserved():
+    """Spec 1.3 Part 4: every nation-visible map color of
+    ``configs/01_map.yaml`` is pinned in ``color.reserved``
+    (case-insensitive), so no nation may claim a color the map owns."""
+    with open("../configs/01_map.yaml", encoding="utf-8") as f:
+        map_colors = yaml.safe_load(f)["colors"]
+    config = CoreConfig.from_yaml(
+        CoreConfig.get_default_config_path()
+    )
+    reserved = {entry.hex.upper() for entry in config.color.reserved}
+    for key in ("neutral_province", "sea", "outside", "hover"):
+        assert map_colors[key].upper() in reserved, (
+            f"colors.{key}={map_colors[key]} is missing from "
+            "color.reserved"
+        )
+
+
+def test_catalog_ids_have_asset_files():
+    """Spec 1.3 Part 4: the catalog lists and the files under
+    ``frontend/public/assets/nations/`` must be in exact 1:1 sync —
+    every listed id resolves to a real PNG (INV-15), and no stray PNG
+    sits in the folders unlisted."""
+    config = CoreConfig.from_yaml(
+        CoreConfig.get_default_config_path()
+    )
+    assets = (
+        REPO_ROOT / "frontend" / "public" / "assets" / "nations"
+    )
+    for folder_name, ids in (
+        ("flags", config.catalog.flag_ids),
+        ("portraits", config.catalog.portrait_ids),
+    ):
+        folder = assets / folder_name
+        for item_id in ids:
+            assert (folder / f"{item_id}.png").is_file(), (
+                f"catalog id '{item_id}' has no file at "
+                f"{folder / (item_id + '.png')}"
+            )
+        stray = sorted(
+            p.stem for p in folder.glob("*.png") if p.stem not in ids
+        )
+        assert not stray, (
+            f"{folder}: PNG files not listed in the config: {stray}"
+        )
 
 
 def test_map_config_loads():

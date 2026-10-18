@@ -91,6 +91,46 @@ class Nation(Base):
     leader_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     leader_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
     history_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # Registration 2.0 fields (Spec 1.3, migration 0011). NULL only for
+    # nations created before 0.8.0 — NationService.create writes every
+    # mandatory field (INV-12) and stores emptied optional fields as NULL.
+    short_name: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    succession_type: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
+    motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
+    leader_bio: Mapped[str | None] = mapped_column(
+        String(2000), nullable=True
+    )
+    flag_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    portrait_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )
+    anthem_url: Mapped[str | None] = mapped_column(
+        String(2000), nullable=True
+    )
+    # use_alter + a named FK: nations <-> provinces reference each other
+    # (provinces.nation_id already exists), so the capital FK is emitted
+    # by a separate ALTER instead of inside CREATE TABLE.
+    capital_province_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "provinces.id",
+            name="fk_nations_capital_province_id",
+            ondelete="SET NULL",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    capital_name: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # The turn the nation was formed on (INV-R9: immutable after
     # creation). No default: NationService.create stamps the transaction's
@@ -99,7 +139,11 @@ class Nation(Base):
 
     # Relationships
     owner: Mapped[Player] = relationship(back_populates="nations")
-    provinces: Mapped[list[Province]] = relationship(back_populates="nation")
+    # Two FK paths link nations<->provinces (nation_id and
+    # capital_province_id): pin the ownership join explicitly.
+    provinces: Mapped[list[Province]] = relationship(
+        back_populates="nation", foreign_keys="Province.nation_id"
+    )
     scheduled_actions: Mapped[list[ScheduledAction]] = relationship(back_populates="nation")
 
     __table_args__ = (
@@ -123,7 +167,9 @@ class Province(Base):
     )
 
     # Relationships
-    nation: Mapped[Nation | None] = relationship(back_populates="provinces")
+    nation: Mapped[Nation | None] = relationship(
+        back_populates="provinces", foreign_keys=[nation_id]
+    )
 
     __table_args__ = (
         CheckConstraint("kind IN ('LAND','SEA')", name="ck_provinces_kind"),

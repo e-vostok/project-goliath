@@ -103,13 +103,25 @@ async def seed_nation(
     session, player: Player, name: str = "Existing Nation",
     color_hex: str = "#112233", province_ids: list[int] | None = None,
     legacy: bool = False,
+    short_name: str | None = None,
 ) -> Nation:
     nation = Nation(
         owner_player_id=player.id,
         name=name,
         color_hex=color_hex,
-        # legacy=True simulates a pre-migration row (NULL profile, INV-7).
-        **({} if legacy else VALID_PROFILE),
+        # legacy=True simulates a pre-migration row (NULL profile —
+        # ActiveIncomplete, Spec 1.3). short_name defaults to a unique
+        # value derived from the nation's name: the column is UNIQUE
+        # (INV-11), so seeding two nations with VALID_PROFILE's
+        # constant would collide.
+        **(
+            {}
+            if legacy
+            else {
+                **VALID_PROFILE,
+                "short_name": short_name or name[:16],
+            }
+        ),
         created_at=datetime.now(timezone.utc),
         created_turn=0,
     )
@@ -210,7 +222,9 @@ class TestNationEndpoints:
 
     async def test_create_nation_happy_path(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1001, 1002, 1003])
+        await seed_provinces(
+            test_db_session, [1001, 1002, 1003, 1004, 1005]
+        )
 
         resp = await client.post(
             "/api/v1/nations",
@@ -218,7 +232,7 @@ class TestNationEndpoints:
             json={
                 "name": "Test Nation",
                 "color_hex": "#FF0000",
-                "province_ids": [1001, 1002],
+                "province_ids": [1001, 1002, 1003, 1004, 1005],
                 **VALID_PROFILE,
             },
         )
@@ -228,10 +242,16 @@ class TestNationEndpoints:
         assert body["name"] == "Test Nation"
         assert body["color_hex"] == "#FF0000"
         assert body["owner_player_id"] == player.id
-        assert body["province_ids"] == [1001, 1002]
+        assert body["province_ids"] == [1001, 1002, 1003, 1004, 1005]
         assert body["leader_name"] == VALID_PROFILE["leader_name"]
         assert body["leader_title"] == VALID_PROFILE["leader_title"]
         assert body["history_url"] == VALID_PROFILE["history_url"]
+        assert body["short_name"] == VALID_PROFILE["short_name"]
+        assert body["gender"] == VALID_PROFILE["gender"]
+        assert body["succession_type"] == VALID_PROFILE["succession_type"]
+        # INV-14: the capital defaults to the first province as sent.
+        assert body["capital_province_id"] == 1001
+        assert body["capital_name"] == VALID_PROFILE["capital_name"]
 
     async def test_get_nations_me(self, client, test_db_session):
         player = await seed_player(test_db_session)
@@ -630,6 +650,17 @@ class TestNationProfileEndpoints:
         assert body["leader_name"] is None
         assert body["leader_title"] is None
         assert body["history_url"] is None
+        # Registration-2.0 fields are NULL too (ActiveIncomplete).
+        assert body["short_name"] is None
+        assert body["gender"] is None
+        assert body["succession_type"] is None
+        assert body["capital_province_id"] is None
+        assert body["capital_name"] is None
+        assert body["motto"] is None
+        assert body["flag_id"] is None
+        assert body["flag_url"] is None
+        assert body["portrait_id"] is None
+        assert body["portrait_url"] is None
 
     async def test_nations_rules_returns_config_values(
         self, client, test_db_session
@@ -647,14 +678,39 @@ class TestNationProfileEndpoints:
         assert body == {
             "name_min_length": nation.nation_name_min_length,
             "name_max_length": nation.nation_name_max_length,
+            "short_name_min_length": nation.short_name_min_length,
+            "short_name_max_length": nation.short_name_max_length,
+            "motto_max_length": nation.motto_max_length,
+            "description_max_length": nation.description_max_length,
             "leader_name_min_length": nation.leader_name_min_length,
             "leader_name_max_length": nation.leader_name_max_length,
             "leader_title_min_length": nation.leader_title_min_length,
             "leader_title_max_length": nation.leader_title_max_length,
+            "leader_bio_max_length": nation.leader_bio_max_length,
+            "capital_name_min_length": nation.capital_name_min_length,
+            "capital_name_max_length": nation.capital_name_max_length,
             "history_url_max_length": nation.history_url_max_length,
             "history_url_allowed_hosts": nation.history_url_allowed_hosts,
+            "anthem_url_max_length": nation.anthem_url_max_length,
+            "anthem_url_allowed_hosts": nation.anthem_url_allowed_hosts,
             "min_provinces": nation.min_provinces_per_nation,
             "max_provinces": nation.max_provinces_per_nation,
+            "palette": CORE_CONFIG.color.palette,
+            "flags": [
+                {"id": i, "url": f"/assets/nations/flags/{i}.png"}
+                for i in CORE_CONFIG.catalog.flag_ids
+            ],
+            "portraits": [
+                {"id": i, "url": f"/assets/nations/portraits/{i}.png"}
+                for i in CORE_CONFIG.catalog.portrait_ids
+            ],
+            "genders": ["male", "female"],
+            "succession_types": [
+                "elections",
+                "appointment",
+                "criteria",
+                "inheritance",
+            ],
         }
 
 

@@ -81,6 +81,64 @@ async def _fetch_clock(session_maker) -> GameClock:
         return result.scalar_one()
 
 
+async def _wait_for_turn(
+    session_maker, expected_turn: int, timeout_seconds: float = 10.0
+) -> GameClock:
+    """
+    Poll the committed game_clock until current_turn reaches
+    expected_turn or the deadline passes. Returns the last observed
+    row either way so the caller can assert with a useful diff —
+    wall-clock deadline, not a fixed poll count, so a slow runner
+    always gets the full budget.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    clock = await _fetch_clock(session_maker)
+    while clock.current_turn != expected_turn and time.monotonic() < deadline:
+        await asyncio.sleep(0.03)
+        clock = await _fetch_clock(session_maker)
+    return clock
+
+
+async def _move_next_tick_at(
+    session_maker, new_value: datetime, timeout_seconds: float = 10.0
+) -> None:
+    """
+    Commit next_tick_at = new_value and verify the write survived.
+
+    The in-memory test engine funnels every session through ONE shared
+    sqlite connection (StaticPool), so a session close racing between
+    this test's execute() and commit() can rollback-discard the
+    uncommitted UPDATE — the scheduler then keeps waiting on the stale
+    future slot and the test times out (the flaky behaviour this
+    replaced). A committed value is durable, so write-then-read-back
+    until it matches; an already-fired tick (turn moved) also counts —
+    the move was honoured before the read-back.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        async with session_maker() as session:
+            await session.execute(
+                update(GameClock)
+                .where(GameClock.id == 1)
+                .values(next_tick_at=new_value)
+            )
+            await session.commit()
+        clock = await _fetch_clock(session_maker)
+        stored = clock.next_tick_at
+        if stored is not None and stored.tzinfo is None:
+            stored = stored.replace(tzinfo=timezone.utc)
+        if stored == new_value or clock.current_turn != 0:
+            return
+        if time.monotonic() >= deadline:
+            pytest.fail(
+                f"next_tick_at move to {new_value} did not survive "
+                f"within {timeout_seconds}s; last observed "
+                f"next_tick_at={clock.next_tick_at}, "
+                f"current_turn={clock.current_turn}"
+            )
+        await asyncio.sleep(0.02)
+
+
 class TestSecondsUntil:
     """Pure function: time remaining until the next tick."""
 
@@ -402,36 +460,24 @@ class TestSchedulerResilience:
             assert (await _fetch_clock(session_maker)).current_turn == 0
 
             # Move the slot LATER — still no tick.
-            async with session_maker() as session:
-                await session.execute(
-                    update(GameClock)
-                    .where(GameClock.id == 1)
-                    .values(
-                        next_tick_at=datetime.now(timezone.utc)
-                        + timedelta(hours=2)
-                    )
-                )
-                await session.commit()
+            await _move_next_tick_at(
+                session_maker,
+                datetime.now(timezone.utc) + timedelta(hours=2),
+            )
             await asyncio.sleep(0.2)
             assert (await _fetch_clock(session_maker)).current_turn == 0
 
             # Move it into the PAST — the next wake fires the tick.
-            async with session_maker() as session:
-                await session.execute(
-                    update(GameClock)
-                    .where(GameClock.id == 1)
-                    .values(
-                        next_tick_at=datetime.now(timezone.utc)
-                        - timedelta(minutes=1)
-                    )
-                )
-                await session.commit()
-            for _ in range(50):
-                if (await _fetch_clock(session_maker)).current_turn == 1:
-                    break
-                await asyncio.sleep(0.05)
-            clock = await _fetch_clock(session_maker)
-            assert clock.current_turn == 1
+            await _move_next_tick_at(
+                session_maker,
+                datetime.now(timezone.utc) - timedelta(minutes=1),
+            )
+            clock = await _wait_for_turn(session_maker, expected_turn=1)
+            assert clock.current_turn == 1, (
+                "tick did not fire within 10s of moving next_tick_at "
+                f"into the past; last observed current_turn="
+                f"{clock.current_turn}"
+            )
         finally:
             task.cancel()
             with pytest.raises(asyncio.CancelledError):

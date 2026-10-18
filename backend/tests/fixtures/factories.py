@@ -65,6 +65,11 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     leader_name = VALID_PROFILE["leader_name"]
     leader_title = VALID_PROFILE["leader_title"]
     history_url = VALID_PROFILE["history_url"]
+    # UNIQUE (INV-11): each built nation gets a fresh short name.
+    short_name = lambda: f"N{uuid.uuid4().hex[:15]}"
+    gender = VALID_PROFILE["gender"]
+    succession_type = VALID_PROFILE["succession_type"]
+    capital_name = VALID_PROFILE["capital_name"]
     created_at = utcnow
     created_turn = 0
     __set_foreign_keys__ = False

@@ -44,9 +44,10 @@ from modules._00_core.tick_schedule import next_tick_after
 from modules._01_map.models import MapOwnershipLog
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import (
-    MAP_MINI_DIR,
+    MAP_MINI_LINKED_DIR,
+    STARTING_GROUP,
     make_land_province,
-    map_mini_node_ids,
+    map_mini_linked_node_ids,
 )
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
@@ -61,9 +62,9 @@ CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 ADMIN_VK_ID = 424242
 USER_VK_ID = 777001
 
-# The lifespan startup syncs the whole mini map into provinces, so every
-# live test sees exactly these rows (plus nothing extra).
-MINI_NODE_COUNT = len(map_mini_node_ids())
+# The lifespan startup syncs the whole linked mini map into provinces,
+# so every live test sees exactly these rows (plus nothing extra).
+MINI_NODE_COUNT = len(map_mini_linked_node_ids())
 
 ADMIN_ROUTES = [
     ("GET", "/api/v1/admin/me", None),
@@ -144,10 +145,11 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     # Enabled here so the pre-existing reset scenarios keep working;
     # the RESET_DISABLED tests override it per test.
     monkeypatch.setenv("ADMIN_ALLOW_RESET", "true")
-    # The lifespan startup syncs the mini map into provinces and
+    # The lifespan startup syncs the linked mini map into provinces and
     # registers the 01_map hooks — the app's provinces are the fixture's
-    # 10 nodes for the whole test.
-    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_DIR))
+    # 10 nodes for the whole test, and 1001..1007 form the connected
+    # land group a 5-province registration needs.
+    monkeypatch.setenv("MAP_DATA_DIR", str(MAP_MINI_LINKED_DIR))
 
     alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
@@ -358,14 +360,13 @@ class TestAdminState:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
-        await _seed_provinces([1001, 1002])
         created = await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Admin Nation",
-                "color_hex": "#0A1B2C",
-                "province_ids": [1001, 1002],
+                "color_hex": "#6A3446",
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
@@ -378,11 +379,11 @@ class TestAdminState:
             "players": 1,
             "nations": 1,
             "provinces_total": MINI_NODE_COUNT,
-            "provinces_owned": 2,
+            "provinces_owned": 5,
         }
         nation = core["nations"][0]
         assert nation["name"] == "Admin Nation"
-        assert nation["province_ids"] == [1001, 1002]
+        assert nation["province_ids"] == list(STARTING_GROUP)
         assert core["players"][0]["nation_id"] == nation["id"]
 
     @pytest.mark.asyncio
@@ -621,14 +622,13 @@ class TestAdminStateReset:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
-        await _seed_provinces([1001])
         await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Keep Me",
-                "color_hex": "#102030",
-                "province_ids": [1001],
+                "color_hex": "#BE1253",
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
@@ -666,14 +666,13 @@ class TestAdminStateReset:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
-        await _seed_provinces([1001, 1002])
         created = await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Doomed Nation",
                 "color_hex": "#3A4B5C",
-                "province_ids": [1001, 1002],
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
@@ -771,14 +770,13 @@ class TestAdminStateReset:
     ):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
-        await _seed_provinces([1001, 1002])
         created = await live_client.post(
             "/api/v1/nations",
             headers=headers,
             json={
                 "name": "Rollback Nation",
                 "color_hex": "#5C4B3A",
-                "province_ids": [1001],
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
@@ -788,8 +786,11 @@ class TestAdminStateReset:
             raise RuntimeError("reset blew up")
 
         async def mutates_first(session):
+            # An unowned sea zone: owned land carries map_ownership_log
+            # rows whose FK would make the delete itself fail on
+            # PostgreSQL before fails_second can run.
             await session.execute(
-                delete(Province).where(Province.id == 1002)
+                delete(Province).where(Province.id == 2001)
             )
 
         # Execution order is reversed registration: mutates_first runs
@@ -811,7 +812,7 @@ class TestAdminStateReset:
         # the nation and all provinces are untouched.
         me = await live_client.get("/api/v1/nations/me", headers=headers)
         assert me.status_code == 200
-        assert me.json()["province_ids"] == [1001]
+        assert me.json()["province_ids"] == list(STARTING_GROUP)
         provinces = await live_client.get("/api/v1/provinces", headers=headers)
         assert len(provinces.json()) == MINI_NODE_COUNT
 

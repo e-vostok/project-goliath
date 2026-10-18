@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.calendar import compute_game_date
+from modules._00_core.catalog import flag_url
 from modules._00_core.service import (
     NationService,
     PlayerService,
@@ -118,7 +119,11 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
                     "level": row.level,
                     "judge_rating": row.judge_rating,
                     "nation": (
-                        cell_nation(row.nation_name, row.nation_color)
+                        cell_nation(
+                            row.nation_short_name or row.nation_name,
+                            row.nation_color,
+                            flag_url(row.nation_flag_id),
+                        )
                         if row.nation_id is not None
                         else None
                     ),
@@ -135,7 +140,12 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
     ``number`` is the 1-based position in the (created_turn, created_at,
     id) order of ``NationService.list_for_registry`` — a nation's place
     among the existing ones (D2). ``formed`` is the game-calendar date of
-    ``created_turn``; the row key is the nation id.
+    ``created_turn``; the row key is the nation id. ``name`` shows the
+    display name (``short_name`` or, for pre-0.8.0 nations, the full
+    ``name``) so the ``select_or_contains`` options match the ``nation``
+    cells of the players table exactly (Spec 3.7); ``flag`` carries the
+    catalog flag image — the path is built only by
+    ``catalog.flag_url`` (INV-16).
     """
     # Local import, same cycle guard as in load_players.
     from modules._03_registry.startup import get_core_config
@@ -150,8 +160,8 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
                 key=row.nation_id,
                 cells={
                     "number": number,
-                    "name": row.name,
-                    "flag": cell_flag(row.color_hex, None),
+                    "name": row.short_name or row.name,
+                    "flag": cell_flag(row.color_hex, flag_url(row.flag_id)),
                     "formed": cell_date(
                         game_date_text(
                             compute_game_date(row.created_turn, core_config)

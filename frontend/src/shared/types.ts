@@ -24,45 +24,107 @@ export interface AuthResponseDTO {
 
 export interface NationDTO {
   id: string;
-  name: string;
-  color_hex: string;
   owner_player_id: string;
+  created_at: string;
+  name: string;
+  /** null only for nations created before the 0.8.0 migration. */
+  short_name: string | null;
+  color_hex: string;
+  motto: string | null;
+  description: string | null;
+  flag_id: string | null;
+  flag_url: string | null;
   province_ids: number[];
+  capital_province_id: number | null;
+  capital_name: string | null;
   /** null only for nations created before the profile migration. */
   leader_name: string | null;
+  gender: string | null;
   leader_title: string | null;
+  leader_bio: string | null;
+  portrait_id: string | null;
+  portrait_url: string | null;
+  succession_type: string | null;
   history_url: string | null;
-  created_at: string;
+  anthem_url: string | null;
 }
 
 export interface NationCreateRequest {
   name: string;
+  short_name: string;
   color_hex: string;
+  motto: string | null;
+  description: string | null;
+  flag_id: string | null;
   province_ids: number[];
+  capital_province_id: number | null;
+  capital_name: string;
   leader_name: string;
+  gender: string;
   leader_title: string;
+  leader_bio: string | null;
+  portrait_id: string | null;
+  succession_type: string;
   history_url: string;
+  anthem_url: string | null;
 }
 
 export interface NationUpdateRequest {
   name?: string | null;
+  short_name?: string | null;
   color_hex?: string | null;
+  motto?: string | null;
+  description?: string | null;
+  flag_id?: string | null;
+  capital_name?: string | null;
   leader_name?: string | null;
+  gender?: string | null;
   leader_title?: string | null;
+  leader_bio?: string | null;
+  portrait_id?: string | null;
+  succession_type?: string | null;
   history_url?: string | null;
+  anthem_url?: string | null;
+}
+
+export interface CatalogItemDTO {
+  id: string;
+  url: string;
 }
 
 export interface NationRulesDTO {
   name_min_length: number;
   name_max_length: number;
+  short_name_min_length: number;
+  short_name_max_length: number;
+  motto_max_length: number;
+  description_max_length: number;
   leader_name_min_length: number;
   leader_name_max_length: number;
   leader_title_min_length: number;
   leader_title_max_length: number;
+  leader_bio_max_length: number;
+  capital_name_min_length: number;
+  capital_name_max_length: number;
   history_url_max_length: number;
   history_url_allowed_hosts: string[];
+  anthem_url_max_length: number;
+  anthem_url_allowed_hosts: string[];
   min_provinces: number;
   max_provinces: number;
+  palette: string[];
+  flags: CatalogItemDTO[];
+  portraits: CatalogItemDTO[];
+  genders: string[];
+  succession_types: string[];
+}
+
+export interface ColorCheckRequest {
+  color_hex: string;
+}
+
+export interface ColorCheckDTO {
+  status: 'OK' | 'TAKEN' | 'TOO_CLOSE';
 }
 
 export interface NationDeleteRequest {
@@ -142,17 +204,31 @@ export interface AdminPlayerDeleteResultDTO {
 /** Error codes emitted by 00_core (Spec Part 5 + router-internal codes). */
 export const ErrorCodes = {
   NAME_TAKEN: 'NAME_TAKEN',
+  SHORT_NAME_TAKEN: 'SHORT_NAME_TAKEN',
   COLOR_TAKEN: 'COLOR_TAKEN',
+  COLOR_TOO_CLOSE: 'COLOR_TOO_CLOSE',
   PROVINCE_TAKEN: 'PROVINCE_TAKEN',
   PROVINCE_NOT_FOUND: 'PROVINCE_NOT_FOUND',
   PROVINCE_COUNT_OUT_OF_RANGE: 'PROVINCE_COUNT_OUT_OF_RANGE',
-  LEADER_NAME_INVALID: 'LEADER_NAME_INVALID',
-  LEADER_TITLE_INVALID: 'LEADER_TITLE_INVALID',
-  HISTORY_URL_INVALID: 'HISTORY_URL_INVALID',
   NATION_ALREADY_EXISTS: 'NATION_ALREADY_EXISTS',
   NATION_NOT_FOUND: 'NATION_NOT_FOUND',
+  LEADER_NAME_INVALID: 'LEADER_NAME_INVALID',
+  LEADER_TITLE_INVALID: 'LEADER_TITLE_INVALID',
+  GENDER_INVALID: 'GENDER_INVALID',
+  SUCCESSION_INVALID: 'SUCCESSION_INVALID',
+  SHORT_NAME_INVALID: 'SHORT_NAME_INVALID',
+  MOTTO_INVALID: 'MOTTO_INVALID',
+  DESCRIPTION_INVALID: 'DESCRIPTION_INVALID',
+  LEADER_BIO_INVALID: 'LEADER_BIO_INVALID',
+  FLAG_INVALID: 'FLAG_INVALID',
+  PORTRAIT_INVALID: 'PORTRAIT_INVALID',
+  HISTORY_URL_INVALID: 'HISTORY_URL_INVALID',
+  ANTHEM_URL_INVALID: 'ANTHEM_URL_INVALID',
+  CAPITAL_NAME_INVALID: 'CAPITAL_NAME_INVALID',
+  CAPITAL_NOT_IN_PROVINCES: 'CAPITAL_NOT_IN_PROVINCES',
   INVALID_SIGNATURE: 'INVALID_SIGNATURE',
   TIMESTAMP_EXPIRED: 'TIMESTAMP_EXPIRED',
+  UNAUTHORIZED: 'UNAUTHORIZED',
   GAME_CLOCK_NOT_FOUND: 'GAME_CLOCK_NOT_FOUND',
   FREQUENCY_CAP_EXCEEDED: 'FREQUENCY_CAP_EXCEEDED',
 } as const;

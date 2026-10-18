@@ -1,6 +1,6 @@
 # 02_SYSTEM_SPECS / 03_registry
 
-> Версия Spec: 1.3 (16.10.2026; новый вид фильтра `select_or_contains` для столбцов `nation` — выпадающий список всех государств реестра плюс «содержит»; прежние таблицы не меняются). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
+> Версия Spec: 1.4 (18.10.2026; государства показываются кратким названием и настоящим флагом из каталога `00_core` 1.3: `flag_url` больше не заглушка, добавлены поля `short_name`/`flag_id` в строки чтения ядра, Приложение B9). Предыдущая версия 1.3 (16.10.2026; новый вид фильтра `select_or_contains` для столбцов `nation` — выпадающий список всех государств реестра плюс «содержит»; прежние таблицы не меняются). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
 > Артефакты шага: этот файл, `configs/03_registry.yaml`, `backend/src/modules/_03_registry/config_schema.py`.
 > Зависимость: `00_core`. Модули `01_map` и `02_bot` не требуются и не импортируются.
 > Релиз модуля: 0.7.0.
@@ -84,6 +84,8 @@ class PlayerRegistryRow:
     nation_id: str | None
     nation_name: str | None
     nation_color: str | None
+    nation_short_name: str | None   # NULL у государств, созданных до 0.8.0
+    nation_flag_id: str | None      # идентификатор из каталога 00_core или NULL
 
 @dataclass(frozen=True)
 class NationRegistryRow:
@@ -93,6 +95,8 @@ class NationRegistryRow:
     created_turn: int
     created_at: datetime
     province_count: int
+    short_name: str | None = None   # NULL у государств, созданных до 0.8.0
+    flag_id: str | None = None      # идентификатор из каталога 00_core или NULL
 
 PlayerService.list_for_registry(session) -> list[PlayerRegistryRow]   # порядок: created_at, id
 NationService.list_for_registry(session) -> list[NationRegistryRow]   # порядок: created_turn, created_at, id
@@ -192,7 +196,7 @@ $$number(p) = 1 + \#\{\, q : (created\_at_q,\ id_q) < (created\_at_p,\ id_p) \,\
 
 - `player` — ячейка `person`. Профиль берётся из `registry_vk_profiles` одним запросом для всех игроков. Имя: `"{first_name} {last_name}"` без краевых пробелов; пустое или нет профиля — `fallback_name_template.format(number=number)`. `avatar_url` — `photo_url` при `status = OK`, иначе `None`. `is_fallback = true`, когда имя запасное.
 - `joined` — ячейка `date` (3.5).
-- `level`, `judge_rating` — числа; `nation` — `{name, color, flag_url}` либо `null` (`flag_url = null`, пока загрузки флагов государств нет).
+- `level`, `judge_rating` — числа; `nation` — `{name, color, flag_url}` либо `null`. `name` — отображаемое название: `short_name`, а если оно `NULL` (государство создано до 0.8.0) — полное `name`. `flag_url` — `catalog.flag_url(flag_id)` из `00_core` (адрес вида `/assets/nations/flags/<id>.png`) либо `null`, если флаг не выбран; источник не склеивает адрес сам (INV-16 `00_core`).
 
 ### 3.3. Источник `nations`
 
@@ -200,7 +204,7 @@ $$number(p) = 1 + \#\{\, q : (created\_at_q,\ id_q) < (created\_at_p,\ id_p) \,\
 
 $$number(n) = 1 + \#\{\, m : (created\_turn_m,\ created\_at_m,\ id_m) < (created\_turn_n,\ created\_at_n,\ id_n) \,\}$$
 
-Ключ строки — `nation_id` (стабилен в пределах ответа). `flag` — `{color: color_hex, image_url: null}` (заглушка; когда появится загрузка флагов, источник вернёт `image_url`). `formed` — ячейка `date` с `key = created_turn` и `text` = игровая дата словами (3.5). `provinces` — `province_count`.
+Ключ строки — `nation_id` (стабилен в пределах ответа). `name` — отображаемое название, как у ячейки `nation` источника `players` (`short_name` или, если его нет, полное название): так выпадающий список фильтра столбца `nation` (3.7) и значения ячеек `nation` совпадают точно. `flag` — `{color: color_hex, image_url: catalog.flag_url(flag_id)}`; `image_url = null`, если флаг не выбран. `formed` — ячейка `date` с `key = created_turn` и `text` = игровая дата словами (3.5). `provinces` — `province_count`.
 
 ### 3.4. Получение профилей ВК (шаг 3 цикла 2.4)
 
@@ -354,7 +358,7 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
       "player": {"name": "Иван Петров", "avatar_url": "https://…", "is_fallback": false},
       "joined": {"text": "28 сентября 2026", "key": 20724},
       "level": 1, "judge_rating": 0,
-      "nation": {"name": "Новгород", "color": "#C0392B", "flag_url": null}
+      "nation": {"name": "Новгород", "color": "#C0392B", "flag_url": "/assets/nations/flags/flag_placeholder_1.png"}
     }}
   ]
 }
@@ -447,6 +451,7 @@ def register_table_source(
 - **B5.** `backend/src/main.py`: подключение роутера Реестра; `startup_registry()` после всех `startup_*`; запуск и остановка задачи профилей; коды `REGISTRY_TABLE_NOT_FOUND` (404) и `REGISTRY_PROVIDER_FAILED` (500) в `_ERROR_CODE_STATUS`.
 - **B6.** `backend/tests/test_configs_validity.py` и `test_model_migration_drift*.py`: подключить `RegistryConfig` и модели Реестра.
 - **B7.** `frontend/src/app/AppShell.tsx` и `main.tsx`: маршрут, панель, исключение из перенаправления, кнопка, хэш `#registry` (5.5).
+- **B9 (1.4, версия 0.8.0).** `backend/src/modules/_00_core/service.py`: `PlayerRegistryRow` получает `nation_short_name` и `nation_flag_id`, `NationRegistryRow` — `short_name` и `flag_id` (последние два уже добавлены в Issue 10 как значения по умолчанию `None`); источники `players` и `nations` используют отображаемое название и `catalog.flag_url`. Остальные таблицы, конфиг `configs/03_registry.yaml` и клиент Реестра не меняются (клиент уже показывает `flag_url`/`image_url`).
 - **B8.** `configs/03_registry.yaml`, `docs/01_GAME_BIBLE/03_registry.md`, `docs/02_SYSTEM_SPECS/03_registry.md`, `docs/03_ROADMAP/03_registry.md`, `changelog.md`.
 
 Новых переменных окружения и правок `.env.prod.example` нет.
@@ -463,7 +468,7 @@ def register_table_source(
 
 **Расширение `00_core`:** новый игрок получает `level = 1`, `judge_rating = 0`; запись `judge_rating = 101` и `level = 0` отклоняется БД; `NationService.create` пишет текущий ход; `update` его не меняет (INV-R9); миграция `0008` восстанавливает `created_turn` по `tick_log` для заранее созданных государств (включая государство до первого тика → 0) и на SQLite, и на PostgreSQL; тест дрейфа моделей и миграций зелёный.
 
-**Источники:** «Игроки»: игрок без государства и с государством в одной таблице; номера по порядку `created_at`, постоянны после появления нового игрока; поле `nation` — `null` у игрока без государства; «Государства»: номера по `created_turn`, затем `created_at`; удаление государства сдвигает номера последующих; `provinces` не учитывает морские зоны; `formed.key = created_turn`, текст по календарю; игрок и государство созданы без профиля — имя `Игрок №N`.
+**Источники:** «Игроки»: игрок без государства и с государством в одной таблице; номера по порядку `created_at`, постоянны после появления нового игрока; поле `nation` — `null` у игрока без государства; «Государства»: номера по `created_turn`, затем `created_at`; удаление государства сдвигает номера последующих; `provinces` не учитывает морские зоны; `formed.key = created_turn`, текст по календарю; игрок и государство созданы без профиля — имя `Игрок №N`. Расширение 1.4: государство с `short_name` показывается кратким названием в обеих таблицах, государство без него (создано до 0.8.0) — полным; выбранный флаг даёт `flag_url`/`image_url` с адресом каталога, без флага — `null`; фильтр `select_or_contains` по названию находит государство по отображаемому названию.
 
 **Профили ВК, через `FakeVk`:** успешный пакет → `OK`, имя и фото в таблице; `deactivated` → `UNAVAILABLE`, прежнее имя сохранено, аватарка `null`; идентификатор отсутствует в ответе → `UNAVAILABLE`; сетевая ошибка и HTTP 5xx → запись без изменений, `next_attempt_at = now + failure_retry`; код 27 → CRITICAL один раз; пакетность (`batch_size`); токен пуст → режим `NO_TOKEN`, таблицы открываются; `enabled = false` → нет запросов; очистка имени (управляющие символы, длина) и адреса (`http://` отбрасывается); `OK` не запрашивается повторно до `ttl_hours`; открытие таблицы с просроченным профилем будит задачу, с отложенным повтором — нет.
 
