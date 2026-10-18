@@ -21,6 +21,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from core.tick.orchestrator import TickOrchestrator, TickPhase
+from modules._00_core.catalog import flag_url, portrait_url
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import (
     GameClock,
@@ -156,8 +157,14 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
         "min_provinces": nation_cfg.min_provinces_per_nation,
         "max_provinces": nation_cfg.max_provinces_per_nation,
         "palette": CORE_CONFIG.color.palette,
-        "flags": [],
-        "portraits": [],
+        "flags": [
+            {"id": flag_id, "url": flag_url(flag_id)}
+            for flag_id in CORE_CONFIG.catalog.flag_ids
+        ],
+        "portraits": [
+            {"id": portrait_id, "url": portrait_url(portrait_id)}
+            for portrait_id in CORE_CONFIG.catalog.portrait_ids
+        ],
         "genders": ["male", "female"],
         "succession_types": [
             "elections",

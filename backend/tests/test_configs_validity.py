@@ -152,8 +152,12 @@ def test_valid_config_loads():
     assert config.color.min_distance_reserved == 0.08
     assert len(config.color.reserved) == 4
     assert len(config.color.palette) == 36
-    assert config.catalog.flag_ids == []
-    assert config.catalog.portrait_ids == []
+    assert config.catalog.flag_ids == [
+        f"flag_placeholder_{i}" for i in range(1, 7)
+    ]
+    assert config.catalog.portrait_ids == [
+        f"portrait_placeholder_{i}" for i in range(1, 7)
+    ]
     assert str(config.calendar.epoch_start_date) == "2040-01-01"
     assert config.calendar.months_per_turn == 1
     assert config.calendar.month_names[0] == "январь"
@@ -208,21 +212,32 @@ def test_map_color_hexes_are_all_reserved():
 
 
 def test_catalog_ids_have_asset_files():
-    """Spec 1.3 Part 4: every catalog id must resolve to a real PNG under
-    ``frontend/public/assets/nations/``. Skipped while the shipped lists
-    are empty (they are filled by the 0.8.0 unit)."""
+    """Spec 1.3 Part 4: the catalog lists and the files under
+    ``frontend/public/assets/nations/`` must be in exact 1:1 sync —
+    every listed id resolves to a real PNG (INV-15), and no stray PNG
+    sits in the folders unlisted."""
     config = CoreConfig.from_yaml(
         CoreConfig.get_default_config_path()
     )
-    if not config.catalog.flag_ids and not config.catalog.portrait_ids:
-        pytest.skip("catalog.*_ids are empty — nothing to resolve yet")
     assets = (
         REPO_ROOT / "frontend" / "public" / "assets" / "nations"
     )
-    for flag_id in config.catalog.flag_ids:
-        assert (assets / "flags" / f"{flag_id}.png").is_file()
-    for portrait_id in config.catalog.portrait_ids:
-        assert (assets / "portraits" / f"{portrait_id}.png").is_file()
+    for folder_name, ids in (
+        ("flags", config.catalog.flag_ids),
+        ("portraits", config.catalog.portrait_ids),
+    ):
+        folder = assets / folder_name
+        for item_id in ids:
+            assert (folder / f"{item_id}.png").is_file(), (
+                f"catalog id '{item_id}' has no file at "
+                f"{folder / (item_id + '.png')}"
+            )
+        stray = sorted(
+            p.stem for p in folder.glob("*.png") if p.stem not in ids
+        )
+        assert not stray, (
+            f"{folder}: PNG files not listed in the config: {stray}"
+        )
 
 
 def test_map_config_loads():
