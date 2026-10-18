@@ -47,10 +47,7 @@ def is_valid_link_value(value: object, allowed_hosts: Collection[str]) -> bool:
         return False
     if len(value) > LINK_VARIABLE_MAX_LENGTH:
         return False
-    if any(
-        ch.isspace() or unicodedata.category(ch) in ("Cc", "Cf")
-        for ch in value
-    ):
+    if any(ch.isspace() or unicodedata.category(ch) in ("Cc", "Cf") for ch in value):
         return False
     try:
         parsed = urlsplit(value)
@@ -67,9 +64,7 @@ class TemplateError(CoreDomainError):
     """A template placeholder has no matching variable."""
 
     def __init__(self, name: str):
-        super().__init__(
-            f"template variable '{name}' has no value", "TEMPLATE_ERROR"
-        )
+        super().__init__(f"template variable '{name}' has no value", "TEMPLATE_ERROR")
 
 
 class LinkVariableError(TemplateError):
@@ -88,8 +83,7 @@ class MessageTooLong(CoreDomainError):
 
     def __init__(self, length: int, limit: int):
         super().__init__(
-            f"rendered message is {length} characters, "
-            f"limit is {limit}",
+            f"rendered message is {length} characters, limit is {limit}",
             "TOO_LONG",
         )
 
@@ -97,11 +91,7 @@ class MessageTooLong(CoreDomainError):
 def sanitize_value(value: object, max_length: int) -> str:
     """Spec 3.6 cleanup of one template variable, in order."""
     text = unicodedata.normalize("NFC", str(value))
-    text = "".join(
-        ch
-        for ch in text
-        if unicodedata.category(ch) not in ("Cc", "Cf")
-    )
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in ("Cc", "Cf"))
     text = re.sub(r"\s+", " ", text).strip()
     text = text.replace("[", "(").replace("]", ")")
     if len(text) > max_length:
@@ -136,9 +126,7 @@ def _sanitized(payload: Mapping[str, object], config: BotConfig) -> dict:
                 raise LinkVariableError(key)
             result[key] = value
         else:
-            result[key] = sanitize_value(
-                value, config.limits.variable_max_length
-            )
+            result[key] = sanitize_value(value, config.limits.variable_max_length)
     return result
 
 

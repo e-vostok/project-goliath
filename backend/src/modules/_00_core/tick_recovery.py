@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +44,7 @@ async def mark_interrupted_ticks(session: AsyncSession) -> int:
         .where(TickLog.status == TickLogStatus.RUNNING)
         .values(
             status=TickLogStatus.FAILED,
-            finished_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(UTC),
             error_message=INTERRUPTED_NOTE,
         )
     )

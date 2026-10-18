@@ -11,16 +11,20 @@ Requires DATABASE_URL_TEST; wipes the public schema like pg_schema does.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import IntegrityError
 
-from tests.fixtures.postgres import _reset_public_schema, _sync_url, pg_url
+from alembic import command
+from tests.fixtures.postgres import (
+    # noqa: F401,
+    _reset_public_schema,
+    _sync_url,
+    pg_url,  # noqa: F401
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -57,10 +61,7 @@ def _insert_player(url: str, vk_user_id: int = 777000003) -> str:
     try:
         with engine.begin() as conn:
             conn.execute(
-                sa.text(
-                    "INSERT INTO players (id, vk_user_id) "
-                    "VALUES (:id, :vk)"
-                ),
+                sa.text("INSERT INTO players (id, vk_user_id) VALUES (:id, :vk)"),
                 {"id": player_id, "vk": vk_user_id},
             )
     finally:
@@ -76,17 +77,14 @@ def test_upgrade_head_creates_bot_tables(wiped_pg, monkeypatch):
         with engine.connect() as conn:
             insp = sa.inspect(conn)
             tables = set(insp.get_table_names())
-            row = conn.execute(
-                sa.text("SELECT id, last_digest_turn FROM bot_state")
-            ).mappings().one()
-            checks = {
-                c["name"]
-                for c in insp.get_check_constraints("bot_outbox")
-            }
+            row = (
+                conn.execute(sa.text("SELECT id, last_digest_turn FROM bot_state"))
+                .mappings()
+                .one()
+            )
+            checks = {c["name"] for c in insp.get_check_constraints("bot_outbox")}
             uniques = insp.get_unique_constraints("bot_outbox")
-            indexes = {
-                i["name"] for i in insp.get_indexes("bot_outbox")
-            }
+            indexes = {i["name"] for i in insp.get_indexes("bot_outbox")}
     finally:
         engine.dispose()
 
@@ -97,9 +95,7 @@ def test_upgrade_head_creates_bot_tables(wiped_pg, monkeypatch):
         "ck_bot_outbox_priority",
         "ck_bot_outbox_status",
     } <= checks
-    assert any(
-        u["name"] == "uq_bot_outbox_dedup" for u in uniques
-    )
+    assert any(u["name"] == "uq_bot_outbox_dedup" for u in uniques)
     assert {
         "ix_bot_outbox_ready",
         "ix_bot_outbox_player_status",
@@ -170,6 +166,7 @@ def test_constraints_enforced_on_pg(wiped_pg, monkeypatch):
                     ),
                     {"pid": player_id},
                 )
+
         # Duplicate (player_id, type_key, event_key) → uq_bot_outbox_dedup.
         def _outbox_row(conn):
             conn.execute(
@@ -195,8 +192,7 @@ def test_constraints_enforced_on_pg(wiped_pg, monkeypatch):
             with engine.begin() as conn:
                 conn.execute(
                     sa.text(
-                        "INSERT INTO bot_state (id, last_digest_turn) "
-                        "VALUES (2, 0)"
+                        "INSERT INTO bot_state (id, last_digest_turn) VALUES (2, 0)"
                     )
                 )
         # Autoincrement on PG: two inserts without id → distinct ids.
@@ -238,11 +234,12 @@ def test_downgrade_then_upgrade_roundtrip(wiped_pg, monkeypatch):
     engine = _connect(wiped_pg)
     try:
         with engine.connect() as conn:
-            assert BOT_TABLES <= set(
-                sa.inspect(conn).get_table_names()
+            assert BOT_TABLES <= set(sa.inspect(conn).get_table_names())
+            assert (
+                conn.execute(
+                    sa.text("SELECT COUNT(*) FROM bot_state WHERE id = 1")
+                ).scalar_one()
+                == 1
             )
-            assert conn.execute(
-                sa.text("SELECT COUNT(*) FROM bot_state WHERE id = 1")
-            ).scalar_one() == 1
     finally:
         engine.dispose()

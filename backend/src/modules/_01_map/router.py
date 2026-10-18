@@ -126,9 +126,7 @@ async def get_map_state(
     Owners of the current turn (live tables) or of a past turn
     (ownership journal). Out-of-range -> 422 TURN_OUT_OF_RANGE.
     """
-    return await api_service.build_state(
-        session, get_map_service(), turn
-    )
+    return await api_service.build_state(session, get_map_service(), turn)
 
 
 @router.post(
@@ -140,6 +138,4 @@ async def post_starting_group_check(
     player: Player = Depends(get_current_player),
 ) -> StartingGroupCheckResponse:
     """Connectivity of a would-be starting group (Spec 3.3)."""
-    return api_service.check_starting_group(
-        get_map_service(), body.province_ids
-    )
+    return api_service.check_starting_group(get_map_service(), body.province_ids)

@@ -31,15 +31,18 @@ def test_turn_advances_by_months_per_turn():
 
 def test_format_game_date_renders_dotted_month_name():
     """дд.месяц.гггг for the shipped calendar: turns 0, 1 and 12."""
-    assert format_game_date(
-        compute_game_date(0, CORE_CONFIG), CORE_CONFIG
-    ) == "01.январь.2040"
-    assert format_game_date(
-        compute_game_date(1, CORE_CONFIG), CORE_CONFIG
-    ) == "01.февраль.2040"
-    assert format_game_date(
-        compute_game_date(12, CORE_CONFIG), CORE_CONFIG
-    ) == "01.январь.2041"
+    assert (
+        format_game_date(compute_game_date(0, CORE_CONFIG), CORE_CONFIG)
+        == "01.январь.2040"
+    )
+    assert (
+        format_game_date(compute_game_date(1, CORE_CONFIG), CORE_CONFIG)
+        == "01.февраль.2040"
+    )
+    assert (
+        format_game_date(compute_game_date(12, CORE_CONFIG), CORE_CONFIG)
+        == "01.январь.2041"
+    )
 
 
 def test_far_future_turn_clamps_to_date_max():

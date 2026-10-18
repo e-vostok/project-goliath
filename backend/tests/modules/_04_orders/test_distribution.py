@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import fields as dataclass_fields
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -48,7 +48,7 @@ from tests.fixtures.factories import (
 from tests.modules._03_registry.conftest import bearer_headers
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
-NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 VALID_TITLE = "Приказ о ночном марш-броске"
 VALID_SUMMARY = "Перегруппировать резервы до рассвета."
@@ -65,11 +65,7 @@ SETTINGS = JudgeSettings(
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _c(
@@ -102,15 +98,12 @@ class TestSelectJudgeV1:
         candidates = [
             _c("newer", pending=0, last_assigned_at=newer),
             _c("older", pending=0, last_assigned_at=old),
-            _c("virgin", pending=0),          # never assigned — τ = −∞
+            _c("virgin", pending=0),  # never assigned — τ = −∞
             _c("loaded", pending=2),
         ]
         assert select_judge_v1("author", candidates, SETTINGS) == "virgin"
         # Without the never-assigned player the oldest timestamp wins.
-        assert (
-            select_judge_v1("author", candidates[:2], SETTINGS)
-            == "older"
-        )
+        assert select_judge_v1("author", candidates[:2], SETTINGS) == "older"
         # Equal load and equal timestamp: the smaller id decides.
         twins = [
             _c("z-player", pending=1, last_assigned_at=old),
@@ -147,13 +140,9 @@ class TestSelectJudgeV1:
         consent_only = _c("consent", has_nation=False, consented=True)
         ghost = _c("ghost", has_nation=False, consented=False)
         assert select_judge_v1("a", [nation_only], SETTINGS) == "nation"
-        assert (
-            select_judge_v1("a", [consent_only], SETTINGS) == "consent"
-        )
+        assert select_judge_v1("a", [consent_only], SETTINGS) == "consent"
         assert select_judge_v1("a", [ghost], SETTINGS) is None
-        open_gate = SETTINGS.model_copy(
-            update={"require_reachable": False}
-        )
+        open_gate = SETTINGS.model_copy(update={"require_reachable": False})
         assert select_judge_v1("a", [ghost], open_gate) == "ghost"
 
 
@@ -185,9 +174,7 @@ class TestDistributeFlow:
         outcome = await _submit(test_db_session, author.id)
         assert outcome.created is True
         assert outcome.view.distributed is False
-        order = (
-            await test_db_session.execute(select(Order))
-        ).scalar_one()
+        order = (await test_db_session.execute(select(Order))).scalar_one()
         assert order.judge_player_id is None
 
         result = await OrderService.distribute(test_db_session, order.id)
@@ -234,9 +221,7 @@ class TestDistributeFlow:
         assert outcome.view.distributed is True
         assert outcome.view.can_write_verdict is False  # author view
 
-        order = (
-            await test_db_session.execute(select(Order))
-        ).scalar_one()
+        order = (await test_db_session.execute(select(Order))).scalar_one()
         assert order.judge_player_id == judge.id
         assert _aware(order.distributed_at) == _aware(order.submitted_at)
         assert order.deadline_at is not None
@@ -253,10 +238,14 @@ class TestDistributeFlow:
         assert as_author.can_write_verdict is False
 
         rows = (
-            await test_db_session.execute(
-                select(BotOutbox).order_by(BotOutbox.player_id)
+            (
+                await test_db_session.execute(
+                    select(BotOutbox).order_by(BotOutbox.player_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 2
         by_recipient = {row.player_id: row for row in rows}
 
@@ -278,9 +267,9 @@ class TestDistributeFlow:
         }
 
         # event_at = distributed_at -> expires_at counts from it.
-        assert _aware(judge_row.expires_at) == _aware(
-            order.distributed_at
-        ) + timedelta(minutes=4320)
+        assert _aware(judge_row.expires_at) == _aware(order.distributed_at) + timedelta(
+            minutes=4320
+        )
 
         # Render the judge message through the real renderer: the text
         # quotes the number and the nation — never title or summary.
@@ -297,9 +286,7 @@ class TestDistributeFlow:
             payload=judge_row.payload,
         )
         text = render_message(
-            ComposedMessage(
-                (judge_row.id,), "SINGLE", "ORDER_JUDGE_ASSIGNED", False
-            ),
+            ComposedMessage((judge_row.id,), "SINGLE", "ORDER_JUDGE_ASSIGNED", False),
             {judge_row.id: view},
             orders_bot_started,
         )
@@ -341,10 +328,14 @@ class TestDistributeFlow:
         )
         assert skipped == EnqueueResult.SKIPPED_NO_NATION
         count = (
-            await test_db_session.execute(
-                select(BotOutbox).where(BotOutbox.player_id == judge.id)
+            (
+                await test_db_session.execute(
+                    select(BotOutbox).where(BotOutbox.player_id == judge.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(count) == 1
 
     async def test_deadline_and_reminder_fixed_at_assignment(
@@ -358,9 +349,7 @@ class TestDistributeFlow:
 
         order = await make_order(test_db_session, author, nation=nation)
         assert (
-            await OrderService.distribute(
-                test_db_session, order.id, now=NOW
-            )
+            await OrderService.distribute(test_db_session, order.id, now=NOW)
             == DistributeResult.ASSIGNED
         )
         await test_db_session.refresh(order)
@@ -384,24 +373,16 @@ class TestDistributeFlow:
                 )
             }
         )
-        monkeypatch.setattr(
-            orders_startup_module, "_orders_config", changed
-        )
+        monkeypatch.setattr(orders_startup_module, "_orders_config", changed)
         later = NOW + timedelta(hours=1)
         second = await make_order(test_db_session, author, nation=nation)
         assert (
-            await OrderService.distribute(
-                test_db_session, second.id, now=later
-            )
+            await OrderService.distribute(test_db_session, second.id, now=later)
             == DistributeResult.ASSIGNED
         )
         await test_db_session.refresh(second)
-        assert _aware(second.deadline_at) == later + timedelta(
-            hours=100
-        )
-        assert _aware(second.reminder_at) == later + timedelta(
-            hours=50
-        )
+        assert _aware(second.deadline_at) == later + timedelta(hours=100)
+        assert _aware(second.reminder_at) == later + timedelta(hours=50)
         await test_db_session.refresh(order)
         assert _aware(order.deadline_at) == NOW + timedelta(hours=72)
         assert _aware(order.reminder_at) == NOW + timedelta(hours=54)
@@ -416,17 +397,13 @@ class TestJudgeAnonymity:
             AssignedOrderDTO,
             AssignedOrdersDTO,
         ):
-            assert not [
-                name for name in dto.model_fields if "judge" in name
-            ]
+            assert not [name for name in dto.model_fields if "judge" in name]
         for view in (
             OrderDetailView,
             AssignedOrderView,
             RegistryOrderView,
         ):
-            assert not [
-                f.name for f in dataclass_fields(view) if "judge" in f.name
-            ]
+            assert not [f.name for f in dataclass_fields(view) if "judge" in f.name]
 
     async def test_assigned_list_via_http(
         self, client, test_db_session, orders_started
@@ -484,9 +461,11 @@ class TestJudgeAnonymity:
         tz = CoreConfig.from_yaml(
             CoreConfig.get_default_config_path()
         ).tick.tick_timezone
-        expected = (past_submit + timedelta(hours=72)).astimezone(
-            ZoneInfo(tz)
-        ).strftime("%d.%m.%Y %H:%M")
+        expected = (
+            (past_submit + timedelta(hours=72))
+            .astimezone(ZoneInfo(tz))
+            .strftime("%d.%m.%Y %H:%M")
+        )
         assert items[0] == {
             "number": 1,
             "nation": {

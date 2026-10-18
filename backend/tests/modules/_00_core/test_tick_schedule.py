@@ -14,7 +14,7 @@ Anti-Mock Guard: DB tests run on the shared test_db_session fixture
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -33,7 +33,7 @@ TICK_TZ = ZoneInfo(CORE_CONFIG.tick.tick_timezone)
 
 def _utc(dt: datetime) -> datetime:
     """Normalize a possibly-naive DB datetime to aware UTC."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def _expected_candidates(before: datetime, after: datetime) -> set[datetime]:
@@ -43,9 +43,7 @@ def _expected_candidates(before: datetime, after: datetime) -> set[datetime]:
     two entries only when the window straddles a local tick boundary.
     """
     return {
-        next_tick_after(
-            t, CORE_CONFIG.tick.tick_time, CORE_CONFIG.tick.tick_timezone
-        )
+        next_tick_after(t, CORE_CONFIG.tick.tick_time, CORE_CONFIG.tick.tick_timezone)
         for t in (before, after)
     }
 
@@ -53,7 +51,10 @@ def _expected_candidates(before: datetime, after: datetime) -> set[datetime]:
 def _assert_local_midnight(utc_dt: datetime) -> None:
     local = utc_dt.astimezone(TICK_TZ)
     assert (local.hour, local.minute, local.second, local.microsecond) == (
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
     )
 
 
@@ -62,28 +63,28 @@ class TestNextTickAfter:
 
     def test_midday_returns_coming_midnight_local(self):
         # 12:00 UTC = 15:00 Europe/Moscow -> the same day's midnight MSK.
-        now = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 
         result = next_tick_after(now, "00:00", "Europe/Moscow")
 
-        assert result == datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
+        assert result == datetime(2026, 9, 30, 21, 0, tzinfo=UTC)
 
     def test_same_day_future_tick_time(self):
         # 12:00 UTC = 15:00 MSK -> a 16:30 MSK tick is still today.
-        now = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 
         result = next_tick_after(now, "16:30", "Europe/Moscow")
 
-        assert result == datetime(2026, 9, 30, 13, 30, tzinfo=timezone.utc)
+        assert result == datetime(2026, 9, 30, 13, 30, tzinfo=UTC)
 
     def test_exactly_tick_time_rolls_to_next_day(self):
         # now is exactly 2026-10-01 00:00 Europe/Moscow: strictly-after
         # semantics push the next tick to 2026-10-02 00:00 MSK.
-        now = datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 9, 30, 21, 0, tzinfo=UTC)
 
         result = next_tick_after(now, "00:00", "Europe/Moscow")
 
-        assert result == datetime(2026, 10, 1, 21, 0, tzinfo=timezone.utc)
+        assert result == datetime(2026, 10, 1, 21, 0, tzinfo=UTC)
 
     def test_dst_fallback_shifts_utc_not_local(self):
         """
@@ -92,25 +93,21 @@ class TestNextTickAfter:
         would land at 22:30 UTC (00:30 local Oct 26); per-date scheduling
         must land on local midnight: Oct 26 00:00 CET = 23:00 UTC.
         """
-        now = datetime(2026, 10, 24, 22, 30, tzinfo=timezone.utc)
+        now = datetime(2026, 10, 24, 22, 30, tzinfo=UTC)
 
         result = next_tick_after(now, "00:00", "Europe/Warsaw")
 
-        assert result == datetime(2026, 10, 25, 23, 0, tzinfo=timezone.utc)
+        assert result == datetime(2026, 10, 25, 23, 0, tzinfo=UTC)
         local = result.astimezone(ZoneInfo("Europe/Warsaw"))
         assert (local.hour, local.minute) == (0, 0)
 
     def test_naive_now_raises_value_error(self):
         with pytest.raises(ValueError):
-            next_tick_after(
-                datetime(2026, 9, 30, 12, 0), "00:00", "Europe/Moscow"
-            )
+            next_tick_after(datetime(2026, 9, 30, 12, 0), "00:00", "Europe/Moscow")
 
     def test_invalid_tick_time_raises_value_error(self):
         with pytest.raises(ValueError):
-            next_tick_after(
-                datetime.now(timezone.utc), "24:00", "Europe/Moscow"
-            )
+            next_tick_after(datetime.now(UTC), "24:00", "Europe/Moscow")
 
 
 class TestFormatGameTime:
@@ -121,7 +118,7 @@ class TestFormatGameTime:
 
     def test_aware_instant_converts_to_zone(self):
         # 21:00 UTC == 00:00 the next day in Europe/Moscow (UTC+3).
-        value = datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
+        value = datetime(2026, 9, 30, 21, 0, tzinfo=UTC)
 
         result = format_game_time(value, "Europe/Moscow")
 
@@ -135,7 +132,7 @@ class TestFormatGameTime:
         assert result == "2026-10-01 00:00:00"
 
     def test_microseconds_are_dropped(self):
-        value = datetime(2026, 9, 30, 21, 0, 0, 123456, tzinfo=timezone.utc)
+        value = datetime(2026, 9, 30, 21, 0, 0, 123456, tzinfo=UTC)
 
         result = format_game_time(value, "Europe/Moscow")
 
@@ -143,7 +140,7 @@ class TestFormatGameTime:
 
     def test_non_moscow_zone_applies_its_own_offset(self):
         # Europe/Warsaw is UTC+2 (CEST) on this date, not +3.
-        value = datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
+        value = datetime(2026, 9, 30, 21, 0, tzinfo=UTC)
 
         result = format_game_time(value, "Europe/Warsaw")
 
@@ -154,16 +151,14 @@ class TestFixedTimeScheduleOnDatabase:
     """DB wiring: finalize_tick, admin reset, and the state view."""
 
     @pytest.mark.asyncio
-    async def test_finalize_tick_sets_next_fixed_local_time(
-        self, test_db_session
-    ):
+    async def test_finalize_tick_sets_next_fixed_local_time(self, test_db_session):
         clock = GameClockFactory.build(current_turn=4)
         test_db_session.add(clock)
         await test_db_session.flush()
 
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         await finalize_tick(test_db_session, 5)
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
 
         assert clock.current_turn == 5
         assert clock.last_tick_at is not None
@@ -175,21 +170,19 @@ class TestFixedTimeScheduleOnDatabase:
         assert next_tick_at > before
 
     @pytest.mark.asyncio
-    async def test_admin_reset_realigns_to_fixed_local_time(
-        self, test_db_session
-    ):
+    async def test_admin_reset_realigns_to_fixed_local_time(self, test_db_session):
         test_db_session.add(
             GameClockFactory.build(
                 current_turn=9,
-                last_tick_at=datetime.now(timezone.utc),
-                next_tick_at=datetime.now(timezone.utc),
+                last_tick_at=datetime.now(UTC),
+                next_tick_at=datetime.now(UTC),
             )
         )
         await test_db_session.flush()
 
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         await admin_reset(test_db_session)
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
 
         result = await test_db_session.execute(
             select(GameClock).where(GameClock.id == 1)
@@ -201,12 +194,10 @@ class TestFixedTimeScheduleOnDatabase:
         _assert_local_midnight(next_tick_at)
 
     @pytest.mark.asyncio
-    async def test_state_view_reports_game_timezone_clock(
-        self, test_db_session
-    ):
+    async def test_state_view_reports_game_timezone_clock(self, test_db_session):
         # 2026-10-01 21:00 UTC == 2026-10-02 00:00 Europe/Moscow — the
         # admin view renders it as a plain local string, no offset.
-        next_tick = datetime(2026, 10, 1, 21, 0, tzinfo=timezone.utc)
+        next_tick = datetime(2026, 10, 1, 21, 0, tzinfo=UTC)
         test_db_session.add(GameClockFactory.build(next_tick_at=next_tick))
         await test_db_session.flush()
 

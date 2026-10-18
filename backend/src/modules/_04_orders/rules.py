@@ -56,9 +56,7 @@ def validate_title(value: str, config: OrdersConfig) -> str:
         )
     if "\n" in text or "\r" in text:
         raise OrderTitleInvalidError("название должно быть в одну строку")
-    if any(
-        unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text
-    ):
+    if any(unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text):
         raise OrderTitleInvalidError("содержит недопустимые символы")
     return text
 
@@ -79,8 +77,7 @@ def validate_summary(value: str, config: OrdersConfig) -> str:
             f"{limits.summary_max_length} символов, сейчас {len(text)}"
         )
     if any(
-        ch != "\n" and unicodedata.category(ch) in _FORBIDDEN_CATEGORIES
-        for ch in text
+        ch != "\n" and unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text
     ):
         raise OrderSummaryInvalidError("содержит недопустимые символы")
     return text
@@ -101,9 +98,7 @@ def validate_article_url(
     url = value.strip()
     max_length = config.limits.url_max_length
     if len(url) > max_length:
-        raise OrderUrlInvalidError(
-            f"длиннее {max_length} символов, сейчас {len(url)}"
-        )
+        raise OrderUrlInvalidError(f"длиннее {max_length} символов, сейчас {len(url)}")
     try:
         return validate_vk_article_url(
             url,

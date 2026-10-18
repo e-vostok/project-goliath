@@ -22,11 +22,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta, timezone
-from enum import Enum
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
-from sqlalchemy import event as sa_event
 from sqlalchemy import delete, false, select
+from sqlalchemy import event as sa_event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,7 +56,7 @@ __all__ = [
 ]
 
 
-class EnqueueResult(str, Enum):
+class EnqueueResult(StrEnum):
     QUEUED = "QUEUED"
     DUPLICATE = "DUPLICATE"  # то же событие уже в очереди
     SKIPPED_BOT_OFF = "SKIPPED_BOT_OFF"
@@ -112,8 +112,7 @@ class BotService:
         bad_values = sorted(
             key
             for key, value in variables.items()
-            if isinstance(value, bool)
-            or not isinstance(value, (str, int))
+            if isinstance(value, bool) or not isinstance(value, (str, int))
         )
         if bad_values:
             logger.error(
@@ -134,8 +133,7 @@ class BotService:
         )
         if bad_links:
             logger.error(
-                "enqueue rejected: link variables %s of '%s' fail the "
-                "URL rules",
+                "enqueue rejected: link variables %s of '%s' fail the URL rules",
                 bad_links,
                 type_key,
             )
@@ -145,8 +143,7 @@ class BotService:
         if type_cfg is None:
             # Unreachable past startup validation; stay defensive.
             logger.error(
-                "enqueue rejected: type_key '%s' is absent from "
-                "configs/02_bot.yaml",
+                "enqueue rejected: type_key '%s' is absent from configs/02_bot.yaml",
                 type_key,
             )
             return EnqueueResult.REJECTED_INVALID
@@ -154,9 +151,7 @@ class BotService:
             return EnqueueResult.SKIPPED_TYPE_DISABLED
 
         if type_cfg.requires_nation:
-            nation = await NationService.player_nation_summary(
-                session, player_id
-            )
+            nation = await NationService.player_nation_summary(session, player_id)
             if nation is None:
                 return EnqueueResult.SKIPPED_NO_NATION
 
@@ -165,7 +160,7 @@ class BotService:
         ):
             return EnqueueResult.SKIPPED_NO_CONSENT
 
-        t = now if now is not None else datetime.now(timezone.utc)
+        t = now if now is not None else datetime.now(UTC)
         t0 = event_at if event_at is not None else t
         not_before = t + timedelta(seconds=type_cfg.hold_seconds)
         row = BotOutbox(
@@ -268,7 +263,7 @@ class BotService:
         ``now + dialog.reply_ttl_minutes``. ``now`` only exists for
         tests.
         """
-        t = now if now is not None else datetime.now(timezone.utc)
+        t = now if now is not None else datetime.now(UTC)
         row = BotOutbox(
             player_id=player_id,
             kind="REPLY",
@@ -286,10 +281,7 @@ class BotService:
             created_at=t,
             not_before=t,
             next_attempt_at=t,
-            expires_at=t
-            + timedelta(
-                minutes=get_bot_config().dialog.reply_ttl_minutes
-            ),
+            expires_at=t + timedelta(minutes=get_bot_config().dialog.reply_ttl_minutes),
         )
         # Same SQLite-only transaction opener as enqueue (INV-B1).
         if session.bind.dialect.name == "sqlite":

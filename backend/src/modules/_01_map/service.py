@@ -105,9 +105,7 @@ class MapService:
         """All nodes, ascending id; ``kind`` filters to LAND or SEA."""
         if kind is None:
             return tuple(self._data.nodes.values())
-        return tuple(
-            n for n in self._data.nodes.values() if n.kind == kind
-        )
+        return tuple(n for n in self._data.nodes.values() if n.kind == kind)
 
     # ------------------------------------------------------------- edges
 
@@ -119,14 +117,10 @@ class MapService:
         if edges is None:
             raise UnknownNodeError(node_id)
         if types is None:
-            return tuple(
-                self._data.other_end(e, node_id) for e in edges
-            )
+            return tuple(self._data.other_end(e, node_id) for e in edges)
         wanted = set(types)
         return tuple(
-            self._data.other_end(e, node_id)
-            for e in edges
-            if e.type in wanted
+            self._data.other_end(e, node_id) for e in edges if e.type in wanted
         )
 
     def edge(self, a: int, b: int) -> MapEdge | None:
@@ -157,9 +151,7 @@ class MapService:
             members.add(node_id)
         return members
 
-    def group_components(
-        self, node_ids: Iterable[int]
-    ) -> tuple[frozenset[int], ...]:
+    def group_components(self, node_ids: Iterable[int]) -> tuple[frozenset[int], ...]:
         """
         Spec 3.3: components of the group over ``land`` and ``strait``
         edges between members only. Empty input raises ``ValueError``;
@@ -195,9 +187,7 @@ class MapService:
 
     # ------------------------------------------------------ shortest path
 
-    def shortest_path(
-        self, a: int, b: int, cost_fn: CostFn
-    ) -> PathResult | None:
+    def shortest_path(self, a: int, b: int, cost_fn: CostFn) -> PathResult | None:
         """
         Dijkstra over all edges. ``cost_fn(edge)`` returns the crossing
         cost; ``None`` or ``inf`` means impassable, a negative or NaN

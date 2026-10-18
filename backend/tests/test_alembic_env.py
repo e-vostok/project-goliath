@@ -22,14 +22,14 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 
+import core.settings as core_settings
+from alembic import command
 from core.settings import (
     format_database_target,
     resolve_database_url,
 )
-import core.settings as core_settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -47,17 +47,13 @@ class TestResolveDatabaseUrl:
 
     def test_environment_wins_over_env_file(self, monkeypatch, tmp_path):
         env_file = tmp_path / ".env"
-        env_file.write_text(
-            "DATABASE_URL=sqlite:///from_file.db\n", encoding="utf-8"
-        )
+        env_file.write_text("DATABASE_URL=sqlite:///from_file.db\n", encoding="utf-8")
         url = "sqlite:///from_env.db"
         monkeypatch.setenv("DATABASE_URL", url)
 
         assert resolve_database_url(env_path=env_file) == url
 
-    def test_root_env_file_fallback_is_cwd_independent(
-        self, monkeypatch, tmp_path
-    ):
+    def test_root_env_file_fallback_is_cwd_independent(self, monkeypatch, tmp_path):
         """A root-style .env supplies the URL when the environment is
         empty — the file is found by absolute path, not by cwd."""
         fake_root = tmp_path / "repo"
@@ -97,9 +93,7 @@ class TestResolveDatabaseUrl:
 class TestAlembicEndToEnd:
     def test_upgrade_uses_environment_url(self, tmp_path, monkeypatch, capsys):
         db_file = tmp_path / "target.db"
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
 
         command.upgrade(_alembic_cfg(), "head")
 
@@ -117,9 +111,7 @@ class TestAlembicEndToEnd:
         # One masked target line was printed, with no password and no
         # silent SQLite fallback.
         err = capsys.readouterr().err
-        target_lines = [
-            line for line in err.splitlines() if "Alembic target:" in line
-        ]
+        target_lines = [line for line in err.splitlines() if "Alembic target:" in line]
         assert len(target_lines) == 1
         assert target_lines[0].startswith("Alembic target: sqlite:///")
         assert "target.db" in target_lines[0]
@@ -140,14 +132,14 @@ class TestAlembicEndToEnd:
 
         assert db_file.exists()
 
-    def test_missing_url_aborts_before_any_migration(
-        self, tmp_path, monkeypatch
-    ):
+    def test_missing_url_aborts_before_any_migration(self, tmp_path, monkeypatch):
         """No URL anywhere → RuntimeError naming the variable and the
         .env path, and not a single database file is created."""
         monkeypatch.delenv("DATABASE_URL", raising=False)
         monkeypatch.setattr(
-            core_settings, "ENV_PATH", tmp_path / ".env"  # absent
+            core_settings,
+            "ENV_PATH",
+            tmp_path / ".env",  # absent
         )
 
         with pytest.raises(RuntimeError) as exc_info:
@@ -232,18 +224,14 @@ class TestToSyncDatabaseUrl:
 
 
 class TestLoggingPreservation:
-    def test_upgrade_does_not_disable_existing_loggers(
-        self, tmp_path, monkeypatch
-    ):
+    def test_upgrade_does_not_disable_existing_loggers(self, tmp_path, monkeypatch):
         """fileConfig() in env.py must not disable loggers created
         before the upgrade: in-process alembic runs (tests, tooling)
         share the interpreter with the application (FIX-ENV)."""
         import logging
 
         db_file = tmp_path / "loggers.db"
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
         sentinel = logging.getLogger("tests.sentinel")
         sentinel.disabled = False
 

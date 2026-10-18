@@ -15,10 +15,10 @@ import pytest
 
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_live_client,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_live_client,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import STARTING_GROUP
@@ -53,9 +53,7 @@ class TestMapApiOnPostgres:
             headers=headers,
         )
         assert geo.status_code == 200
-        assert geo.headers["cache-control"] == (
-            "public, max-age=31536000, immutable"
-        )
+        assert geo.headers["cache-control"] == ("public, max-age=31536000, immutable")
 
         wrong = await pg_live_client.get(
             "/api/v1/map/geometry/000000000000", headers=headers
@@ -111,9 +109,7 @@ class TestMapApiOnPostgres:
         )
         assert created.status_code == 201, created.text
 
-        tick = await pg_live_client.post(
-            "/api/v1/admin/tick/run", headers=admin
-        )
+        tick = await pg_live_client.post("/api/v1/admin/tick/run", headers=admin)
         assert tick.status_code == 200 and tick.json()["current_turn"] == 1
         deleted = await pg_live_client.request(
             "DELETE",
@@ -123,9 +119,7 @@ class TestMapApiOnPostgres:
         )
         assert deleted.status_code == 204
 
-        past = await pg_live_client.get(
-            STATE_URL, params={"turn": 0}, headers=admin
-        )
+        past = await pg_live_client.get(STATE_URL, params={"turn": 0}, headers=admin)
         assert past.status_code == 200
         body = past.json()
         assert body["owners"] == [[pid, 0] for pid in STARTING_GROUP]

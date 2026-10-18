@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import itertools
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from polyfactory.factories.sqlalchemy_factory import SQLAlchemyFactory
-from sqlalchemy import func as sa_func, select as sa_select
+from sqlalchemy import func as sa_func
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.models import (
@@ -38,15 +39,23 @@ from tests.fixtures.profile import VALID_PROFILE
 
 def utcnow():
     """Helper to get current UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
+def _new_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def _new_short_name() -> str:
+    return f"N{uuid.uuid4().hex[:15]}"
 
 
 class PlayerFactory(SQLAlchemyFactory[Player]):
     """Factory for creating Player instances."""
-    
+
     __model__ = Player
-    
-    id = lambda: str(uuid.uuid4())
+
+    id = _new_uuid
     vk_user_id = 1234567890
     created_at = utcnow
     level = LEVEL_DEFAULT
@@ -55,10 +64,10 @@ class PlayerFactory(SQLAlchemyFactory[Player]):
 
 class NationFactory(SQLAlchemyFactory[Nation]):
     """Factory for creating Nation instances."""
-    
+
     __model__ = Nation
-    
-    id = lambda: str(uuid.uuid4())
+
+    id = _new_uuid
     owner_player_id = None  # Set explicitly in tests
     name = "Test Nation"
     color_hex = "#FF0000"
@@ -66,7 +75,7 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     leader_title = VALID_PROFILE["leader_title"]
     history_url = VALID_PROFILE["history_url"]
     # UNIQUE (INV-11): each built nation gets a fresh short name.
-    short_name = lambda: f"N{uuid.uuid4().hex[:15]}"
+    short_name = _new_short_name
     gender = VALID_PROFILE["gender"]
     succession_type = VALID_PROFILE["succession_type"]
     capital_name = VALID_PROFILE["capital_name"]
@@ -89,9 +98,9 @@ class ProvinceFactory(SQLAlchemyFactory[Province]):
 
 class GameClockFactory(SQLAlchemyFactory[GameClock]):
     """Factory for creating GameClock instances."""
-    
+
     __model__ = GameClock
-    
+
     id = 1
     current_turn = 0
     last_tick_at = None
@@ -100,10 +109,10 @@ class GameClockFactory(SQLAlchemyFactory[GameClock]):
 
 class ScheduledActionFactory(SQLAlchemyFactory[ScheduledAction]):
     """Factory for creating ScheduledAction instances."""
-    
+
     __model__ = ScheduledAction
-    
-    id = lambda: str(uuid.uuid4())
+
+    id = _new_uuid
     nation_id = None  # Set explicitly in tests
     module_slug = "test_module"
     action_type = "test_action"
@@ -117,9 +126,9 @@ class ScheduledActionFactory(SQLAlchemyFactory[ScheduledAction]):
 
 class TickLogFactory(SQLAlchemyFactory[TickLog]):
     """Factory for creating TickLog instances."""
-    
+
     __model__ = TickLog
-    
+
     turn_number = 1
     started_at = utcnow
     finished_at = None
@@ -201,9 +210,7 @@ async def make_order(
         reminder_at = reminder_at or distributed_at + timedelta(hours=54)
     if verdict_at is not None:
         verdict_title = verdict_title if verdict_title is not None else title
-        verdict_summary = (
-            verdict_summary if verdict_summary is not None else summary
-        )
+        verdict_summary = verdict_summary if verdict_summary is not None else summary
         verdict_url = verdict_url if verdict_url is not None else article_url
     if number is None:
         # Spec 3.5: the public number is the next after the maximum.

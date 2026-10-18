@@ -25,13 +25,13 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import core.db as core_db
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator
@@ -47,9 +47,9 @@ from modules._01_map.ownership_service import (
 )
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._00_core.test_router import (
@@ -122,17 +122,12 @@ async def live_client(tmp_path, monkeypatch):
     # Alembic's env.py reads DATABASE_URL — point it at the tmp file.
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
     command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
-    _set_test_env(
-        monkeypatch, f"sqlite+aiosqlite:///{db_file.as_posix()}"
-    )
+    _set_test_env(monkeypatch, f"sqlite+aiosqlite:///{db_file.as_posix()}")
     saved = _snapshot_process_state()
     try:
         started = time.monotonic()
         async with LifespanManager(app) as manager:
-            print(
-                f"\n[e2e startup, real map] "
-                f"{time.monotonic() - started:.2f}s"
-            )
+            print(f"\n[e2e startup, real map] {time.monotonic() - started:.2f}s")
             transport = ASGITransport(app=manager.app)
             async with AsyncClient(
                 transport=transport, base_url="http://test"
@@ -147,9 +142,7 @@ async def live_client(tmp_path, monkeypatch):
 
 
 @pytest_asyncio.fixture
-async def pg_real_map_client(
-    pg_url: str, pg_clean: None, monkeypatch
-):
+async def pg_real_map_client(pg_url: str, pg_clean: None, monkeypatch):  # noqa: F811
     """Same as ``pg_live_client`` but on the REAL map tree."""
     _set_test_env(monkeypatch, pg_url)
     saved = _snapshot_process_state()
@@ -197,9 +190,7 @@ async def _full_scenario(client: AsyncClient) -> None:
     # ~1.9 MB of SVG path data — a sane floor proves it is the real file.
     assert len(geometry.content) > 1_000_000
 
-    again = await client.get(
-        MANIFEST_URL, headers={**player, "If-None-Match": etag}
-    )
+    again = await client.get(MANIFEST_URL, headers={**player, "If-None-Match": etag})
     assert again.status_code == 304
 
     # -- starting-group check ------------------------------------------
@@ -262,9 +253,7 @@ async def _full_scenario(client: AsyncClient) -> None:
     assert state.status_code == 200
     state_body = state.json()
     assert state_body["turn"] == 0
-    assert sorted(pid for pid, _ in state_body["owners"]) == sorted(
-        CONNECTED_FIVE
-    )
+    assert sorted(pid for pid, _ in state_body["owners"]) == sorted(CONNECTED_FIVE)
     owner_entry = state_body["nations"][0]
     assert owner_entry["id"] == nation_id
     assert owner_entry["name"] == "Alpine League"
@@ -291,12 +280,8 @@ async def _full_scenario(client: AsyncClient) -> None:
     # Turn 0 keeps the owner as at turn 0; a future turn is out of range.
     past = await client.get(STATE_URL, params={"turn": 0}, headers=player)
     assert past.status_code == 200
-    assert sorted(p for p, _ in past.json()["owners"]) == sorted(
-        CONNECTED_FIVE
-    )
-    out_of_range = await client.get(
-        STATE_URL, params={"turn": 2}, headers=player
-    )
+    assert sorted(p for p, _ in past.json()["owners"]) == sorted(CONNECTED_FIVE)
+    out_of_range = await client.get(STATE_URL, params={"turn": 2}, headers=player)
     assert out_of_range.status_code == 422
     assert out_of_range.json()["code"] == "TURN_OUT_OF_RANGE"
 
@@ -325,14 +310,10 @@ async def _full_scenario(client: AsyncClient) -> None:
 
     # The past-turn view still shows the owner — with id = null now
     # that the nation is gone (name/colour survive on the journal).
-    past_after_delete = await client.get(
-        STATE_URL, params={"turn": 0}, headers=player
-    )
+    past_after_delete = await client.get(STATE_URL, params={"turn": 0}, headers=player)
     assert past_after_delete.status_code == 200
     past_body = past_after_delete.json()
-    assert sorted(p for p, _ in past_body["owners"]) == sorted(
-        CONNECTED_FIVE
-    )
+    assert sorted(p for p, _ in past_body["owners"]) == sorted(CONNECTED_FIVE)
     assert past_body["nations"] == [
         {"id": None, "name": "Alpine League", "color_hex": "#4A90D9"}
     ]
@@ -357,9 +338,7 @@ class TestE2EAcceptancePostgres:
 
 class TestStartupFailure:
     @pytest.mark.asyncio
-    async def test_altered_manifest_byte_fails_boot(
-        self, tmp_path, monkeypatch
-    ):
+    async def test_altered_manifest_byte_fails_boot(self, tmp_path, monkeypatch):
         """
         A copy of data/map with ONE byte flipped in manifest.json must
         fail startup with MapDataError (INV-M6: geometry pin mismatch);
@@ -379,15 +358,9 @@ class TestStartupFailure:
         manifest_path.write_bytes(corrupted)
 
         db_file = tmp_path / "corrupt.db"
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-        )
-        command.upgrade(
-            Config(str(BACKEND_DIR / "alembic.ini")), "head"
-        )
-        _set_test_env(
-            monkeypatch, f"sqlite+aiosqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
+        command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
+        _set_test_env(monkeypatch, f"sqlite+aiosqlite:///{db_file.as_posix()}")
         monkeypatch.setenv("MAP_DATA_DIR", str(data_copy))
         saved = _snapshot_process_state()
         try:
@@ -406,30 +379,21 @@ class TestStartupFailure:
     async def test_real_files_boot(self, tmp_path, monkeypatch):
         """The unmodified data/map boots — the e2e's positive control."""
         db_file = tmp_path / "boot.db"
-        monkeypatch.setenv(
-            "DATABASE_URL", f"sqlite:///{db_file.as_posix()}"
-        )
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
         command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
-        _set_test_env(
-            monkeypatch, f"sqlite+aiosqlite:///{db_file.as_posix()}"
-        )
+        _set_test_env(monkeypatch, f"sqlite+aiosqlite:///{db_file.as_posix()}")
         saved = _snapshot_process_state()
         try:
             started = time.monotonic()
             async with LifespanManager(app) as manager:
                 elapsed = time.monotonic() - started
                 print(f"\n[real-map lifespan boot] {elapsed:.2f}s")
-                assert (
-                    len(map_service_module.get_map_service().all_nodes())
-                    == 1067
-                )
+                assert len(map_service_module.get_map_service().all_nodes()) == 1067
                 transport = ASGITransport(app=manager.app)
                 async with AsyncClient(
                     transport=transport, base_url="http://test"
                 ) as client:
-                    assert (
-                        await client.get("/health")
-                    ).status_code == 200
+                    assert (await client.get("/health")).status_code == 200
         finally:
             _restore_process_state(saved)
             if core_db._engine is not None:

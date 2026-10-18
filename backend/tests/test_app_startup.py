@@ -13,12 +13,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator
 from main import app
@@ -59,8 +59,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -68,9 +67,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     AdminRegistry._reset_hooks.clear()
@@ -92,6 +89,6 @@ async def test_auth_vk_served_by_real_startup(live_client):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["token_type"] == "bearer"
+    assert body["token_type"] == "bearer"  # noqa: S105
     assert body["access_token"]
     assert body["player"]["vk_user_id"] == 999001

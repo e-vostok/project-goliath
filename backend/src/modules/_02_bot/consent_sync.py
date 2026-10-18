@@ -12,7 +12,7 @@ is written after it.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _aware(value: datetime | None) -> datetime | None:
     """SQLite returns naive datetimes for ``timezone=True`` columns."""
     if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 
@@ -50,16 +50,12 @@ async def sync_consent_with_vk(
     last one is within the minimum interval, which returns
     ``throttled=True``. Returns ``(state, stale, throttled)``.
     """
-    t = now if now is not None else datetime.now(timezone.utc)
-    row = await consent_mod.get_or_create_consent(
-        session, player.id, now=t
-    )
+    t = now if now is not None else datetime.now(UTC)
+    row = await consent_mod.get_or_create_consent(session, player.id, now=t)
     last = _aware(row.last_checked_at)
 
-    within_min_interval = (
-        last is not None
-        and (t - last)
-        < timedelta(seconds=config.consent.refresh_min_interval_seconds)
+    within_min_interval = last is not None and (t - last) < timedelta(
+        seconds=config.consent.refresh_min_interval_seconds
     )
     if force:
         if within_min_interval:
@@ -68,16 +64,13 @@ async def sync_consent_with_vk(
         needs_check = (
             row.state == "UNKNOWN"
             or last is None
-            or (t - last)
-            > timedelta(seconds=config.consent.recheck_after_seconds)
+            or (t - last) > timedelta(seconds=config.consent.recheck_after_seconds)
         )
         if not needs_check or within_min_interval:
             return row.state, False, False
 
     runtime = get_runtime()
-    vk_user_id = (
-        await PlayerService.vk_user_ids(session, [player.id])
-    ).get(player.id)
+    vk_user_id = (await PlayerService.vk_user_ids(session, [player.id])).get(player.id)
     allowed = None
     if runtime is not None and vk_user_id is not None:
         allowed = await runtime.check_allowed(vk_user_id)
@@ -85,7 +78,5 @@ async def sync_consent_with_vk(
         # VK unreachable, breaker open or no runtime: keep the stored
         # state and flag it stale (Spec 3.7).
         return row.state, True, False
-    transition = await consent_mod.record_vk_check(
-        session, player.id, allowed, now=t
-    )
+    transition = await consent_mod.record_vk_check(session, player.id, allowed, now=t)
     return transition.new, False, False

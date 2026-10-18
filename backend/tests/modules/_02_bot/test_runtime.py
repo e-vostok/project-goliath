@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 
 import pytest
@@ -22,7 +22,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from core.db import Base
-
 from core.tick.orchestrator import TickOrchestrator
 from modules._00_core.models import GameClock
 from modules._00_core.tick_handler import finalize_tick
@@ -59,9 +58,7 @@ async def file_db_engine(tmp_path):
     dropped connection must not take the whole in-memory schema with
     it (StaticPool :memory: artifact — production runs on a file or
     PostgreSQL, where the schema always survives)."""
-    engine = create_async_engine(
-        f"sqlite+aiosqlite:///{tmp_path}/bot_runtime.db"
-    )
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/bot_runtime.db")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -91,9 +88,7 @@ async def _wait_for(predicate, timeout=8.0):
 
 
 class TestModes:
-    async def test_off_starts_nothing(
-        self, test_db_engine, bot_off_env, bot_config
-    ):
+    async def test_off_starts_nothing(self, test_db_engine, bot_off_env, bot_config):
         """BOT_ENABLED unset -> OFF: start_runtime_if_ready returns
         None and no runtime is registered."""
         sf = make_session_factory(test_db_engine)
@@ -103,13 +98,11 @@ class TestModes:
 
 
 class TestEndToEnd:
-    async def test_ready_sends_one_notification(
-        self, file_db_engine, bot_started
-    ):
+    async def test_ready_sends_one_notification(self, file_db_engine, bot_started):
         """READY + fake VK: the runtime claims the queued row, sends
         it, writes SENT — and stop() leaves a clean queue."""
         sf = make_session_factory(file_db_engine)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with sf() as session:
             player = await add_member(session)
             row = await add_outbox(
@@ -139,17 +132,13 @@ class TestEndToEnd:
                 async with sf() as session:
                     return (
                         await session.execute(
-                            select(BotOutbox.status).where(
-                                BotOutbox.id == row_id
-                            )
+                            select(BotOutbox.status).where(BotOutbox.id == row_id)
                         )
                     ).scalar_one() == "SENT"
 
             await _wait_for(_sent)
             assert len(fake.send_requests()) == 1
-            form = parse_qs(
-                fake.send_requests()[0].content.decode()
-            )
+            form = parse_qs(fake.send_requests()[0].content.decode())
             assert int(form["random_id"][0]) == (
                 (await _row(file_db_engine, row_id)).random_id
             )
@@ -162,22 +151,22 @@ class TestEndToEnd:
         assert get_bot_mode(env) is BotMode.READY
         async with sf() as session:
             leased = (
-                await session.execute(
-                    select(BotOutbox).where(
-                        BotOutbox.status == "LEASED"
+                (
+                    await session.execute(
+                        select(BotOutbox).where(BotOutbox.status == "LEASED")
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert leased == []
 
-    async def test_vk_down_tick_still_completes(
-        self, file_db_engine, bot_started
-    ):
+    async def test_vk_down_tick_still_completes(self, file_db_engine, bot_started):
         """T18: every VK request fails while the runtime is up — the
         real tick still completes, current_turn advances, and the
         watcher turns it into a digest row for the player."""
         sf = make_session_factory(file_db_engine)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with sf() as session:
             session.add(
                 GameClock(
@@ -199,13 +188,11 @@ class TestEndToEnd:
         try:
             # The tick runs through the real path while VK is dead.
             async with sf() as session:
-                outcome = await TickOrchestrator.run_tick(session)
+                await TickOrchestrator.run_tick(session)
                 await session.commit()
             async with sf() as session:
                 turn = (
-                    await session.execute(
-                        select(GameClock.current_turn)
-                    )
+                    await session.execute(select(GameClock.current_turn))
                 ).scalar_one()
             assert turn == 1
 
@@ -232,12 +219,14 @@ class TestEndToEnd:
             # Nothing ever reached SENT — VK was down the whole time.
             async with sf() as session:
                 sent = (
-                    await session.execute(
-                        select(BotOutbox.id).where(
-                            BotOutbox.status == "SENT"
+                    (
+                        await session.execute(
+                            select(BotOutbox.id).where(BotOutbox.status == "SENT")
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
             assert sent == []
         finally:
             await runtime.stop()
@@ -247,9 +236,7 @@ class TestEndToEnd:
         async with sf() as session:
             statuses = {
                 row.status
-                for row in (
-                    await session.execute(select(BotOutbox))
-                ).scalars()
+                for row in (await session.execute(select(BotOutbox))).scalars()
             }
         assert statuses <= {"PENDING", "DROPPED", "FAILED"}
 
@@ -257,7 +244,5 @@ class TestEndToEnd:
 async def _row(engine, row_id) -> BotOutbox:
     async with make_session_factory(engine)() as session:
         return (
-            await session.execute(
-                select(BotOutbox).where(BotOutbox.id == row_id)
-            )
+            await session.execute(select(BotOutbox).where(BotOutbox.id == row_id))
         ).scalar_one()

@@ -17,12 +17,12 @@ from __future__ import annotations
 import time
 from collections import deque
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 
 from modules._02_bot.config_schema import BreakerSettings
 
 
-class BreakerState(str, Enum):
+class BreakerState(StrEnum):
     """Circuit breaker states (Spec 3.5)."""
 
     CLOSED = "CLOSED"
@@ -98,10 +98,7 @@ class CircuitBreaker:
             return
         if self._state != BreakerState.CLOSED or not counts:
             return
-        while (
-            self._window
-            and now - self._window[0][0] > self._window_seconds
-        ):
+        while self._window and now - self._window[0][0] > self._window_seconds:
             self._window.popleft()
         self._window.append((now, not success))
         n = len(self._window)

@@ -59,9 +59,7 @@ def resolve_data_dir() -> Path:
     return Path(raw) if raw else _DEFAULT_DATA_DIR
 
 
-def _verify_inv_m5(
-    result: EnsureNodesResult, removal: RetiredRemovalResult
-) -> None:
+def _verify_inv_m5(result: EnsureNodesResult, removal: RetiredRemovalResult) -> None:
     """provinces == manifest, or startup dies here (INV-M5).
 
     ``extra_in_db`` minus the retired rows just removed is what stays
@@ -106,14 +104,9 @@ async def startup_map() -> MapService:
         # left unexpected as fatal, and commit only on success.
         result = await ProvinceService.ensure_nodes(
             session,
-            [
-                NodeSpec(id=node.id, kind=node.kind)
-                for node in map_data.nodes.values()
-            ],
+            [NodeSpec(id=node.id, kind=node.kind) for node in map_data.nodes.values()],
         )
-        history_ids = await province_ids_with_journal(
-            session, map_data.retired_ids
-        )
+        history_ids = await province_ids_with_journal(session, map_data.retired_ids)
         removal = await ProvinceService.remove_retired(
             session, map_data.retired_ids, history_ids=history_ids
         )

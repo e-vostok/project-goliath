@@ -15,13 +15,13 @@ import logging
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator
@@ -31,6 +31,14 @@ from modules._00_core.hooks import (
     snapshot_extension_points,
 )
 from modules._00_core.models import Player, Province
+from tests.core.admin.test_router import (
+    ADMIN_VK_ID,
+    BACKEND_DIR,
+    PG_TEST_URL,
+    USER_VK_ID,
+    _async_url,
+    _reset_pg_schema,
+)
 from tests.fixtures.factories import (
     NationFactory,
     make_consent,
@@ -43,14 +51,6 @@ from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
     make_launch_params,
-)
-from tests.core.admin.test_router import (
-    ADMIN_VK_ID,
-    USER_VK_ID,
-    BACKEND_DIR,
-    PG_TEST_URL,
-    _async_url,
-    _reset_pg_schema,
 )
 
 TARGET_VK_ID = 888111
@@ -82,8 +82,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -91,9 +90,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     AdminRegistry._state_view_hooks.clear()
@@ -175,15 +172,11 @@ class TestPlayerDeleteAuthorization:
     """The two endpoints obey require_admin like every admin route."""
 
     @pytest.mark.asyncio
-    async def test_non_admin_gets_403_on_both_endpoints(
-        self, live_client, monkeypatch
-    ):
+    async def test_non_admin_gets_403_on_both_endpoints(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _auth_headers(live_client, USER_VK_ID)
 
-        preview = await live_client.get(
-            _preview_url(TARGET_VK_ID), headers=headers
-        )
+        preview = await live_client.get(_preview_url(TARGET_VK_ID), headers=headers)
         delete = await live_client.post(
             _delete_url(TARGET_VK_ID),
             json={"confirm_vk_user_id": TARGET_VK_ID},
@@ -203,25 +196,19 @@ class TestPlayerDeletePreview:
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _auth_headers(live_client, ADMIN_VK_ID)
 
-        response = await live_client.get(
-            _preview_url(999999999), headers=headers
-        )
+        response = await live_client.get(_preview_url(999999999), headers=headers)
 
         assert response.status_code == 404
         assert response.json()["code"] == "PLAYER_NOT_FOUND"
 
     @pytest.mark.asyncio
-    async def test_preview_counts_what_will_disappear(
-        self, live_client, monkeypatch
-    ):
+    async def test_preview_counts_what_will_disappear(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _auth_headers(live_client, ADMIN_VK_ID)
         await _auth_headers(live_client, TARGET_VK_ID)
         await _seed_target_world()
 
-        response = await live_client.get(
-            _preview_url(TARGET_VK_ID), headers=headers
-        )
+        response = await live_client.get(_preview_url(TARGET_VK_ID), headers=headers)
 
         assert response.status_code == 200
         body = response.json()
@@ -266,9 +253,7 @@ class TestPlayerDelete:
         assert response.json() == preview
 
         # The player row is gone; a repeated preview is a 404.
-        followup = await live_client.get(
-            _preview_url(TARGET_VK_ID), headers=headers
-        )
+        followup = await live_client.get(_preview_url(TARGET_VK_ID), headers=headers)
         assert followup.status_code == 404
         async with get_session_context() as session:
             gone = await session.execute(
@@ -276,21 +261,13 @@ class TestPlayerDelete:
             )
             assert gone.scalar_one_or_none() is None
             freed = await session.execute(
-                select(Province).where(
-                    Province.id.in_(map_mini_node_ids()[:2])
-                )
+                select(Province).where(Province.id.in_(map_mini_node_ids()[:2]))
             )
-            assert all(
-                p.nation_id is None for p in freed.scalars().all()
-            )
+            assert all(p.nation_id is None for p in freed.scalars().all())
 
         # One WARNING audit line naming the admin, the target and the
         # counts.
-        audit = [
-            r
-            for r in caplog.records
-            if "admin_player_delete" in r.getMessage()
-        ]
+        audit = [r for r in caplog.records if "admin_player_delete" in r.getMessage()]
         assert len(audit) == 1
         assert audit[0].levelno == logging.WARNING
         message = audit[0].getMessage()
@@ -299,9 +276,7 @@ class TestPlayerDelete:
         assert "provinces_released" in message
 
     @pytest.mark.asyncio
-    async def test_confirmation_mismatch_422(
-        self, live_client, monkeypatch
-    ):
+    async def test_confirmation_mismatch_422(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _auth_headers(live_client, ADMIN_VK_ID)
         await _auth_headers(live_client, TARGET_VK_ID)
@@ -333,9 +308,7 @@ class TestPlayerDelete:
     async def test_cannot_delete_admin_409(self, live_client, monkeypatch):
         """A player whose VK id sits on the admin allowlist is never
         deletable — even when the caller is a different admin."""
-        monkeypatch.setenv(
-            "ADMIN_VK_USER_IDS", f"{ADMIN_VK_ID},{OTHER_ADMIN_VK_ID}"
-        )
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", f"{ADMIN_VK_ID},{OTHER_ADMIN_VK_ID}")
         headers = await _auth_headers(live_client, ADMIN_VK_ID)
         await _auth_headers(live_client, OTHER_ADMIN_VK_ID)
 

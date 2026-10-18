@@ -22,9 +22,7 @@ router = APIRouter(prefix="/api/v1")
 async def api_health() -> JSONResponse:
     config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     database = await checks.database_status()
-    scheduler = checks.scheduler_status(
-        config.tick.health_max_heartbeat_age_seconds
-    )
+    scheduler = checks.scheduler_status(config.tick.health_max_heartbeat_age_seconds)
     healthy = database == "ok" and scheduler == "ok"
     return JSONResponse(
         status_code=200 if healthy else 503,

@@ -10,7 +10,7 @@ the runtime/sender steps open their own sessions, so tests work with
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -18,28 +18,20 @@ from modules._00_core.models import Nation, Player
 from modules._02_bot.models import BotConsent, BotOutbox, BotState
 from tests.fixtures.profile import VALID_PROFILE
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def make_session_factory(engine):
     """A ``get_session_context``-shaped factory over the test engine."""
-    return async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
+    return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
-async def add_player(
-    session: AsyncSession, vk_user_id: int | None = None
-) -> Player:
+async def add_player(session: AsyncSession, vk_user_id: int | None = None) -> Player:
     player = Player(
         id=str(uuid.uuid4()),
         vk_user_id=vk_user_id or uuid.uuid4().int % 10**9,
@@ -152,9 +144,7 @@ async def add_outbox(
     return row
 
 
-async def add_bot_state(
-    session: AsyncSession, last_digest_turn: int = 0
-) -> BotState:
+async def add_bot_state(session: AsyncSession, last_digest_turn: int = 0) -> BotState:
     row = BotState(id=1, last_digest_turn=last_digest_turn)
     session.add(row)
     await session.flush()

@@ -48,9 +48,7 @@ _orders_allowed_hosts: tuple[str, ...] | None = None
 def get_orders_config() -> OrdersConfig:
     """The config loaded by :func:`startup_orders`; raises before it ran."""
     if _orders_config is None:
-        raise RuntimeError(
-            "OrdersConfig is not loaded — startup_orders() has not run"
-        )
+        raise RuntimeError("OrdersConfig is not loaded — startup_orders() has not run")
     return _orders_config
 
 

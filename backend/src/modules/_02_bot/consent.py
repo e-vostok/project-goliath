@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,9 +38,7 @@ CONSENT_SOURCES = frozenset(
 
 # VK send errors meaning the player blocked/never allowed the bot —
 # pending rows drop as BLOCKED rather than NO_CONSENT (Spec 2.7).
-_BLOCKED_DROP_SOURCES = frozenset(
-    {"VK_ERROR_900", "VK_ERROR_901", "VK_ERROR_902"}
-)
+_BLOCKED_DROP_SOURCES = frozenset({"VK_ERROR_900", "VK_ERROR_901", "VK_ERROR_902"})
 
 
 @dataclass(frozen=True)
@@ -64,7 +62,7 @@ async def get_or_create_consent(
     )
     consent = result.scalar_one_or_none()
     if consent is None:
-        t = now if now is not None else datetime.now(timezone.utc)
+        t = now if now is not None else datetime.now(UTC)
         consent = BotConsent(
             player_id=player_id,
             state="UNKNOWN",
@@ -94,12 +92,10 @@ async def apply_consent_signal(
     Every DENIED signal drops the player's PENDING NOTIFICATION rows.
     """
     if new_state not in ("ALLOWED", "DENIED"):
-        raise ValueError(
-            f"new_state must be 'ALLOWED' or 'DENIED', got {new_state!r}"
-        )
+        raise ValueError(f"new_state must be 'ALLOWED' or 'DENIED', got {new_state!r}")
     if source not in CONSENT_SOURCES:
         raise ValueError(f"unknown consent signal source {source!r}")
-    t = now if now is not None else datetime.now(timezone.utc)
+    t = now if now is not None else datetime.now(UTC)
 
     consent = await get_or_create_consent(session, player_id, now=t)
     old = consent.state
@@ -113,9 +109,7 @@ async def apply_consent_signal(
     await session.flush()
 
     if new_state == "DENIED":
-        drop_reason = (
-            "BLOCKED" if source in _BLOCKED_DROP_SOURCES else "NO_CONSENT"
-        )
+        drop_reason = "BLOCKED" if source in _BLOCKED_DROP_SOURCES else "NO_CONSENT"
         await session.execute(
             update(BotOutbox)
             .where(
@@ -161,9 +155,7 @@ async def is_allowed(session: AsyncSession, player_id: str) -> bool:
     return result.scalar_one_or_none() == "ALLOWED"
 
 
-async def allowed_ids(
-    session: AsyncSession, player_ids: Iterable[str]
-) -> set[str]:
+async def allowed_ids(session: AsyncSession, player_ids: Iterable[str]) -> set[str]:
     """
     The subset of ``player_ids`` whose stored consent state is ALLOWED —
     the batched counterpart of :func:`is_allowed` for producers that

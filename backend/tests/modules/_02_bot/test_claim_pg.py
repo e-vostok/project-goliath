@@ -19,22 +19,18 @@ from datetime import timedelta
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import select
 
 from modules._02_bot.claim import claim_batch
-from modules._02_bot.config_schema import BotConfig
-from modules._02_bot.models import BotOutbox
 from modules._02_bot.service import BotService
 from modules._02_bot.settings import BotEnv
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.modules._02_bot._issue3_support import (
     NOW,
-    add_consent,
     add_member,
     add_outbox,
 )
@@ -44,8 +40,8 @@ pytestmark = pytest.mark.postgres
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )
@@ -60,9 +56,7 @@ _DIGEST_VARS = {
 
 
 class TestConcurrentClaims:
-    async def test_skip_locked_disjoint_rows(
-        self, pg_db, bot_config
-    ):
+    async def test_skip_locked_disjoint_rows(self, pg_db, bot_config):
         """Worker A leases the two oldest players' rows and holds the
         transaction open; worker B (larger batch) skips the locked
         rows and leases only the third player's — disjoint, no wait."""
@@ -88,9 +82,7 @@ class TestConcurrentClaims:
         await session_a.begin()
         try:
             groups_a = await claim_batch(session_a, small, ENV, NOW)
-            rows_a = {
-                row_id for g in groups_a for row_id in g.row_ids
-            }
+            rows_a = {row_id for g in groups_a for row_id in g.row_ids}
             assert len(rows_a) == 2
 
             # Worker B sees all three players but must not wait on A's
@@ -102,9 +94,7 @@ class TestConcurrentClaims:
                     claim_batch(session_b, bot_config, ENV, NOW),
                     timeout=15,
                 )
-                rows_b = {
-                    row_id for g in groups_b for row_id in g.row_ids
-                }
+                rows_b = {row_id for g in groups_b for row_id in g.row_ids}
                 assert len(rows_b) == 1
                 assert rows_a.isdisjoint(rows_b)
                 # B's row belongs to the newest (unlocked) player.
@@ -118,22 +108,16 @@ class TestConcurrentClaims:
 
 
 class TestNoSqliteWorkaround:
-    async def test_enqueue_issues_no_noop_delete(
-        self, pg_db, bot_config, bot_started
-    ):
+    async def test_enqueue_issues_no_noop_delete(self, pg_db, bot_config, bot_started):
         """The DELETE-WHERE-false transaction kick is SQLite-only;
         on PostgreSQL enqueue emits none."""
         statements: list[str] = []
         engine = pg_db.kw["bind"]
 
-        def _capture(
-            conn, cursor, statement, parameters, context, executemany
-        ):
+        def _capture(conn, cursor, statement, parameters, context, executemany):
             statements.append(statement)
 
-        sa.event.listen(
-            engine.sync_engine, "before_cursor_execute", _capture
-        )
+        sa.event.listen(engine.sync_engine, "before_cursor_execute", _capture)
         try:
             async with pg_db() as session:
                 player = await add_member(session)
@@ -149,12 +133,9 @@ class TestNoSqliteWorkaround:
                 )
                 await session.commit()
         finally:
-            sa.event.remove(
-                engine.sync_engine, "before_cursor_execute", _capture
-            )
+            sa.event.remove(engine.sync_engine, "before_cursor_execute", _capture)
 
         assert result.name == "QUEUED"
         assert not any(
-            "DELETE FROM bot_outbox" in statement
-            for statement in statements
+            "DELETE FROM bot_outbox" in statement for statement in statements
         ), "enqueue issued the SQLite no-op DELETE on PostgreSQL"

@@ -23,16 +23,16 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 from tests.fixtures.postgres import (
     _reset_public_schema,
     _sync_url,
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_live_client,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_live_client,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import STARTING_GROUP
@@ -76,12 +76,8 @@ async def test_two_concurrent_registrations_one_color(pg_live_client):
     }
 
     resp_a, resp_b = await asyncio.gather(
-        client.post(
-            "/api/v1/nations", headers=_headers(token_a), json=body_a
-        ),
-        client.post(
-            "/api/v1/nations", headers=_headers(token_b), json=body_b
-        ),
+        client.post("/api/v1/nations", headers=_headers(token_a), json=body_a),
+        client.post("/api/v1/nations", headers=_headers(token_b), json=body_b),
     )
 
     statuses = sorted([resp_a.status_code, resp_b.status_code])
@@ -175,30 +171,28 @@ def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
             for name in _NEW_COLUMNS:
                 assert columns[name]["nullable"] is True
 
-            uniques = {
-                u["name"] for u in insp.get_unique_constraints("nations")
-            }
+            uniques = {u["name"] for u in insp.get_unique_constraints("nations")}
             assert "uq_nations_short_name" in uniques
 
             fks = insp.get_foreign_keys("nations")
             capital_fk = next(
-                f
-                for f in fks
-                if f["name"] == "fk_nations_capital_province_id"
+                f for f in fks if f["name"] == "fk_nations_capital_province_id"
             )
             assert capital_fk["referred_table"] == "provinces"
-            assert capital_fk["constrained_columns"] == [
-                "capital_province_id"
-            ]
+            assert capital_fk["constrained_columns"] == ["capital_province_id"]
             assert capital_fk["options"].get("ondelete") == "SET NULL"
 
-            row = conn.execute(
-                sa.text(
-                    "SELECT name, color_hex, created_turn, short_name, "
-                    "capital_province_id FROM nations WHERE id = :id"
-                ),
-                {"id": nation_id},
-            ).mappings().one()
+            row = (
+                conn.execute(
+                    sa.text(
+                        "SELECT name, color_hex, created_turn, short_name, "
+                        "capital_province_id FROM nations WHERE id = :id"
+                    ),
+                    {"id": nation_id},
+                )
+                .mappings()
+                .one()
+            )
             assert row["name"] == "Old Realm"
             assert row["color_hex"] == "#0C7CF4"
             assert row["created_turn"] == 3
@@ -212,9 +206,7 @@ def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
     engine = sa.create_engine(_sync_url(url))
     try:
         with engine.connect() as conn:
-            columns = {
-                c["name"] for c in sa.inspect(conn).get_columns("nations")
-            }
+            columns = {c["name"] for c in sa.inspect(conn).get_columns("nations")}
             assert set(_NEW_COLUMNS).isdisjoint(columns)
             name = conn.execute(
                 sa.text("SELECT name FROM nations WHERE id = :id"),
@@ -229,9 +221,7 @@ def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
     engine = sa.create_engine(_sync_url(url))
     try:
         with engine.connect() as conn:
-            columns = {
-                c["name"] for c in sa.inspect(conn).get_columns("nations")
-            }
+            columns = {c["name"] for c in sa.inspect(conn).get_columns("nations")}
             assert set(_NEW_COLUMNS) <= columns
     finally:
         engine.dispose()

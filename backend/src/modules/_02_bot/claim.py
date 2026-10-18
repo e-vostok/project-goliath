@@ -22,7 +22,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,11 +42,7 @@ from modules._02_bot.settings import BotEnv
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _row_view(row: BotOutbox) -> RowView:
@@ -273,9 +269,7 @@ async def claim_batch(
         surviving = await _apply_player_checks(
             session, player_id, rows_by_player.get(player_id, []), config
         )
-        kept, ungrouped = await _split_kept_groups(
-            session, player_id, surviving, now
-        )
+        kept, ungrouped = await _split_kept_groups(session, player_id, surviving, now)
         for group_rows in kept:
             groups.append(
                 _lease_group(session, player_id, group_rows, now, lease_until)
@@ -314,10 +308,7 @@ async def _apply_player_checks(
     nation = (
         await NationService.player_nation_summary(session, player_id)
         if allowed
-        and any(
-            row.kind == "NOTIFICATION" and _needs_nation(row)
-            for row in rows
-        )
+        and any(row.kind == "NOTIFICATION" and _needs_nation(row) for row in rows)
         else None
     )
     surviving: list[BotOutbox] = []
@@ -371,9 +362,7 @@ async def _split_kept_groups(
         )
         surviving_ids = {row.id for row in surviving}
         if all(row.id in surviving_ids for row in all_rows):
-            candidate_rows.sort(
-                key=lambda r: (_aware(r.created_at), r.id)
-            )
+            candidate_rows.sort(key=lambda r: (_aware(r.created_at), r.id))
             kept.append(candidate_rows)
         else:
             for row in candidate_rows:
@@ -433,7 +422,6 @@ async def _compose_and_lease(
     lease_until: datetime,
 ) -> list[ClaimedGroup]:
     """Steps 8–9: compose the ungrouped rows and lease each message."""
-    sender = config.sender
     views = [_row_view(row) for row in rows]
     history = await _sent_history(
         session,

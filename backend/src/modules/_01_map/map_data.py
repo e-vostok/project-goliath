@@ -12,8 +12,9 @@ Internal to module ``_01_map`` — other modules must go through
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal
 
 from .map_files import Borders, Geometry, Manifest
 
@@ -32,9 +33,7 @@ EDGE_TYPES: tuple[str, ...] = (
 )
 
 # Spec 3.3: group connectivity counts only these edge types.
-GROUP_EDGE_TYPES: frozenset[str] = frozenset(
-    {EDGE_TYPE_LAND, EDGE_TYPE_STRAIT}
-)
+GROUP_EDGE_TYPES: frozenset[str] = frozenset({EDGE_TYPE_LAND, EDGE_TYPE_STRAIT})
 
 NodeKind = Literal["LAND", "SEA"]
 EdgeType = Literal["land", "coast", "sea", "strait"]
