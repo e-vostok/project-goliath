@@ -117,9 +117,23 @@ color:
 catalog:
   # Идентификаторы готовых флагов и портретов (латиница, цифры, «_»). Файл каждого
   # идентификатора лежит в frontend/public/assets/nations/flags/<id>.png и
-  # portraits/<id>.png. Списки заполняет единица 4 версии 0.8.0; пока пусты.
-  flag_ids: []
-  portrait_ids: []
+  # portraits/<id>.png.
+  # placeholder set, to be replaced by the Project Owner's pictures
+  flag_ids:
+    - "flag_placeholder_1"
+    - "flag_placeholder_2"
+    - "flag_placeholder_3"
+    - "flag_placeholder_4"
+    - "flag_placeholder_5"
+    - "flag_placeholder_6"
+  # placeholder set, to be replaced by the Project Owner's pictures
+  portrait_ids:
+    - "portrait_placeholder_1"
+    - "portrait_placeholder_2"
+    - "portrait_placeholder_3"
+    - "portrait_placeholder_4"
+    - "portrait_placeholder_5"
+    - "portrait_placeholder_6"
 
 calendar:
   # Игровая дата = epoch_start_date + (номер хода × months_per_turn) календарных месяцев.
