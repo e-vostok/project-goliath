@@ -44,14 +44,16 @@ class TestTickOrchestrator:
         from modules._00_core.config_schema import CoreConfig
         from modules._00_core.service import NationService
         from tests.fixtures.profile import VALID_PROFILE
-        from tests.fixtures.provinces import make_land_province
+        from tests.fixtures.provinces import (
+            STARTING_GROUP,
+            make_starting_group,
+        )
 
         player = Player(vk_user_id=11111)
         session.add(player)
         await session.flush()
 
-        for pid in [1001, 1002]:
-            await make_land_province(session, id=pid)
+        await make_starting_group(session)
 
         config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
         nation = await NationService.create(
@@ -59,7 +61,7 @@ class TestTickOrchestrator:
             owner_player_id=player.id,
             name="Test Nation",
             color_hex="#FF0000",
-            province_ids=[1001],
+            province_ids=list(STARTING_GROUP),
             config=config,
             **VALID_PROFILE,
         )

@@ -17,10 +17,31 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from modules._00_core.color_policy import oklab_distance
+
 # Имя хоста в нижнем регистре, без схемы, порта и пути.
 _HOSTNAME_RE = re.compile(
     r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
 )
+
+# Цвет в формате #RRGGBB (регистр не важен: сервис приводит к верхнему).
+_HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+# Идентификатор готового флага или портрета (он же имя файла без расширения).
+_CATALOG_ID_RE = re.compile(r"^[a-z0-9_]{1,50}$")
+
+
+def _check_hosts(field: str, hosts: list[str]) -> list[str]:
+    """Хосты: нижний регистр, без схемы, порта и пути, без дублей."""
+    for host in hosts:
+        if _HOSTNAME_RE.match(host) is None:
+            raise ValueError(
+                f"{field}: '{host}' не является именем "
+                "хоста в нижнем регистре без схемы, порта и пути"
+            )
+    if len(set(hosts)) != len(hosts):
+        raise ValueError(f"{field}: дубли недопустимы")
+    return hosts
 
 
 class TickSettings(BaseModel):
@@ -91,6 +112,18 @@ class AuthSettings(BaseModel):
 class NationSettings(BaseModel):
     nation_name_min_length: int = Field(ge=1, le=10)
     nation_name_max_length: int = Field(ge=1, le=100)
+    short_name_min_length: int = Field(
+        ge=1,
+        le=10,
+        description="Минимальная длина краткого названия, символы.",
+    )
+    short_name_max_length: int = Field(
+        ge=1,
+        le=100,
+        description="Максимальная длина краткого названия, символы "
+        "(не больше длины колонки nations.short_name и не больше "
+        "nation_name_max_length).",
+    )
     min_provinces_per_nation: int = Field(
         ge=0,
         le=10,
@@ -123,6 +156,35 @@ class NationSettings(BaseModel):
         description="Максимальная длина должности лидера, символы "
         "(не больше длины колонки nations.leader_title).",
     )
+    motto_max_length: int = Field(
+        ge=1,
+        le=100,
+        description="Максимальная длина девиза, символы "
+        "(не больше длины колонки nations.motto). Поле необязательное.",
+    )
+    description_max_length: int = Field(
+        ge=1,
+        le=200,
+        description="Максимальная длина краткого описания, символы "
+        "(не больше длины колонки nations.description). Поле необязательное.",
+    )
+    leader_bio_max_length: int = Field(
+        ge=1,
+        le=2000,
+        description="Максимальная длина биографии лидера, символы "
+        "(не больше длины колонки nations.leader_bio). Поле необязательное.",
+    )
+    capital_name_min_length: int = Field(
+        ge=1,
+        le=10,
+        description="Минимальная длина названия столицы, символы.",
+    )
+    capital_name_max_length: int = Field(
+        ge=1,
+        le=100,
+        description="Максимальная длина названия столицы, символы "
+        "(не больше длины колонки nations.capital_name).",
+    )
     history_url_max_length: int = Field(
         ge=30,
         le=2000,
@@ -135,25 +197,42 @@ class NationSettings(BaseModel):
         description="Допустимые хосты ссылки на историю: нижний регистр, "
         "без схемы, порта и пути.",
     )
+    anthem_url_max_length: int = Field(
+        ge=30,
+        le=2000,
+        description="Максимальная длина ссылки на гимн, символы "
+        "(не больше длины колонки nations.anthem_url). Поле необязательное.",
+    )
+    anthem_url_allowed_hosts: list[str] = Field(
+        min_length=1,
+        max_length=10,
+        description="Допустимые хосты ссылки на гимн: нижний регистр, "
+        "без схемы, порта и пути.",
+    )
 
     @field_validator("history_url_allowed_hosts")
     @classmethod
-    def check_hosts(cls, hosts: list[str]) -> list[str]:
-        for host in hosts:
-            if _HOSTNAME_RE.match(host) is None:
-                raise ValueError(
-                    f"history_url_allowed_hosts: '{host}' не является именем "
-                    "хоста в нижнем регистре без схемы, порта и пути"
-                )
-        if len(set(hosts)) != len(hosts):
-            raise ValueError("history_url_allowed_hosts: дубли недопустимы")
-        return hosts
+    def check_history_hosts(cls, hosts: list[str]) -> list[str]:
+        return _check_hosts("history_url_allowed_hosts", hosts)
+
+    @field_validator("anthem_url_allowed_hosts")
+    @classmethod
+    def check_anthem_hosts(cls, hosts: list[str]) -> list[str]:
+        return _check_hosts("anthem_url_allowed_hosts", hosts)
 
     @model_validator(mode="after")
     def check_ranges(self) -> Self:
         if self.nation_name_min_length > self.nation_name_max_length:
             raise ValueError(
                 "nation_name_min_length не может превышать nation_name_max_length"
+            )
+        if self.short_name_min_length > self.short_name_max_length:
+            raise ValueError(
+                "short_name_min_length не может превышать short_name_max_length"
+            )
+        if self.short_name_max_length > self.nation_name_max_length:
+            raise ValueError(
+                "short_name_max_length не может превышать nation_name_max_length"
             )
         if self.min_provinces_per_nation > self.max_provinces_per_nation:
             raise ValueError(
@@ -167,7 +246,109 @@ class NationSettings(BaseModel):
             raise ValueError(
                 "leader_title_min_length не может превышать leader_title_max_length"
             )
+        if self.capital_name_min_length > self.capital_name_max_length:
+            raise ValueError(
+                "capital_name_min_length не может превышать capital_name_max_length"
+            )
         return self
+
+
+class ReservedColor(BaseModel):
+    name: str = Field(
+        min_length=1,
+        max_length=40,
+        description="Название занятого картой цвета (попадает в текст ошибки).",
+    )
+    hex: str = Field(
+        pattern=_HEX_RE.pattern,
+        description="Цвет в формате #RRGGBB.",
+    )
+
+
+class ColorSettings(BaseModel):
+    min_distance_nations: float = Field(
+        ge=0.02,
+        le=0.5,
+        description="Минимальное расстояние OKLab между цветами двух "
+        "государств (чёрный-белый = 1.0).",
+    )
+    min_distance_reserved: float = Field(
+        ge=0.02,
+        le=0.5,
+        description="Минимальное расстояние OKLab между цветом государства "
+        "и цветами, занятыми картой.",
+    )
+    reserved: list[ReservedColor] = Field(
+        min_length=1,
+        max_length=20,
+        description="Цвета карты, которые не может занять государство.",
+    )
+    palette: list[str] = Field(
+        min_length=1,
+        max_length=60,
+        description="Готовая палитра выбора цвета, #RRGGBB.",
+    )
+
+    @field_validator("palette")
+    @classmethod
+    def check_palette_format(cls, colors: list[str]) -> list[str]:
+        for color in colors:
+            if _HEX_RE.match(color) is None:
+                raise ValueError(
+                    f"palette: '{color}' не в формате #RRGGBB"
+                )
+        if len({c.upper() for c in colors}) != len(colors):
+            raise ValueError("palette: дубли недопустимы")
+        return colors
+
+    @model_validator(mode="after")
+    def check_palette_is_distinguishable(self) -> Self:
+        """
+        Палитра обязана быть пригодна «из коробки»: любые два её цвета
+        различимы не хуже порога для государств, а любой её цвет — не хуже
+        порога до цветов карты. Иначе игрок выбрал бы цвет, который сервер
+        сразу отклонит.
+        """
+        palette = self.palette
+        for i, first in enumerate(palette):
+            for second in palette[i + 1 :]:
+                if oklab_distance(first, second) < self.min_distance_nations:
+                    raise ValueError(
+                        f"palette: {first} и {second} ближе "
+                        f"min_distance_nations ({self.min_distance_nations})"
+                    )
+            for reserved in self.reserved:
+                if oklab_distance(first, reserved.hex) < self.min_distance_reserved:
+                    raise ValueError(
+                        f"palette: {first} ближе min_distance_reserved "
+                        f"({self.min_distance_reserved}) к цвету карты "
+                        f"«{reserved.name}» {reserved.hex}"
+                    )
+        return self
+
+
+class CatalogSettings(BaseModel):
+    flag_ids: list[str] = Field(
+        max_length=200,
+        description="Идентификаторы готовых флагов (имя файла без расширения).",
+    )
+    portrait_ids: list[str] = Field(
+        max_length=200,
+        description="Идентификаторы готовых портретов правителя.",
+    )
+
+    @field_validator("flag_ids", "portrait_ids")
+    @classmethod
+    def check_ids(cls, ids: list[str]) -> list[str]:
+        for item in ids:
+            if _CATALOG_ID_RE.match(item) is None:
+                raise ValueError(
+                    f"catalog: '{item}' не подходит: нужны строчная латиница, "
+                    "цифры и «_», длина 1–50"
+                )
+        if len(set(ids)) != len(ids):
+            raise ValueError("catalog: дубли недопустимы")
+        return ids
 
 
 class CalendarSettings(BaseModel):
@@ -217,6 +398,8 @@ class CoreConfig(BaseModel):
     tick: TickSettings
     auth: AuthSettings
     nation: NationSettings
+    color: ColorSettings
+    catalog: CatalogSettings
     calendar: CalendarSettings
 
     @model_validator(mode="after")
@@ -247,12 +430,12 @@ class CoreConfig(BaseModel):
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         return cls.model_validate(raw)
-    
+
     @classmethod
     def get_default_config_path(cls) -> str:
         """
         Get the default path to the 00_core.yaml config file.
-        
+
         This method resolves the path relative to the module location,
         working correctly whether called from backend/src or backend/tests.
         """

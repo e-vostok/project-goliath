@@ -1,29 +1,31 @@
 /**
- * PanelCreateNation — the "no nation yet" screen: a two-window container.
+ * PanelCreateNation — the "no nation yet" screen: a window of four tabs
+ * (Spec 1.3 Part 5).
  *
- * Window 1 «Основная информация» (CreateNationStepOne): name, color,
- * provinces, leader name, leader title.
- * Window 2 «История государства» (CreateNationStepTwo): history link.
+ * Tab 1 «Основные данные и символика», tab 2 «Руководство», tab 3
+ * «История и культура», tab 4 «Территории». The current tab and every
+ * field value live in this container as one `RegistrationForm` object —
+ * the chevron arrows and the clickable titles in CreateNationTabBar
+ * switch tabs without sending or losing anything; the single submit
+ * Button fires one POST /nations with the whole form.
  *
- * Provinces are picked on the map — the «Выбрать на карте» button opens
- * the 01_map ProvincePicker modal; the selection lives in `chips` here
- * (value = province id, label = display name), so window switching keeps
- * it and submit sends `province_ids` exactly as before.
+ * Provinces are picked on the map — the «Выбрать на карте» button on
+ * tab 4 opens the 01_map ProvincePicker modal; the selection lives in
+ * `form.provinces` (value = province id, label = display name, order =
+ * selection order).
  *
- * The current step and every field value live in this container — the
- * chevron arrows in CreateNationStepBar switch windows without sending or
- * losing anything; the single submit Button (rendered under both windows)
- * fires one POST /nations with both windows' data.
- *
- * Length/host/province-count limits come from GET /nations/rules via
- * useNationRules — the server stays the source of truth; the client only
- * shows hints and gates the button. When rules fail to load the form stays
- * usable without hints and falls back to "non-empty" gating.
+ * The whole form is mirrored into the session draft under
+ * 'nation-create-v2'; a successful creation deletes it. Length/host/
+ * province-count limits come from GET /nations/rules via useNationRules —
+ * the server stays the source of truth; the client only shows hints and
+ * gates the button on `missingRequired`.
  *
  * Server-side `ErrorResponse.code` values map to inline FormItem errors
- * (see `mapErrorCodeToField`); an error for a field on the inactive window
- * marks that window's title with a Badge instead of auto-switching.
- * Anything else surfaces as a generic FormStatus banner.
+ * through `mapErrorCodeToField`, rendered in Russian via
+ * `nationErrorText` (unknown codes keep the English `detail`). An error
+ * or a missing required field on an inactive tab marks its title with a
+ * Badge — the window never switches tabs on its own. Anything else
+ * surfaces as a generic FormStatus banner.
  */
 
 import { useEffect, useState, type FormEvent } from 'react';
@@ -40,7 +42,7 @@ import {
 
 import { api, ApiError } from '../../../shared/api-client';
 import { useFormDraft } from '../../../shared/formDraft';
-import { ErrorCodes, type NationDTO } from '../../../shared/types';
+import type { NationDTO } from '../../../shared/types';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { useBotStatus } from '../../02_bot/hooks/useBotStatus';
@@ -52,47 +54,28 @@ import {
 } from '../../02_bot/api';
 import {
   nationRulesHints,
-  type NationField,
+  type RegistrationTabProps,
 } from './CreateNationFields';
-import { CreateNationStepBar } from './CreateNationStepBar';
 import {
-  CreateNationStepOne,
+  fieldToTab,
+  mapErrorCodeToField,
+  missingRequired,
+  REGISTRATION_DRAFT_KEY,
+  registrationFormFromDraft,
+  registrationFormIsEmpty,
+  toCreateRequest,
   type ChipOption,
-} from './CreateNationStepOne';
-import { CreateNationStepTwo } from './CreateNationStepTwo';
+  type NationField,
+  type RegistrationForm,
+  type RegistrationTab,
+} from './registrationForm';
+import { nationErrorText } from './nationErrorTexts';
+import { CreateNationTabBar } from './CreateNationTabBar';
+import { CreateNationTabSymbols } from './CreateNationTabSymbols';
+import { CreateNationTabLeadership } from './CreateNationTabLeadership';
+import { CreateNationTabHistory } from './CreateNationTabHistory';
+import { CreateNationTabTerritories } from './CreateNationTabTerritories';
 import { ProvincePicker } from '../../01_map/components/ProvincePicker';
-
-export type { NationField };
-
-/** Maps ErrorResponse.code to the FormItem that should display it inline. */
-export function mapErrorCodeToField(code: string): NationField | null {
-  switch (code) {
-    case ErrorCodes.NAME_TAKEN:
-      return 'name';
-    case ErrorCodes.COLOR_TAKEN:
-      return 'color';
-    case ErrorCodes.PROVINCE_TAKEN:
-    case ErrorCodes.PROVINCE_NOT_FOUND:
-    case ErrorCodes.PROVINCE_COUNT_OUT_OF_RANGE:
-    // Emitted by the 01_map registration checks (land-only, connectivity).
-    case 'PROVINCE_NOT_LAND':
-    case 'STARTING_GROUP_NOT_CONNECTED':
-      return 'provinces';
-    case ErrorCodes.LEADER_NAME_INVALID:
-      return 'leaderName';
-    case ErrorCodes.LEADER_TITLE_INVALID:
-      return 'leaderTitle';
-    case ErrorCodes.HISTORY_URL_INVALID:
-      return 'historyUrl';
-    default:
-      return null;
-  }
-}
-
-/** Which window of the wizard owns the field (history link lives on 2). */
-export function fieldToStep(field: NationField): 1 | 2 {
-  return field === 'historyUrl' ? 2 : 1;
-}
 
 const sendTaptic = () => {
   void bridge
@@ -105,17 +88,6 @@ export interface PanelCreateNationProps {
 }
 
 const MODAL_PROVINCE_PICKER = 'province-picker';
-const CREATE_DRAFT_KEY = 'nation-create';
-
-/** The wizard's six fields, mirrored into the session draft. */
-interface CreateNationDraft {
-  name: string;
-  color: string;
-  chips: ChipOption[];
-  leaderName: string;
-  leaderTitle: string;
-  historyUrl: string;
-}
 
 export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const { token } = useSession();
@@ -131,24 +103,19 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     draft: storedDraft,
     setDraft: setStoredDraft,
     clearDraft,
-  } = useFormDraft<CreateNationDraft>(CREATE_DRAFT_KEY);
+  } = useFormDraft<RegistrationForm>(REGISTRATION_DRAFT_KEY);
 
-  const [step, setStep] = useState<1 | 2>(1);
-  const [name, setName] = useState(storedDraft?.name ?? '');
-  const [color, setColor] = useState(storedDraft?.color ?? '#e64545');
-  const [chips, setChips] = useState<ChipOption[]>(
-    storedDraft?.chips ?? [],
+  const [tab, setTab] = useState<RegistrationTab>(1);
+  const [form, setForm] = useState<RegistrationForm>(() =>
+    registrationFormFromDraft(storedDraft),
+  );
+  // A restored draft means the player already edited the form — tab
+  // badges for missing required fields show right away.
+  const [touched, setTouched] = useState(
+    storedDraft !== null &&
+      !registrationFormIsEmpty(registrationFormFromDraft(storedDraft)),
   );
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [leaderName, setLeaderName] = useState(
-    storedDraft?.leaderName ?? '',
-  );
-  const [leaderTitle, setLeaderTitle] = useState(
-    storedDraft?.leaderTitle ?? '',
-  );
-  const [historyUrl, setHistoryUrl] = useState(
-    storedDraft?.historyUrl ?? '',
-  );
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<NationField, string>>
@@ -165,50 +132,69 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       return next;
     });
 
-  const stepErrors: Record<1 | 2, boolean> = { 1: false, 2: false };
+  const onFieldChange: RegistrationTabProps['onFieldChange'] = (
+    field,
+    value,
+  ) => {
+    setTouched(true);
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'provinces') {
+        // INV-14: the capital must stay among the chosen ids — a chip
+        // removal that takes the capital away drops the mark.
+        const chips = next.provinces;
+        next.capitalProvinceId =
+          prev.capitalProvinceId !== null &&
+          chips.some((chip) => chip.value === prev.capitalProvinceId)
+            ? prev.capitalProvinceId
+            : null;
+        // Until a manual edit the capital name follows the effective
+        // capital (the marked chip, else the first selected one).
+        if (!prev.capitalNameEdited) {
+          const effective = next.capitalProvinceId ?? chips[0]?.value ?? null;
+          next.capitalName =
+            chips.find((chip) => chip.value === effective)?.label ?? '';
+        }
+      } else if (field === 'capitalName') {
+        // A hand-typed name is never auto-overwritten again.
+        next.capitalNameEdited = true;
+      }
+      return next;
+    });
+    clearFieldError(field);
+    if (field === 'provinces') {
+      clearFieldError('capitalProvinceId');
+    }
+  };
+
+  // Tab badges: a server error on a field of that tab, or — once any
+  // field was edited — a required field of that tab still missing.
+  const missing = missingRequired(form, rules);
+  const tabMarks: Record<RegistrationTab, boolean> = {
+    1: false,
+    2: false,
+    3: false,
+    4: false,
+  };
   for (const field of Object.keys(fieldErrors) as NationField[]) {
-    stepErrors[fieldToStep(field)] = true;
+    tabMarks[fieldToTab(field)] = true;
+  }
+  if (touched) {
+    for (const field of missing) {
+      tabMarks[fieldToTab(field)] = true;
+    }
   }
 
-  // Mirror the fields into the session draft; a pristine form drops it.
+  // Mirror the form into the session draft; a pristine form drops it.
   useEffect(() => {
-    if (
-      name === '' &&
-      chips.length === 0 &&
-      leaderName === '' &&
-      leaderTitle === '' &&
-      historyUrl === ''
-    ) {
+    if (registrationFormIsEmpty(form)) {
       clearDraft();
     } else {
-      setStoredDraft({
-        name,
-        color,
-        chips,
-        leaderName,
-        leaderTitle,
-        historyUrl,
-      });
+      setStoredDraft(form);
     }
-  }, [
-    name,
-    color,
-    chips,
-    leaderName,
-    leaderTitle,
-    historyUrl,
-    setStoredDraft,
-    clearDraft,
-  ]);
+  }, [form, setStoredDraft, clearDraft]);
 
-  const trimmedName = name.trim();
-  const canSubmit =
-    trimmedName.length >= (rules?.name_min_length ?? 1) &&
-    chips.length >= 1 &&
-    leaderName.trim().length > 0 &&
-    leaderTitle.trim().length > 0 &&
-    historyUrl.trim().length > 0 &&
-    !submitting;
+  const canSubmit = missing.length === 0 && !submitting;
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -220,14 +206,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     setFormError(null);
 
     try {
-      const nation = await api.createNation(token, {
-        name: trimmedName,
-        color_hex: color,
-        province_ids: chips.map((chip) => chip.value),
-        leader_name: leaderName.trim(),
-        leader_title: leaderTitle.trim(),
-        history_url: historyUrl.trim(),
-      });
+      const nation = await api.createNation(token, toCreateRequest(form));
       sendTaptic();
       clearDraft();
       onCreated(nation);
@@ -263,7 +242,9 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       } else if (error instanceof ApiError) {
         const field = mapErrorCodeToField(error.code);
         if (field) {
-          setFieldErrors({ [field]: error.message });
+          setFieldErrors({
+            [field]: nationErrorText(error.code, rules) ?? error.message,
+          });
         } else {
           setFormError(error.message);
         }
@@ -275,14 +256,35 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     }
   };
 
-  const onPickerDone = (ids: number[], names: Map<number, string>) => {
-    setChips(
-      ids.map((id) => ({
-        value: id,
-        label: names.get(id) ?? String(id),
-      })),
-    );
+  const onPickerDone = (
+    ids: number[],
+    names: Map<number, string>,
+    capitalId: number | null,
+  ) => {
+    setTouched(true);
+    setForm((prev) => {
+      const provinces = ids.map(
+        (id): ChipOption => ({
+          value: id,
+          label: names.get(id) ?? String(id),
+        }),
+      );
+      // INV-14: the mark must be among the chosen ids (the picker
+      // already guarantees it; re-validated here defensively).
+      const marked =
+        capitalId !== null && ids.includes(capitalId) ? capitalId : null;
+      const next = { ...prev, provinces, capitalProvinceId: marked };
+      // The capital name follows the effective capital until the
+      // player edited the field by hand (capitalNameEdited).
+      if (!prev.capitalNameEdited) {
+        const effective = marked ?? ids[0] ?? null;
+        next.capitalName =
+          effective === null ? '' : (names.get(effective) ?? '');
+      }
+      return next;
+    });
     clearFieldError('provinces');
+    clearFieldError('capitalProvinceId');
     setPickerOpen(false);
   };
 
@@ -324,14 +326,22 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     );
   }
 
+  const tabProps: RegistrationTabProps = {
+    form,
+    rules,
+    hints,
+    errors: fieldErrors,
+    onFieldChange,
+  };
+
   return (
     <>
       <PanelHeader>Создание государства</PanelHeader>
       <Group>
-        <CreateNationStepBar
-          step={step}
-          onStepChange={setStep}
-          stepErrors={stepErrors}
+        <CreateNationTabBar
+          tab={tab}
+          onTabChange={setTab}
+          tabMarks={tabMarks}
         />
 
         <form onSubmit={handleSubmit} data-testid="create-nation-form">
@@ -341,49 +351,13 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             </FormStatus>
           )}
 
-          {step === 1 ? (
-            <CreateNationStepOne
-              name={name}
-              color={color}
-              chips={chips}
-              leaderName={leaderName}
-              leaderTitle={leaderTitle}
-              rules={rules}
-              hints={hints}
-              errors={fieldErrors}
-              provincesHint={hints?.provinces}
-              onNameChange={(v) => {
-                setName(v);
-                clearFieldError('name');
-              }}
-              onColorChange={(v) => {
-                setColor(v);
-                clearFieldError('color');
-              }}
-              onChipsChange={(next) => {
-                setChips(next);
-                clearFieldError('provinces');
-              }}
+          {tab === 1 && <CreateNationTabSymbols {...tabProps} />}
+          {tab === 2 && <CreateNationTabLeadership {...tabProps} />}
+          {tab === 3 && <CreateNationTabHistory {...tabProps} />}
+          {tab === 4 && (
+            <CreateNationTabTerritories
+              {...tabProps}
               onOpenPicker={() => setPickerOpen(true)}
-              onLeaderNameChange={(v) => {
-                setLeaderName(v);
-                clearFieldError('leaderName');
-              }}
-              onLeaderTitleChange={(v) => {
-                setLeaderTitle(v);
-                clearFieldError('leaderTitle');
-              }}
-            />
-          ) : (
-            <CreateNationStepTwo
-              historyUrl={historyUrl}
-              rules={rules}
-              hints={hints}
-              error={fieldErrors.historyUrl}
-              onHistoryUrlChange={(v) => {
-                setHistoryUrl(v);
-                clearFieldError('historyUrl');
-              }}
             />
           )}
 
@@ -404,7 +378,8 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
         <ModalRoot activeModal={MODAL_PROVINCE_PICKER}>
           <ProvincePicker
             id={MODAL_PROVINCE_PICKER}
-            initialSelectedIds={chips.map((chip) => chip.value)}
+            initialSelectedIds={form.provinces.map((chip) => chip.value)}
+            initialCapitalId={form.capitalProvinceId}
             limits={{
               min: rules?.min_provinces ?? null,
               max: rules?.max_provinces ?? null,

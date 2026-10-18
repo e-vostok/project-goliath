@@ -7,7 +7,11 @@ same way the other suites do it — nothing else is mocked.
 
 from __future__ import annotations
 
-from tests.modules._03_registry.conftest import bearer_headers, seed_player
+from tests.modules._03_registry.conftest import (
+    bearer_headers,
+    seed_nation,
+    seed_player,
+)
 
 TABLES_URL = "/api/v1/registry/tables"
 
@@ -173,3 +177,75 @@ class TestRowsEndpoint:
                 "player_id",
             ):
                 assert forbidden not in text
+
+
+class TestNationDisplayNameAndFlag:
+    """Spec 1.4 (3.2, 3.3, 3.7): short name + real catalog flag in both
+    tables; pre-0.8.0 nations (both fields NULL) keep the full name and
+    the colour mark."""
+
+    async def test_short_name_and_flag_in_both_tables(
+        self, client, test_db_session, registry_started
+    ):
+        owner_modern = await seed_player(test_db_session, 506001)
+        owner_legacy = await seed_player(test_db_session, 506002)
+        viewer = await seed_player(test_db_session, 506003)
+        modern = await seed_nation(
+            test_db_session,
+            owner_modern,
+            "Северная Конфедерация Вольных Городов",
+            "#AA2201",
+            created_turn=0,
+            short_name="СКВГ",
+            flag_id="flag_placeholder_1",
+        )
+        legacy = await seed_nation(
+            test_db_session,
+            owner_legacy,
+            "Древнее Княжество Полное",
+            "#AA2202",
+            created_turn=1,
+            short_name=None,
+            flag_id=None,
+        )
+        headers = bearer_headers(viewer.id)
+
+        resp = await client.get(f"{TABLES_URL}/nations", headers=headers)
+        assert resp.status_code == 200
+        n_rows = resp.json()["rows"]
+        nations_by_key = {row["key"]: row["cells"] for row in n_rows}
+        flag_png = "/assets/nations/flags/flag_placeholder_1.png"
+        assert nations_by_key[modern.id]["name"] == "СКВГ"
+        assert nations_by_key[modern.id]["flag"] == {
+            "color": "#AA2201",
+            "image_url": flag_png,
+        }
+        assert nations_by_key[legacy.id]["name"] == "Древнее Княжество Полное"
+        assert nations_by_key[legacy.id]["flag"] == {
+            "color": "#AA2202",
+            "image_url": None,
+        }
+
+        resp = await client.get(f"{TABLES_URL}/players", headers=headers)
+        assert resp.status_code == 200
+        p_rows = {row["key"]: row["cells"] for row in resp.json()["rows"]}
+        assert p_rows["p1"]["nation"] == {
+            "name": "СКВГ",
+            "color": "#AA2201",
+            "flag_url": flag_png,
+        }
+        assert p_rows["p2"]["nation"] == {
+            "name": "Древнее Княжество Полное",
+            "color": "#AA2202",
+            "flag_url": None,
+        }
+        assert p_rows["p3"]["nation"] is None
+
+        # Spec 3.7: the ``select_or_contains`` dropdown is built from the
+        # nations-table ``name`` cells — they must equal the ``nation``
+        # cell names the players table shows.
+        option_names = [row["cells"]["name"] for row in n_rows]
+        assert option_names == [
+            p_rows["p1"]["nation"]["name"],
+            p_rows["p2"]["nation"]["name"],
+        ]

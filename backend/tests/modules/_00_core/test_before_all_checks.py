@@ -26,7 +26,11 @@ from modules._00_core.hooks import (
 from modules._00_core.models import Nation, Player, Province
 from modules._00_core.service import NationService
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import make_land_province
+from tests.fixtures.provinces import (
+    STARTING_GROUP,
+    make_land_province,
+    make_starting_group,
+)
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -52,7 +56,7 @@ async def _create(session, player, province_ids, name="Realm"):
         session,
         owner_player_id=player.id,
         name=name,
-        color_hex="#101010",
+        color_hex="#6A3446",
         province_ids=province_ids,
         config=CORE_CONFIG,
         **VALID_PROFILE,
@@ -85,16 +89,18 @@ class TestBeforeAllStage:
         )
 
         player = await _player(test_db_session, 501)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
-        nation = await _create(test_db_session, player, [1001])
+        nation = await _create(
+            test_db_session, player, list(STARTING_GROUP)
+        )
 
         assert nation.id is not None
         # before_all ran first and saw the player id, not provinces.
         assert calls == [
             ("before_all", player.id),
-            ("after_free", [1001]),
-            ("after_count", [1001]),
+            ("after_free", list(STARTING_GROUP)),
+            ("after_count", list(STARTING_GROUP)),
         ]
 
     async def test_raising_check_persists_nothing(self, test_db_session):
@@ -136,9 +142,11 @@ class TestBeforeAllStage:
 
     async def test_no_checks_behaves_as_before(self, test_db_session):
         player = await _player(test_db_session, 503)
-        await make_land_province(test_db_session, id=1001)
+        await make_starting_group(test_db_session)
 
-        nation = await _create(test_db_session, player, [1001])
+        nation = await _create(
+            test_db_session, player, list(STARTING_GROUP)
+        )
 
         assert nation.owner_player_id == player.id
         province = (

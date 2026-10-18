@@ -38,6 +38,14 @@ from modules._01_map.service import MapService
 FIXTURE_DIR = (
     Path(__file__).resolve().parents[2] / "fixtures" / "map_mini"
 )
+# The linked variant (extra strait 1004-1005): its land nodes
+# 1001..1007 form one connected group — the only fixture where a
+# valid Registration-2.0 starting set of exactly 5 exists.
+LINKED_FIXTURE_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "map_mini_linked"
+)
 REPO_ROOT = Path(__file__).resolve().parents[4]
 REAL_DATA_DIR = REPO_ROOT / "data" / "map"
 
@@ -201,6 +209,14 @@ def flat_map_service(config) -> MapService:
     return MapService(load_map_data(FIXTURE_DIR, config), config)
 
 
+@pytest.fixture
+def linked_map_service(config) -> MapService:
+    """MapService over the linked mini map (1001..1007 connected)."""
+    return MapService(
+        load_map_data(LINKED_FIXTURE_DIR, config), config
+    )
+
+
 def map_config_disconnected() -> MapConfig:
     """A config copy with starting_group.require_connected = false."""
     config = map_config()
@@ -251,8 +267,22 @@ def map_hooks(extension_snapshot, flat_map_service, config):
     return flat_map_service
 
 
+@pytest.fixture
+def linked_map_hooks(extension_snapshot, linked_map_service, config):
+    """The real 01_map hooks over the linked map (connected-5 exists)."""
+    register_map_hooks(linked_map_service, config)
+    return linked_map_service
+
+
 @pytest_asyncio.fixture
 async def map_db_session(test_db_session, flat_map_service):
     """In-memory DB with the mini-map nodes already synced in."""
     await sync_map_nodes(test_db_session, flat_map_service)
+    return test_db_session
+
+
+@pytest_asyncio.fixture
+async def linked_map_db_session(test_db_session, linked_map_service):
+    """In-memory DB with the linked mini-map nodes already synced in."""
+    await sync_map_nodes(test_db_session, linked_map_service)
     return test_db_session

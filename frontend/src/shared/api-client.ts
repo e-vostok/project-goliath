@@ -15,6 +15,8 @@ import type {
   AdminTickLogEntryDTO,
   AdminTickRunResultDTO,
   AuthResponseDTO,
+  ColorCheckDTO,
+  ColorCheckRequest,
   GameClockDTO,
   NationCreateRequest,
   NationDTO,
@@ -213,6 +215,20 @@ export const api = {
   /** GET /nations/rules — creation/update limits for UI hints and gating. */
   getNationRules(token: string, signal?: AbortSignal) {
     return apiFetch<NationRulesDTO>('/nations/rules', { token, signal });
+  },
+
+  /**
+   * POST /nations/color-check — the unlocked color preview for the input
+   * hint; an OK here does not guarantee creation succeeds (Spec Part 5).
+   */
+  checkNationColor(token: string, colorHex: string, signal?: AbortSignal) {
+    const body: ColorCheckRequest = { color_hex: colorHex };
+    return apiFetch<ColorCheckDTO>('/nations/color-check', {
+      method: 'POST',
+      body,
+      token,
+      signal,
+    });
   },
 
   /** POST /nations — 201 + NationDTO, or 409 with a field-level code. */

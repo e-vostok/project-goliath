@@ -33,6 +33,7 @@ from modules._00_core.tick_handler import register_tick_handlers
 from .test_router import seed_provinces
 from .test_security import TEST_APP_SECRET, make_launch_params
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import STARTING_GROUP
 
 TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
 
@@ -116,7 +117,7 @@ class TestEndToEnd:
             json={
                 "name": NATION_NAME,
                 "color_hex": NATION_COLOR,
-                "province_ids": [1001, 1002],
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
@@ -135,13 +136,18 @@ class TestEndToEnd:
         assert nation.owner_player_id == player_id
 
         reservations = await fetch_nation_reservations(test_db_session)
-        assert reservations == {1001: nation_id, 1002: nation_id, 1003: None}
+        assert reservations == {
+            **{pid: nation_id for pid in STARTING_GROUP},
+            1006: None,
+        }
 
         return player_id, nation_id
 
     async def test_auth_nation_tick_happy_path(self, client, test_db_session):
         """VK auth -> nation founding -> tick: all state lands and turns."""
-        await seed_provinces(test_db_session, [1001, 1002, 1003])
+        await seed_provinces(
+            test_db_session, [*STARTING_GROUP, 1006]
+        )
         clock = await seed_game_clock(test_db_session)
         initial_turn = clock.current_turn
 
@@ -168,7 +174,9 @@ class TestEndToEnd:
         """A blowing-up phase handler must roll back the whole tick
         transaction: in-tick mutations are discarded, committed pre-tick
         state is untouched, and tick_log still records FAILED."""
-        await seed_provinces(test_db_session, [1001, 1002, 1003])
+        await seed_provinces(
+            test_db_session, [*STARTING_GROUP, 1006]
+        )
         clock = await seed_game_clock(test_db_session)
         initial_turn = clock.current_turn
 
@@ -227,4 +235,7 @@ class TestEndToEnd:
         assert nation.color_hex == NATION_COLOR
 
         reservations = await fetch_nation_reservations(test_db_session)
-        assert reservations == {1001: nation_id, 1002: nation_id, 1003: None}
+        assert reservations == {
+            **{pid: nation_id for pid in STARTING_GROUP},
+            1006: None,
+        }

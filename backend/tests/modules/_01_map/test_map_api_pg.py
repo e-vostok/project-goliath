@@ -21,6 +21,7 @@ from tests.fixtures.postgres import (
     pg_url,  # noqa: F401 — resolved through the fixture chain
 )
 from tests.fixtures.profile import VALID_PROFILE
+from tests.fixtures.provinces import STARTING_GROUP
 from tests.modules._01_map.test_map_api import (
     MANIFEST_URL,
     STATE_URL,
@@ -37,8 +38,8 @@ class TestMapApiOnPostgres:
         manifest = await pg_live_client.get(MANIFEST_URL, headers=headers)
         assert manifest.status_code == 200
         body = manifest.json()
-        assert len(body["nodes"]) == 10
-        assert len(body["edges"]) == 10
+        assert len(body["nodes"]) == 15
+        assert len(body["edges"]) == 16
         etag = manifest.headers["etag"]
 
         again = await pg_live_client.get(
@@ -80,7 +81,7 @@ class TestMapApiOnPostgres:
             json={
                 "name": "PG Alpha",
                 "color_hex": "#AA1100",
-                "province_ids": [1001, 1002],
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
@@ -90,7 +91,7 @@ class TestMapApiOnPostgres:
         assert state.status_code == 200
         body = state.json()
         assert body["turn"] == 0
-        assert body["owners"] == [[1001, 0], [1002, 0]]
+        assert body["owners"] == [[pid, 0] for pid in STARTING_GROUP]
         assert body["nations"][0]["id"] == created.json()["id"]
 
     @pytest.mark.asyncio
@@ -104,7 +105,7 @@ class TestMapApiOnPostgres:
             json={
                 "name": "PG Beta",
                 "color_hex": "#3311CC",
-                "province_ids": [1001],
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
@@ -127,7 +128,7 @@ class TestMapApiOnPostgres:
         )
         assert past.status_code == 200
         body = past.json()
-        assert body["owners"] == [[1001, 0]]
+        assert body["owners"] == [[pid, 0] for pid in STARTING_GROUP]
         assert body["nations"] == [
             {"id": None, "name": "PG Beta", "color_hex": "#3311CC"}
         ]

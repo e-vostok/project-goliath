@@ -69,8 +69,10 @@ CHECK_URL = "/api/v1/map/starting-group/check"
 # Verified against data/map: a single connected component over
 # land/strait edges (Aargau, Bern, Neuchatel, Rhine Valley, Schwarzwald).
 CONNECTED_FIVE = [1001, 1122, 1592, 1748, 1796]
-# 1001 (Aargau) and 1050 (Arborea, Sardinia) share no path — 2 parts.
-DISCONNECTED_PAIR = [1001, 1050]
+# 1001 (Aargau) sits in the giant mainland component while
+# 1050/1171/1312/1488 form a connected subgroup of the small island
+# component — 2 components total.
+DISCONNECTED_FIVE = [1001, 1050, 1171, 1312, 1488]
 SEA_NODE = 2087
 
 
@@ -208,7 +210,7 @@ async def _full_scenario(client: AsyncClient) -> None:
     assert connected.json() == {"connected": True, "component_count": 1}
 
     split = await client.post(
-        CHECK_URL, headers=player, json={"province_ids": DISCONNECTED_PAIR}
+        CHECK_URL, headers=player, json={"province_ids": DISCONNECTED_FIVE}
     )
     assert split.status_code == 200
     assert split.json() == {"connected": False, "component_count": 2}
@@ -219,7 +221,7 @@ async def _full_scenario(client: AsyncClient) -> None:
         headers=player,
         json={
             "name": "Sea Claim",
-            "color_hex": "#112233",
+            "color_hex": "#AA1100",
             "province_ids": [SEA_NODE],
             **VALID_PROFILE,
         },
@@ -232,8 +234,8 @@ async def _full_scenario(client: AsyncClient) -> None:
         headers=player,
         json={
             "name": "Split Realm",
-            "color_hex": "#112233",
-            "province_ids": DISCONNECTED_PAIR,
+            "color_hex": "#3311CC",
+            "province_ids": DISCONNECTED_FIVE,
             **VALID_PROFILE,
         },
     )

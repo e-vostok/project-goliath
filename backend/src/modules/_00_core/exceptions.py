@@ -128,6 +128,138 @@ class HistoryUrlInvalidError(CoreDomainError):
         )
 
 
+class ShortNameTakenError(CoreDomainError):
+    """Raised when the nation's short name is already taken (INV-11)."""
+
+    def __init__(self, short_name: str):
+        super().__init__(
+            f"Nation short name '{short_name}' is already taken",
+            "SHORT_NAME_TAKEN"
+        )
+
+
+class ColorTooCloseError(CoreDomainError):
+    """Raised when the color is too close to another nation or the map."""
+
+    def __init__(self, color_hex: str):
+        super().__init__(
+            f"Color '{color_hex}' is too close to the color of another "
+            "nation or the map",
+            "COLOR_TOO_CLOSE"
+        )
+
+
+class ShortNameInvalidError(CoreDomainError):
+    """Raised when the short name fails the Part 3 text-field checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Short name is invalid: {reason}",
+            "SHORT_NAME_INVALID"
+        )
+
+
+class GenderInvalidError(CoreDomainError):
+    """Raised when the gender is empty or outside the GENDERS set."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Gender is invalid: {reason}",
+            "GENDER_INVALID"
+        )
+
+
+class SuccessionInvalidError(CoreDomainError):
+    """Raised when the succession type is outside SUCCESSION_TYPES."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Succession type is invalid: {reason}",
+            "SUCCESSION_INVALID"
+        )
+
+
+class MottoInvalidError(CoreDomainError):
+    """Raised when the motto fails the Part 3 text-field checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Motto is invalid: {reason}",
+            "MOTTO_INVALID"
+        )
+
+
+class DescriptionInvalidError(CoreDomainError):
+    """Raised when the description fails the Part 3 text-field checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Description is invalid: {reason}",
+            "DESCRIPTION_INVALID"
+        )
+
+
+class LeaderBioInvalidError(CoreDomainError):
+    """Raised when the leader bio fails the Part 3 text-field checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Leader bio is invalid: {reason}",
+            "LEADER_BIO_INVALID"
+        )
+
+
+class FlagInvalidError(CoreDomainError):
+    """Raised when the flag id is outside the catalog (INV-15)."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Flag id is invalid: {reason}",
+            "FLAG_INVALID"
+        )
+
+
+class PortraitInvalidError(CoreDomainError):
+    """Raised when the portrait id is outside the catalog (INV-15)."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Portrait id is invalid: {reason}",
+            "PORTRAIT_INVALID"
+        )
+
+
+class AnthemUrlInvalidError(CoreDomainError):
+    """Raised when the anthem URL fails the Part 3 soft link checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Anthem URL is invalid: {reason}",
+            "ANTHEM_URL_INVALID"
+        )
+
+
+class CapitalNameInvalidError(CoreDomainError):
+    """Raised when the capital name fails the Part 3 text-field checks."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Capital name is invalid: {reason}",
+            "CAPITAL_NAME_INVALID"
+        )
+
+
+class CapitalNotInProvincesError(CoreDomainError):
+    """Raised when the capital is not one of the selected provinces."""
+
+    def __init__(self, province_id: int | None):
+        super().__init__(
+            f"Capital province {province_id} is not among the selected "
+            "provinces",
+            "CAPITAL_NOT_IN_PROVINCES"
+        )
+
+
 class RetiredProvinceOwnedError(CoreDomainError):
     """A retired map node still belongs to a nation (INV-M5, Spec 1.9).
 

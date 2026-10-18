@@ -21,6 +21,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from core.tick.orchestrator import TickOrchestrator, TickPhase
+from modules._00_core.catalog import flag_url, portrait_url
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import (
     GameClock,
@@ -42,8 +43,9 @@ from tests.fixtures.postgres import (
 )
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import (
+    STARTING_GROUP,
     make_land_province,
-    map_mini_node_ids,
+    map_mini_linked_node_ids,
 )
 from tests.modules._00_core.test_router import (
     TEST_VK_SECRET,
@@ -137,14 +139,39 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     assert rules.json() == {
         "name_min_length": nation_cfg.nation_name_min_length,
         "name_max_length": nation_cfg.nation_name_max_length,
+        "short_name_min_length": nation_cfg.short_name_min_length,
+        "short_name_max_length": nation_cfg.short_name_max_length,
+        "motto_max_length": nation_cfg.motto_max_length,
+        "description_max_length": nation_cfg.description_max_length,
         "leader_name_min_length": nation_cfg.leader_name_min_length,
         "leader_name_max_length": nation_cfg.leader_name_max_length,
         "leader_title_min_length": nation_cfg.leader_title_min_length,
         "leader_title_max_length": nation_cfg.leader_title_max_length,
+        "leader_bio_max_length": nation_cfg.leader_bio_max_length,
+        "capital_name_min_length": nation_cfg.capital_name_min_length,
+        "capital_name_max_length": nation_cfg.capital_name_max_length,
         "history_url_max_length": nation_cfg.history_url_max_length,
         "history_url_allowed_hosts": nation_cfg.history_url_allowed_hosts,
+        "anthem_url_max_length": nation_cfg.anthem_url_max_length,
+        "anthem_url_allowed_hosts": nation_cfg.anthem_url_allowed_hosts,
         "min_provinces": nation_cfg.min_provinces_per_nation,
         "max_provinces": nation_cfg.max_provinces_per_nation,
+        "palette": CORE_CONFIG.color.palette,
+        "flags": [
+            {"id": flag_id, "url": flag_url(flag_id)}
+            for flag_id in CORE_CONFIG.catalog.flag_ids
+        ],
+        "portraits": [
+            {"id": portrait_id, "url": portrait_url(portrait_id)}
+            for portrait_id in CORE_CONFIG.catalog.portrait_ids
+        ],
+        "genders": ["male", "female"],
+        "succession_types": [
+            "elections",
+            "appointment",
+            "criteria",
+            "inheritance",
+        ],
     }
 
     # Profile values padded with whitespace: stored normalized (strip).
@@ -153,11 +180,15 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
         headers=_headers(token),
         json={
             "name": "Northern Reach",
-            "color_hex": "#1A2B3C",
-            "province_ids": [1001, 1002],
+            "color_hex": "#3A4B5C",
+            "province_ids": list(STARTING_GROUP),
             "leader_name": f"  {VALID_PROFILE['leader_name']}  ",
             "leader_title": f"  {VALID_PROFILE['leader_title']}  ",
             "history_url": f"  {VALID_PROFILE['history_url']}  ",
+            "short_name": VALID_PROFILE["short_name"],
+            "gender": VALID_PROFILE["gender"],
+            "succession_type": VALID_PROFILE["succession_type"],
+            "capital_name": VALID_PROFILE["capital_name"],
         },
     )
     assert create.status_code == 201, create.text
@@ -169,10 +200,9 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     assert nation.leader_name == VALID_PROFILE["leader_name"]
     assert nation.leader_title == VALID_PROFILE["leader_title"]
     assert nation.history_url == VALID_PROFILE["history_url"]
-    assert await _province_owners(pg_db, [1001, 1002, 1003]) == {
-        1001: nation_id,
-        1002: nation_id,
-        1003: None,
+    assert await _province_owners(pg_db, [*STARTING_GROUP, 1006]) == {
+        **{pid: nation_id for pid in STARTING_GROUP},
+        1006: None,
     }
 
     me = await client.get("/api/v1/nations/me", headers=_headers(token))
@@ -182,7 +212,7 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     assert body["leader_name"] == VALID_PROFILE["leader_name"]
     assert body["leader_title"] == VALID_PROFILE["leader_title"]
     assert body["history_url"] == VALID_PROFILE["history_url"]
-    assert body["province_ids"] == [1001, 1002]
+    assert body["province_ids"] == list(STARTING_GROUP)
 
     # PATCH leader_title: exactly that one column changes in the DB.
     before = _nation_snapshot(await _fetch_nation(pg_db, nation_id))
@@ -216,9 +246,8 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     )
     assert delete.status_code == 204
     assert await _fetch_nation(pg_db, nation_id) is None
-    assert await _province_owners(pg_db, [1001, 1002]) == {
-        1001: None,
-        1002: None,
+    assert await _province_owners(pg_db, list(STARTING_GROUP)) == {
+        pid: None for pid in STARTING_GROUP
     }
 
 
@@ -293,27 +322,27 @@ class TestCreateRejections:
         """Spec Part 2 check order: INV-1 precedes profile validation, so
         a second POST with an invalid profile answers 409 — not 422."""
         token, _ = await _auth(pg_live_client, vk_user_id=920003)
-        await _seed_provinces(pg_db, [1006, 1007])
         first = await pg_live_client.post(
             "/api/v1/nations",
             headers=_headers(token),
             json={
                 "name": "First Realm",
-                "color_hex": "#123123",
-                "province_ids": [1006],
+                "color_hex": "#BE1253",
+                "province_ids": list(STARTING_GROUP),
                 **VALID_PROFILE,
             },
         )
-        assert first.status_code == 201
+        assert first.status_code == 201, first.text
         nation_id = first.json()["id"]
 
         second = await pg_live_client.post(
             "/api/v1/nations",
             headers=_headers(token),
             json={
+                **VALID_PROFILE,
                 "name": "Second Realm",
-                "color_hex": "#321321",
-                "province_ids": [1007],
+                "color_hex": "#3311CC",
+                "province_ids": list(STARTING_GROUP),
                 "leader_name": "Broken\nName",
                 "leader_title": "x",
                 "history_url": "http://vk.com/@x",
@@ -325,9 +354,8 @@ class TestCreateRejections:
         async with pg_db() as session:
             result = await session.execute(select(Nation))
             assert [n.id for n in result.scalars().all()] == [nation_id]
-        assert await _province_owners(pg_db, [1006, 1007]) == {
-            1006: nation_id,
-            1007: None,
+        assert await _province_owners(pg_db, list(STARTING_GROUP)) == {
+            pid: nation_id for pid in STARTING_GROUP
         }
 
 
@@ -433,8 +461,6 @@ async def test_admin_tick_and_state_reset_on_postgres(
     and players survive."""
     monkeypatch.setenv("ADMIN_ALLOW_RESET", "true")  # DEP-4 reset gate
     client = pg_live_client
-    # Mini-map id — a valid single-province starting group.
-    await _seed_provinces(pg_db, [1008])
     token, _ = await _auth(client, vk_user_id=ADMIN_VK_ID)
 
     create = await client.post(
@@ -443,7 +469,7 @@ async def test_admin_tick_and_state_reset_on_postgres(
         json={
             "name": "Tickland",
             "color_hex": "#0ACE55",
-            "province_ids": [1008],
+            "province_ids": list(STARTING_GROUP),
             **VALID_PROFILE,
         },
     )
@@ -490,7 +516,7 @@ async def test_admin_tick_and_state_reset_on_postgres(
         provinces = await session.execute(select(Province))
         all_provinces = provinces.scalars().all()
         # The mini-map rows synced at startup survive the reset.
-        assert len(all_provinces) == len(map_mini_node_ids())
+        assert len(all_provinces) == len(map_mini_linked_node_ids())
         assert all(p.nation_id is None for p in all_provinces)
         clock = (
             await session.execute(
@@ -516,7 +542,6 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
     FAILED with the error — and a clean retry lands COMPLETED under the
     same turn_number (attempt history, migration 0002)."""
     client = pg_live_client
-    await _seed_provinces(pg_db, [1005])  # mini-map id
     token, _ = await _auth(client, vk_user_id=ADMIN_VK_ID)
 
     create = await client.post(
@@ -525,7 +550,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(
         json={
             "name": "Immutable Realm",
             "color_hex": "#AA55AA",
-            "province_ids": [1005],
+            "province_ids": list(STARTING_GROUP),
             **VALID_PROFILE,
         },
     )
@@ -619,14 +644,13 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
         await session.rollback()
 
     token, _ = await _auth(client, vk_user_id=940001)
-    await _seed_provinces(pg_db, [1006])  # mini-map id
     create = await client.post(
         "/api/v1/nations",
         headers=_headers(token),
         json={
             "name": "Actionland",
             "color_hex": "#C1C1C1",
-            "province_ids": [1006],
+            "province_ids": list(STARTING_GROUP),
             **VALID_PROFILE,
         },
     )
