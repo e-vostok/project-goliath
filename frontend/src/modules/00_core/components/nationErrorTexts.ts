@@ -10,7 +10,7 @@
  */
 
 import { ErrorCodes } from '../../../shared/types';
-import type { NationRulesDTO } from '../../../shared/types';
+import type { ColorCheckDTO, NationRulesDTO } from '../../../shared/types';
 
 /** «от N до M символов» when the bounds are known, else a numberless tail. */
 function range(rules: NationRulesDTO | null, min?: number, max?: number): string {
@@ -70,5 +70,23 @@ export function nationErrorText(
       return 'Столица должна быть одной из выбранных провинций';
     default:
       return null;
+  }
+}
+
+/**
+ * The live color-check hint under the HEX field on tab 1 (Spec Part 5:
+ * POST /nations/color-check is the unlocked preview of what POST
+ * /nations would decide — the hint never blocks the submit button, the
+ * server decides at submit). TAKEN/TOO_CLOSE reuse the dictionary
+ * wording so the player sees the same phrase on submit.
+ */
+export function nationColorCheckText(status: ColorCheckDTO['status']): string {
+  switch (status) {
+    case 'OK':
+      return 'Цвет свободен';
+    case 'TAKEN':
+      return nationErrorText(ErrorCodes.COLOR_TAKEN, null) as string;
+    case 'TOO_CLOSE':
+      return nationErrorText(ErrorCodes.COLOR_TOO_CLOSE, null) as string;
   }
 }

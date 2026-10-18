@@ -10,6 +10,7 @@
  */
 
 import {
+  act,
   fireEvent,
   screen,
   waitFor,
@@ -341,7 +342,7 @@ describe('PanelCreateNation — submit', () => {
       {
         name: 'Testia',
         short_name: 'Тестия',
-        color_hex: '#e64545',
+        color_hex: '#E64545',
         motto: 'Мы победим',
         description: null,
         flag_id: null,
@@ -358,6 +359,62 @@ describe('PanelCreateNation — submit', () => {
         anthem_url: null,
       },
     ]);
+  });
+});
+
+describe('PanelCreateNation — tab 1 symbols', () => {
+  it('debounced color-check hint, palette swatch fills HEX, flag + upper-case color submit', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const bodies: unknown[] = [];
+      server.use(
+        http.post('*/api/v1/nations/color-check', () =>
+          HttpResponse.json({ status: 'TOO_CLOSE' }),
+        ),
+        http.post('*/api/v1/nations', async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json(NATION, { status: 201 });
+        }),
+      );
+      seedRegistrationDraft({ color: '', flagId: null });
+      const user = userEvent.setup({
+        advanceTimers: vi.advanceTimersByTime,
+      });
+      renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+      const hexInput = await screen.findByLabelText('Цвет государства');
+      // Wait for the rules so the palette and flag grids render.
+      const swatch = await screen.findByTestId('color-swatch-#102030');
+
+      // A typed valid HEX calls color-check only after the debounce.
+      fireEvent.change(hexInput, { target: { value: 'a1b2c3' } });
+      expect(
+        screen.queryByText(/слишком похож/i),
+      ).not.toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(
+        await screen.findByText(/слишком похож/i),
+      ).toBeInTheDocument();
+
+      // A palette click sets the color and the HEX field.
+      await user.click(swatch);
+      expect(hexInput).toHaveValue(RULES.palette[0]);
+
+      // A flag pick then submit sends flag_id and an upper-case
+      // color_hex — the «слишком похож» hint never blocks the button.
+      await user.click(screen.getByRole('button', { name: 'flag_stub' }));
+      fireEvent.change(hexInput, { target: { value: 'a1b2c3' } });
+      await user.click(submitButton());
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({
+        flag_id: 'flag_stub',
+        color_hex: '#A1B2C3',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
