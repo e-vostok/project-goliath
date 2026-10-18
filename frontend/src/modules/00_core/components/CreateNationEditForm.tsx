@@ -15,11 +15,35 @@ import {
 import type { NationRulesDTO } from '../../../shared/types';
 import {
   CreateNationTextField,
-  type NationField,
   type NationRulesHints,
 } from './CreateNationFields';
+import type { NationField } from './registrationForm';
 
-export type EditableNationField = Exclude<NationField, 'provinces'>;
+/**
+ * The fields the edit form can show inline — it owns only these five
+ * inputs until its Spec 1.3 redesign (Issue 16). Server codes mapping to
+ * any other field fall back to the generic banner.
+ */
+export type EditableNationField =
+  | 'name'
+  | 'color'
+  | 'leaderName'
+  | 'leaderTitle'
+  | 'historyUrl';
+
+const EDITABLE_NATION_FIELDS: readonly NationField[] = [
+  'name',
+  'color',
+  'leaderName',
+  'leaderTitle',
+  'historyUrl',
+];
+
+export function isEditableNationField(
+  field: NationField,
+): field is EditableNationField {
+  return EDITABLE_NATION_FIELDS.includes(field);
+}
 
 export interface CreateNationEditFormProps {
   name: string;

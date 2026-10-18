@@ -39,9 +39,10 @@ import { useNationRules } from '../hooks/useNationRules';
 import { nationRulesHints } from './CreateNationFields';
 import {
   CreateNationEditForm,
+  isEditableNationField,
   type EditableNationField,
 } from './CreateNationEditForm';
-import { mapErrorCodeToField } from './PanelCreateNation';
+import { mapErrorCodeToField } from './registrationForm';
 import { BotConsentRow } from '../../02_bot/components/BotConsentRow';
 import { OrdersBlock } from '../../04_orders/components/OrdersBlock';
 
@@ -223,7 +224,7 @@ export function PanelNationHome({
     } catch (error) {
       if (error instanceof ApiError) {
         const field = mapErrorCodeToField(error.code);
-        if (field && field !== 'provinces') {
+        if (field && isEditableNationField(field)) {
           setFieldErrors({ [field]: error.message });
         } else {
           setFormError(error.message);
