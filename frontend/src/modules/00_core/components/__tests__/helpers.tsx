@@ -271,6 +271,7 @@ export function completeRegistrationForm(
     provinces: SEEDED_PROVINCES.map((chip) => ({ ...chip })),
     capitalProvinceId: null,
     capitalName: 'Столицево',
+    capitalNameEdited: false,
     ...overrides,
   };
 }

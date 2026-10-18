@@ -137,8 +137,34 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     value,
   ) => {
     setTouched(true);
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'provinces') {
+        // INV-14: the capital must stay among the chosen ids — a chip
+        // removal that takes the capital away drops the mark.
+        const chips = next.provinces;
+        next.capitalProvinceId =
+          prev.capitalProvinceId !== null &&
+          chips.some((chip) => chip.value === prev.capitalProvinceId)
+            ? prev.capitalProvinceId
+            : null;
+        // Until a manual edit the capital name follows the effective
+        // capital (the marked chip, else the first selected one).
+        if (!prev.capitalNameEdited) {
+          const effective = next.capitalProvinceId ?? chips[0]?.value ?? null;
+          next.capitalName =
+            chips.find((chip) => chip.value === effective)?.label ?? '';
+        }
+      } else if (field === 'capitalName') {
+        // A hand-typed name is never auto-overwritten again.
+        next.capitalNameEdited = true;
+      }
+      return next;
+    });
     clearFieldError(field);
+    if (field === 'provinces') {
+      clearFieldError('capitalProvinceId');
+    }
   };
 
   // Tab badges: a server error on a field of that tab, or — once any
@@ -230,23 +256,33 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     }
   };
 
-  const onPickerDone = (ids: number[], names: Map<number, string>) => {
+  const onPickerDone = (
+    ids: number[],
+    names: Map<number, string>,
+    capitalId: number | null,
+  ) => {
     setTouched(true);
-    setForm((prev) => ({
-      ...prev,
-      provinces: ids.map(
+    setForm((prev) => {
+      const provinces = ids.map(
         (id): ChipOption => ({
           value: id,
           label: names.get(id) ?? String(id),
         }),
-      ),
-      // A capital mark on a province that just left the selection is
-      // dropped — INV-14 requires the capital among the chosen ids.
-      capitalProvinceId:
-        prev.capitalProvinceId !== null && ids.includes(prev.capitalProvinceId)
-          ? prev.capitalProvinceId
-          : null,
-    }));
+      );
+      // INV-14: the mark must be among the chosen ids (the picker
+      // already guarantees it; re-validated here defensively).
+      const marked =
+        capitalId !== null && ids.includes(capitalId) ? capitalId : null;
+      const next = { ...prev, provinces, capitalProvinceId: marked };
+      // The capital name follows the effective capital until the
+      // player edited the field by hand (capitalNameEdited).
+      if (!prev.capitalNameEdited) {
+        const effective = marked ?? ids[0] ?? null;
+        next.capitalName =
+          effective === null ? '' : (names.get(effective) ?? '');
+      }
+      return next;
+    });
     clearFieldError('provinces');
     clearFieldError('capitalProvinceId');
     setPickerOpen(false);
@@ -343,6 +379,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           <ProvincePicker
             id={MODAL_PROVINCE_PICKER}
             initialSelectedIds={form.provinces.map((chip) => chip.value)}
+            initialCapitalId={form.capitalProvinceId}
             limits={{
               min: rules?.min_provinces ?? null,
               max: rules?.max_provinces ?? null,

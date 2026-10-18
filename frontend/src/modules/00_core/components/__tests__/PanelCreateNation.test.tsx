@@ -17,6 +17,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { UserEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 import { server } from '../../../../../vitest.setup';
@@ -565,32 +566,47 @@ describe('PanelCreateNation — server error mapping', () => {
       'PROVINCE_COUNT_OUT_OF_RANGE',
       'Province count 12 is out of range (must be between 1 and 5)',
       /out of range/i,
+      'form-item-provinces',
     ],
     [
       'PROVINCE_TAKEN',
       'Province 1003 is already taken',
       /already taken/i,
+      'form-item-provinces',
     ],
-    ['PROVINCE_NOT_FOUND', 'Province 9999 not found', /not found/i],
-    ['PROVINCE_NOT_LAND', 'Province 2087 is a sea zone', /sea zone/i],
+    [
+      'PROVINCE_NOT_FOUND',
+      'Province 9999 not found',
+      /not found/i,
+      'form-item-provinces',
+    ],
+    [
+      'PROVINCE_NOT_LAND',
+      'Province 2087 is a sea zone',
+      /sea zone/i,
+      'form-item-provinces',
+    ],
     [
       'STARTING_GROUP_NOT_CONNECTED',
       'Starting provinces are not connected (2 parts)',
       /not connected/i,
+      'form-item-provinces',
     ],
     [
       'CAPITAL_NAME_INVALID',
       'Capital name is too short',
-      /Название столицы/,
+      /Название столицы: от \d+ до \d+ символов, без служебных символов/,
+      'form-item-capital-name',
     ],
     [
       'CAPITAL_NOT_IN_PROVINCES',
       'Capital province is not among the selected provinces',
       /Столица должна быть одной из выбранных провинций/,
+      'form-item-provinces',
     ],
   ])(
-    'shows %s on the provinces FormItem of tab 4',
-    async (code, detail, pattern) => {
+    'shows %s on its tab-4 FormItem',
+    async (code, detail, pattern, itemTestId) => {
       server.use(
         http.post('*/api/v1/nations', () =>
           HttpResponse.json({ detail, code }, { status: 422 }),
@@ -603,8 +619,8 @@ describe('PanelCreateNation — server error mapping', () => {
 
       await screen.findByTestId('step-error-4');
       await goToTab(user, 4);
-      const provincesItem = screen.getByTestId('form-item-provinces');
-      expect(within(provincesItem).getByText(pattern)).toBeInTheDocument();
+      const item = screen.getByTestId(itemTestId);
+      expect(within(item).getByText(pattern)).toBeInTheDocument();
     },
   );
 
@@ -736,6 +752,119 @@ describe('PanelCreateNation — province picker', () => {
     await goToTab(user, 4);
     expect(provincesItem()).toHaveTextContent('Эпсилон');
     expect(provincesItem()).toHaveTextContent('Эта');
+  });
+});
+
+describe('PanelCreateNation — tab 4 territories', () => {
+  const capitalInput = () => screen.getByLabelText('Название столицы');
+
+  /** Reopens the picker on the current form and, optionally, presses
+   *  the right button on `capital` before «Готово». */
+  async function pickAgain(user: UserEvent, capital?: number) {
+    await user.click(screen.getByTestId('open-province-picker'));
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          '[data-testid="map-view"] path[data-id]',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+    if (capital !== undefined) {
+      fireEvent(
+        document.querySelector(
+          `[data-testid="map-view"] path[data-id="${capital}"]`,
+        ) as Element,
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+    }
+    await user.click(screen.getByRole('button', { name: 'Готово' }));
+  }
+
+  it('the capital name follows the marked province and stops after a manual edit', async () => {
+    seedRegistrationDraft({ provinces: [], capitalName: '' });
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await goToTab(user, 4);
+
+    // No provinces yet — the default-capital line is hidden.
+    expect(screen.queryByTestId('capital-line')).not.toBeInTheDocument();
+
+    // Pick the connected triple and mark Дзета (1006) as capital via
+    // the right button inside the picker.
+    await user.click(screen.getByTestId('open-province-picker'));
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          '[data-testid="map-view"] path[data-id]',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+    for (const id of [1005, 1006, 1007]) {
+      fireEvent.mouseDown(
+        document.querySelector(
+          `[data-testid="map-view"] path[data-id="${id}"]`,
+        ) as Element,
+        { button: 0, clientX: 5, clientY: 5 },
+      );
+      fireEvent(window, new MouseEvent('mouseup', { bubbles: true }));
+    }
+    fireEvent(
+      document.querySelector(
+        '[data-testid="map-view"] path[data-id="1006"]',
+      ) as Element,
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Готово' }));
+
+    // After the picker returns: the marked chip, the line and the
+    // auto-filled name all say Дзета.
+    await waitFor(() => expect(capitalInput()).toHaveValue('Дзета'));
+    const capitalLine = screen.getByTestId('capital-line');
+    expect(capitalLine).toHaveTextContent('Столица: Дзета');
+    expect(capitalLine).not.toHaveTextContent('по умолчанию');
+
+    // Reopen and move the mark to Эта — the name follows.
+    await pickAgain(user, 1007);
+    await waitFor(() => expect(capitalInput()).toHaveValue('Эта'));
+    expect(screen.getByTestId('capital-line')).toHaveTextContent(
+      'Столица: Эта',
+    );
+
+    // A manual edit pins the name: moving the mark no longer rewrites it.
+    await user.clear(capitalInput());
+    await user.type(capitalInput(), 'Моя Столица');
+    await pickAgain(user, 1005);
+    await waitFor(() =>
+      expect(screen.getByTestId('capital-line')).toHaveTextContent(
+        'Столица: Эпсилон',
+      ),
+    );
+    expect(capitalInput()).toHaveValue('Моя Столица');
+
+    // Clearing the mark → the line falls back to «по умолчанию», and
+    // the hand-typed name still is not overwritten.
+    await user.click(screen.getByTestId('open-province-picker'));
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          '[data-testid="map-view"] path[data-id]',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+    const path1005 = document.querySelector(
+      '[data-testid="map-view"] path[data-id="1005"]',
+    ) as Element;
+    fireEvent(
+      path1005,
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Готово' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('capital-line')).toHaveTextContent(
+        'Столица: Эпсилон (по умолчанию — первая выбранная)',
+      ),
+    );
+    expect(capitalInput()).toHaveValue('Моя Столица');
   });
 });
 
