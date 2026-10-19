@@ -1,16 +1,17 @@
 /**
- * PanelRegistry — the «Реестр» window (Spec 5.5).
+ * PanelRegistry — the «Реестр» window (Spec 5.5, UI Spec 9.2).
  *
- * A column from under the top bar to the bottom of the app window:
- * title row («Реестр») → tab row → toolbar (search, «Показано N из M»,
+ * An ordinary block in the page flow (the VK window follows the
+ * content height — nothing here is pinned to it): title row
+ * («Реестр») → tab row → toolbar (search, «Показано N из M»,
  * «Фильтры», «Обновить», «Сбросить») → the in-flow filter panel
  * (toggled by «Фильтры», normal document flow across the window
- * width) → table block (flex:1; min-height:0; overflow-x:hidden,
+ * width) → table block (max-height 720 px; overflow-x:hidden,
  * overflow-y:auto, sticky header — the 910 px window rule: no
- * horizontal scrollbar, Spec 5.5). With layout.tabs_position = right the tab row becomes
- * a vertical column to the right of the table block. The page height
- * never depends on the row count. Navigation lives in the shared top
- * bar — no own «Назад».
+ * horizontal scrollbar, Spec 5.5). With layout.tabs_position = right
+ * the tab row becomes a vertical column to the right of the table
+ * block. The screen is as tall as its content. Navigation lives in
+ * the shared top bar — no own «Назад».
  *
  * Sort, filters, search and the filter-panel toggle of each tab live
  * in this component's state and survive tab switches; leaving the
@@ -21,8 +22,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Button, FormStatus, Spinner, Title } from '@vkontakte/vkui';
-
-import { SIZES } from '../../../shared/ui';
 
 import { useNationOptions, NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { useRegistryRows } from '../hooks/useRegistryRows';
@@ -262,12 +261,6 @@ export function PanelRegistry({
     <div
       data-testid="panel-registry"
       style={{
-        position: 'fixed',
-        top: SIZES['topbar-h'],
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 10,
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--vkui--color_background)',
@@ -324,13 +317,14 @@ export function PanelRegistry({
         />
       )}
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex' }}>
         <div
           data-testid="registry-table-block"
           style={{
             flex: 1,
             minHeight: 0,
             minWidth: 0,
+            maxHeight: 720,
             overflowX: 'hidden',
             overflowY: 'auto',
             position: 'relative',

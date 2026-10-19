@@ -1,0 +1,35 @@
+/*
+ * App shell — automatic window height (UI Spec 2, version 0.9.0
+ * unit 4b). The VK iframe follows the height of the app CONTENT, so
+ * nothing on the way down to the shell may pin the layout to the
+ * window.
+ *
+ * VKUI's AppRoot full mode marks <html> with `.vkui` and its own
+ * container with `.vkui__root`; the rule
+ * `.vkui, .vkui > body, .vkui__root { height: 100% }` then pins the
+ * page (html/body) to the viewport, and the `height: 100%` chain
+ * through SplitLayout → View → Panel would pin the content too as
+ * soon as any ancestor gets a definite height. Collapse the chain:
+ * every layer sizes to its content.
+ */
+
+html.vkui,
+html.vkui > body {
+  height: auto;
+}
+
+.vkuiAppRoot__host,
+.vkuiSplitLayout__host,
+.vkuiSplitLayout__inner,
+.vkuiSplitCol__host,
+.vkuiView__host,
+.vkuiView__panels,
+.vkuiView__panel,
+.vkuiView__panelIn,
+.vkuiPanel__host {
+  height: auto;
+}
+
+.vkuiPanel__in {
+  min-height: 0;
+}

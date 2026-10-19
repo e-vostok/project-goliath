@@ -8,9 +8,10 @@
  * устарели» when 3.10 says so, the colour legend and the attribution
  * string. Navigation lives in the shared top bar — no own «Назад».
  *
- * The screen is position:fixed — it starts under the top bar
- * (`topbar-h`) in normal view and covers the whole monitor once the
- * page goes fullscreen, regardless of how VKUI lays out the
+ * In normal view the screen is an ordinary 780 px block in the page
+ * flow (UI Spec 9.5 — the VK window follows the content height).
+ * Once the page goes fullscreen the panel turns position:fixed and
+ * covers the whole monitor, regardless of how VKUI lays out the
  * surrounding panels.
  */
 
@@ -22,8 +23,6 @@ import {
   Search,
   Text,
 } from '@vkontakte/vkui';
-
-import { SIZES } from '../../../shared/ui';
 
 import { buildAdjacency } from '../lib/adjacency';
 import { buildOwnerMap } from '../lib/colors';
@@ -175,18 +174,28 @@ export function PanelMap() {
   return (
     <div
       data-testid="panel-map"
-      style={{
-        position: 'fixed',
-        // Under the top bar normally; fullscreen covers the monitor.
-        top: bigWindow.isFullscreen ? 0 : SIZES['topbar-h'],
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 10,
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--vkui--color_background)',
-      }}
+      style={
+        bigWindow.isFullscreen
+          ? {
+              // Fullscreen covers the whole monitor, top bar too.
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--vkui--color_background)',
+            }
+          : {
+              // Normal view: an ordinary block in the page flow.
+              height: 780,
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--vkui--color_background)',
+            }
+      }
     >
       <div
         style={{

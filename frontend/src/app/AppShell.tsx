@@ -63,6 +63,7 @@ import {
   PANEL_MAP,
   PANEL_REGISTRY,
 } from './panels';
+import { useWindowHeight } from './useWindowHeight';
 
 export { PANEL_CREATE, PANEL_HOME, PANEL_MAP, PANEL_REGISTRY };
 const MODAL_DELETE_NATION = 'confirm-delete-nation';
@@ -156,6 +157,10 @@ function AuthedArea() {
   const navigator = useRouteNavigator();
   const nationState = useNation();
   const [activeModal, setActiveModal] = useState<string | null>(null);
+  // The root container the VK window height follows (UI Spec 2):
+  // top bar + layout, measured as one block — never the page.
+  const shellRef = useRef<HTMLDivElement>(null);
+  useWindowHeight(shellRef);
   // The entry request is consumed once — the first read wins, later
   // renders get null (takeRegistryEntryRequest clears the store).
   const registryRequest = useRef(takeRegistryEntryRequest()).current;
@@ -226,8 +231,9 @@ function AuthedArea() {
       activeModal={activeModal}
       onActiveModal={setActiveModal}
     >
-      <TopBar activePanel={activePanel} clock={clock} />
-      <SplitLayout modal={modal}>
+      <div ref={shellRef} data-testid="app-root">
+        <TopBar activePanel={activePanel} clock={clock} />
+        <SplitLayout modal={modal}>
       <SplitCol>
         <View activePanel={activePanel}>
           <Panel id={PANEL_CREATE}>
@@ -272,6 +278,7 @@ function AuthedArea() {
         </View>
       </SplitCol>
       </SplitLayout>
+      </div>
     </OrdersUiProvider>
   );
 }
