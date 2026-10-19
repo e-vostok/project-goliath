@@ -31,12 +31,23 @@ import {
   PANEL_MAP,
   PANEL_REGISTRY,
 } from './app/AppShell';
+import { ThemeProvider } from './shared/ui/theme';
+import { UiKitPage } from './shared/ui/UiKitPage';
 
 import '@vkontakte/vkui/dist/vkui.css';
+import './shared/ui/fonts.css';
 
-// Deep link from the community menu: `https://vk.com/app<APP_ID>#map`
-// reaches the iframe as the bare hash `#map` — normalise before routing.
-normalizeEntryHash();
+// Hidden catalogue of the shared UI library (unit 5): no auth, no
+// router — the Project Owner opens `https://vk.com/app<APP_ID>#ui-kit`
+// in real VK to approve the look.
+const isUiKit =
+  window.location.hash === '#ui-kit' || window.location.hash === '#/ui-kit';
+
+if (!isUiKit) {
+  // Deep link from the community menu: `https://vk.com/app<APP_ID>#map`
+  // reaches the iframe as the bare hash `#map` — normalise before routing.
+  normalizeEntryHash();
+}
 
 const router = createHashRouter([
   { path: '/', panel: PANEL_HOME, view: 'main' },
@@ -63,4 +74,13 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+const root = createRoot(document.getElementById('root')!);
+if (isUiKit) {
+  root.render(
+    <ThemeProvider>
+      <UiKitPage />
+    </ThemeProvider>,
+  );
+} else {
+  root.render(<App />);
+}
