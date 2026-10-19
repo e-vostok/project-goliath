@@ -17,7 +17,7 @@
 1. docs/PROJECT_STATE.md — паспорт проекта.
 2. docs/04_VERSIONS/[предыдущая версия].md — итоги и передача.
 3. docs/development_workflow.md, docs/devin_rules.md, docs/prompts_templates.md — правила работы.
-4. Roadmap, Spec и Bible модулей, которых касается эта версия (названы ниже).
+4. Roadmap, Spec и Bible модулей, которых касается эта версия (названы ниже); если версия добавляет или меняет окна — ещё docs/02_SYSTEM_SPECS/00_core_ui.md.
 5. changelog.md (верх) и фактическая версия в backend/pyproject.toml на main.
 
 МАТЕРИАЛ ДЛЯ ВЕРСИИ (от Project Owner):
@@ -109,13 +109,14 @@
 ПРОЕКТ: Goliath.
 
 ЗАДАЧА:
-Изучить актуальную структуру кодовой базы на GitHub, декомпозировать спецификацию модуля (или дельту расширения) на 3–6 последовательных сквозных задач (Issues) и сформировать файл 03_ROADMAP/[module_slug].md.
+Изучить актуальную структуру кодовой базы на GitHub, декомпозировать спецификацию модуля (или дельту расширения) на 3–6 последовательных сквозных задач (Issues) плюс отдельный Issue «Интерфейс» и сформировать файл 03_ROADMAP/[module_slug].md.
 НА ЭТОМ ШАГЕ ТЗ ДЛЯ АГЕНТА НЕ ПИШЕТСЯ.
 
 ВХОДНЫЕ ДАННЫЕ:
 - Спек-файл модуля: `docs/02_SYSTEM_SPECS/[module_slug].md`
 - Системный документ: `technical_blueprint.md`
 - Текущая структура каталогов в репозитории на GitHub.
+- Единые правила окон: `docs/02_SYSTEM_SPECS/00_core_ui.md`.
 
 СТРОГИЕ ПРАВИЛА ДЕКОМПОЗИЦИИ (3–6 Full-Stack Issues):
 1. Issue 1 (Data Layer & Config-Safe): Модели SQLAlchemy, Alembic-миграция, Pydantic-схема `config_schema.py` и тест валидности конфигурации.
@@ -124,6 +125,7 @@
 4. Issue 4 (Client UI / VKUI): Компоненты панели/модалки VKUI, хуки вызова API, обработка ошибок, вызовы `@vkontakte/vk-bridge`.
 5. Issue 5 (Integration / E2E): Сквозной тест сценария без моков (Anti-Mock Guard): действие игрока в UI -> API -> мутация БД -> прогон фазы тика -> верификация финального состояния.
 *(Примечание: при компактной логике допускается объединение Issue 2 и 3, но UI и интеграционный тест не могут быть проигнорированы).*
+6. Issue «Интерфейс» (всегда, если модуль или расширение добавляет или меняет окна): отдельный Issue, который идёт ДО Issue 4. Состав: список окон с типом каждого по `docs/02_SYSTEM_SPECS/00_core_ui.md` (п. 3), макет каждого нового окна в инструменте Design на дизайн-системе PAX ATOMICA, утверждение вида Project Owner, тексты по п. 8 и определение готовности по п. 10 того файла. Issue 4 (код окон) ссылается на утверждённые макеты; ТЗ на код окна без утверждённого макета не выдаётся.
 
 ВЫХОДНЫЕ ДАННЫЕ:
 Текст файла `03_ROADMAP/[module_slug].md`:
@@ -132,6 +134,7 @@
   - [ ] Issue 1: [Название] — [Scope и архитектурный результат]
   - [ ] Issue 2: [Название] — [Scope и архитектурный результат]
   ...
+  - [ ] Issue «Интерфейс»: [состав окон и их типы; ссылки на утверждённые макеты] — выполняется до Issue 4
 ```
 
 ---
@@ -155,7 +158,8 @@
 3. Границы изменений: ALLOWLIST (что создавать/менять) и DENYLIST (что нельзя трогать) — по одной строке каждая.
 4. Раздел тестов: какой ОДИН новый тест нужен и какие наборы запускать (по правилам из `docs/devin_rules.md`); без матриц и без целевого покрытия.
 5. Если задача меняет данные карты, строки в базе, авторизацию или движок тика — прямо написать «ожидаемый класс: NEEDS LEAD AI REVIEW» и указать, что именно показать в отчёте (репетиция запуска, счётчики).
-6. Выдать строго готовое ТЗ в формате Markdown на английском языке.
+6. Если Issue строит или меняет окно: в ТЗ указать утверждённый макет, тип окна по `docs/02_SYSTEM_SPECS/00_core_ui.md` и общие компоненты из `frontend/src/shared/ui/`; без утверждённого макета ТЗ на окно не выдавать.
+7. Выдать строго готовое ТЗ в формате Markdown на английском языке.
 
 ВЫХОДНЫЕ ДАННЫЕ (Англоязычное ТЗ для IDE Agent):
 ```markdown
@@ -174,6 +178,7 @@ Rules: follow `docs/devin_rules.md`. Branch `[prefix]/[n]-[slug]`. [Explicit ove
 ALLOWLIST: [files and folders that may change]
 DENYLIST: [what must not change]
 Spec: `docs/02_SYSTEM_SPECS/[module_slug].md` (list the passages to touch, do not edit it, unless this task is the Spec task). Config and schema: `configs/[module_slug].yaml`, `backend/src/modules/[module_slug]/config_schema.py`.
+UI (only if the task builds or changes a window): approved mockup, window type per `docs/02_SYSTEM_SPECS/00_core_ui.md`, shared components from `frontend/src/shared/ui/`.
 
 ## Tests
 New test (one): [what it proves, path]. Suites to run: per the rules, for the touched areas.
