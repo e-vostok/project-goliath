@@ -10,7 +10,6 @@
 
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import bridge from '@vkontakte/vk-bridge';
 import {
   AdaptivityProvider,
   AppRoot,
@@ -31,8 +30,8 @@ import {
   PANEL_MAP,
   PANEL_REGISTRY,
 } from './app/AppShell';
-import { ThemeProvider } from './shared/ui/theme';
-import { UiKitPage } from './shared/ui/UiKitPage';
+import { sendVkInit } from './shared/vkInit';
+import { UiKitEntry } from './shared/ui/UiKitEntry';
 
 import '@vkontakte/vkui/dist/vkui.css';
 import './shared/ui/fonts.css';
@@ -58,7 +57,7 @@ const router = createHashRouter([
 
 function App() {
   useEffect(() => {
-    void bridge.send('VKWebAppInit').catch(() => {});
+    sendVkInit();
   }, []);
 
   return (
@@ -76,11 +75,8 @@ function App() {
 
 const root = createRoot(document.getElementById('root')!);
 if (isUiKit) {
-  root.render(
-    <ThemeProvider>
-      <UiKitPage />
-    </ThemeProvider>,
-  );
+  sendVkInit();
+  root.render(<UiKitEntry />);
 } else {
   root.render(<App />);
 }
