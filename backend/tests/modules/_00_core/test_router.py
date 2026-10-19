@@ -753,7 +753,7 @@ class TestGameClockEndpoint:
         body = resp.json()
         assert body["current_turn"] == 0
         assert body["game_date"] == "2040-01-01"
-        assert body["game_date_text"] == "01.январь.2040"
+        assert body["game_date_text"] == "Январь 2040"
 
 
 class TestAuthRequired:

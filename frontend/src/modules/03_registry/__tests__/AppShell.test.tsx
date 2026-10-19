@@ -106,7 +106,7 @@ function registerAppHandlers() {
     http.get('*/api/v1/game-clock', () =>
       HttpResponse.json({
         current_turn: 12,
-        game_date: '15 марта 1240',
+        game_date: '2041-01-01',
         next_tick_at: '2026-10-15T03:00:00Z',
       }),
     ),

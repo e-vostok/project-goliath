@@ -81,7 +81,7 @@ async def _outbox_count(session: AsyncSession, player) -> int:
 
 _DIGEST_VARS = {
     "turn": 7,
-    "game_date": "01.август.2040",
+    "game_date": "Август 2040",
     "nation_name": "N",
     "province_count": 3,
     "next_tick_time": "завтра",
