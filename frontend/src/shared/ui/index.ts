@@ -32,3 +32,4 @@ export { LoadingState } from './LoadingState';
 export { ErrorState, NETWORK_ERROR_TEXT } from './ErrorState';
 export { EmptyState } from './EmptyState';
 export { UiKitPage } from './UiKitPage';
+export { UiKitEntry } from './UiKitEntry';
