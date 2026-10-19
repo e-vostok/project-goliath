@@ -23,6 +23,20 @@ import {
   ViewWidth,
 } from '@vkontakte/vkui';
 
+// The height probe calls VK Bridge; outside VK it would hit a real
+// postMessage — stub it (same pattern as 03_registry tests).
+vi.mock('@vkontakte/vk-bridge', () => ({
+  default: {
+    send: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
+    supports: vi.fn().mockReturnValue(false),
+    isWebView: vi.fn().mockReturnValue(false),
+  },
+}));
+
+import bridge from '@vkontakte/vk-bridge';
+
 import { server } from '../../../vitest.setup';
 import { SessionProvider } from '../../modules/00_core/hooks/useAuth';
 import { AdminBlock } from '../AdminBlock';
@@ -498,22 +512,22 @@ describe('AdminBlock — удаление игрока', () => {
   });
 });
 
-describe('AdminBlock — окно приложения', () => {
-  function mockWindowSize(width: number, height: number) {
-    for (const [key, value] of [
-      ['innerWidth', width],
-      ['innerHeight', height],
-    ] as const) {
-      Object.defineProperty(window, key, {
-        configurable: true,
-        value,
-      });
-    }
-    return () => {
-      mockWindowSize(1024, 768);
-    };
+function mockWindowSize(width: number, height: number) {
+  for (const [key, value] of [
+    ['innerWidth', width],
+    ['innerHeight', height],
+  ] as const) {
+    Object.defineProperty(window, key, {
+      configurable: true,
+      value,
+    });
   }
+  return () => {
+    mockWindowSize(1024, 768);
+  };
+}
 
+describe('AdminBlock — окно приложения', () => {
   it('renders the window size as «ширина × высота» for admins', async () => {
     const restore = mockWindowSize(1234, 567);
     try {
@@ -527,6 +541,83 @@ describe('AdminBlock — окно приложения', () => {
       ).toBeInTheDocument();
     } finally {
       restore();
+    }
+  });
+});
+
+describe('AdminBlock — высота окна', () => {
+  const sendMock = vi.mocked(bridge.send);
+
+  beforeEach(() => {
+    sendMock.mockClear();
+    sendMock.mockResolvedValue({ width: 910, height: 1200 });
+  });
+
+  it('«1200» asks VK to resize to 1200 and shows the VK answer', async () => {
+    const restore = mockWindowSize(910, 3000);
+    try {
+      const user = await renderAsAdmin();
+
+      await user.click(screen.getByRole('button', { name: '1200' }));
+
+      expect(sendMock).toHaveBeenCalledWith('VKWebAppResizeWindow', {
+        width: 910,
+        height: 1200,
+      });
+      await screen.findByText('Ответ VK: 910 × 1200');
+      // 300 ms later the probe re-reads the real window size.
+      await screen.findByText('Через 300 мс: 910 × 3000');
+    } finally {
+      restore();
+    }
+  });
+
+  it('a rejected resize shows the VK error text and the block stays alive', async () => {
+    sendMock.mockRejectedValue({
+      error_type: 'client_error',
+      error_data: { error_code: 1, error_reason: 'not supported' },
+    });
+    const user = await renderAsAdmin();
+
+    await user.click(screen.getByRole('button', { name: '4050' }));
+
+    await screen.findByText('Ошибка VK: client_error');
+    expect(screen.getByText(/not supported/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '1200' }),
+    ).toBeEnabled();
+  });
+
+  it('«Автоподстройка высоты» is OFF by default and creates no observer until switched on', async () => {
+    const constructed = vi.fn();
+    const observed = vi.fn();
+    const disconnected = vi.fn();
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        constructed(callback);
+      }
+      observe = observed;
+      unobserve = vi.fn();
+      disconnect = disconnected;
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      const user = await renderAsAdmin();
+
+      const toggle = screen.getByRole('switch', {
+        name: 'Автоподстройка высоты',
+      });
+      expect(toggle).not.toBeChecked();
+      expect(constructed).not.toHaveBeenCalled();
+      expect(sendMock).not.toHaveBeenCalled();
+
+      await user.click(toggle);
+
+      expect(constructed).toHaveBeenCalledTimes(1);
+      expect(observed).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('Вызовов: 0')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });
