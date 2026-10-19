@@ -75,6 +75,60 @@ function describePlayerDelete(p: AdminPlayerDeleteResultDTO): string {
   return parts.join('; ') + '.';
 }
 
+interface WindowMetrics {
+  width: number;
+  height: number;
+  ratio: number;
+  hasHorizontalScroll: boolean;
+}
+
+function readWindowMetrics(): WindowMetrics {
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    ratio: window.devicePixelRatio,
+    hasHorizontalScroll:
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
+  };
+}
+
+/** «Окно приложения» — live window metrics for the 0.9.0 layout probe. */
+function WindowProbe() {
+  const [metrics, setMetrics] = useState(readWindowMetrics);
+
+  useEffect(() => {
+    const refresh = () => setMetrics(readWindowMetrics());
+    window.addEventListener('resize', refresh);
+    return () => window.removeEventListener('resize', refresh);
+  }, []);
+
+  return (
+    <Div data-testid="window-probe">
+      <Header size="s" style={{ paddingLeft: 0 }}>
+        Окно приложения
+      </Header>
+      <Footnote style={{ display: 'block' }}>
+        Размер окна: {metrics.width} × {metrics.height} px
+      </Footnote>
+      <Footnote style={{ display: 'block' }}>
+        Плотность пикселей: {metrics.ratio}
+      </Footnote>
+      <Footnote style={{ display: 'block' }}>
+        Горизонтальная прокрутка:{' '}
+        {metrics.hasHorizontalScroll ? 'есть' : 'нет'}
+      </Footnote>
+      <Button
+        size="s"
+        mode="tertiary"
+        onClick={() => setMetrics(readWindowMetrics())}
+      >
+        Обновить
+      </Button>
+    </Div>
+  );
+}
+
 export interface AdminBlockProps {
   /** Called after actions that mutate the world (tick, reset). */
   onWorldChanged: () => void;
@@ -246,6 +300,8 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
           </Button>
         </ButtonGroup>
       </Div>
+
+      <WindowProbe />
 
       {confirmingReset && (
         <Div>
