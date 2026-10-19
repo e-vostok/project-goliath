@@ -1,25 +1,28 @@
 /**
  * PanelRegistry — the «Реестр» window (Spec 5.5).
  *
- * A column as tall as the app window: title row («Реестр» + «Назад»)
- * → tab row → toolbar (search, «Показано N из M», «Фильтры»,
- * «Обновить», «Сбросить») → the in-flow filter panel (toggled by
- * «Фильтры», normal document flow across the window width) → table
- * block (flex:1; min-height:0; overflow-x:hidden,
+ * A column from under the top bar to the bottom of the app window:
+ * title row («Реестр») → tab row → toolbar (search, «Показано N из M»,
+ * «Фильтры», «Обновить», «Сбросить») → the in-flow filter panel
+ * (toggled by «Фильтры», normal document flow across the window
+ * width) → table block (flex:1; min-height:0; overflow-x:hidden,
  * overflow-y:auto, sticky header — the 910 px window rule: no
  * horizontal scrollbar, Spec 5.5). With layout.tabs_position = right the tab row becomes
  * a vertical column to the right of the table block. The page height
- * never depends on the row count.
+ * never depends on the row count. Navigation lives in the shared top
+ * bar — no own «Назад».
  *
  * Sort, filters, search and the filter-panel toggle of each tab live
  * in this component's state and survive tab switches; leaving the
- * panel («Назад») resets them (Bible 2.7 — VKUI View keeps panels
- * mounted, so the reset is done explicitly, not by unmount).
+ * panel resets them (Bible 2.7 — VKUI View keeps panels mounted, so
+ * the reset is done explicitly on the `active` prop flipping to
+ * false, not by unmount).
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import { Button, FormStatus, Spinner, Title } from '@vkontakte/vkui';
+
+import { SIZES } from '../../../shared/ui';
 
 import { useNationOptions, NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { useRegistryRows } from '../hooks/useRegistryRows';
@@ -43,6 +46,7 @@ import { TabStrip } from './TabStrip';
 
 export function PanelRegistry({
   entryRequest = null,
+  active = true,
 }: {
   /**
    * Deep-link request from AppShell (Spec 04_orders 5.5): select `tab`
@@ -50,8 +54,13 @@ export function PanelRegistry({
    * like a click on an `action_text` cell would.
    */
   entryRequest?: RegistryEntryRequest | null;
+  /**
+   * Whether this screen is the visible one — AppShell feeds it the
+   * active panel. Going false is «the panel was left»: the per-tab
+   * view state resets (Bible 2.7).
+   */
+  active?: boolean;
 }) {
-  const navigator = useRouteNavigator();
   const tablesState = useRegistryTables();
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [views, setViews] = useState<Record<string, TableView>>({});
@@ -138,12 +147,16 @@ export function PanelRegistry({
     [view.filters],
   );
 
-  const goBack = () => {
-    setViews({});
-    setSelectedTab(null);
-    setPendingRequest(null);
-    navigator.push('/');
-  };
+  // Leaving the screen is the old «Назад» reset — the panel stays
+  // mounted inside VKUI View, so it is done explicitly when the
+  // `active` flag drops (Bible 2.7).
+  useEffect(() => {
+    if (!active) {
+      setViews({});
+      setSelectedTab(null);
+      setPendingRequest(null);
+    }
+  }, [active]);
 
   const resetView = () =>
     updateView((v) => ({ ...v, search: '', filters: {} }));
@@ -250,7 +263,10 @@ export function PanelRegistry({
       data-testid="panel-registry"
       style={{
         position: 'fixed',
-        inset: 0,
+        top: SIZES['topbar-h'],
+        left: 0,
+        right: 0,
+        bottom: 0,
         zIndex: 10,
         display: 'flex',
         flexDirection: 'column',
@@ -261,14 +277,10 @@ export function PanelRegistry({
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           padding: '8px 12px',
         }}
       >
         <Title level="2">{REGISTRY_TEXTS.panelTitle}</Title>
-        <Button mode="secondary" onClick={goBack}>
-          {REGISTRY_TEXTS.back}
-        </Button>
       </div>
 
       {tabsPosition === 'top' && tables.length > 0 && (

@@ -6,7 +6,6 @@
 
 export const REGISTRY_TEXTS = {
   panelTitle: 'Реестр',
-  back: 'Назад',
 
   searchPlaceholder: 'Поиск…',
   filtersButton: 'Фильтры',

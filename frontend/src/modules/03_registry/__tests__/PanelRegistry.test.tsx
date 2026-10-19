@@ -1,20 +1,22 @@
 /**
  * PanelRegistry tests (jsdom; network via msw).
  *
- * Covered: sort+filter survive a tab switch and the view resets on
- * «Назад»; the in-flow filter panel under the toolbar (badge count,
+ * Covered: sort+filter survive a tab switch and the view resets when
+ * the screen is left (Bible 2.7 — the `active` flag AppShell feeds);
+ * the in-flow filter panel under the toolbar (badge count,
  * text and range inputs filtering the rows); a failed reload keeps
  * the old rows with «Повторить»; the table block is the scroll
  * container with a sticky header whose titles never break inside a
  * word; tabs_position: right renders the vertical tab column.
  */
 
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import {
   createHashRouter,
   RouterProvider,
+  useActiveVkuiLocation,
 } from '@vkontakte/vk-mini-apps-router';
 
 // RouterProvider pings VK Bridge on navigation; outside VK it would hit
@@ -46,17 +48,33 @@ import {
   TABLES,
 } from './helpers';
 
+/** Mirrors the AppShell wiring: the active flag follows the panel. */
+function RoutedRegistry({
+  entryRequest,
+}: {
+  entryRequest?: Parameters<typeof PanelRegistry>[0]['entryRequest'];
+}) {
+  const { panel } = useActiveVkuiLocation();
+  return (
+    <PanelRegistry
+      entryRequest={entryRequest}
+      active={panel === 'registry'}
+    />
+  );
+}
+
 function renderRegistry() {
   window.location.hash = '#/registry';
   const router = createHashRouter([
     { path: '/', panel: 'home', view: 'main' },
     { path: '/registry', panel: 'registry', view: 'main' },
   ]);
-  return renderWithSession(
+  const utils = renderWithSession(
     <RouterProvider router={router}>
-      <PanelRegistry />
+      <RoutedRegistry />
     </RouterProvider>,
   );
+  return { ...utils, router };
 }
 
 const rowKeys = () =>
@@ -98,9 +116,9 @@ describe('PanelRegistry — view state', () => {
     );
   });
 
-  it('«Назад» resets sort, filters and search to the default view', async () => {
+  it('leaving the screen resets sort, filters and search to the default view', async () => {
     const user = userEvent.setup();
-    renderRegistry();
+    const { router } = renderRegistry();
     await screen.findByText('Борис Иванов');
 
     await user.click(screen.getByTestId('sort-btn-player'));
@@ -110,7 +128,11 @@ describe('PanelRegistry — view state', () => {
     );
     await waitFor(() => expect(rowKeys()).toEqual(['p1']));
 
-    await user.click(screen.getByRole('button', { name: 'Назад' }));
+    // What the top bar's «Штаб» tab does: route away — the mounted
+    // panel's `active` flag drops and the view state resets (Bible 2.7).
+    act(() => {
+      void router.navigate('/');
+    });
     await waitFor(() => expect(window.location.hash).toBe('#/'));
 
     await waitFor(() => expect(rowKeys()).toEqual(['p1', 'p2', 'p3']));
@@ -404,7 +426,7 @@ describe('PanelRegistry — entry request (Spec 04_orders 5.5)', () => {
     ]);
     renderWithSession(
       <RouterProvider router={router}>
-        <PanelRegistry
+        <RoutedRegistry
           entryRequest={{ tab: 'orders', action: 'order:7' }}
         />
       </RouterProvider>,

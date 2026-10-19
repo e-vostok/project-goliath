@@ -2,19 +2,19 @@
  * PanelMap — the map screen (Spec Part 5 «Клиентские компоненты»,
  * «Вход на экран карты»).
  *
- * Top row: search field, the big-window button, «Назад» (hidden in
- * fullscreen). Centre: MapView filling the remaining space, NodeCard
- * floating right. Bottom: status line «Ход N · обновлено ЧЧ:ММ»
- * (Moscow time) with «данные устарели» when 3.10 says so, the colour
- * legend and the attribution string.
+ * Top row: search field and the big-window button. Centre: MapView
+ * filling the remaining space, NodeCard floating right. Bottom:
+ * status line «Ход N · обновлено ЧЧ:ММ» (Moscow time) with «данные
+ * устарели» when 3.10 says so, the colour legend and the attribution
+ * string. Navigation lives in the shared top bar — no own «Назад».
  *
- * The screen is position:fixed — it covers the app viewport in normal
- * view and the whole monitor once the page goes fullscreen, regardless
- * of how VKUI lays out the surrounding panels.
+ * The screen is position:fixed — it starts under the top bar
+ * (`topbar-h`) in normal view and covers the whole monitor once the
+ * page goes fullscreen, regardless of how VKUI lays out the
+ * surrounding panels.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 import {
   Button,
   FormStatus,
@@ -22,6 +22,8 @@ import {
   Search,
   Text,
 } from '@vkontakte/vkui';
+
+import { SIZES } from '../../../shared/ui';
 
 import { buildAdjacency } from '../lib/adjacency';
 import { buildOwnerMap } from '../lib/colors';
@@ -45,7 +47,6 @@ const LEGEND: { key: string; label: string }[] = [
 ];
 
 export function PanelMap() {
-  const navigator = useRouteNavigator();
   const manifestState = useMapManifest();
   const manifest =
     manifestState.status === 'ready' ? manifestState.manifest : null;
@@ -176,7 +177,11 @@ export function PanelMap() {
       data-testid="panel-map"
       style={{
         position: 'fixed',
-        inset: 0,
+        // Under the top bar normally; fullscreen covers the monitor.
+        top: bigWindow.isFullscreen ? 0 : SIZES['topbar-h'],
+        left: 0,
+        right: 0,
+        bottom: 0,
         zIndex: 10,
         display: 'flex',
         flexDirection: 'column',
@@ -262,11 +267,6 @@ export function PanelMap() {
             {bigWindow.isFullscreen
               ? 'Свернуть'
               : 'Развернуть на весь экран'}
-          </Button>
-        )}
-        {!bigWindow.isFullscreen && (
-          <Button mode="secondary" onClick={() => navigator.push('/')}>
-            Назад
           </Button>
         )}
       </div>

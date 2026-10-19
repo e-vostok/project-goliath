@@ -1,13 +1,16 @@
 /**
- * AppShell — registry route integration (jsdom; network via msw).
+ * AppShell — registry route + top bar integration (jsdom; network via
+ * msw).
  *
  * A player WITHOUT a nation opens /registry and stays (the panel is
- * exempt from the nation redirect, like PANEL_MAP); the «Реестр»
- * entry button is hidden on the Registry panel itself.
+ * exempt from the nation redirect, like PANEL_MAP); the permanent top
+ * bar shows the active screen's tab selected and navigates between
+ * routes (unit 4a — the floating entry buttons are gone).
  */
 
 import { screen, waitFor } from '@testing-library/react';
 import { render } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import {
   createHashRouter,
@@ -16,8 +19,6 @@ import {
 import {
   AdaptivityProvider,
   AppRoot,
-  ConfigProvider,
-  Platform,
   ViewWidth,
 } from '@vkontakte/vkui';
 
@@ -34,6 +35,7 @@ vi.mock('@vkontakte/vk-bridge', () => ({
 }));
 
 import { server } from '../../../../vitest.setup';
+import { ThemeProvider } from '../../../shared/ui';
 import {
   AppShell,
   normalizeEntryHash,
@@ -107,6 +109,7 @@ function registerAppHandlers() {
       HttpResponse.json({
         current_turn: 12,
         game_date: '2041-01-01',
+        game_date_text: 'Январь 2041',
         next_tick_at: '2026-10-15T03:00:00Z',
       }),
     ),
@@ -132,9 +135,16 @@ function registerAppHandlers() {
   );
 }
 
-describe('normalizeEntryHash — #registry/order-N (Spec 04_orders 5.5)', () => {
+describe('normalizeEntryHash — registry links (#registry, #registry/order-N)', () => {
   afterEach(() => {
     takeRegistryEntryRequest(); // never leak a stored request between tests
+  });
+
+  it('rewrites the bare #registry hash to the registry route (community menu link)', () => {
+    window.location.hash = '#registry';
+    normalizeEntryHash();
+    expect(window.location.hash).toBe('#/registry');
+    expect(takeRegistryEntryRequest()).toBeNull();
   });
 
   it('rewrites a 1-9 digit order hash to the registry route with a stored request; anything else is ignored', () => {
@@ -160,27 +170,34 @@ describe('normalizeEntryHash — #registry/order-N (Spec 04_orders 5.5)', () => 
   });
 });
 
+function renderApp() {
+  registerAppHandlers();
+  const router = createHashRouter([
+    { path: '/', panel: PANEL_HOME, view: 'main' },
+    { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
+    { path: '/map', panel: PANEL_MAP, view: 'main' },
+    { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
+  ]);
+  render(
+    <ThemeProvider>
+      <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
+        <AppRoot>
+          <RouterProvider router={router}>
+            <AppShell />
+          </RouterProvider>
+        </AppRoot>
+      </AdaptivityProvider>
+    </ThemeProvider>,
+  );
+  return router;
+}
+
+const tab = (name: string) => screen.getByRole('tab', { name });
+
 describe('AppShell — /registry route', () => {
-  it('a player without a nation opens /registry and is not redirected; the «Реестр» button is hidden on the registry panel', async () => {
-    registerAppHandlers();
+  it('a player without a nation opens /registry and is not redirected; «Реестр» is the active top bar tab', async () => {
     window.location.hash = '#/registry';
-    const router = createHashRouter([
-      { path: '/', panel: PANEL_HOME, view: 'main' },
-      { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
-      { path: '/map', panel: PANEL_MAP, view: 'main' },
-      { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
-    ]);
-    render(
-      <ConfigProvider platform={Platform.VKCOM}>
-        <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
-          <AppRoot>
-            <RouterProvider router={router}>
-              <AppShell />
-            </RouterProvider>
-          </AppRoot>
-        </AdaptivityProvider>
-      </ConfigProvider>,
-    );
+    renderApp();
 
     // Registry rows resolved → auth + nation probe + table fetches done.
     await screen.findByText('Борис Иванов', undefined, { timeout: 5000 });
@@ -190,13 +207,43 @@ describe('AppShell — /registry route', () => {
       expect(screen.getByTestId('panel-registry')).toBeInTheDocument(),
     );
     expect(window.location.hash).toBe('#/registry');
+    expect(tab('Реестр')).toHaveAttribute('aria-selected', 'true');
+  });
+});
 
-    // «Реестр» hidden on its own panel; «Карта» stays available.
-    expect(
-      screen.queryByRole('button', { name: 'Реестр' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Карта' }),
-    ).toBeInTheDocument();
+describe('AppShell — top bar', () => {
+  it('the active tab follows the panel and each tab navigates to its route', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/';
+    renderApp();
+
+    // No nation: the shell's redirect sends «Штаб» to registration,
+    // the tab stays «Штаб».
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/nation/new'),
+    );
+    await waitFor(() =>
+      expect(tab('Штаб')).toHaveAttribute('aria-selected', 'true'),
+    );
+
+    await user.click(tab('Реестр'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+    await waitFor(() =>
+      expect(tab('Реестр')).toHaveAttribute('aria-selected', 'true'),
+    );
+
+    await user.click(tab('Карта'));
+    await waitFor(() => expect(window.location.hash).toBe('#/map'));
+    await waitFor(() =>
+      expect(tab('Карта')).toHaveAttribute('aria-selected', 'true'),
+    );
+
+    await user.click(tab('Штаб'));
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/nation/new'),
+    );
+    await waitFor(() =>
+      expect(tab('Штаб')).toHaveAttribute('aria-selected', 'true'),
+    );
   });
 });

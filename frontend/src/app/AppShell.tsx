@@ -26,14 +26,13 @@ import {
 } from '@vkontakte/vkui';
 
 import { useAuth, SessionProvider } from '../modules/00_core/hooks/useAuth';
+import { useGameClock } from '../modules/00_core/hooks/useGameClock';
 import { useNation } from '../modules/00_core/hooks/useNation';
 import { PanelCreateNation } from '../modules/00_core/components/PanelCreateNation';
 import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
 import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
-import { MapEntryButton } from '../modules/01_map/components/MapEntryButton';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
-import { RegistryEntryButton } from '../modules/03_registry/components/RegistryEntryButton';
 import {
   MODAL_ORDER_COMPOSER,
   MODAL_ORDER_CONFIRM,
@@ -57,11 +56,15 @@ import {
 import { BotStatusProvider } from '../modules/02_bot/hooks/useBotStatus';
 import { parseStartHash } from '../modules/02_bot/lib/startHash';
 import { AdminBlock } from '../admin/AdminBlock';
+import { TopBar } from './TopBar';
+import {
+  PANEL_CREATE,
+  PANEL_HOME,
+  PANEL_MAP,
+  PANEL_REGISTRY,
+} from './panels';
 
-export const PANEL_HOME = 'nation-home';
-export const PANEL_CREATE = 'nation-create';
-export const PANEL_MAP = 'map';
-export const PANEL_REGISTRY = 'registry';
+export { PANEL_CREATE, PANEL_HOME, PANEL_MAP, PANEL_REGISTRY };
 const MODAL_DELETE_NATION = 'confirm-delete-nation';
 
 /**
@@ -162,6 +165,8 @@ function AuthedArea() {
   // Bumped by the admin block after tick/reset: remounts PanelNationHome so
   // it refetches the game clock, while refresh() reloads the nation itself.
   const [worldVersion, setWorldVersion] = useState(0);
+  // The top bar's turn badge follows the same refresh signal.
+  const clock = useGameClock(worldVersion);
   const handleWorldChanged = () => {
     refresh();
     setWorldVersion((v) => v + 1);
@@ -221,6 +226,7 @@ function AuthedArea() {
       activeModal={activeModal}
       onActiveModal={setActiveModal}
     >
+      <TopBar activePanel={activePanel} clock={clock} />
       <SplitLayout modal={modal}>
       <SplitCol>
         <View activePanel={activePanel}>
@@ -258,16 +264,12 @@ function AuthedArea() {
             <PanelMap />
           </Panel>
           <Panel id={PANEL_REGISTRY}>
-            <PanelRegistry entryRequest={registryRequest} />
+            <PanelRegistry
+              entryRequest={registryRequest}
+              active={activePanel === PANEL_REGISTRY}
+            />
           </Panel>
         </View>
-        {/* Temporary service entries «Карта»/«Реестр» — remove with the
-            real navigation. One component, one import each. «Реестр»
-            sits directly above «Карта», hidden on its own panel. */}
-        {activePanel !== PANEL_MAP && <MapEntryButton />}
-        {activePanel !== PANEL_MAP && activePanel !== PANEL_REGISTRY && (
-          <RegistryEntryButton />
-        )}
       </SplitCol>
       </SplitLayout>
     </OrdersUiProvider>
