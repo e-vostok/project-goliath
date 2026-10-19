@@ -209,9 +209,9 @@ class TestNationsTable:
         assert rows[n1.id]["provinces"] == 2
         assert rows[n2.id]["provinces"] == 0
         # formed: key = created_turn; text on the game calendar
-        # (epoch 2040-01-01 + 2 turns * 1 month = 1 марта 2040 г.).
+        # (epoch 2040-01-01 + 2 turns * 1 month = Март 2040).
         assert rows[n1.id]["formed"] == {
-            "text": "1 марта 2040 г.",
+            "text": "Март 2040",
             "key": 2,
         }
         assert rows[n1.id]["flag"] == {"color": "#AA0001", "image_url": None}
@@ -251,6 +251,6 @@ class TestCoreConfigInjection:
         nations = await build_table(test_db_session, "nations")
         assert players.total == 1
         assert _rows_by_key(nations)[nation.id]["formed"] == {
-            "text": "1 марта 2040 г.",
+            "text": "Март 2040",
             "key": 2,
         }

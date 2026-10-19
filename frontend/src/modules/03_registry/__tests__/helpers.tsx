@@ -172,7 +172,7 @@ export const NATIONS_ROWS: RegistryRowsDTO = {
       cells: {
         number: 1,
         name: 'Новгород',
-        formed: { text: '8 января 1 г.', key: 12 },
+        formed: { text: 'Январь 2041', key: 12 },
       },
     },
     {
@@ -180,7 +180,7 @@ export const NATIONS_ROWS: RegistryRowsDTO = {
       cells: {
         number: 2,
         name: 'Рязань',
-        formed: { text: '15 марта 1240 г.', key: 40 },
+        formed: { text: 'Май 2043', key: 40 },
       },
     },
   ],

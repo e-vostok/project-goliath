@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.catalog import flag_url
 from modules._00_core.service import (
     NationService,
@@ -31,7 +31,7 @@ from modules._03_registry.cells import (
     cell_nation,
     cell_person,
 )
-from modules._03_registry.dates import game_date_text, real_date_parts
+from modules._03_registry.dates import real_date_parts
 from modules._03_registry.models import RegistryVkProfile
 from modules._03_registry.profile_worker import aware_utc, request_wake
 from modules._03_registry.registry import RegistryRow, register_table_source
@@ -157,8 +157,9 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
                     "name": row.short_name or row.name,
                     "flag": cell_flag(row.color_hex, flag_url(row.flag_id)),
                     "formed": cell_date(
-                        game_date_text(
-                            compute_game_date(row.created_turn, core_config)
+                        format_game_date(
+                            compute_game_date(row.created_turn, core_config),
+                            core_config,
                         ),
                         row.created_turn,
                     ),

@@ -25,11 +25,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from core.tick.orchestrator import TickOrchestrator, TickOutcome
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Player
 from modules._00_core.tick_handler import register_tick_handlers
-from modules._03_registry.dates import game_date_text
 from modules._03_registry.profile_worker import install_wake_event, run_cycle
 from modules._03_registry.vk_profiles import VkProfilesClient
 from tests.fixtures.fake_vk import FakeVk
@@ -156,7 +155,9 @@ class TestScenarioA:
             "image_url": None,
         }
         assert n1["cells"]["formed"] == {
-            "text": game_date_text(compute_game_date(0, CORE_CONFIG)),
+            "text": format_game_date(
+                compute_game_date(0, CORE_CONFIG), CORE_CONFIG
+            ),
             "key": 0,
         }
         assert n1["cells"]["provinces"] == 5
@@ -164,7 +165,9 @@ class TestScenarioA:
         assert n2["cells"]["number"] == 2
         assert n2["cells"]["name"] == "Ладожский Союз"
         assert n2["cells"]["formed"] == {
-            "text": game_date_text(compute_game_date(1, CORE_CONFIG)),
+            "text": format_game_date(
+                compute_game_date(1, CORE_CONFIG), CORE_CONFIG
+            ),
             "key": 1,
         }
         assert n2["cells"]["provinces"] == 5

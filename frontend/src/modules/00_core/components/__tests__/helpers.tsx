@@ -94,7 +94,7 @@ export const FREE_PROVINCES = [
 export const GAME_CLOCK = {
   current_turn: 12,
   game_date: '2041-01-01',
-  game_date_text: '01.январь.2041',
+  game_date_text: 'Январь 2041',
   next_tick_at: '2026-10-02T03:00:00Z',
 };
 

@@ -361,7 +361,7 @@ class CalendarSettings(BaseModel):
     month_names: list[Annotated[str, Field(min_length=1, max_length=20)]] = Field(
         min_length=12,
         max_length=12,
-        description="Названия месяцев для формата «дд.месяц.гггг» "
+        description="Названия месяцев для формата «Месяц Год» "
         "(ровно 12, январь первым), без управляющих символов и дублей.",
     )
 

@@ -216,7 +216,7 @@ describe('PanelRegistry — filter panel', () => {
               cells: {
                 number: 3,
                 name: 'Северия',
-                formed: { text: '1 мая 1300 г.', key: 55 },
+                formed: { text: 'Август 2044', key: 55 },
               },
             },
           ],

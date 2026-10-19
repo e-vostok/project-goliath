@@ -2,13 +2,12 @@
 Date formatting of module 03_registry (Spec 3.5).
 
 Month names come from a fixed table in code — never from the OS locale —
-so the rendered text is identical on every machine. Two formats exist:
-
-- game date (``formed``): ``"{день} {месяц} {год} г."`` — e.g.
-  ``"8 января 1 г."``, the year without leading zeros;
-- real date (``joined``): ``"{день} {месяц} {год}"`` — e.g.
-  ``"13 октября 2026"``, keyed by days since 1970-01-01 of the
-  calendar date in ``tick_timezone``.
+so the rendered text is identical on every machine. The game date
+(``formed``) is rendered by ``format_game_date`` of module 00_core
+(``«Месяц Год»``); the genitive month table here serves only the
+real date (``joined``): ``"{день} {месяц} {год}"`` — e.g.
+``"13 октября 2026"``, keyed by days since 1970-01-01 of the
+calendar date in ``tick_timezone``.
 """
 
 from __future__ import annotations
@@ -33,11 +32,6 @@ _MONTHS_GENITIVE = (
 )
 
 _EPOCH = date(1970, 1, 1)
-
-
-def game_date_text(d: date) -> str:
-    """``"8 января 1 г."`` — the game-calendar display text."""
-    return f"{d.day} {_MONTHS_GENITIVE[d.month - 1]} {d.year} г."
 
 
 def real_date_parts(created_at: datetime, tick_timezone: str) -> tuple[str, int]:
