@@ -13,8 +13,6 @@ import { createRoot } from 'react-dom/client';
 import {
   AdaptivityProvider,
   AppRoot,
-  ConfigProvider,
-  Platform,
   ViewWidth,
 } from '@vkontakte/vkui';
 import {
@@ -31,6 +29,7 @@ import {
   PANEL_REGISTRY,
 } from './app/AppShell';
 import { sendVkInit } from './shared/vkInit';
+import { ThemeProvider } from './shared/ui';
 import { UiKitEntry } from './shared/ui/UiKitEntry';
 
 import '@vkontakte/vkui/dist/vkui.css';
@@ -61,7 +60,7 @@ function App() {
   }, []);
 
   return (
-    <ConfigProvider platform={Platform.VKCOM}>
+    <ThemeProvider>
       <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
         <AppRoot>
           <RouterProvider router={router}>
@@ -69,7 +68,7 @@ function App() {
           </RouterProvider>
         </AppRoot>
       </AdaptivityProvider>
-    </ConfigProvider>
+    </ThemeProvider>
   );
 }
 

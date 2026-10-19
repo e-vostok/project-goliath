@@ -352,9 +352,11 @@ describe('PanelMap — big window', () => {
     expect(
       screen.queryByRole('button', { name: /Развернуть/ }),
     ).not.toBeInTheDocument();
+    // The shared top bar owns navigation — the panel starts under it.
     expect(
-      screen.getByRole('button', { name: 'Назад' }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Назад' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('panel-map').style.top).toBe('48px');
   });
 
   it('hides the button when rules.big_window_enabled is false', async () => {
@@ -398,10 +400,8 @@ describe('PanelMap — big window', () => {
       fsElement = document.documentElement;
       fireEvent(document, new Event('fullscreenchange'));
       await screen.findByRole('button', { name: 'Свернуть' });
-      // «Назад» is hidden in fullscreen.
-      expect(
-        screen.queryByRole('button', { name: 'Назад' }),
-      ).not.toBeInTheDocument();
+      // In fullscreen the panel covers the whole monitor (top bar too).
+      expect(screen.getByTestId('panel-map').style.top).toBe('0px');
     } finally {
       delete (document as { fullscreenEnabled?: boolean }).fullscreenEnabled;
       delete (document as { fullscreenElement?: Element | null })
