@@ -308,6 +308,9 @@ describe('PanelRegistry — load states', () => {
     expect(block.style.overflowY).toBe('auto');
     expect(block.style.flex).toContain('1');
     expect(block.style.minHeight).toBe('0');
+    // The screen is as tall as its content — the table caps at 720 px
+    // and scrolls inside (UI Spec 9.2).
+    expect(block.style.maxHeight).toBe('720px');
 
     const headCell = document.querySelector(
       '[data-testid="registry-table"] thead th',

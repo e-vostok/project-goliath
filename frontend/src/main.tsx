@@ -34,6 +34,7 @@ import { UiKitEntry } from './shared/ui/UiKitEntry';
 
 import '@vkontakte/vkui/dist/vkui.css';
 import './shared/ui/fonts.css';
+import './app/shell.css';
 
 // Hidden catalogue of the shared UI library (unit 5): no auth, no
 // router — the Project Owner opens `https://vk.com/app<APP_ID>#ui-kit`

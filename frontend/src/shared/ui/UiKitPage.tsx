@@ -79,6 +79,7 @@ export function UiKitPage() {
     <div
       style={{
         width: SIZES['win-screen'],
+        minHeight: '100vh',
         boxSizing: 'border-box',
         background: tokenVar('ground'),
         color: tokenVar('ink'),

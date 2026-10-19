@@ -5,8 +5,9 @@
  * place — `--pax-*` variables on the provider's wrapper element plus the
  * `appearance` parameter of the VKUI ConfigProvider.
  *
- * Not mounted around the app yet — that is unit 4 (the top bar gets the
- * ThemeToggle there). The hidden `#ui-kit` page uses it today.
+ * The wrapper is content-sized on purpose (UI Spec 2): the VK window
+ * follows the content height — nothing may pin it to the window. The
+ * `#ui-kit` catalogue keeps its own full-height look in UiKitPage.
  */
 
 import {
@@ -177,7 +178,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           style={{
             background: tokenVar('ground'),
             color: tokenVar('ink'),
-            minHeight: '100vh',
           }}
         >
           {children}
