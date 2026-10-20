@@ -67,7 +67,7 @@ export const TABLES: RegistryTablesDTO = {
           searchable: true, stub: false, scale_min: null, scale_max: null,
         },
         {
-          id: 'joined', title: 'В проекте с', type: 'date', width_px: 136,
+          id: 'joined', title: 'Дата регистрации', type: 'date', width_px: 136,
           sortable: true, filters: ['date_range'], filter_label: null,
           header_icon: null,
           searchable: false, stub: false, scale_min: null, scale_max: null,

@@ -2,16 +2,18 @@
  * PanelRegistry — the «Реестр» window (Spec 5.5, UI Spec 9.2).
  *
  * An ordinary block in the page flow (the VK window follows the
- * content height — nothing here is pinned to it): title row
- * («Реестр») → tab row → toolbar (search, «Показано N из M»,
+ * content height — nothing here is pinned to it): screen title
+ * («РЕЕСТР», shared BlockTitle without the filling line — the signed
+ * text tabs «Игроки / Государства / …» sit in the same row, UI Spec
+ * 9.2 mockup «Registry») → toolbar (search, «Показано N из M»,
  * «Фильтры», «Обновить», «Сбросить») → the in-flow filter panel
  * (toggled by «Фильтры», normal document flow across the window
- * width) → table block (max-height 720 px; overflow-x:hidden,
- * overflow-y:auto, sticky header — the 910 px window rule: no
- * horizontal scrollbar, Spec 5.5). With layout.tabs_position = right
- * the tab row becomes a vertical column to the right of the table
- * block. The screen is as tall as its content. Navigation lives in
- * the shared top bar — no own «Назад».
+ * width) → table block (`surface`, `radius-lg`, max-height 720 px;
+ * overflow-x:hidden, overflow-y:auto, sticky header — the 910 px
+ * window rule: no horizontal scrollbar, Spec 5.5). With
+ * layout.tabs_position = right the tabs become a vertical icon column
+ * to the right of the table block. The screen is as tall as its
+ * content. Navigation lives in the shared top bar — no own «Назад».
  *
  * Sort, filters, search and the filter-panel toggle of each tab live
  * in this component's state and survive tab switches; leaving the
@@ -21,9 +23,10 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, FormStatus, Spinner, Title } from '@vkontakte/vkui';
+import { Button, FormStatus, Spinner } from '@vkontakte/vkui';
 
 import { errorText } from '../../../shared/errorTexts';
+import { BlockTitle, RADII, SPACING, tokenVar } from '../../../shared/ui';
 
 import { useNationOptions, NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { useRegistryRows } from '../hooks/useRegistryRows';
@@ -265,27 +268,25 @@ export function PanelRegistry({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--vkui--color_background)',
+        padding: SPACING['space-4'],
+        background: tokenVar('ground'),
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          padding: '8px 12px',
-        }}
-      >
-        <Title level="2">{REGISTRY_TEXTS.panelTitle}</Title>
-      </div>
-
-      {tabsPosition === 'top' && tables.length > 0 && (
-        <TabStrip
-          tables={tables}
-          activeId={activeTableId}
-          orientation="horizontal"
-          onSelect={setSelectedTab}
-        />
-      )}
+      <BlockTitle
+        icon="list"
+        title={REGISTRY_TEXTS.panelTitle}
+        line={tabsPosition !== 'top' || tables.length === 0}
+        trailing={
+          tabsPosition === 'top' && tables.length > 0 ? (
+            <TabStrip
+              tables={tables}
+              activeId={activeTableId}
+              orientation="horizontal"
+              onSelect={setSelectedTab}
+            />
+          ) : null
+        }
+      />
 
       {activeTable && (
         <TableToolbar
@@ -330,6 +331,8 @@ export function PanelRegistry({
             overflowX: 'hidden',
             overflowY: 'auto',
             position: 'relative',
+            background: tokenVar('surface'),
+            borderRadius: RADII['radius-lg'],
           }}
         >
           {content}
