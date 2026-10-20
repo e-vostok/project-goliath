@@ -37,7 +37,12 @@ class MockResizeObserver {
   }
 }
 
-type Win = { size: PopupSize; title: string; dirty?: boolean };
+type Win = {
+  size: PopupSize;
+  title: string;
+  dirty?: boolean;
+  flush?: boolean;
+};
 
 function Harness({
   wins,
@@ -58,6 +63,7 @@ function Harness({
             title={w.title}
             icon="document"
             dirty={w.dirty}
+            flush={w.flush}
             onClose={() => {}}
             testId={`popup-${w.title}`}
           >
@@ -196,6 +202,45 @@ describe('Popup — Esc and scrim', () => {
     await user.click(screen.getByRole('button', { name: 'Закрыть' }));
     expect(screen.queryByTestId('popup-dirty')).not.toBeInTheDocument();
   });
+
+  it('an Esc a window part already consumed (defaultPrevented) does not close', async () => {
+    const onClose = vi.fn();
+    const containerRef = { current: null as HTMLDivElement | null };
+    render(
+      <div
+        ref={(el) => {
+          containerRef.current = el;
+        }}
+      >
+        <PopupHost container={containerRef}>
+          <Popup
+            size="M"
+            title="Форма"
+            onClose={onClose}
+            testId="popup-eaten-esc"
+          >
+            <input
+              aria-label="Поле"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                }
+              }}
+            />
+          </Popup>
+        </PopupHost>
+      </div>,
+    );
+    await screen.findByTestId('popup-eaten-esc');
+
+    // The field handled Esc itself → the popup ignores the event.
+    fireEvent.keyDown(screen.getByLabelText('Поле'), { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // An unconsumed Esc still reaches onClose.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('Popup — nesting rules', () => {
@@ -255,6 +300,29 @@ describe('Popup — focus', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByTestId('popup-form')).not.toBeInTheDocument();
     expect(opener).toHaveFocus();
+  });
+});
+
+describe('Popup — flush body', () => {
+  it('flush removes the body padding and gap; a normal body keeps them', () => {
+    render(
+      <Harness
+        wins={[
+          { size: 'M', title: 'Обычное' },
+          { size: 'S', title: 'Плоское', flush: true },
+        ]}
+      />,
+    );
+    const normal = screen
+      .getByTestId('popup-Обычное')
+      .querySelector('[data-popup-body]') as HTMLElement;
+    const flushed = screen
+      .getByTestId('popup-Плоское')
+      .querySelector('[data-popup-body]') as HTMLElement;
+    expect(Number.parseFloat(normal.style.padding)).toBeGreaterThan(0);
+    expect(Number.parseFloat(normal.style.gap)).toBeGreaterThan(0);
+    expect(Number.parseFloat(flushed.style.padding)).toBe(0);
+    expect(Number.parseFloat(flushed.style.gap)).toBe(0);
   });
 });
 
