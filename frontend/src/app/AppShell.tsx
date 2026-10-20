@@ -33,21 +33,8 @@ import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
 import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
-import {
-  MODAL_ORDER_COMPOSER,
-  MODAL_ORDER_CONFIRM,
-  MODAL_ORDER_DETAIL,
-  MODAL_VERDICT_COMPOSER,
-  MODAL_VERDICT_CONFIRM,
-  OrdersUiProvider,
-} from '../modules/04_orders/OrdersUiProvider';
-import { OrderComposer } from '../modules/04_orders/OrderComposer';
-import { ConfirmSubmitModal } from '../modules/04_orders/ConfirmSubmitModal';
-import { OrderDetailModal } from '../modules/04_orders/OrderDetailModal';
-import {
-  ConfirmVerdictModal,
-  VerdictComposer,
-} from '../modules/04_orders/VerdictComposer';
+import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
+import { PopupHost } from '../shared/ui';
 import {
   parseRegistryOrderHash,
   setRegistryEntryRequest,
@@ -202,6 +189,9 @@ function AuthedArea() {
     }
   }, [status, nation, activePanel, navigator]);
 
+  // The VKUI ModalRoot keeps ONLY the delete-nation card (unit 8
+  // removes it); the order windows are shared Popups inside the
+  // provider — PopupHost portals them into the root container.
   const modal = (
     <ModalRoot
       activeModal={activeModal}
@@ -216,70 +206,73 @@ function AuthedArea() {
           refresh();
         }}
       />
-      {/* 04_orders windows live inside the same ModalRoot; the
-          provider below owns which of them is open. */}
-      <OrderComposer id={MODAL_ORDER_COMPOSER} />
-      <ConfirmSubmitModal id={MODAL_ORDER_CONFIRM} />
-      <OrderDetailModal id={MODAL_ORDER_DETAIL} />
-      <VerdictComposer id={MODAL_VERDICT_COMPOSER} />
-      <ConfirmVerdictModal id={MODAL_VERDICT_CONFIRM} />
     </ModalRoot>
   );
 
   return (
-    <OrdersUiProvider
-      activeModal={activeModal}
-      onActiveModal={setActiveModal}
+    <div
+      ref={shellRef}
+      data-testid="app-root"
+      style={{ position: 'relative' }}
     >
-      <div ref={shellRef} data-testid="app-root">
-        <TopBar activePanel={activePanel} clock={clock} />
-        <SplitLayout modal={modal}>
-      <SplitCol>
-        <View activePanel={activePanel}>
-          <Panel id={PANEL_CREATE}>
-            {status === 'loading' ? (
-              <LoadingCell />
-            ) : (
-              nation === null && <PanelCreateNation onCreated={refresh} />
-            )}
-            <AdminBlock onWorldChanged={handleWorldChanged} />
-          </Panel>
-          <Panel id={PANEL_HOME}>
-            {status === 'loading' && <LoadingCell />}
-            {status === 'error' && (
-              <Div>
-                <FormStatus mode="error" title="Не удалось загрузить государство">
-                  {nationState.error.message}
-                </FormStatus>
-                <Button size="l" stretched onClick={refresh}>
-                  Повторить
-                </Button>
-              </Div>
-            )}
-            {status === 'ready' && nation && (
-              <PanelNationHome
-                key={worldVersion}
-                nation={nation}
-                onChanged={refresh}
-                onDeleteRequest={() => setActiveModal(MODAL_DELETE_NATION)}
-              />
-            )}
-            <AdminBlock onWorldChanged={handleWorldChanged} />
-          </Panel>
-          <Panel id={PANEL_MAP}>
-            <PanelMap />
-          </Panel>
-          <Panel id={PANEL_REGISTRY}>
-            <PanelRegistry
-              entryRequest={registryRequest}
-              active={activePanel === PANEL_REGISTRY}
-            />
-          </Panel>
-        </View>
-      </SplitCol>
-      </SplitLayout>
-      </div>
-    </OrdersUiProvider>
+      <PopupHost container={shellRef}>
+        <OrdersUiProvider>
+          <TopBar activePanel={activePanel} clock={clock} />
+          <SplitLayout modal={modal}>
+            <SplitCol>
+              <View activePanel={activePanel}>
+                <Panel id={PANEL_CREATE}>
+                  {status === 'loading' ? (
+                    <LoadingCell />
+                  ) : (
+                    nation === null && (
+                      <PanelCreateNation onCreated={refresh} />
+                    )
+                  )}
+                  <AdminBlock onWorldChanged={handleWorldChanged} />
+                </Panel>
+                <Panel id={PANEL_HOME}>
+                  {status === 'loading' && <LoadingCell />}
+                  {status === 'error' && (
+                    <Div>
+                      <FormStatus
+                        mode="error"
+                        title="Не удалось загрузить государство"
+                      >
+                        {nationState.error.message}
+                      </FormStatus>
+                      <Button size="l" stretched onClick={refresh}>
+                        Повторить
+                      </Button>
+                    </Div>
+                  )}
+                  {status === 'ready' && nation && (
+                    <PanelNationHome
+                      key={worldVersion}
+                      nation={nation}
+                      onChanged={refresh}
+                      onDeleteRequest={() =>
+                        setActiveModal(MODAL_DELETE_NATION)
+                      }
+                    />
+                  )}
+                  <AdminBlock onWorldChanged={handleWorldChanged} />
+                </Panel>
+                <Panel id={PANEL_MAP}>
+                  <PanelMap />
+                </Panel>
+                <Panel id={PANEL_REGISTRY}>
+                  <PanelRegistry
+                    entryRequest={registryRequest}
+                    active={activePanel === PANEL_REGISTRY}
+                  />
+                </Panel>
+              </View>
+            </SplitCol>
+          </SplitLayout>
+        </OrdersUiProvider>
+      </PopupHost>
+    </div>
   );
 }
 

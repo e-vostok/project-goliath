@@ -219,9 +219,7 @@ export function renderWithProviders(ui: ReactElement) {
           <SessionProvider session={SESSION}>
             {/* PanelNationHome hosts the orders block — the provider
                 must exist; these tests never open its windows. */}
-            <OrdersUiProvider activeModal={null} onActiveModal={() => {}}>
-              {ui}
-            </OrdersUiProvider>
+            <OrdersUiProvider>{ui}</OrdersUiProvider>
           </SessionProvider>
         </AppRoot>
       </AdaptivityProvider>

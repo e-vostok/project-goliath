@@ -6,6 +6,8 @@
 export const ORDERS_TEXTS = {
   blockTitle: 'Приказы',
   submitButton: 'Подать приказ',
+  cancel: 'Отмена',
+  closeButton: 'Закрыть',
 
   /* «Мне на отсуд» list */
   assignedTitle: 'Мне на отсуд',
