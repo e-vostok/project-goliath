@@ -51,6 +51,7 @@ import { TabStrip } from './TabStrip';
 export function PanelRegistry({
   entryRequest = null,
   active = true,
+  onOpenNation,
 }: {
   /**
    * Deep-link request from AppShell (Spec 04_orders 5.5): select `tab`
@@ -64,6 +65,12 @@ export function PanelRegistry({
    * view state resets (Bible 2.7).
    */
   active?: boolean;
+  /**
+   * A nation cell click opens the nation subscreen (unit 14c); the
+   * second argument is the active tab's title for the return path
+   * chain («Реестр / <tab> / <название>»).
+   */
+  onOpenNation?: (nationId: string, fromTabTitle: string) => void;
 }) {
   const tablesState = useRegistryTables();
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
@@ -244,6 +251,11 @@ export function PanelRegistry({
             view={view}
             onSortClick={(columnId) =>
               updateView((v) => ({ ...v, sort: nextSort(v.sort, columnId) }))
+            }
+            onOpenNation={
+              onOpenNation === undefined
+                ? undefined
+                : (nationId) => onOpenNation(nationId, activeTable.title)
             }
           />
         ) : rows.data.rows.length === 0 ? (

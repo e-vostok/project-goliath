@@ -53,6 +53,10 @@ const router = createHashRouter([
   { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
   { path: '/map', panel: PANEL_MAP, view: 'main' },
   { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
+  // The nation subscreen (unit 14c): «Реестр» stays the active panel
+  // and tab; the `:sub` segment is `nation-<id>`, anything else shows
+  // the plain Registry.
+  { path: '/registry/:sub', panel: PANEL_REGISTRY, view: 'main' },
 ]);
 
 function App() {

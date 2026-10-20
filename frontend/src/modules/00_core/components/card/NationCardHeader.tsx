@@ -4,12 +4,15 @@
  * without one), the «ГОСУДАРСТВО · краткое название» label line, the
  * name in `display-lg`, the motto in italics when set, the colour
  * swatch with HEX, and the «Изменить» button on the right (the pencil
- * icon; the edit behaviour itself lives in PanelNationHome).
+ * icon; the edit behaviour itself lives in PanelNationHome). An
+ * `action` node replaces that button — the nation subscreen shows
+ * «Показать на карте» there (unit 14c).
  */
 
+import type { ReactNode } from 'react';
 import { Button } from '@vkontakte/vkui';
 
-import type { NationDTO } from '../../../../shared/types';
+import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   ColorSwatch,
   FlagStub,
@@ -24,9 +27,15 @@ import { CardBlock } from './CardBlock';
 export function NationCardHeader({
   nation,
   onEdit,
+  action,
 }: {
-  nation: NationDTO;
-  onEdit: () => void;
+  nation: NationDTO | NationPublicDTO;
+  onEdit?: () => void;
+  /**
+   * Custom header button in place of «Изменить» — the nation
+   * subscreen's «Показать на карте» (unit 14c).
+   */
+  action?: ReactNode;
 }) {
   return (
     <CardBlock testId="nation-card-header">
@@ -79,14 +88,17 @@ export function NationCardHeader({
           </div>
         </div>
         <div style={{ flexShrink: 0 }}>
-          <Button
-            size="s"
-            mode="secondary"
-            before={<PencilIcon />}
-            onClick={onEdit}
-          >
-            Изменить
-          </Button>
+          {action ??
+            (onEdit && (
+              <Button
+                size="s"
+                mode="secondary"
+                before={<PencilIcon />}
+                onClick={onEdit}
+              >
+                Изменить
+              </Button>
+            ))}
         </div>
       </div>
     </CardBlock>

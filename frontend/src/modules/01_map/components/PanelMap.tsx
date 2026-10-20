@@ -31,6 +31,7 @@ import { buildOwnerMap } from '../lib/colors';
 import { formatMoscowTime } from '../lib/refresh';
 import { displayName } from '../lib/search';
 import type { MapNodeDTO } from '../types';
+import { takeMapEntryRequest } from '../lib/mapEntryRequest';
 import { useBigWindow } from '../hooks/useBigWindow';
 import { useMapBorders } from '../hooks/useMapBorders';
 import { useMapGeometry } from '../hooks/useMapGeometry';
@@ -47,7 +48,7 @@ const LEGEND: { key: string; label: string }[] = [
   { key: 'outside', label: 'За краем игрового поля' },
 ];
 
-export function PanelMap() {
+export function PanelMap({ active = true }: { active?: boolean }) {
   const manifestState = useMapManifest();
   const manifest =
     manifestState.status === 'ready' ? manifestState.manifest : null;
@@ -125,6 +126,28 @@ export function PanelMap() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [searchOpen, selectedId]);
+
+  // «Показать на карте» of the nation subscreen (unit 14c): the
+  // stored entry request selects and centres the province once the
+  // panel is active and the manifest has arrived — the same
+  // select+focus a search result gets. A request for a node the
+  // manifest does not know is dropped; a read consumes it.
+  useEffect(() => {
+    if (!active || manifest === null) {
+      return;
+    }
+    const request = takeMapEntryRequest();
+    if (request === null) {
+      return;
+    }
+    const node = nodesById.get(request.provinceId);
+    if (node === undefined) {
+      return;
+    }
+    focusSeq.current += 1;
+    setSelectedId(node.id);
+    setFocus({ seq: focusSeq.current, mode: 'fit', bbox: node.bbox });
+  }, [active, manifest, nodesById]);
 
   const chooseResult = (node: MapNodeDTO) => {
     pickNode(node, 'fit');

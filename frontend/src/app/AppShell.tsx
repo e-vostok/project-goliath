@@ -10,8 +10,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   useActiveVkuiLocation,
+  useParams,
   useRouteNavigator,
 } from '@vkontakte/vk-mini-apps-router';
+// `useLocation` exists in the package but is not re-exported from its
+// root — the subscreen's «fromTab» chain reads location.state.
+import { useLocation } from '@vkontakte/vk-mini-apps-router/dist/hooks/hooks';
 import {
   Button,
   Div,
@@ -29,7 +33,9 @@ import { useGameClock } from '../modules/00_core/hooks/useGameClock';
 import { useNation } from '../modules/00_core/hooks/useNation';
 import { PanelCreateNation } from '../modules/00_core/components/PanelCreateNation';
 import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
+import { NationSubscreen } from '../modules/00_core/components/NationSubscreen';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
+import { setMapEntryRequest } from '../modules/01_map/lib/mapEntryRequest';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
 import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
 import { errorText } from '../shared/errorTexts';
@@ -54,6 +60,16 @@ import { useWindowHeight } from './useWindowHeight';
 export { PANEL_CREATE, PANEL_HOME, PANEL_MAP, PANEL_REGISTRY };
 
 /**
+ * The nation id in the `#/registry/nation-<id>` address — hex + dash
+ * (the UUID alphabet), 8–64 chars (UI Spec 9.3). Anything else in the
+ * `:sub` segment or after `#registry/nation-` is not a nation address.
+ */
+export const NATION_SUB_RE = /^nation-[0-9a-fA-F-]{8,64}$/;
+
+/** `#registry/nation-<id>` — the bare (menu/bot) form of the address. */
+const NATION_BARE_HASH_RE = /^#registry\/(nation-[0-9a-fA-F-]{8,64})$/;
+
+/**
  * The community-menu deep link `https://vk.com/app<APP_ID>#map` arrives
  * as the bare hash `#map`; the hash router expects a path. Call once,
  * before the router is created (main.tsx). Module 02_bot adds the
@@ -69,6 +85,17 @@ export function normalizeEntryHash(): void {
   if (orderRequest) {
     setRegistryEntryRequest(orderRequest);
     window.history.replaceState(null, '', '#/registry');
+    return;
+  }
+  // `#registry/nation-<id>` (UI Spec 9.3): the nation subscreen. A
+  // malformed id falls back to the plain Registry, no error shown.
+  if (window.location.hash.startsWith('#registry/nation-')) {
+    const match = NATION_BARE_HASH_RE.exec(window.location.hash);
+    window.history.replaceState(
+      null,
+      '',
+      match ? `#/registry/${match[1]}` : '#/registry',
+    );
     return;
   }
   if (window.location.hash === '#map') {
@@ -140,6 +167,8 @@ function LoadingCell() {
 function AuthedArea() {
   const { panel } = useActiveVkuiLocation();
   const navigator = useRouteNavigator();
+  const params = useParams();
+  const location = useLocation();
   const nationState = useNation();
   // The root container the VK window height follows (UI Spec 2):
   // top bar + layout, measured as one block — never the page.
@@ -148,6 +177,22 @@ function AuthedArea() {
   // The entry request is consumed once — the first read wins, later
   // renders get null (takeRegistryEntryRequest clears the store).
   const registryRequest = useRef(takeRegistryEntryRequest()).current;
+
+  // The nation subscreen (unit 14c): the `/registry/:sub` route's
+  // `nation-<id>` segment → the nation id; any other segment shows the
+  // plain Registry. `fromTab` rides router state (a row click pushes
+  // {fromTab: <tab title>}); a bare link has none.
+  const subSegment = params?.sub;
+  const nationSubId =
+    typeof subSegment === 'string' && NATION_SUB_RE.test(subSegment)
+      ? subSegment.slice('nation-'.length)
+      : null;
+  const fromTab = (() => {
+    const state = location.state as { fromTab?: unknown } | null;
+    return state !== null && typeof state.fromTab === 'string'
+      ? state.fromTab
+      : null;
+  })();
 
   const { status, nation, refresh } = nationState;
   const activePanel = panel ?? PANEL_HOME;
@@ -234,13 +279,44 @@ function AuthedArea() {
                     <AdminBlock onWorldChanged={handleWorldChanged} />
                   </Panel>
                   <Panel id={PANEL_MAP}>
-                    <PanelMap />
+                    <PanelMap active={activePanel === PANEL_MAP} />
                   </Panel>
                   <Panel id={PANEL_REGISTRY}>
-                    <PanelRegistry
-                      entryRequest={registryRequest}
-                      active={activePanel === PANEL_REGISTRY}
-                    />
+                    {/* The nation subscreen replaces the Registry's
+                        content IN THE SAME panel — the Registry stays
+                        mounted (display:none) and keeps `active=true`,
+                        so its tab/search/sort/filters/scroll survive
+                        the round trip (Bible 2.7, UI Spec 9.3). */}
+                    <div
+                      style={
+                        nationSubId === null ? undefined : { display: 'none' }
+                      }
+                    >
+                      <PanelRegistry
+                        entryRequest={registryRequest}
+                        active={activePanel === PANEL_REGISTRY}
+                        onOpenNation={(nationId, fromTabTitle) =>
+                          void navigator.push(`/registry/nation-${nationId}`, {
+                            state: { fromTab: fromTabTitle },
+                          })
+                        }
+                      />
+                    </div>
+                    {nationSubId !== null && (
+                      <NationSubscreen
+                        nationId={nationSubId}
+                        fromTab={fromTab}
+                        onBack={() => void navigator.push('/registry')}
+                        onShowOnMap={(capitalProvinceId) => {
+                          if (capitalProvinceId !== null) {
+                            setMapEntryRequest({
+                              provinceId: capitalProvinceId,
+                            });
+                          }
+                          void navigator.push('/map');
+                        }}
+                      />
+                    )}
                   </Panel>
                 </View>
               </SplitCol>

@@ -10,7 +10,7 @@
 
 import { Link } from '@vkontakte/vkui';
 
-import type { NationDTO } from '../../../../shared/types';
+import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   BlockTitle,
   SPACING,
@@ -19,7 +19,11 @@ import {
 } from '../../../../shared/ui';
 import { CardBlock } from './CardBlock';
 
-export function DescriptionBlock({ nation }: { nation: NationDTO }) {
+export function DescriptionBlock({
+  nation,
+}: {
+  nation: NationDTO | NationPublicDTO;
+}) {
   const description = nation.description;
   const historyUrl = nation.history_url;
   if (!description && !historyUrl) {
