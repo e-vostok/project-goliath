@@ -131,7 +131,12 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
         player: { name: 'Борис Иванов', avatar_url: null, is_fallback: false },
         joined: { text: '1 сентября 2026', key: 20697 },
         level: 1,
-        nation: { name: 'Новгород', color: '#C0392B', flag_url: null },
+        nation: {
+          id: 'n1',
+          name: 'Новгород',
+          color: '#C0392B',
+          flag_url: null,
+        },
       },
     },
     {
@@ -155,7 +160,12 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
         player: { name: 'Игрок №3', avatar_url: null, is_fallback: true },
         joined: { text: '10 сентября 2026', key: 20706 },
         level: 1,
-        nation: { name: 'Рязань', color: '#2980B9', flag_url: null },
+        nation: {
+          id: 'n2',
+          name: 'Рязань',
+          color: '#2980B9',
+          flag_url: null,
+        },
       },
     },
   ],
