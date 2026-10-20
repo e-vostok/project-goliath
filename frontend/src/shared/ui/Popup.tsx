@@ -180,6 +180,8 @@ export interface PopupProps {
   onClose: () => void;
   /** Unsaved input — Esc and the scrim no longer close the window. */
   dirty?: boolean;
+  /** Body without padding and gap — full-bleed content (e.g. the map). */
+  flush?: boolean;
   /** Footer bar content — the caller orders the buttons. */
   footer?: ReactNode;
   children: ReactNode;
@@ -193,6 +195,7 @@ export function Popup({
   headerExtra,
   onClose,
   dirty = false,
+  flush = false,
   footer,
   children,
   testId,
@@ -259,6 +262,11 @@ export function Popup({
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // A window part already consumed this Esc (e.g. it closed its
+        // own dropdown) — the popup leaves it alone.
+        if (event.defaultPrevented) {
+          return;
+        }
         if (!dirtyRef.current) {
           onCloseRef.current();
         }
@@ -408,10 +416,10 @@ export function Popup({
         <div
           data-popup-body
           style={{
-            padding: SPACING['space-4'],
+            padding: flush ? 0 : SPACING['space-4'],
             display: 'flex',
             flexDirection: 'column',
-            gap: SPACING['space-3'],
+            gap: flush ? 0 : SPACING['space-3'],
           }}
         >
           {children}
