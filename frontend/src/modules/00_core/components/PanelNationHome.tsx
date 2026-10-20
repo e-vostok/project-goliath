@@ -34,7 +34,7 @@ import {
   PanelHeader,
   SimpleCell,
 } from '@vkontakte/vkui';
-import { Icon24Write, Icon24Delete } from '@vkontakte/icons';
+import { Icon24Write } from '@vkontakte/icons';
 
 import { api, ApiError } from '../../../shared/api-client';
 import { errorText } from '../../../shared/errorTexts';
@@ -62,7 +62,6 @@ import { OrdersBlock } from '../../04_orders/components/OrdersBlock';
 export interface PanelNationHomeProps {
   nation: NationDTO;
   onChanged: () => void;
-  onDeleteRequest: () => void;
 }
 
 /** Session-draft key; v1 five-field drafts under 'nation-edit:*' die out. */
@@ -82,7 +81,6 @@ function externalLink(url: string, label: string) {
 export function PanelNationHome({
   nation,
   onChanged,
-  onDeleteRequest,
 }: PanelNationHomeProps) {
   const { token } = useSession();
   const notify = useNotice();
@@ -365,16 +363,6 @@ export function PanelNationHome({
                 onClick={() => setEditing(true)}
               >
                 Изменить
-              </Button>
-              <Button
-                size="l"
-                stretched
-                mode="primary"
-                appearance="negative"
-                before={<Icon24Delete />}
-                onClick={onDeleteRequest}
-              >
-                Удалить
               </Button>
             </ButtonGroup>
           </Div>

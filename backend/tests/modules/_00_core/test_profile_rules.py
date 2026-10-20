@@ -15,12 +15,14 @@ import pytest
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
     HistoryUrlInvalidError,
+    LeaderBioInvalidError,
     LeaderNameInvalidError,
     LeaderTitleInvalidError,
 )
 from modules._00_core.profile_rules import (
     history_url_allowed_hosts,
     validate_history_url,
+    validate_leader_bio,
     validate_leader_name,
     validate_leader_title,
     validate_vk_article_url,
@@ -100,6 +102,46 @@ class TestLeaderTitle:
         assert validate_leader_title("\tSupreme Ruler\n", CORE_CONFIG) == (
             "Supreme Ruler"
         )
+
+
+class TestLeaderBio:
+    """leader_bio rules (0.9.0): CRLF/CR fold to LF, runs of 3+
+    line breaks collapse to one empty line, the 500 cap counts the
+    normalized text."""
+
+    @pytest.mark.parametrize(
+        "value,stored",
+        [
+            # CRLF and a bare CR fold to '\n'.
+            ("one\r\ntwo", "one\ntwo"),
+            ("one\rtwo", "one\ntwo"),
+            # Two line breaks (one empty line) pass through untouched.
+            ("one\n\ntwo", "one\n\ntwo"),
+            # Runs of three and four collapse to two.
+            ("one\n\n\ntwo", "one\n\ntwo"),
+            ("one\n\n\n\ntwo", "one\n\ntwo"),
+            ("one\r\n\r\n\r\ntwo", "one\n\ntwo"),
+            # Whitespace trims after folding/collapsing.
+            ("\n\n  one  \n\n", "one"),
+        ],
+    )
+    def test_normalization_stored(self, value, stored):
+        assert validate_leader_bio(value, CORE_CONFIG) == stored
+
+    def test_empty_stores_null(self):
+        assert validate_leader_bio(None, CORE_CONFIG) is None
+        assert validate_leader_bio("  \n\n  ", CORE_CONFIG) is None
+
+    def test_length_counts_normalized_text(self):
+        # 501 raw characters collapse under the 500 cap: accepted.
+        value = "a" * 496 + "\n\n\n\n" + "b"
+        assert validate_leader_bio(value, CORE_CONFIG) == ("a" * 496 + "\n\n" + "b")
+
+    def test_over_limit_after_normalization_rejected(self):
+        with pytest.raises(LeaderBioInvalidError):
+            validate_leader_bio(
+                "b" * (CORE_CONFIG.nation.leader_bio_max_length + 1), CORE_CONFIG
+            )
 
 
 class TestHistoryUrl:

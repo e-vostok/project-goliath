@@ -24,9 +24,9 @@ auth:
   jwt_ttl_minutes: 60
 
 nation:
-  # Полное название государства (решение Project Owner 17.10.2026: от 2 до 40).
+  # Полное название государства (решение Project Owner 20.10.2026: от 2 до 50).
   nation_name_min_length: 2
-  nation_name_max_length: 40
+  nation_name_max_length: 50
   # Краткое название (обязательное, уникальное): от 2 до 16.
   short_name_min_length: 2
   short_name_max_length: 16

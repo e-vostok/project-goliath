@@ -44,8 +44,9 @@ export function nationErrorText(
         ? `Описание: не более ${rules.description_max_length} символов, без служебных символов`
         : 'Недопустимое описание';
     case ErrorCodes.FLAG_INVALID:
+      return 'Выберите флаг.';
     case ErrorCodes.PORTRAIT_INVALID:
-      return 'Выберите картинку из каталога';
+      return 'Выберите портрет лидера.';
     case ErrorCodes.LEADER_NAME_INVALID:
       return `Имя лидера: ${range(rules, rules?.leader_name_min_length, rules?.leader_name_max_length)}без служебных символов`;
     case ErrorCodes.GENDER_INVALID:

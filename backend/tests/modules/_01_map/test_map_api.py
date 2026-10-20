@@ -37,6 +37,7 @@ from core.tick.orchestrator import TickOrchestrator
 from main import app
 from modules._00_core.hooks import OwnershipChange
 from modules._00_core.models import GameClock, Province
+from modules._00_core.service import NationService
 from modules._01_map.hooks import register_map_hooks
 from modules._01_map.loader import load_map_data
 from modules._01_map.schemas import (
@@ -918,13 +919,11 @@ class TestLiveHistory:
 
         # --- tick -> 2, then delete the nation ---------------------
         assert await tick() == 2
-        resp = await live_client.request(
-            "DELETE",
-            "/api/v1/nations/me",
-            headers=player_a,
-            json={"confirm": True},
-        )
-        assert resp.status_code == 204
+        # The player DELETE route is gone (0.9.0): deletion is an
+        # internal operation, the service is the only entry point left.
+        async with core_db.get_session_context() as session:
+            await NationService.delete(session, nation_id=nation_a["id"])
+            await session.commit()
 
         current = await state()
         assert current["turn"] == 2

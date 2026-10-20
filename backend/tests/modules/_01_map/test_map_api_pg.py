@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import pytest
 
+from modules._00_core.service import NationService
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
     pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — session maker for service-level calls,
     pg_live_client,  # noqa: F401 — resolved through the fixture chain
     pg_schema,  # noqa: F401 — resolved through the fixture chain,
     pg_url,  # noqa: F401 — resolved through the fixture chain,
@@ -93,7 +95,7 @@ class TestMapApiOnPostgres:
         assert body["nations"][0]["id"] == created.json()["id"]
 
     @pytest.mark.asyncio
-    async def test_past_turn_after_delete(self, pg_live_client):
+    async def test_past_turn_after_delete(self, pg_live_client, pg_db):
         """Delete at turn 0 -> past snapshot keeps id=null owner."""
         admin = await _auth_headers(pg_live_client, ADMIN_VK_ID)
         headers = await _auth_headers(pg_live_client, 9103)
@@ -111,13 +113,11 @@ class TestMapApiOnPostgres:
 
         tick = await pg_live_client.post("/api/v1/admin/tick/run", headers=admin)
         assert tick.status_code == 200 and tick.json()["current_turn"] == 1
-        deleted = await pg_live_client.request(
-            "DELETE",
-            "/api/v1/nations/me",
-            headers=headers,
-            json={"confirm": True},
-        )
-        assert deleted.status_code == 204
+        # The player DELETE route is gone (0.9.0): deletion is internal
+        # now — NationService.delete is the only entry point left.
+        async with pg_db() as session:
+            await NationService.delete(session, nation_id=created.json()["id"])
+            await session.commit()
 
         past = await pg_live_client.get(STATE_URL, params={"turn": 0}, headers=admin)
         assert past.status_code == 200

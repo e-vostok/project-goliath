@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,6 @@ from modules._00_core.schemas import (
     ColorCheckRequest,
     GameClockDTO,
     NationCreateRequest,
-    NationDeleteRequest,
     NationDTO,
     NationRulesDTO,
     NationUpdateRequest,
@@ -270,19 +269,6 @@ async def update_nations_me(
     )
     await session.commit()
     return await _nation_dto(session, nation)
-
-
-@router.delete("/nations/me", status_code=204)
-async def delete_nations_me(
-    body: NationDeleteRequest,
-    player: Player = Depends(get_current_player),
-    session: AsyncSession = Depends(get_session),
-) -> Response:
-    """Delete the authenticated player's nation and free its provinces."""
-    nation = await _get_own_nation(session, player)
-    await NationService.delete(session, nation_id=nation.id)
-    await session.commit()
-    return Response(status_code=204)
 
 
 @router.get("/provinces", response_model=list[ProvinceDTO])

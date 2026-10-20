@@ -16,7 +16,6 @@ import {
   Button,
   Div,
   FormStatus,
-  ModalRoot,
   Panel,
   ScreenSpinner,
   SplitCol,
@@ -30,7 +29,6 @@ import { useGameClock } from '../modules/00_core/hooks/useGameClock';
 import { useNation } from '../modules/00_core/hooks/useNation';
 import { PanelCreateNation } from '../modules/00_core/components/PanelCreateNation';
 import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
-import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
 import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
@@ -54,7 +52,6 @@ import {
 import { useWindowHeight } from './useWindowHeight';
 
 export { PANEL_CREATE, PANEL_HOME, PANEL_MAP, PANEL_REGISTRY };
-const MODAL_DELETE_NATION = 'confirm-delete-nation';
 
 /**
  * The community-menu deep link `https://vk.com/app<APP_ID>#map` arrives
@@ -144,7 +141,6 @@ function AuthedArea() {
   const { panel } = useActiveVkuiLocation();
   const navigator = useRouteNavigator();
   const nationState = useNation();
-  const [activeModal, setActiveModal] = useState<string | null>(null);
   // The root container the VK window height follows (UI Spec 2):
   // top bar + layout, measured as one block — never the page.
   const shellRef = useRef<HTMLDivElement>(null);
@@ -190,26 +186,6 @@ function AuthedArea() {
     }
   }, [status, nation, activePanel, navigator]);
 
-  // The VKUI ModalRoot keeps ONLY the delete-nation card (unit 8
-  // removes it); the order windows are shared Popups inside the
-  // provider — PopupHost portals them into the root container.
-  const modal = (
-    <ModalRoot
-      activeModal={activeModal}
-      onClose={() => setActiveModal(null)}
-    >
-      <ModalConfirmDeleteNation
-        id={MODAL_DELETE_NATION}
-        nationName={nation?.name ?? ''}
-        onClose={() => setActiveModal(null)}
-        onDeleted={() => {
-          setActiveModal(null);
-          refresh();
-        }}
-      />
-    </ModalRoot>
-  );
-
   return (
     <div
       ref={shellRef}
@@ -220,7 +196,7 @@ function AuthedArea() {
         <NoticeHost container={shellRef}>
           <OrdersUiProvider>
             <TopBar activePanel={activePanel} clock={clock} />
-            <SplitLayout modal={modal}>
+            <SplitLayout>
               <SplitCol>
                 <View activePanel={activePanel}>
                   <Panel id={PANEL_CREATE}>
@@ -253,9 +229,6 @@ function AuthedArea() {
                         key={worldVersion}
                         nation={nation}
                         onChanged={refresh}
-                        onDeleteRequest={() =>
-                          setActiveModal(MODAL_DELETE_NATION)
-                        }
                       />
                     )}
                     <AdminBlock onWorldChanged={handleWorldChanged} />

@@ -89,6 +89,7 @@ class NationDTO(BaseModel):
     portrait_url: str | None
     succession_type: str | None
     history_url: str | None
+    # не используется с 0.9.0, снятие — бэклог 00_core
     anthem_url: str | None
 
 
@@ -201,12 +202,6 @@ class ColorCheckDTO(BaseModel):
     """The Part 3 color decision for the input hint."""
 
     status: Literal["OK", "TAKEN", "TOO_CLOSE"]
-
-
-class NationDeleteRequest(BaseModel):
-    """Request body for DELETE /api/v1/nations/me."""
-
-    confirm: Literal[True]
 
 
 class ProvinceDTO(BaseModel):
