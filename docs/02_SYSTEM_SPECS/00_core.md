@@ -426,6 +426,7 @@ $$
 | GET    | `/api/v1/players/me`       | Bearer            | —                              | `PlayerDTO`         | 200                 |
 | GET    | `/api/v1/nations/me`       | Bearer            | —                              | `NationDTO`         | 200 / 404           |
 | GET    | `/api/v1/nations/rules`    | Bearer            | —                              | `NationRulesDTO`    | 200                 |
+| GET    | `/api/v1/nations/{nation_id}` | Bearer         | —                              | `NationPublicDTO`   | 200 / 404           |
 | POST   | `/api/v1/nations/color-check` | Bearer         | `ColorCheckRequest`            | `ColorCheckDTO`     | 200 / 422           |
 | POST   | `/api/v1/nations`          | Bearer            | `NationCreateRequest`          | `NationDTO`         | 201 / 409 / 422     |
 | PATCH  | `/api/v1/nations/me`       | Bearer            | `NationUpdateRequest`          | `NationDTO`         | 200 / 409 / 422     |
@@ -450,9 +451,24 @@ NationDTO         = { id: UUID, owner_player_id: UUID, created_at: datetime,
                       leader_name: str | None, gender: str | None, leader_title: str | None,
                       leader_bio: str | None, portrait_id: str | None, portrait_url: str | None,
                       succession_type: str | None,
-                      history_url: str | None, anthem_url: str | None }
+                      history_url: str | None, anthem_url: str | None,
+                      level: int, judge_rating: int }   # level и judge_rating владельца — с версии 0.9.0 (единица 14)
                       # None у обязательных полей — только у государств, созданных до миграции 0.8.0 (или до миграции профиля);
                       # None у необязательных — «не задано»
+NationPublicDTO   = { id: UUID, created_at: datetime,
+                      name: str, short_name: str | None, color_hex: str,
+                      motto: str | None, description: str | None,
+                      flag_id: str | None, flag_url: str | None,
+                      province_ids: list[int],
+                      capital_province_id: int | None, capital_name: str | None,
+                      leader_name: str | None, leader_title: str | None,
+                      leader_bio: str | None, portrait_id: str | None, portrait_url: str | None,
+                      history_url: str | None,
+                      level: int, judge_rating: int }
+                      # публичные сведения о чужом государстве (Bible 00_core, п. 7, версия 0.9.0, единица 14).
+                      # НЕ содержит: owner_player_id, gender, succession_type, anthem_url, vk-идентификаторов.
+                      # Тест: ключи ответа точно равны перечню выше. Неизвестный id → 404 NATION_NOT_FOUND.
+                      # level и judge_rating — поля игрока-владельца (`players`), читаются в 00_core.
 NationCreateRequest = { name: str, short_name: str, color_hex: str,
                         motto: str | None, description: str | None, flag_id: str | None,
                         province_ids: list[int], capital_province_id: int | None, capital_name: str,
