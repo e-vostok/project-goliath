@@ -25,6 +25,7 @@ import {
 } from '@vkontakte/vkui';
 
 import { errorText } from '../../../shared/errorTexts';
+import { SPACING, tokenVar } from '../../../shared/ui';
 import { buildAdjacency } from '../lib/adjacency';
 import { buildOwnerMap } from '../lib/colors';
 import { formatMoscowTime } from '../lib/refresh';
@@ -187,14 +188,14 @@ export function PanelMap() {
               zIndex: 10,
               display: 'flex',
               flexDirection: 'column',
-              background: 'var(--vkui--color_background)',
+              background: tokenVar('ground'),
             }
           : {
               // Normal view: an ordinary block in the page flow.
               height: 780,
               display: 'flex',
               flexDirection: 'column',
-              background: 'var(--vkui--color_background)',
+              background: tokenVar('ground'),
             }
       }
     >
@@ -203,7 +204,7 @@ export function PanelMap() {
           display: 'flex',
           gap: 8,
           alignItems: 'center',
-          padding: '8px 12px',
+          padding: SPACING['space-4'],
         }}
       >
         <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>

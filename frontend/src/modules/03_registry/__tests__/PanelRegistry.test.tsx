@@ -368,6 +368,54 @@ describe('PanelRegistry — 910 px window rule (Spec 5.5)', () => {
   });
 });
 
+describe('PanelRegistry — screen frame (UI Spec 9.2)', () => {
+  it('shows the «РЕЕСТР» screen title with the three tab labels in the same row', async () => {
+    server.use(
+      http.get('*/api/v1/registry/tables', () =>
+        HttpResponse.json({
+          ...TABLES,
+          tables: [
+            ...TABLES.tables,
+            {
+              id: 'orders',
+              title: 'Приказы',
+              icon: 'orders',
+              empty_text: 'Приказов пока нет',
+              default_sort: { column: 'number', direction: 'desc' },
+              columns: [],
+            },
+          ],
+        }),
+      ),
+    );
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+
+    // The shared screen title carries the signed tabs right after
+    // «РЕЕСТР» — no separate tab row underneath (mockup «Registry»).
+    const title = document.querySelector(
+      '[data-testid="panel-registry"] h2',
+    ) as HTMLElement;
+    expect(title).not.toBeNull();
+    expect(title).toHaveTextContent('Реестр');
+    const strip = within(title).getByTestId('registry-tabstrip');
+    expect(
+      within(strip).getAllByRole('tab').map((t) => t.textContent),
+    ).toEqual(['Игроки', 'Государства', 'Приказы']);
+  });
+
+  it('the players table shows the «Дата регистрации» column title', async () => {
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+    const head = document.querySelector(
+      '[data-testid="registry-table"] thead',
+    ) as HTMLElement;
+    expect(
+      within(head).getByText('Дата регистрации'),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('PanelRegistry — tabs_position', () => {
   it('tabs_position: right renders the vertical tab column', async () => {
     server.use(

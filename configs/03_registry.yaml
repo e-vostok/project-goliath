@@ -55,7 +55,7 @@ tables:
         searchable: true
         stub: false
       - id: joined
-        title: "В проекте с"
+        title: "Дата регистрации"
         type: date
         source: joined
         width_px: 136
