@@ -14,6 +14,7 @@ export type BlockIconName =
   | 'person'
   | 'map'
   | 'lines'
+  | 'text'
   | 'document'
   | 'list'
   | 'scales';
@@ -33,6 +34,9 @@ const BLOCK_PATHS: Record<BlockIconName, ReactNode> = {
   ),
   lines: (
     <path d="M2.5 3.5h11M2.5 6.8h11M2.5 10.1h11M2.5 13.4h6.5" />
+  ),
+  text: (
+    <path d="M4 4h8M4 7.4h8M4 10.8h8M4 13.6h5" />
   ),
   document: (
     <>
@@ -106,6 +110,27 @@ export function SunIcon() {
     >
       <circle cx="8" cy="8" r="2.8" />
       <path d="M8 1.6v1.6M8 12.8v1.6M1.6 8h1.6M12.8 8h1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M3.5 12.5l1.1-1.1M11.4 4.6l1.1-1.1" />
+    </svg>
+  );
+}
+
+/** Small edit pencil — 18 px, stroke 1.5, inherit `currentColor`. */
+export function PencilIcon() {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
+      <path d="M9.9 2.4l3.7 3.7-8.4 8.4-4 .3.3-4z" />
+      <path d="M8.9 3.4l3.7 3.7" />
     </svg>
   );
 }

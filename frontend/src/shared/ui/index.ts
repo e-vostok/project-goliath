@@ -5,7 +5,7 @@
  */
 
 export * from './tokens';
-export { BlockIcon, MoonIcon, SunIcon } from './icons';
+export { BlockIcon, MoonIcon, PencilIcon, SunIcon } from './icons';
 export type { BlockIconName } from './icons';
 export {
   ThemeProvider,

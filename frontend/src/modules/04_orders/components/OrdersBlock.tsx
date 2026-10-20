@@ -1,9 +1,12 @@
 /**
- * OrdersBlock — the «Приказы» mini-block in the headquarters
- * (PanelNationHome, Spec 5.4 / D12 — never in PanelCreateNation).
+ * OrdersBlock — the «Приказы» block of the headquarters card
+ * (PanelNationHome, Spec 5.4 / D12 — never in PanelCreateNation;
+ * UI Spec 9.1, mockup «Main», version 0.9.0 unit 8b).
  *
- * Below «Подать приказ» sits «Ожидают вердикт»: the orders assigned to
- * the player for judging. The list loads when the block mounts and on
+ * A surface block with the shared BlockTitle («Приказы», document
+ * icon) whose trailing slot carries the «Подать приказ» button.
+ * Below sits «Ожидают вердикт»: the orders assigned to the player
+ * for judging. The list loads when the block mounts and on
  * «Обновить» — no polling; after a written or rejected verdict the
  * provider bumps `assignedRefreshKey` and the list refetches. A row
  * shows the number, the nation colour mark and name, the title (one
@@ -13,17 +16,18 @@
  * keeps the shown list under «Не удалось загрузить» and «Повторить».
  */
 
-import {
-  Button,
-  Div,
-  FormStatus,
-  Group,
-  Header,
-  Spinner,
-  Text,
-} from '@vkontakte/vkui';
+import { Button, FormStatus } from '@vkontakte/vkui';
 
 import { errorText } from '../../../shared/errorTexts';
+import {
+  BlockTitle,
+  EmptyState,
+  LoadingState,
+  RADII,
+  SPACING,
+  TEXT_STYLES,
+  tokenVar,
+} from '../../../shared/ui';
 import { useAssignedOrders } from '../hooks/useAssignedOrders';
 import { ORDERS_TEXTS } from '../texts';
 import type { AssignedOrderDTO } from '../types';
@@ -40,75 +44,75 @@ export function OrdersBlock() {
   const assigned = useAssignedOrders(assignedRefreshKey);
 
   return (
-    <Group header={<Header size="l">{ORDERS_TEXTS.blockTitle}</Header>}>
-      <Div>
-        <Button size="l" stretched mode="secondary" onClick={openComposer}>
-          {ORDERS_TEXTS.submitButton}
-        </Button>
-      </Div>
-      <Div style={{ paddingTop: 0 }}>
-        <div
+    <section
+      data-testid="orders-block"
+      style={{
+        background: tokenVar('surface'),
+        borderRadius: RADII['radius-lg'],
+        padding: SPACING['space-4'],
+      }}
+    >
+      <BlockTitle
+        icon="document"
+        title={ORDERS_TEXTS.blockTitle}
+        trailing={
+          <Button size="s" mode="secondary" onClick={openComposer}>
+            {ORDERS_TEXTS.submitButton}
+          </Button>
+        }
+      />
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}
+      >
+        <span
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
+            ...TEXT_STYLES['label'],
+            color: tokenVar('ink-muted'),
           }}
         >
-          <Text weight="2">{ORDERS_TEXTS.assignedTitle}</Text>
-          <Button
-            size="s"
-            mode="tertiary"
-            loading={assigned.status === 'loading'}
-            onClick={assigned.refresh}
-          >
-            {ORDERS_TEXTS.refreshButton}
+          {ORDERS_TEXTS.assignedTitle}
+        </span>
+        <Button
+          size="s"
+          mode="tertiary"
+          loading={assigned.status === 'loading'}
+          onClick={assigned.refresh}
+        >
+          {ORDERS_TEXTS.refreshButton}
+        </Button>
+      </div>
+
+      {assigned.status === 'error' && (
+        <>
+          <FormStatus mode="error" title={ORDERS_TEXTS.assignedLoadError}>
+            {errorText(assigned.error)}
+          </FormStatus>
+          <Button size="s" onClick={assigned.refresh}>
+            {ORDERS_TEXTS.retry}
           </Button>
-        </div>
+        </>
+      )}
 
-        {assigned.status === 'error' && (
-          <>
-            <FormStatus mode="error" title={ORDERS_TEXTS.assignedLoadError}>
-              {errorText(assigned.error)}
-            </FormStatus>
-            <Button size="s" onClick={assigned.refresh}>
-              {ORDERS_TEXTS.retry}
-            </Button>
-          </>
-        )}
-
-        {assigned.items.length === 0 && assigned.status === 'loading' ? (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              padding: '24px 0',
-            }}
-          >
-            <Spinner size="m" />
-          </div>
-        ) : assigned.items.length === 0 && assigned.status === 'ready' ? (
-          <Text
-            style={{
-              display: 'block',
-              padding: '8px 0',
-              color: 'var(--vkui--color_text_secondary)',
-            }}
-          >
-            {ORDERS_TEXTS.assignedEmpty}
-          </Text>
-        ) : (
-          assigned.items.map((item) => (
-            <AssignedRow
-              key={item.number}
-              item={item}
-              onVerdict={openVerdictComposer}
-              onOpen={openOrder}
-            />
-          ))
-        )}
-      </Div>
-    </Group>
+      {assigned.items.length === 0 && assigned.status === 'loading' ? (
+        <LoadingState height={36} />
+      ) : assigned.items.length === 0 && assigned.status === 'ready' ? (
+        <EmptyState text={ORDERS_TEXTS.assignedEmpty} />
+      ) : (
+        assigned.items.map((item) => (
+          <AssignedRow
+            key={item.number}
+            item={item}
+            onVerdict={openVerdictComposer}
+            onOpen={openOrder}
+          />
+        ))
+      )}
+    </section>
   );
 }
 
@@ -132,7 +136,15 @@ function AssignedRow({
         padding: '8px 0',
       }}
     >
-      <span style={{ whiteSpace: 'nowrap' }}>№{item.number}</span>
+      <span
+        style={{
+          whiteSpace: 'nowrap',
+          ...TEXT_STYLES['figure'],
+          color: tokenVar('ink'),
+        }}
+      >
+        №{item.number}
+      </span>
       <NationMark name={item.nation.name} color={item.nation.color} />
       <span
         title={item.title}
@@ -149,7 +161,7 @@ function AssignedRow({
       <span
         style={{
           whiteSpace: 'nowrap',
-          color: 'var(--vkui--color_text_secondary)',
+          color: tokenVar('ink-muted'),
         }}
       >
         {ORDERS_TEXTS.assignedDeadline(item.deadline_text)}
@@ -159,7 +171,7 @@ function AssignedRow({
           data-testid="assigned-overdue-mark"
           style={{
             whiteSpace: 'nowrap',
-            color: 'var(--vkui--color_text_negative)',
+            color: tokenVar('danger'),
           }}
         >
           {ORDERS_TEXTS.assignedOverdueMark}
