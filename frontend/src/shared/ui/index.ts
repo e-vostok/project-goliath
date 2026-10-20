@@ -5,8 +5,21 @@
  */
 
 export * from './tokens';
-export { BlockIcon, MoonIcon, PencilIcon, SunIcon } from './icons';
+export {
+  BlockIcon,
+  MarsIcon,
+  MoonIcon,
+  PencilIcon,
+  SunIcon,
+  VenusIcon,
+} from './icons';
 export type { BlockIconName } from './icons';
+export { FieldLabel, FieldMessage, TextArea, TextField } from './fields';
+export type {
+  FieldLabelProps,
+  TextAreaProps,
+  TextFieldProps,
+} from './fields';
 export {
   ThemeProvider,
   ThemeToggle,

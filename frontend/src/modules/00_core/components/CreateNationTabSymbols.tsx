@@ -1,22 +1,34 @@
 /**
- * Tab 1 «Основные данные и символика» of the registration window —
- * complete in this issue: full name, short name, motto, description,
- * the color picker (palette grid + HEX field + live color-check hint)
- * and the flag catalog grid. Purely presentational for the form
- * values — they live in the container's RegistrationForm; only the
- * debounced color-check hint is local state, because it is a pure UI
- * preview that never reaches the request body and never blocks submit
- * (the server decides at POST /nations).
+ * Tab 1 «Основные данные и символика» of the registration window (UI
+ * Spec 9.6 — version 0.9.0 unit 8c): row «Полное название *» +
+ * «Краткое название *», row «Описание» (two-line TextArea, the wider
+ * field) left + «Девиз» right, then «Цвет государства *» — the palette
+ * grid + HEX field + the live «цвет свободен» check — and the flag
+ * catalog row. A flag is ALWAYS selected: there is no «Без флага»
+ * tile, the first catalog flag is preselected (and stands in for a
+ * legacy NULL flag on the edit form). Purely presentational for the
+ * form values — they live in the container's RegistrationForm; only
+ * the debounced color-check hint is local state, because it is a pure
+ * UI preview that never reaches the request body and never blocks
+ * submit (the server decides at POST /nations).
  */
 
 import { useEffect, useState, type CSSProperties } from 'react';
-import { FormItem, Input } from '@vkontakte/vkui';
 import { Icon16Done } from '@vkontakte/icons';
 
 import { api } from '../../../shared/api-client';
 import { useSession } from '../hooks/useAuth';
 import {
+  FieldLabel,
+  FieldMessage,
+  RADII,
+  TEXT_STYLES,
+  tokenVar,
+} from '../../../shared/ui';
+import {
+  CreateNationTextArea,
   CreateNationTextField,
+  PickCheck,
   type RegistrationTabProps,
 } from './CreateNationFields';
 import { isValidColorHex, normalizeColorHex } from './registrationForm';
@@ -27,8 +39,19 @@ const COLOR_CHECK_DEBOUNCE_MS = 400;
 /** 12 columns → the 36-color config palette wraps into 3 tidy rows. */
 const PALETTE_COLUMNS = 12;
 
+const row: CSSProperties = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'flex-start',
+};
+
+const cell: CSSProperties = {
+  flex: '1 1 0',
+  minWidth: 0,
+};
+
 const selectedTile: CSSProperties = {
-  outline: '2px solid var(--vkui--color_accent)',
+  outline: `2px solid ${tokenVar('action')}`,
   outlineOffset: 2,
 };
 
@@ -41,7 +64,6 @@ const checkStyle: CSSProperties = {
 export function CreateNationTabSymbols({
   form,
   rules,
-  hints,
   errors,
   onFieldChange,
 }: RegistrationTabProps) {
@@ -77,65 +99,69 @@ export function CreateNationTabSymbols({
 
   return (
     <>
-      <CreateNationTextField
-        id="nation-name"
-        label="Название государства"
-        testId="form-item-name"
-        value={form.name}
-        maxLength={rules?.name_max_length}
-        error={errors.name}
-        hint={hints?.name}
-        counter
-        onChange={(v) => onFieldChange('name', v)}
-        placeholder="напр. Северный Синдикат"
-      />
+      <div style={row}>
+        <div style={cell}>
+          <CreateNationTextField
+            id="nation-name"
+            label="Полное название"
+            required
+            testId="form-item-name"
+            value={form.name}
+            maxLength={rules?.name_max_length}
+            error={errors.name}
+            onChange={(v) => onFieldChange('name', v)}
+            placeholder="напр. Северный Синдикат"
+          />
+        </div>
+        <div style={cell}>
+          <CreateNationTextField
+            id="nation-short-name"
+            label="Краткое название"
+            required
+            testId="form-item-short-name"
+            value={form.shortName}
+            maxLength={rules?.short_name_max_length}
+            error={errors.shortName}
+            onChange={(v) => onFieldChange('shortName', v)}
+            placeholder="напр. Синдикат"
+          />
+        </div>
+      </div>
 
-      <CreateNationTextField
-        id="nation-short-name"
-        label="Краткое название"
-        testId="form-item-short-name"
-        value={form.shortName}
-        maxLength={rules?.short_name_max_length}
-        error={errors.shortName}
-        hint={hints?.shortName}
-        counter
-        onChange={(v) => onFieldChange('shortName', v)}
-        placeholder="напр. Синдикат"
-      />
+      <div style={{ ...row, marginTop: 16 }}>
+        <div style={{ flex: '2 1 0', minWidth: 0 }}>
+          <CreateNationTextArea
+            id="nation-description"
+            label="Описание"
+            rows={2}
+            testId="form-item-description"
+            value={form.description}
+            maxLength={rules?.description_max_length}
+            error={errors.description}
+            onChange={(v) => onFieldChange('description', v)}
+            placeholder="Пара строк о вашем государстве"
+          />
+        </div>
+        <div style={cell}>
+          <CreateNationTextField
+            id="nation-motto"
+            label="Девиз"
+            testId="form-item-motto"
+            value={form.motto}
+            maxLength={rules?.motto_max_length}
+            error={errors.motto}
+            onChange={(v) => onFieldChange('motto', v)}
+            placeholder="напр. Север помнит всё"
+          />
+        </div>
+      </div>
 
-      <CreateNationTextField
-        id="nation-motto"
-        label="Девиз (необязательно)"
-        testId="form-item-motto"
-        value={form.motto}
-        maxLength={rules?.motto_max_length}
-        error={errors.motto}
-        hint={hints?.motto}
-        counter
-        onChange={(v) => onFieldChange('motto', v)}
-        placeholder="напр. Север помнит всё"
-      />
-
-      <CreateNationTextField
-        id="nation-description"
-        label="Описание (необязательно)"
-        testId="form-item-description"
-        value={form.description}
-        maxLength={rules?.description_max_length}
-        error={errors.description}
-        hint={hints?.description}
-        counter
-        onChange={(v) => onFieldChange('description', v)}
-        placeholder="одна строка о вашем государстве"
-      />
-
-      <FormItem
-        top="Цвет государства"
-        htmlFor="nation-color-hex"
-        status={errors.color ? 'error' : 'default'}
-        bottom={errors.color ?? colorHint ?? undefined}
-        data-testid="form-item-color"
-      >
+      <div data-testid="form-item-color" style={{ marginTop: 16 }}>
+        <FieldLabel
+          label="Цвет государства"
+          required
+          htmlFor="nation-color-hex"
+        />
         <div
           style={{
             display: 'grid',
@@ -158,7 +184,7 @@ export function CreateNationTabSymbols({
                   height: 32,
                   padding: 0,
                   border: 'none',
-                  borderRadius: 6,
+                  borderRadius: RADII['radius-md'],
                   backgroundColor: hex,
                   cursor: 'pointer',
                   display: 'flex',
@@ -175,17 +201,32 @@ export function CreateNationTabSymbols({
           })}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div style={{ flex: 1 }}>
-            <Input
-              id="nation-color-hex"
-              value={form.color}
-              maxLength={7}
-              placeholder="#RRGGBB"
-              onChange={(e) =>
-                onFieldChange('color', e.currentTarget.value.toUpperCase())
+          <input
+            id="nation-color-hex"
+            value={form.color}
+            maxLength={7}
+            placeholder="#RRGGBB"
+            onChange={(e) =>
+              onFieldChange('color', e.currentTarget.value.toUpperCase())
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
               }
-            />
-          </div>
+            }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: 36,
+              boxSizing: 'border-box',
+              background: tokenVar('surface-inset'),
+              color: tokenVar('ink'),
+              border: `1px solid ${tokenVar('ink-faint')}`,
+              borderRadius: RADII['radius-md'],
+              padding: '0 12px',
+              ...TEXT_STYLES['body'],
+            }}
+          />
           <div
             aria-hidden="true"
             data-testid="color-preview"
@@ -193,63 +234,48 @@ export function CreateNationTabSymbols({
               width: 36,
               height: 36,
               flex: 'none',
-              borderRadius: 6,
-              border: '1px solid var(--vkui--color_field_border)',
+              borderRadius: RADII['radius-md'],
+              border: `1px solid ${tokenVar('ink-faint')}`,
               background: colorIsValid
                 ? normalizedColor
-                : 'var(--vkui--color_field_background)',
+                : tokenVar('surface-inset'),
             }}
           />
         </div>
-      </FormItem>
+        <FieldMessage
+          error={errors.color}
+          hint={errors.color === undefined ? (colorHint ?? undefined) : undefined}
+        />
+      </div>
 
-      <FormItem
-        top="Флаг"
-        status={errors.flagId ? 'error' : 'default'}
-        bottom={errors.flagId}
-        data-testid="form-item-flag"
-      >
+      <div data-testid="form-item-flag" style={{ marginTop: 16 }}>
+        <FieldLabel label="Флаг" required />
         {rules !== null && rules.flags.length === 0 ? (
-          <div style={{ color: 'var(--vkui--color_text_secondary)' }}>
+          <div
+            style={{
+              ...TEXT_STYLES['caption'],
+              color: tokenVar('ink-muted'),
+            }}
+          >
             Флаги появятся позже
           </div>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => onFieldChange('flagId', null)}
-              style={{
-                width: 90,
-                height: 60,
-                padding: 0,
-                border: '1px dashed var(--vkui--color_field_border)',
-                borderRadius: 6,
-                background: 'none',
-                cursor: 'pointer',
-                color: 'var(--vkui--color_text_secondary)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-                ...(form.flagId === null ? selectedTile : {}),
-              }}
-            >
-              Без флага
-              {form.flagId === null && <FlagCheck />}
-            </button>
             {(rules?.flags ?? []).map((flag) => {
               const selected = form.flagId === flag.id;
               return (
                 <button
                   key={flag.id}
                   type="button"
+                  aria-pressed={selected}
+                  aria-label={flag.id}
                   onClick={() => onFieldChange('flagId', flag.id)}
                   style={{
                     width: 90,
                     height: 60,
                     padding: 0,
                     border: 'none',
-                    borderRadius: 6,
+                    borderRadius: RADII['radius-md'],
                     background: 'none',
                     cursor: 'pointer',
                     position: 'relative',
@@ -261,38 +287,16 @@ export function CreateNationTabSymbols({
                     alt={flag.id}
                     width={90}
                     height={60}
-                    style={{ display: 'block', borderRadius: 6 }}
+                    style={{ display: 'block', borderRadius: RADII['radius-md'] }}
                   />
-                  {selected && <FlagCheck />}
+                  {selected && <PickCheck />}
                 </button>
               );
             })}
           </div>
         )}
-      </FormItem>
+        <FieldMessage error={errors.flagId} />
+      </div>
     </>
-  );
-}
-
-/** The selection badge on a flag tile: a check mark, not color alone. */
-function FlagCheck() {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        top: 4,
-        right: 4,
-        width: 20,
-        height: 20,
-        borderRadius: '50%',
-        background: 'var(--vkui--color_accent)',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Icon16Done width={12} height={12} style={{ color: '#FFFFFF' }} />
-    </span>
   );
 }

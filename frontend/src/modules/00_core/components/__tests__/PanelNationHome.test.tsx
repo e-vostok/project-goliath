@@ -11,10 +11,13 @@
  * service rows (gender, notifications, succession, anthem, delete),
  * the 910 px rule and the province-name loading placeholders.
  *
- * Edit covers (unchanged behaviour): the PATCH that must carry only
- * changed fields (an emptied optional field goes as ''), partial
- * saves for legacy nations, inline error mapping, the bot-consent
- * row's new home at the bottom of the edit view and the draft memory.
+ * Edit covers (unit 8c): the same tab strip and blocks as the
+ * registration window, the PATCH that must carry only changed fields
+ * (an emptied optional field goes as '', a legacy NULL flag/portrait
+ * stands on the first catalog tile so the first save already carries
+ * its id), partial saves for legacy nations, inline error mapping, the
+ * read-only «Территории» tab, the bot-consent row's home at the bottom
+ * of the edit view, no `anthem_url` anywhere, and the draft memory.
  */
 
 import { screen, waitFor, within } from '@testing-library/react';
@@ -26,6 +29,7 @@ import type { NationDTO } from '../../../../shared/types';
 import { BotStatusProvider } from '../../../02_bot/hooks/useBotStatus';
 import { PanelNationHome } from '../PanelNationHome';
 import {
+  goToTab,
   registerDefaultHandlers,
   renderWithProviders,
   RULES,
@@ -70,6 +74,17 @@ const LEGACY_NATION: NationDTO = {
   leader_title: null,
   succession_type: null,
   history_url: null,
+};
+
+/**
+ * NATION with the catalog ids filled: the edit form then has no
+ * legacy-pick fallback to add, so a PATCH can carry ONLY the field the
+ * player actually changed (the clean «changed fields only» cases).
+ */
+const FULL_NATION: NationDTO = {
+  ...NATION,
+  flag_id: 'flag_stub',
+  portrait_id: 'portrait_stub',
 };
 
 function renderHome(nation: NationDTO = NATION) {
@@ -370,25 +385,124 @@ describe('PanelNationHome — the card', () => {
 });
 
 describe('PanelNationHome — edit form', () => {
+  it('uses the registration shell: «РЕДАКТИРОВАНИЕ ГОСУДАРСТВА», «ШАГ N ИЗ 4», the four tabs', async () => {
+    const user = userEvent.setup();
+    renderHome(FULL_NATION);
+    await openEdit(user);
+
+    expect(
+      screen.getByText('Редактирование государства'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('step-indicator')).toHaveTextContent(
+      'Шаг 1 из 4',
+    );
+    for (const title of [
+      'Основные данные и символика',
+      'Глава государства',
+      'История',
+      'Территории',
+    ]) {
+      expect(screen.getAllByText(title).length).toBeGreaterThan(0);
+    }
+
+    // Tab navigation is the same strip; «Сохранить»/«Отмена» stay.
+    await goToTab(user, 3);
+    expect(
+      screen.getByLabelText('Ссылка на статью с историей государства'),
+    ).toBeInTheDocument();
+    // No anthem field anywhere in the edit form either.
+    expect(screen.queryByLabelText(/гимн/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('form-item-anthem-url'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a legacy NULL flag/portrait opens on the first catalog tile — the first save carries both ids', async () => {
+    const bodies = capturePatch(NATION);
+    const { onChanged } = renderHome(NATION); // flag_id/portrait_id: null
+    const user = userEvent.setup();
+    const save = await openEdit(user);
+
+    // Once the catalog lands the first flag stands selected, and the
+    // PATCH already differs — «Сохранить» is armed by the fallback.
+    const flag = await screen.findByRole('button', { name: 'flag_stub' });
+    await waitFor(() => expect(flag).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.queryByText('Без флага')).not.toBeInTheDocument();
+    expect(save).toBeEnabled();
+
+    await goToTab(user, 2);
+    const portrait = await screen.findByRole('button', {
+      name: 'portrait_stub',
+    });
+    await waitFor(() =>
+      expect(portrait).toHaveAttribute('aria-pressed', 'true'),
+    );
+    expect(screen.queryByText('Без портрета')).not.toBeInTheDocument();
+
+    // The player changed nothing else — the PATCH still carries the ids.
+    await user.click(save);
+    await waitFor(() =>
+      expect(bodies).toEqual([
+        { flag_id: 'flag_stub', portrait_id: 'portrait_stub' },
+      ]),
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('the «Территории» tab is read-only: named rows, capital first, no actions', async () => {
+    const user = userEvent.setup();
+    renderHome(FULL_NATION);
+    await openEdit(user);
+    await goToTab(user, 4);
+
+    const provincesItem = screen.getByTestId('form-item-provinces');
+    // Rows keep the real names (manifest), the capital leads with «★» —
+    // and no «Выбрать на карте», «Сделать столицей» or «×» anywhere.
+    const rows = await within(provincesItem).findAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('★ Альфа');
+    expect(provincesItem).toHaveTextContent('Бета');
+    expect(
+      screen.queryByTestId('open-province-picker'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Сделать столицей' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(provincesItem).queryByRole('button', { name: /убрать/i }),
+    ).not.toBeInTheDocument();
+    // The capital name stays editable for a nation that has a capital.
+    expect(screen.getByLabelText('Название столицы')).toHaveValue(
+      'Столицево',
+    );
+  });
+
   it('keeps Сохранить disabled until a field actually changes', async () => {
     const user = userEvent.setup();
-    renderHome();
+    renderHome(FULL_NATION);
     const save = await openEdit(user);
     expect(save).toBeDisabled();
 
+    await goToTab(user, 2);
     await user.type(screen.getByLabelText('Имя лидера'), 'X');
     expect(save).toBeEnabled();
   });
 
-  it('PATCHes only the changed fields and closes on success', async () => {
-    const bodies = capturePatch({
-      ...NATION,
-      leader_name: 'Пётр Первый',
-    });
-    const { onChanged } = renderHome();
+  it('PATCHes only the changed fields — and never anthem_url', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.patch('*/api/v1/nations/me', async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(
+          { ...FULL_NATION, leader_name: 'Пётр Первый' },
+        );
+      }),
+    );
+    const { onChanged } = renderHome(FULL_NATION);
     const user = userEvent.setup();
     const save = await openEdit(user);
 
+    await goToTab(user, 2);
     const input = screen.getByLabelText('Имя лидера');
     await user.clear(input);
     await user.type(input, 'Пётр Первый');
@@ -397,6 +511,7 @@ describe('PanelNationHome — edit form', () => {
     await waitFor(() =>
       expect(bodies).toEqual([{ leader_name: 'Пётр Первый' }]),
     );
+    expect(bodies[0]).not.toHaveProperty('anthem_url');
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(
       screen.queryByTestId('edit-nation-form'),
@@ -407,10 +522,31 @@ describe('PanelNationHome — edit form', () => {
     );
   });
 
-  it('legacy nation: no capital line/input; a short-name edit patches only short_name', async () => {
+  it('Enter in a one-line field does not submit the edit form', async () => {
+    let patches = 0;
+    server.use(
+      http.patch('*/api/v1/nations/me', () => {
+        patches += 1;
+        return HttpResponse.json(FULL_NATION);
+      }),
+    );
+    const user = userEvent.setup();
+    renderHome(FULL_NATION);
+    await openEdit(user);
+
+    const nameInput = screen.getByLabelText('Полное название');
+    await user.click(nameInput);
+    await user.keyboard('{Enter}');
+    expect(patches).toBe(0);
+    expect(screen.getByTestId('edit-nation-form')).toBeInTheDocument();
+  });
+
+  it('legacy nation: no capital input; the tab-4 rows stay; the PATCH adds the catalog fallbacks', async () => {
     const bodies = capturePatch({
       ...LEGACY_NATION,
       short_name: 'Тестия',
+      flag_id: 'flag_stub',
+      portrait_id: 'portrait_stub',
     });
     const { onChanged } = renderHome(LEGACY_NATION);
 
@@ -419,10 +555,14 @@ describe('PanelNationHome — edit form', () => {
 
     const user = userEvent.setup();
     const save = await openEdit(user);
-    // The territory block is read-only and the capital-name input is
+    // The territory tab is read-only and the capital-name input is
     // hidden — the server refuses capital_name for a nation without one.
-    expect(screen.getByTestId('form-item-provinces')).toBeInTheDocument();
-    expect(screen.queryByTestId('capital-line')).not.toBeInTheDocument();
+    await goToTab(user, 4);
+    expect(
+      await within(screen.getByTestId('form-item-provinces')).findAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(2);
     expect(
       screen.queryByLabelText('Название столицы'),
     ).not.toBeInTheDocument();
@@ -430,34 +570,49 @@ describe('PanelNationHome — edit form', () => {
       screen.queryByTestId('open-province-picker'),
     ).not.toBeInTheDocument();
 
+    await goToTab(user, 1);
     await user.type(screen.getByLabelText('Краткое название'), 'Тестия');
     await user.click(save);
     await waitFor(() =>
-      expect(bodies).toEqual([{ short_name: 'Тестия' }]),
+      expect(bodies).toEqual([
+        {
+          short_name: 'Тестия',
+          flag_id: 'flag_stub',
+          portrait_id: 'portrait_stub',
+        },
+      ]),
     );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
   it('a cleared optional field is sent as an empty string — motto only', async () => {
-    const mottoNation: NationDTO = { ...NATION, motto: 'Север помнит всё' };
+    const mottoNation: NationDTO = {
+      ...FULL_NATION,
+      motto: 'Север помнит всё',
+    };
     const bodies = capturePatch({ ...mottoNation, motto: null });
     renderHome(mottoNation);
 
     const user = userEvent.setup();
     const save = await openEdit(user);
-    await user.clear(screen.getByLabelText('Девиз (необязательно)'));
+    await user.clear(screen.getByLabelText('Девиз'));
     await user.click(save);
 
     await waitFor(() => expect(bodies).toEqual([{ motto: '' }]));
   });
 
   it('lets a legacy nation rename itself without touching the profile', async () => {
-    const bodies = capturePatch({ ...LEGACY_NATION, name: 'Новая Тестия' });
+    const bodies = capturePatch({
+      ...LEGACY_NATION,
+      name: 'Новая Тестия',
+      flag_id: 'flag_stub',
+      portrait_id: 'portrait_stub',
+    });
     const { onChanged } = renderHome(LEGACY_NATION);
     const user = userEvent.setup();
     const save = await openEdit(user);
 
-    const nameInput = screen.getByLabelText('Название государства');
+    const nameInput = screen.getByLabelText('Полное название');
     await user.clear(nameInput);
     await user.type(nameInput, 'Новая Тестия');
     // The profile fields were left empty — the nation may still be renamed.
@@ -465,30 +620,38 @@ describe('PanelNationHome — edit form', () => {
     await user.click(save);
 
     await waitFor(() =>
-      expect(bodies).toEqual([{ name: 'Новая Тестия' }]),
+      expect(bodies).toEqual([
+        {
+          name: 'Новая Тестия',
+          flag_id: 'flag_stub',
+          portrait_id: 'portrait_stub',
+        },
+      ]),
     );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
   it('blocks saving when a previously filled profile field is emptied', async () => {
     const user = userEvent.setup();
-    renderHome();
+    renderHome(FULL_NATION);
     const save = await openEdit(user);
 
+    await goToTab(user, 2);
     await user.clear(screen.getByLabelText('Имя лидера'));
     expect(save).toBeDisabled();
   });
 
   it('blocks saving when the name is shorter than the rules minimum', async () => {
     const user = userEvent.setup();
-    renderHome();
+    renderHome(FULL_NATION);
     const save = await openEdit(user);
-    // Wait until the rules-driven hint rendered — gating must use it.
+    // Wait until the rules-driven «N из M» counter rendered — the
+    // gating must use the same numbers.
     await within(screen.getByTestId('form-item-name')).findByText(
-      `от ${RULES.name_min_length} до ${RULES.name_max_length} символов`,
+      `${'Testia'.length} из ${RULES.name_max_length}`,
     );
 
-    const nameInput = screen.getByLabelText('Название государства');
+    const nameInput = screen.getByLabelText('Полное название');
     await user.clear(nameInput);
     await user.type(nameInput, 'ab'); // < msw name_min_length = 4
     expect(save).toBeDisabled();
@@ -507,11 +670,12 @@ describe('PanelNationHome — edit form', () => {
       ),
     );
     const user = userEvent.setup();
-    renderHome();
+    renderHome(FULL_NATION);
     const save = await openEdit(user);
 
+    await goToTab(user, 3);
     await user.type(
-      screen.getByLabelText('Ссылка на историю государства'),
+      screen.getByLabelText('Ссылка на статью с историей государства'),
       'x',
     );
     await user.click(save);
@@ -524,7 +688,7 @@ describe('PanelNationHome — edit form', () => {
     );
     // Editing the field clears the inline error (the static hint stays).
     await user.type(
-      screen.getByLabelText('Ссылка на историю государства'),
+      screen.getByLabelText('Ссылка на статью с историей государства'),
       'y',
     );
     expect(
@@ -542,9 +706,10 @@ describe('PanelNationHome — edit form', () => {
       ),
     );
     const user = userEvent.setup();
-    renderHome();
+    renderHome(FULL_NATION);
     const save = await openEdit(user);
 
+    await goToTab(user, 2);
     await user.type(screen.getByLabelText('Должность лидера'), 'X');
     await user.click(save);
 
@@ -593,12 +758,13 @@ describe('PanelNationHome — edit draft memory', () => {
   it('restores typed values on remount and deletes them on «Отмена»', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
-      <PanelNationHome nation={NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
     );
 
     // Type, leave (the panel unmounts like a screen switch) — the
     // draft must survive.
     await openEdit(user);
+    await goToTab(user, 2);
     await user.type(screen.getByLabelText('Имя лидера'), 'X');
     expect(screen.getByLabelText('Имя лидера')).toHaveValue(
       'Иван ГрозныйX',
@@ -606,9 +772,10 @@ describe('PanelNationHome — edit draft memory', () => {
     first.unmount();
 
     const second = renderWithProviders(
-      <PanelNationHome nation={NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
     );
     await openEdit(user);
+    await goToTab(user, 2);
     expect(screen.getByLabelText('Имя лидера')).toHaveValue(
       'Иван ГрозныйX',
     );
@@ -618,9 +785,10 @@ describe('PanelNationHome — edit draft memory', () => {
     second.unmount();
 
     renderWithProviders(
-      <PanelNationHome nation={NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
     );
     await openEdit(user);
+    await goToTab(user, 2);
     expect(screen.getByLabelText('Имя лидера')).toHaveValue(
       'Иван Грозный',
     );

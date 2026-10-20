@@ -58,7 +58,8 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
     // Issues 13–15 — without them the single submit stays disabled.
     seedRegistrationDraft();
     renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
-    await screen.findByLabelText('Название государства');
+    await screen.findByLabelText('Полное название');
+    await goToTab(user, 4);
     await user.click(
       screen.getByRole('button', { name: /основать государство/i }),
     );
@@ -82,10 +83,9 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
     });
     vi.useRealTimers();
 
-    // ALLOWED — the form returns on the same tab with the same values.
-    expect(screen.getByLabelText('Название государства')).toHaveValue(
-      'Testia',
-    );
+    // ALLOWED — the form returns with the same values.
+    await goToTab(user, 1);
+    expect(screen.getByLabelText('Полное название')).toHaveValue('Testia');
     await goToTab(user, 2);
     expect(screen.getByLabelText('Имя лидера')).toHaveValue('Иван Грозный');
     expect(screen.getByLabelText('Должность лидера')).toHaveValue(
@@ -93,7 +93,7 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
     );
     await goToTab(user, 3);
     expect(
-      screen.getByLabelText('Ссылка на историю государства'),
+      screen.getByLabelText('Ссылка на статью с историей государства'),
     ).toHaveValue('https://vk.com/@testia-istoriya');
   });
 
@@ -119,7 +119,8 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
     const user = userEvent.setup();
     seedRegistrationDraft();
     renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
-    await screen.findByLabelText('Название государства');
+    await screen.findByLabelText('Полное название');
+    await goToTab(user, 4);
     await user.click(
       screen.getByRole('button', { name: /основать государство/i }),
     );
@@ -130,9 +131,11 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
 
   it('with the bot disabled the container renders its pre-Issue output', async () => {
     mswBot.status = () => HttpResponse.json(BOT_STATUS_DISABLED);
+    const user = userEvent.setup();
     renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
-    await screen.findByLabelText('Название государства');
+    await screen.findByLabelText('Полное название');
     expect(screen.queryByText(BOT_TEXTS.gateTitle)).not.toBeInTheDocument();
+    await goToTab(user, 4);
     expect(
       screen.getByRole('button', { name: /основать государство/i }),
     ).toBeInTheDocument();

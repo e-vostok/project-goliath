@@ -1,9 +1,11 @@
 /**
- * Tab 3 «История и культура» of the registration window — complete in
- * this issue: the required link to the nation's VK article plus the new
- * optional anthem link. `hints` carry the rules-driven limits and
- * allowed hosts; the fixed helper lines are always shown alongside them
- * until an error arrives. Purely presentational.
+ * Tab 3 «История» of the registration window (UI Spec 9.6 — version
+ * 0.9.0 unit 8c): ONE field — the required link to the nation's VK
+ * article. The hint names the article form and the allowed domains from
+ * `GET /nations/rules` (a config change rewrites the copy). The anthem
+ * link is gone from the interface entirely: no field, no form state,
+ * no `anthem_url` in the request body (the server column stays unused).
+ * Purely presentational.
  */
 
 import {
@@ -11,12 +13,9 @@ import {
   type RegistrationTabProps,
 } from './CreateNationFields';
 
+/** The fixed part of the hint — shown even before the rules arrive. */
 const HISTORY_URL_HELPER =
-  'Ссылка на вашу статью ВКонтакте вида https://vk.com/@название-статьи. ' +
-  'Поле обязательное.';
-
-const ANTHEM_URL_HELPER =
-  'Ссылка на трек или плейлист ВКонтакте; музыка внутри игры не воспроизводится.';
+  'Ссылка на вашу статью ВКонтакте вида https://vk.com/@название-статьи.';
 
 export function CreateNationTabHistory({
   form,
@@ -25,36 +24,18 @@ export function CreateNationTabHistory({
   errors,
   onFieldChange,
 }: RegistrationTabProps) {
-  const historyHint = [HISTORY_URL_HELPER, hints?.historyUrl]
-    .filter((part): part is string => Boolean(part))
-    .join(' ');
-  const anthemHint = [ANTHEM_URL_HELPER, hints?.anthemUrl]
-    .filter((part): part is string => Boolean(part))
-    .join(' ');
   return (
-    <>
-      <CreateNationTextField
-        id="nation-history-url"
-        label="Ссылка на историю государства"
-        testId="form-item-history-url"
-        value={form.historyUrl}
-        maxLength={rules?.history_url_max_length}
-        error={errors.historyUrl}
-        hint={historyHint}
-        onChange={(v) => onFieldChange('historyUrl', v)}
-        placeholder="https://vk.com/@название-статьи"
-      />
-      <CreateNationTextField
-        id="nation-anthem-url"
-        label="Ссылка на гимн"
-        testId="form-item-anthem-url"
-        value={form.anthemUrl}
-        maxLength={rules?.anthem_url_max_length}
-        error={errors.anthemUrl}
-        hint={anthemHint}
-        onChange={(v) => onFieldChange('anthemUrl', v)}
-        placeholder="https://vk.com/music/playlist/..."
-      />
-    </>
+    <CreateNationTextField
+      id="nation-history-url"
+      label="Ссылка на статью с историей государства"
+      required
+      testId="form-item-history-url"
+      value={form.historyUrl}
+      maxLength={rules?.history_url_max_length}
+      error={errors.historyUrl}
+      hint={hints?.historyUrl ?? HISTORY_URL_HELPER}
+      onChange={(v) => onFieldChange('historyUrl', v)}
+      placeholder="https://vk.com/@название-статьи"
+    />
   );
 }

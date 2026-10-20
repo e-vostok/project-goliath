@@ -347,7 +347,6 @@ export function completeRegistrationForm(
     portraitId: 'portrait_stub',
     successionType: 'elections',
     historyUrl: 'https://vk.com/@testia-istoriya',
-    anthemUrl: '',
     provinces: SEEDED_PROVINCES.map((chip) => ({ ...chip })),
     capitalProvinceId: null,
     capitalName: 'Столицево',
@@ -400,18 +399,14 @@ export async function pickProvinces(user: UserEvent, ids: number[]) {
   await user.click(screen.getByRole('button', { name: 'Готово' }));
 }
 
-/** Fills the visible tab-3 fields (history link + optional anthem link). */
+/** Fills the one tab-3 field — the history link. */
 export async function fillTab3(
   user: UserEvent,
   url = 'https://vk.com/@testia-istoriya',
-  anthemUrl?: string,
 ) {
   await goToTab(user, 3);
   await user.type(
-    screen.getByLabelText('Ссылка на историю государства'),
+    screen.getByLabelText('Ссылка на статью с историей государства'),
     url,
   );
-  if (anthemUrl !== undefined) {
-    await user.type(screen.getByLabelText('Ссылка на гимн'), anthemUrl);
-  }
 }

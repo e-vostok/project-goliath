@@ -1,51 +1,61 @@
 /**
- * PanelCreateNation — the "no nation yet" screen: a window of four tabs
- * (Spec 1.3 Part 5).
+ * PanelCreateNation — the "no nation yet" screen (UI Spec 9.6 — version
+ * 0.9.0 unit 8c): the «СОЗДАНИЕ ГОСУДАРСТВА» window built only from
+ * `shared/ui` — a `BlockTitle` with the document icon and «ШАГ N ИЗ 4»
+ * at the right of the row, the four-tab strip of `CreateNationTabBar`
+ * («Основные данные и символика», «Глава государства», «История»,
+ * «Территории»), one `surface`/`radius-lg`/`space-4` block per tab with
+ * its own `BlockTitle`, and the buttons row under it: «← Назад» (not on
+ * tab 1), «Далее →» — on tab 4 «Основать государство», disabled until
+ * `missingRequired` is empty, with the red-dot hint between the
+ * buttons.
  *
- * Tab 1 «Основные данные и символика», tab 2 «Руководство», tab 3
- * «История и культура», tab 4 «Территории». The current tab and every
- * field value live in this container as one `RegistrationForm` object —
- * the chevron arrows and the clickable titles in CreateNationTabBar
- * switch tabs without sending or losing anything; the single submit
- * Button fires one POST /nations with the whole form.
+ * The current tab and every field value live in this container as one
+ * `RegistrationForm` object; a flag and a portrait are ALWAYS selected
+ * — an unset pick falls onto the first catalog entry as soon as
+ * `GET /nations/rules` arrives (the anthem field is gone; `anthem_url`
+ * is never sent).
  *
  * Provinces are picked on the map — the «Выбрать на карте» button on
  * tab 4 opens the 01_map ProvincePicker popup; the selection lives in
  * `form.provinces` (value = province id, label = display name, order =
- * selection order).
+ * selection order), the tab renders the names as rows.
  *
- * The whole form is mirrored into the session draft under
- * 'nation-create-v2'; a successful creation deletes it. Length/host/
- * province-count limits come from GET /nations/rules via useNationRules —
- * the server stays the source of truth; the client only shows hints and
- * gates the button on `missingRequired`.
+ * The form mirrors into the session draft under 'nation-create-v2'
+ * once the player touches a field; a successful creation deletes it.
+ * Length/host/province-count limits come from `useNationRules` — the
+ * server stays the source of truth.
  *
- * Server-side `ErrorResponse.code` values map to inline FormItem errors
- * through `mapErrorCodeToField` and become Russian text through the
- * shared `errorText` (nation field codes keep the limits-aware texts of
- * `nationErrorTexts`; the English `detail` is never shown). An error
- * or a missing required field on an inactive tab marks its title with a
- * Badge — the window never switches tabs on its own. Anything else
- * surfaces as a generic FormStatus banner.
+ * Server-side `ErrorResponse.code` values map to inline field errors
+ * through `mapErrorCodeToField` + `errorText`; an error or a missing
+ * required field marks an inactive tab with a red dot — the window
+ * never switches tabs on its own. Anything else surfaces as a generic
+ * FormStatus banner.
+ *
+ * Keyboard rule: there is no `<form>` and no submit-on-Enter — a
+ * one-line field swallows Enter, a textarea takes a line break, only
+ * the explicit buttons act.
  */
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import bridge from '@vkontakte/vk-bridge';
-import {
-  Button,
-  Div,
-  FormStatus,
-  Group,
-  PanelHeader,
-  Spinner,
-} from '@vkontakte/vkui';
+import { Button, FormStatus } from '@vkontakte/vkui';
 
 import { api, ApiError } from '../../../shared/api-client';
 import { errorText } from '../../../shared/errorTexts';
 import { useFormDraft } from '../../../shared/formDraft';
 import { SUCCESS_RU } from '../../../shared/texts/success.ru';
 import type { NationDTO } from '../../../shared/types';
-import { useNotice } from '../../../shared/ui';
+import {
+  BlockTitle,
+  LoadingState,
+  RADII,
+  SIZES,
+  SPACING,
+  TEXT_STYLES,
+  tokenVar,
+  useNotice,
+} from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { useBotStatus } from '../../02_bot/hooks/useBotStatus';
@@ -72,7 +82,10 @@ import {
   type RegistrationForm,
   type RegistrationTab,
 } from './registrationForm';
-import { CreateNationTabBar } from './CreateNationTabBar';
+import {
+  CreateNationTabBar,
+  CREATE_NATION_TABS,
+} from './CreateNationTabBar';
 import { CreateNationTabSymbols } from './CreateNationTabSymbols';
 import { CreateNationTabLeadership } from './CreateNationTabLeadership';
 import { CreateNationTabHistory } from './CreateNationTabHistory';
@@ -111,7 +124,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     registrationFormFromDraft(storedDraft),
   );
   // A restored draft means the player already edited the form — tab
-  // badges for missing required fields show right away.
+  // dots for missing required fields show right away.
   const [touched, setTouched] = useState(
     storedDraft !== null &&
       !registrationFormIsEmpty(registrationFormFromDraft(storedDraft)),
@@ -122,6 +135,24 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     Partial<Record<NationField, string>>
   >({});
   const [formError, setFormError] = useState<string | null>(null);
+
+  // A flag and a portrait are ALWAYS selected (UI Spec 9.6): as soon as
+  // the catalog arrives an unset pick falls onto the first entry — a
+  // new form starts preselected, a legacy draft with NULL stands on the
+  // first tile too.
+  useEffect(() => {
+    if (rules === null) {
+      return;
+    }
+    setForm((prev) => {
+      const flagId = prev.flagId ?? rules.flags[0]?.id ?? null;
+      const portraitId = prev.portraitId ?? rules.portraits[0]?.id ?? null;
+      if (flagId === prev.flagId && portraitId === prev.portraitId) {
+        return prev;
+      }
+      return { ...prev, flagId, portraitId };
+    });
+  }, [rules]);
 
   const clearFieldError = (field: NationField) =>
     setFieldErrors((prev) => {
@@ -141,7 +172,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     setForm((prev) => {
       const next = { ...prev, [field]: value };
       if (field === 'provinces') {
-        // INV-14: the capital must stay among the chosen ids — a chip
+        // INV-14: the capital must stay among the chosen ids — a row
         // removal that takes the capital away drops the mark.
         const chips = next.provinces;
         next.capitalProvinceId =
@@ -150,11 +181,21 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             ? prev.capitalProvinceId
             : null;
         // Until a manual edit the capital name follows the effective
-        // capital (the marked chip, else the first selected one).
+        // capital (the marked row, else the first selected one).
         if (!prev.capitalNameEdited) {
           const effective = next.capitalProvinceId ?? chips[0]?.value ?? null;
           next.capitalName =
             chips.find((chip) => chip.value === effective)?.label ?? '';
+        }
+      } else if (field === 'capitalProvinceId') {
+        // «Сделать столицей» moves the mark — until a manual edit the
+        // capital name follows the new effective capital.
+        if (!prev.capitalNameEdited) {
+          const effective =
+            next.capitalProvinceId ?? next.provinces[0]?.value ?? null;
+          next.capitalName =
+            next.provinces.find((chip) => chip.value === effective)?.label ??
+            '';
         }
       } else if (field === 'capitalName') {
         // A hand-typed name is never auto-overwritten again.
@@ -168,7 +209,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     }
   };
 
-  // Tab badges: a server error on a field of that tab, or — once any
+  // Tab dots: a server error on a field of that tab, or — once any
   // field was edited — a required field of that tab still missing.
   const missing = missingRequired(form, rules);
   const tabMarks: Record<RegistrationTab, boolean> = {
@@ -186,19 +227,20 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     }
   }
 
-  // Mirror the form into the session draft; a pristine form drops it.
+  // Mirror the form into the session draft — only once the player
+  // edited it (the auto-picked first flag/portrait alone is not a
+  // draft); a form back to pristine drops the entry.
   useEffect(() => {
-    if (registrationFormIsEmpty(form)) {
+    if (!touched || registrationFormIsEmpty(form)) {
       clearDraft();
     } else {
       setStoredDraft(form);
     }
-  }, [form, setStoredDraft, clearDraft]);
+  }, [touched, form, setStoredDraft, clearDraft]);
 
   const canSubmit = missing.length === 0 && !submitting;
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = async () => {
     if (!canSubmit) {
       return;
     }
@@ -305,17 +347,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   if (bot.state.status === 'loading') {
     // First status request in flight — the container's loading state;
     // the form must not flash before the gate decision is known.
-    return (
-      <Div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '48px 0',
-        }}
-      >
-        <Spinner size="l" />
-      </Div>
-    );
+    return <LoadingState height={400} />;
   }
 
   if (showGate && botDto !== null) {
@@ -335,47 +367,117 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     errors: fieldErrors,
     onFieldChange,
   };
+  const active = CREATE_NATION_TABS[tab - 1];
 
   return (
-    <>
-      <PanelHeader>Создание государства</PanelHeader>
-      <Group>
-        <CreateNationTabBar
-          tab={tab}
-          onTabChange={setTab}
-          tabMarks={tabMarks}
-        />
+    <div
+      data-testid="panel-create-nation"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: SPACING['space-3'],
+        padding: SPACING['space-4'],
+        boxSizing: 'border-box',
+        maxWidth: SIZES['win-screen'],
+      }}
+    >
+      <BlockTitle
+        icon="document"
+        title="Создание государства"
+        line={false}
+        trailing={
+          <span
+            data-testid="step-indicator"
+            style={{
+              marginLeft: 'auto',
+              ...TEXT_STYLES['figure'],
+              color: tokenVar('ink-muted'),
+            }}
+          >
+            Шаг {tab} из 4
+          </span>
+        }
+      />
+      <CreateNationTabBar tab={tab} onTabChange={setTab} tabMarks={tabMarks} />
 
-        <form onSubmit={handleSubmit} data-testid="create-nation-form">
-          {formError && (
-            <FormStatus mode="error" title="Не удалось создать государство">
-              {formError}
-            </FormStatus>
-          )}
+      {formError && (
+        <FormStatus mode="error" title="Не удалось создать государство">
+          {formError}
+        </FormStatus>
+      )}
 
-          {tab === 1 && <CreateNationTabSymbols {...tabProps} />}
-          {tab === 2 && <CreateNationTabLeadership {...tabProps} />}
-          {tab === 3 && <CreateNationTabHistory {...tabProps} />}
-          {tab === 4 && (
-            <CreateNationTabTerritories
-              {...tabProps}
-              onOpenPicker={() => setPickerOpen(true)}
-            />
-          )}
+      <section
+        data-testid="create-nation-form"
+        style={{
+          background: tokenVar('surface'),
+          borderRadius: RADII['radius-lg'],
+          padding: SPACING['space-4'],
+        }}
+      >
+        <BlockTitle icon={active.icon} title={active.title} />
+        {tab === 1 && <CreateNationTabSymbols {...tabProps} />}
+        {tab === 2 && <CreateNationTabLeadership {...tabProps} />}
+        {tab === 3 && <CreateNationTabHistory {...tabProps} />}
+        {tab === 4 && (
+          <CreateNationTabTerritories
+            {...tabProps}
+            onOpenPicker={() => setPickerOpen(true)}
+          />
+        )}
+      </section>
 
-          <Div>
-            <Button
-              type="submit"
-              size="l"
-              stretched
-              disabled={!canSubmit}
-              loading={submitting}
-            >
-              Основать государство
-            </Button>
-          </Div>
-        </form>
-      </Group>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: SPACING['space-3'],
+        }}
+      >
+        {tab > 1 && (
+          <Button
+            type="button"
+            mode="secondary"
+            size="m"
+            data-testid="step-prev"
+            onClick={() => setTab((tab - 1) as RegistrationTab)}
+          >
+            ← Назад
+          </Button>
+        )}
+        <span
+          style={{
+            flex: '1 1 auto',
+            textAlign: 'center',
+            ...TEXT_STYLES['caption'],
+            color: tokenVar('ink-muted'),
+          }}
+        >
+          {tab === 4 && missing.length > 0
+            ? 'Заполните обязательные поля (отмечены *) на вкладках с красной точкой'
+            : ''}
+        </span>
+        {tab < 4 ? (
+          <Button
+            type="button"
+            size="m"
+            data-testid="step-next"
+            onClick={() => setTab((tab + 1) as RegistrationTab)}
+          >
+            Далее →
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="m"
+            disabled={!canSubmit}
+            loading={submitting}
+            onClick={() => void handleSubmit()}
+          >
+            Основать государство
+          </Button>
+        )}
+      </div>
+
       {pickerOpen && (
         <ProvincePicker
           initialSelectedIds={form.provinces.map((chip) => chip.value)}
@@ -388,6 +490,6 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           onCancel={() => setPickerOpen(false)}
         />
       )}
-    </>
+    </div>
   );
 }
