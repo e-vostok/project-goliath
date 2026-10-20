@@ -53,7 +53,11 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
             key=f"o{row.number}",
             cells={
                 "number": row.number,
-                "nation": cell_nation(row.nation_name, row.nation_color),
+                # An order stores only the name/colour snapshot — no
+                # nation id, so the cell shows but does not link.
+                "nation": cell_nation(
+                    row.nation_name, row.nation_color, nation_id=None
+                ),
                 "title": cell_action_text(text=row.title, action=f"order:{row.number}"),
                 "submitted": cell_datetime(row.submitted_at, tz),
                 "distributed": cell_datetime(row.distributed_at, tz),

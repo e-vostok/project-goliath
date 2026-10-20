@@ -153,7 +153,12 @@ export const ORDERS_ROWS: RegistryRowsDTO = {
       key: 'o7',
       cells: {
         number: 7,
-        nation: { name: 'Автория', color: '#336699', flag_url: null },
+        nation: {
+          id: null,
+          name: 'Автория',
+          color: '#336699',
+          flag_url: null,
+        },
         title: {
           text: 'Приказ о перебазировании',
           action: 'order:7',

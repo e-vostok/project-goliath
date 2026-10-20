@@ -65,7 +65,10 @@ class TestOrdersSource:
             "verdict",
         }
         assert row.cells["number"] == 1
+        # The order stores only a name/colour snapshot — `id` is None:
+        # the cell shows but cannot open the nation subscreen.
         assert row.cells["nation"] == {
+            "id": None,
             "name": "Северная Лига",
             "color": "#336699",
             "flag_url": None,

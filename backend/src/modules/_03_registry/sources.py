@@ -117,6 +117,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
                             row.nation_short_name or row.nation_name,
                             row.nation_color,
                             flag_url(row.nation_flag_id),
+                            nation_id=row.nation_id,
                         )
                         if row.nation_id is not None
                         else None
