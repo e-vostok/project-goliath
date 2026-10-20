@@ -189,7 +189,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.8.15",
+    version="0.8.17",
     lifespan=lifespan,
 )
 

@@ -6,7 +6,7 @@
  * text with its line breaks kept — no row captions anywhere.
  */
 
-import type { NationDTO } from '../../../../shared/types';
+import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   BlockTitle,
   PortraitStub,
@@ -17,7 +17,11 @@ import {
 } from '../../../../shared/ui';
 import { CardBlock } from './CardBlock';
 
-export function LeaderBlock({ nation }: { nation: NationDTO }) {
+export function LeaderBlock({
+  nation,
+}: {
+  nation: NationDTO | NationPublicDTO;
+}) {
   return (
     <CardBlock testId="nation-leader-block">
       <BlockTitle icon="person" title="Глава государства" />

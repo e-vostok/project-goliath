@@ -21,6 +21,7 @@ import type { PopupSize } from './Popup';
 import { PortraitStub } from './PortraitStub';
 import { ProvinceChip } from './ProvinceChip';
 import { StatTile } from './StatTile';
+import { Subscreen } from './Subscreen';
 import { ThemeToggle, useTheme } from './theme';
 import {
   FONTS,
@@ -365,6 +366,33 @@ export function UiKitPage() {
             />
             <ProvinceChip name="Вестерос" />
             <ProvinceChip name="Евле" />
+          </div>
+        </Section>
+
+        <Section>
+          <BlockTitle icon="list" title="Полоса возврата подэкрана" />
+          <div
+            style={{
+              marginLeft: -SPACING['space-4'],
+              marginRight: -SPACING['space-4'],
+            }}
+          >
+            <Subscreen
+              parentLabel="Реестр"
+              trail={['Игроки', 'Новгородская республика']}
+              onBack={() => {}}
+            >
+              <div
+                style={{
+                  ...TEXT_STYLES['body'],
+                  color: tokenVar('ink-muted'),
+                }}
+              >
+                Содержимое подэкрана — родительский экран под полосой
+                остаётся смонтированным, и «← Реестр» возвращает его
+                как он был.
+              </div>
+            </Subscreen>
           </div>
         </Section>
 

@@ -16,6 +16,7 @@ import {
   Icon16SortOutline,
 } from '@vkontakte/icons';
 
+import { NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { isFilterActive, type TableView } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
 import type {
@@ -30,7 +31,7 @@ import { DatetimeCell } from './cells/DatetimeCell';
 import { FlagCell } from './cells/FlagCell';
 import { GaugeCell } from './cells/GaugeCell';
 import { IntegerCell } from './cells/IntegerCell';
-import { NationCell } from './cells/NationCell';
+import { NationCell, NationOpenLink } from './cells/NationCell';
 import { PersonCell } from './cells/PersonCell';
 import { TextCell } from './cells/TextCell';
 import { HeaderIcon } from './HeaderIcon';
@@ -82,7 +83,19 @@ function SortIcon({
   );
 }
 
-function Cell({ column, value }: { column: RegistryColumnDTO; value: RegistryCell }) {
+function Cell({
+  table,
+  column,
+  row,
+  value,
+  onOpenNation,
+}: {
+  table: RegistryTableDTO;
+  column: RegistryColumnDTO;
+  row: RegistryRowDTO;
+  value: RegistryCell;
+  onOpenNation?: (nationId: string) => void;
+}) {
   switch (column.type) {
     case 'index':
       return <IntegerCell value={value} />;
@@ -105,10 +118,29 @@ function Cell({ column, value }: { column: RegistryColumnDTO; value: RegistryCel
     case 'person':
       return <PersonCell value={value} />;
     case 'nation':
-      return <NationCell value={value} />;
+      return <NationCell value={value} onOpen={onOpenNation} />;
     case 'flag':
       return <FlagCell value={value} />;
     default:
+      // The nations table's «name» is a plain text cell; its row key
+      // IS the nation id (sources.py) — the name opens the subscreen
+      // by that key (unit 14c).
+      if (
+        column.type === 'text' &&
+        table.id === NATIONS_TABLE_ID &&
+        column.id === 'name' &&
+        typeof value === 'string' &&
+        value !== ''
+      ) {
+        return (
+          <NationOpenLink
+            title={value}
+            onOpen={() => onOpenNation?.(row.key)}
+          >
+            {value}
+          </NationOpenLink>
+        );
+      }
       return <TextCell value={value} />;
   }
 }
@@ -118,11 +150,17 @@ export function RegistryTable({
   rows,
   view,
   onSortClick,
+  onOpenNation,
 }: {
   table: RegistryTableDTO;
   rows: RegistryRowDTO[];
   view: TableView;
   onSortClick: (columnId: string) => void;
+  /**
+   * Opens the nation subscreen (unit 14c): `nation` cells with a
+   * non-null id and the nations table's «name» cell (by row key).
+   */
+  onOpenNation?: (nationId: string) => void;
 }) {
   const totalWidth = table.columns.reduce((sum, col) => sum + col.width_px, 0);
   return (
@@ -251,7 +289,13 @@ export function RegistryTable({
                     : undefined,
                 }}
               >
-                <Cell column={col} value={row.cells[col.id] ?? null} />
+                <Cell
+                  table={table}
+                  column={col}
+                  row={row}
+                  value={row.cells[col.id] ?? null}
+                  onOpenNation={onOpenNation}
+                />
               </td>
             ))}
           </tr>

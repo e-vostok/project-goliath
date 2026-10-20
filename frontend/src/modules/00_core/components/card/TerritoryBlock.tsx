@@ -11,7 +11,7 @@
  * absent from the manifest shows «Провинция» without its number.
  */
 
-import type { NationDTO } from '../../../../shared/types';
+import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   BlockTitle,
   ProvinceChip,
@@ -41,7 +41,11 @@ function ProvinceChipPlaceholder() {
   );
 }
 
-export function TerritoryBlock({ nation }: { nation: NationDTO }) {
+export function TerritoryBlock({
+  nation,
+}: {
+  nation: NationDTO | NationPublicDTO;
+}) {
   const { loading, names } = useProvinceNames();
   const capitalId = nation.capital_province_id;
 
