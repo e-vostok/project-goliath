@@ -10,7 +10,7 @@
  * Button fires one POST /nations with the whole form.
  *
  * Provinces are picked on the map — the «Выбрать на карте» button on
- * tab 4 opens the 01_map ProvincePicker modal; the selection lives in
+ * tab 4 opens the 01_map ProvincePicker popup; the selection lives in
  * `form.provinces` (value = province id, label = display name, order =
  * selection order).
  *
@@ -35,7 +35,6 @@ import {
   Div,
   FormStatus,
   Group,
-  ModalRoot,
   PanelHeader,
   Spinner,
 } from '@vkontakte/vkui';
@@ -86,8 +85,6 @@ const sendTaptic = () => {
 export interface PanelCreateNationProps {
   onCreated: (nation: NationDTO) => void;
 }
-
-const MODAL_PROVINCE_PICKER = 'province-picker';
 
 export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const { token } = useSession();
@@ -375,19 +372,16 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
         </form>
       </Group>
       {pickerOpen && (
-        <ModalRoot activeModal={MODAL_PROVINCE_PICKER}>
-          <ProvincePicker
-            id={MODAL_PROVINCE_PICKER}
-            initialSelectedIds={form.provinces.map((chip) => chip.value)}
-            initialCapitalId={form.capitalProvinceId}
-            limits={{
-              min: rules?.min_provinces ?? null,
-              max: rules?.max_provinces ?? null,
-            }}
-            onDone={onPickerDone}
-            onCancel={() => setPickerOpen(false)}
-          />
-        </ModalRoot>
+        <ProvincePicker
+          initialSelectedIds={form.provinces.map((chip) => chip.value)}
+          initialCapitalId={form.capitalProvinceId}
+          limits={{
+            min: rules?.min_provinces ?? null,
+            max: rules?.max_provinces ?? null,
+          }}
+          onDone={onPickerDone}
+          onCancel={() => setPickerOpen(false)}
+        />
       )}
     </>
   );

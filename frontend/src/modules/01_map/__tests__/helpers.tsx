@@ -3,7 +3,7 @@
  * stubbed ONLY at the fetch boundary) plus provider wrappers.
  */
 
-import type { ReactElement } from 'react';
+import { useRef, type ReactElement, type ReactNode } from 'react';
 import { render } from '@testing-library/react';
 import {
   AdaptivityProvider,
@@ -12,6 +12,8 @@ import {
   Platform,
   ViewWidth,
 } from '@vkontakte/vkui';
+
+import { PopupHost } from '../../../shared/ui';
 
 import type {
   NationRulesDTO,
@@ -58,12 +60,27 @@ vi.stubGlobal(
   },
 );
 
+/**
+ * The same wiring AppShell has: a relative root container plus the
+ * PopupHost the shared windows (ProvincePicker) portal into.
+ */
+function PopupHarness({ children }: { children?: ReactNode }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <PopupHost container={containerRef}>{children}</PopupHost>
+    </div>
+  );
+}
+
 export function renderWithSession(ui: ReactElement) {
   return render(
     <ConfigProvider platform={Platform.VKCOM}>
       <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
         <AppRoot>
-          <SessionProvider session={SESSION}>{ui}</SessionProvider>
+          <SessionProvider session={SESSION}>
+            <PopupHarness>{ui}</PopupHarness>
+          </SessionProvider>
         </AppRoot>
       </AdaptivityProvider>
     </ConfigProvider>,

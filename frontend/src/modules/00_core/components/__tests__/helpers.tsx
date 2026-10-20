@@ -7,7 +7,7 @@
  * GET /nations/rules) fails these tests.
  */
 
-import type { ReactElement } from 'react';
+import { useRef, type ReactElement, type ReactNode } from 'react';
 import {
   fireEvent,
   render,
@@ -35,6 +35,7 @@ import {
 } from '../registrationForm';
 import { SessionProvider } from '../../hooks/useAuth';
 import { OrdersUiProvider } from '../../../04_orders/OrdersUiProvider';
+import { PopupHost } from '../../../../shared/ui';
 import {
   MINI_GEOMETRY,
   MINI_MANIFEST,
@@ -211,15 +212,31 @@ export function registerDefaultHandlers() {
   );
 }
 
+/**
+ * The same wiring AppShell has: a relative root container plus the
+ * PopupHost the shared windows (order windows, the province picker)
+ * portal into.
+ */
+function PopupHarness({ children }: { children?: ReactNode }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <PopupHost container={containerRef}>
+        {/* PanelNationHome hosts the orders block — the provider
+            must exist; these tests never open its windows. */}
+        <OrdersUiProvider>{children}</OrdersUiProvider>
+      </PopupHost>
+    </div>
+  );
+}
+
 export function renderWithProviders(ui: ReactElement) {
   return render(
     <ConfigProvider platform={Platform.VKCOM}>
       <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
         <AppRoot>
           <SessionProvider session={SESSION}>
-            {/* PanelNationHome hosts the orders block — the provider
-                must exist; these tests never open its windows. */}
-            <OrdersUiProvider>{ui}</OrdersUiProvider>
+            <PopupHarness>{ui}</PopupHarness>
           </SessionProvider>
         </AppRoot>
       </AdaptivityProvider>
