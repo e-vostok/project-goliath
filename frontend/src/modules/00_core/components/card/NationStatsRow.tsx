@@ -1,8 +1,8 @@
 /**
  * NationStatsRow — the row of four stat tiles under the header
  * (UI Spec 9.1, mockup «Main»): «Провинции» (count), «Уровень» and
- * «Судейский рейтинг» (the Registry's players row for the owner —
- * «—» until it is found), «Неразрешённые приказы» («N» plus a muted
+ * «Судейский рейтинг» (the owner's numbers — they ride the nation
+ * itself since 0.9.0), «Неразрешённые приказы» («N» plus a muted
  * «из M» — the counter and the limit come from GET /orders/rules,
  * the same source the order composer reads; the client never
  * hard-codes the limit).
@@ -16,16 +16,10 @@ import {
   tokenVar,
 } from '../../../../shared/ui';
 import { useOrderRules } from '../../../04_orders/hooks/useOrderRules';
-import { useOwnStats } from './useOwnStats';
 
 const DASH = '—';
 
-function statValue(value: number | null): string | number {
-  return value === null ? DASH : value;
-}
-
 export function NationStatsRow({ nation }: { nation: NationDTO }) {
-  const own = useOwnStats(nation);
   const orderRules = useOrderRules();
   const rules = orderRules.status === 'ready' ? orderRules.rules : null;
 
@@ -39,13 +33,10 @@ export function NationStatsRow({ nation }: { nation: NationDTO }) {
       }}
     >
       <StatTile label="Провинции" value={nation.province_ids.length} />
-      <StatTile
-        label="Уровень"
-        value={statValue(own.stats?.level ?? null)}
-      />
+      <StatTile label="Уровень" value={nation.level} />
       <StatTile
         label="Судейский рейтинг"
-        value={statValue(own.stats?.judgeRating ?? null)}
+        value={nation.judge_rating}
         accent
       />
       <StatTile

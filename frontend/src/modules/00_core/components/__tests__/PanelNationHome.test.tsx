@@ -4,8 +4,8 @@
  *
  * Card covers: header (flag/stub, «ГОСУДАРСТВО · краткое», display
  * name, motto, colour), the four stat tiles («N из M» from
- * /orders/rules, level/rating from the registry players row — «—»
- * without it), leader block (no captions, title hidden when empty),
+ * /orders/rules, level/rating — the nation's own fields since 0.9.0),
+ * leader block (no captions, title hidden when empty),
  * territory chips BY NAME with the capital first («★ Столица
  * (Провинция)»), the description/history block rules, the removed
  * service rows (gender, notifications, succession, anthem, delete),
@@ -61,6 +61,10 @@ const NATION: NationDTO = {
   succession_type: 'elections',
   history_url: 'https://vk.com/@testia-istoriya',
   anthem_url: null,
+  // The owner's stats ride the nation itself — NOT the old registry
+  // players row (level 3 / rating 12 there).
+  level: 5,
+  judge_rating: 21,
 };
 
 /** All post-0.8.0 fields null, no capital — the legacy card. */
@@ -140,16 +144,16 @@ describe('PanelNationHome — the card', () => {
       within(header).getByRole('button', { name: 'Изменить' }),
     ).toBeInTheDocument();
 
-    // The four tiles — level/rating from the registry players row.
+    // The four tiles — level/rating are the nation's own fields.
     const tiles = await screen.findByTestId('nation-stats-row');
     const tileOf = (label: string) =>
       within(tiles).getByText(label).parentElement as HTMLElement;
     expect(tileOf('Провинции').textContent).toContain('2');
     await waitFor(() =>
-      expect(tileOf('Уровень').textContent).toContain('3'),
+      expect(tileOf('Уровень').textContent).toContain('5'),
     );
     await waitFor(() =>
-      expect(tileOf('Судейский рейтинг').textContent).toContain('12'),
+      expect(tileOf('Судейский рейтинг').textContent).toContain('21'),
     );
     await waitFor(() =>
       expect(tileOf('Неразрешённые приказы').textContent).toContain(
@@ -292,25 +296,6 @@ describe('PanelNationHome — the card', () => {
       expect(screen.getByText(url)).toBeInTheDocument();
     },
   );
-
-  it('shows «—» in the level and rating tiles when the registry has no own row', async () => {
-    server.use(
-      http.get('*/api/v1/registry/tables/players', () =>
-        HttpResponse.json({
-          table_id: 'players',
-          total: 0,
-          truncated: false,
-          generated_at: '2026-10-20T12:00:00Z',
-          rows: [],
-        }),
-      ),
-    );
-    renderHome();
-    const tiles = screen.getByTestId('nation-stats-row');
-    await waitFor(() =>
-      expect(within(tiles).getAllByText('—').length).toBe(2),
-    );
-  });
 
   it('keeps every block inside the 910 px window', () => {
     renderHome();

@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from core.db import get_session
 from core.security.dependencies import get_current_player
@@ -33,6 +34,7 @@ from modules._00_core.schemas import (
     GameClockDTO,
     NationCreateRequest,
     NationDTO,
+    NationPublicDTO,
     NationRulesDTO,
     NationUpdateRequest,
     PlayerDTO,
@@ -64,33 +66,65 @@ def _player_dto(player: Player) -> PlayerDTO:
     )
 
 
+async def _nation_with_owner(
+    session: AsyncSession, nation_id: str
+) -> Nation | None:
+    """Fetch a nation together with its owner Player in one JOIN query —
+    the owner's ``level``/``judge_rating`` ride the same row, so neither
+    DTO issues per-field fetches."""
+    result = await session.execute(
+        select(Nation)
+        .options(joinedload(Nation.owner))
+        .where(Nation.id == nation_id)
+    )
+    return result.unique().scalar_one_or_none()
+
+
+def _nation_public_fields(nation: Nation, province_ids: list[int]) -> dict:
+    """
+    The field set shared by ``NationDTO`` and ``NationPublicDTO`` — exactly
+    the public contract of Spec Part 5. The owner must already be loaded
+    on ``nation`` (``_nation_with_owner``); ``level``/``judge_rating`` are
+    the owner Player's columns.
+    """
+    return {
+        "id": nation.id,
+        "created_at": nation.created_at,
+        "name": nation.name,
+        "short_name": nation.short_name,
+        "color_hex": nation.color_hex,
+        "motto": nation.motto,
+        "description": nation.description,
+        "flag_id": nation.flag_id,
+        "flag_url": flag_url(nation.flag_id),
+        "province_ids": province_ids,
+        "capital_province_id": nation.capital_province_id,
+        "capital_name": nation.capital_name,
+        "leader_name": nation.leader_name,
+        "leader_title": nation.leader_title,
+        "leader_bio": nation.leader_bio,
+        "portrait_id": nation.portrait_id,
+        "portrait_url": portrait_url(nation.portrait_id),
+        "history_url": nation.history_url,
+        "level": nation.owner.level,
+        "judge_rating": nation.owner.judge_rating,
+    }
+
+
 async def _nation_dto(session: AsyncSession, nation: Nation) -> NationDTO:
-    """Assemble NationDTO, including the nation's province IDs."""
+    """Assemble NationDTO — the public field set plus the owner-only keys."""
+    loaded = await _nation_with_owner(session, nation.id)
+    if loaded is not None:
+        nation = loaded
     result = await session.execute(
         select(Province.id).where(Province.nation_id == nation.id).order_by(Province.id)
     )
+    fields = _nation_public_fields(nation, list(result.scalars().all()))
     return NationDTO(
-        id=nation.id,
+        **fields,
         owner_player_id=nation.owner_player_id,
-        created_at=nation.created_at,
-        name=nation.name,
-        short_name=nation.short_name,
-        color_hex=nation.color_hex,
-        motto=nation.motto,
-        description=nation.description,
-        flag_id=nation.flag_id,
-        flag_url=flag_url(nation.flag_id),
-        province_ids=list(result.scalars().all()),
-        capital_province_id=nation.capital_province_id,
-        capital_name=nation.capital_name,
-        leader_name=nation.leader_name,
         gender=nation.gender,
-        leader_title=nation.leader_title,
-        leader_bio=nation.leader_bio,
-        portrait_id=nation.portrait_id,
-        portrait_url=portrait_url(nation.portrait_id),
         succession_type=nation.succession_type,
-        history_url=nation.history_url,
         anthem_url=nation.anthem_url,
     )
 
@@ -203,6 +237,30 @@ async def check_color(
         status=await NationService.color_status(
             session, body.color_hex, CORE_CONFIG, exclude_nation_id=nation
         )
+    )
+
+
+@router.get("/nations/{nation_id}", response_model=NationPublicDTO)
+async def get_nation_public(
+    nation_id: str,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> NationPublicDTO:
+    """Return another nation's public fields (Bible §7).
+
+    Declared after ``/nations/me``, ``/nations/rules`` and
+    ``/nations/color-check`` so those fixed paths keep winning. The id is
+    a plain ``str``: a malformed id simply matches no row and answers the
+    same 404/NATION_NOT_FOUND as an unknown UUID — never a 422.
+    """
+    nation = await _nation_with_owner(session, nation_id)
+    if nation is None:
+        raise NationNotFoundError(nation_id)
+    result = await session.execute(
+        select(Province.id).where(Province.nation_id == nation.id).order_by(Province.id)
+    )
+    return NationPublicDTO(
+        **_nation_public_fields(nation, list(result.scalars().all()))
     )
 
 

@@ -20,6 +20,7 @@ import type {
   GameClockDTO,
   NationCreateRequest,
   NationDTO,
+  NationPublicDTO,
   NationRulesDTO,
   NationUpdateRequest,
   ProvinceDTO,
@@ -215,6 +216,17 @@ export const api = {
   /** GET /nations/rules — creation/update limits for UI hints and gating. */
   getNationRules(token: string, signal?: AbortSignal) {
     return apiFetch<NationRulesDTO>('/nations/rules', { token, signal });
+  },
+
+  /**
+   * GET /nations/{id} — the public view of another player's nation
+   * (Bible §7); 404/NATION_NOT_FOUND for an unknown id.
+   */
+  getNation(token: string, nationId: string, signal?: AbortSignal) {
+    return apiFetch<NationPublicDTO>(
+      `/nations/${encodeURIComponent(nationId)}`,
+      { token, signal },
+    );
   },
 
   /**
