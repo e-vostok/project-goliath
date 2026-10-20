@@ -251,16 +251,6 @@ export const api = {
     });
   },
 
-  /** DELETE /nations/me — requires { confirm: true }; frees provinces. */
-  deleteNation(token: string, signal?: AbortSignal) {
-    return apiFetch<void>('/nations/me', {
-      method: 'DELETE',
-      body: { confirm: true },
-      token,
-      signal,
-    });
-  },
-
   /** GET /provinces — optional id filter and/or free-only flag. */
   getProvinces(
     token: string,

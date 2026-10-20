@@ -22,11 +22,13 @@ from modules._00_core.exceptions import (
     CapitalNotInProvincesError,
     ColorTakenError,
     ColorTooCloseError,
+    FlagInvalidError,
     FrequencyCapExceededError,
     NameTakenError,
     NationAlreadyExistsError,
     NationNotFoundError,
     PlayerNotFoundError,
+    PortraitInvalidError,
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
     ProvinceTakenError,
@@ -666,9 +668,10 @@ class NationService:
             motto: Optional motto; empty after normalization -> NULL.
             description: Optional description; empty -> NULL.
             leader_bio: Optional multi-line leader bio; empty -> NULL.
-            flag_id: Optional catalog flag id (INV-15).
-            portrait_id: Optional catalog portrait id (INV-15).
-            anthem_url: Optional anthem link (soft check, Part 3).
+            flag_id: Mandatory catalog flag id since 0.9.0 (INV-15).
+            portrait_id: Mandatory catalog portrait id since 0.9.0.
+            anthem_url: Optional anthem link (soft check, Part 3);
+                unused since 0.9.0, removal is on the 00_core backlog.
 
         Returns:
             The newly created Nation instance.
@@ -710,7 +713,14 @@ class NationService:
         description = validate_description(description, config)
         leader_bio = validate_leader_bio(leader_bio, config)
         flag_id = validate_flag_id(flag_id, config)
+        # Since 0.9.0 a new nation always has a flag and a portrait
+        # (20.10.2026); NULL is rejected only on create — legacy rows
+        # from before 0.9.0 keep their NULLs through PATCH.
+        if flag_id is None:
+            raise FlagInvalidError("a flag from the catalog is required")
         portrait_id = validate_portrait_id(portrait_id, config)
+        if portrait_id is None:
+            raise PortraitInvalidError("a leader portrait from the catalog is required")
         capital_name = validate_capital_name(capital_name, config)
 
         # The lock covers name/short-name/color reads so concurrent

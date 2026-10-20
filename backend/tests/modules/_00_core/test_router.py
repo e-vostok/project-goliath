@@ -433,6 +433,29 @@ class TestNationEndpoints:
 
         assert resp.status_code == 422
 
+    async def test_create_nation_name_at_max_length(self, client, test_db_session):
+        """The boundary is inclusive: exactly nation_name_max_length is fine."""
+        player = await seed_player(test_db_session)
+        province_ids = list(
+            range(1001, 1001 + CORE_CONFIG.nation.min_provinces_per_nation)
+        )
+        await seed_provinces(test_db_session, province_ids)
+        name = "x" * CORE_CONFIG.nation.nation_name_max_length
+
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json={
+                "name": name,
+                "color_hex": "#FF0000",
+                "province_ids": province_ids,
+                **VALID_PROFILE,
+            },
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["name"] == name
+
     async def test_create_nation_bad_color_format(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
@@ -509,7 +532,9 @@ class TestNationEndpoints:
         assert resp.status_code == 404
         assert resp.json()["code"] == "NATION_NOT_FOUND"
 
-    async def test_delete_nation_happy_path(self, client, test_db_session):
+    async def test_delete_nations_me_route_gone(self, client, test_db_session):
+        """The player DELETE route was removed in 0.9.0: the server
+        answers 405 and the nation survives the call untouched."""
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002])
         nation = await seed_nation(test_db_session, player, province_ids=[1001, 1002])
@@ -521,45 +546,11 @@ class TestNationEndpoints:
             json={"confirm": True},
         )
 
-        assert resp.status_code == 204
-
+        assert resp.status_code == 405
         result = await test_db_session.execute(
             select(Nation).where(Nation.id == nation.id)
         )
-        assert result.scalar_one_or_none() is None
-
-        # Provinces were freed, not deleted (INV-6)
-        result = await test_db_session.execute(
-            select(Province).where(Province.id.in_([1001, 1002]))
-        )
-        assert all(p.nation_id is None for p in result.scalars().all())
-
-    async def test_delete_nation_requires_confirm(self, client, test_db_session):
-        player = await seed_player(test_db_session)
-        await seed_provinces(test_db_session, [1001])
-        await seed_nation(test_db_session, player, province_ids=[1001])
-
-        resp = await client.request(
-            "DELETE",
-            "/api/v1/nations/me",
-            headers=bearer_headers(player.id),
-            json={"confirm": False},
-        )
-
-        assert resp.status_code == 422
-
-    async def test_delete_nation_not_found(self, client, test_db_session):
-        player = await seed_player(test_db_session)
-
-        resp = await client.request(
-            "DELETE",
-            "/api/v1/nations/me",
-            headers=bearer_headers(player.id),
-            json={"confirm": True},
-        )
-
-        assert resp.status_code == 404
-        assert resp.json()["code"] == "NATION_NOT_FOUND"
+        assert result.scalar_one_or_none() is not None
 
 
 class TestNationProfileEndpoints:
@@ -592,6 +583,8 @@ class TestNationProfileEndpoints:
             ("leader_name", "x", "LEADER_NAME_INVALID"),
             ("leader_title", "", "LEADER_TITLE_INVALID"),
             ("history_url", "https://evil.com/@x", "HISTORY_URL_INVALID"),
+            ("flag_id", None, "FLAG_INVALID"),
+            ("portrait_id", None, "PORTRAIT_INVALID"),
         ],
     )
     async def test_create_nation_profile_error_maps_to_422(
@@ -776,7 +769,6 @@ class TestAuthRequired:
                 },
             ),
             ("PATCH", "/api/v1/nations/me", {"name": "Valid Name"}),
-            ("DELETE", "/api/v1/nations/me", {"confirm": True}),
             ("GET", "/api/v1/provinces", None),
             ("GET", "/api/v1/game-clock", None),
         ],
@@ -804,7 +796,6 @@ class TestAuthRequired:
                 },
             ),
             ("PATCH", "/api/v1/nations/me", {"name": "Valid Name"}),
-            ("DELETE", "/api/v1/nations/me", {"confirm": True}),
             ("GET", "/api/v1/provinces", None),
             ("GET", "/api/v1/game-clock", None),
         ],

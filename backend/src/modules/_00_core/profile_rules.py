@@ -214,12 +214,15 @@ def validate_description(value: str | None, config: CoreConfig) -> str | None:
 def validate_leader_bio(value: str | None, config: CoreConfig) -> str | None:
     """
     Optional multi-line `leader_bio` (Part 3): CR/LF are folded to `\\n`
-    first, then stripped; a newline is the only allowed control
-    character. Empty after normalization stores as NULL.
+    first, runs of three or more line breaks collapse to two (at most
+    one empty line between paragraphs), then the text is stripped; a
+    newline is the only allowed control character. The length limit
+    counts the normalized text. Empty after normalization stores NULL.
     """
     if value is None:
         return None
-    text = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if not text:
         return None
     max_length = config.nation.leader_bio_max_length

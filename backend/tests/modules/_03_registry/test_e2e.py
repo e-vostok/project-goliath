@@ -28,6 +28,7 @@ from core.tick.orchestrator import TickOrchestrator, TickOutcome
 from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Player
+from modules._00_core.service import NationService
 from modules._00_core.tick_handler import register_tick_handlers
 from modules._03_registry.profile_worker import install_wake_event, run_cycle
 from modules._03_registry.vk_profiles import VkProfilesClient
@@ -40,7 +41,6 @@ CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 TABLES_URL = "/api/v1/registry/tables"
 NATIONS_URL = "/api/v1/nations"
-NATIONS_ME_URL = "/api/v1/nations/me"
 
 NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 
@@ -152,7 +152,7 @@ class TestScenarioA:
         assert n1["cells"]["name"] == "Северная Марка"
         assert n1["cells"]["flag"] == {
             "color": "#AA1111",
-            "image_url": None,
+            "image_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert n1["cells"]["formed"] == {
             "text": format_game_date(
@@ -188,12 +188,12 @@ class TestScenarioA:
         assert p_rows[0]["cells"]["nation"] == {
             "name": "Северная Марка",
             "color": "#AA1111",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert p_rows[1]["cells"]["nation"] == {
             "name": "Ладожский Союз",
             "color": "#22BB33",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)
@@ -202,14 +202,10 @@ class TestScenarioA:
         assert resp.status_code == 200
         _assert_no_identifiers(resp.text, players)
 
-        # Player 1 deletes their nation through the real endpoint.
-        resp = await client.request(
-            "DELETE",
-            NATIONS_ME_URL,
-            headers=bearer_headers(players[0].id),
-            json={"confirm": True},
-        )
-        assert resp.status_code == 204
+        # The first nation is deleted (the player DELETE route is gone
+        # since 0.9.0 — the service is the only entry point left).
+        await NationService.delete(test_db_session, nation_id=nation1_id)
+        await test_db_session.commit()
 
         # The nations table renumbers; the players table loses the cell.
         resp = await client.get(
@@ -236,7 +232,7 @@ class TestScenarioA:
         assert p_rows[1]["cells"]["nation"] == {
             "name": "Ладожский Союз",
             "color": "#22BB33",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)

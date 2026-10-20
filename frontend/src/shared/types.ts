@@ -127,10 +127,6 @@ export interface ColorCheckDTO {
   status: 'OK' | 'TAKEN' | 'TOO_CLOSE';
 }
 
-export interface NationDeleteRequest {
-  confirm: true;
-}
-
 export interface ProvinceDTO {
   id: number;
   nation_id: string | null;

@@ -63,15 +63,10 @@ const LEGACY_NATION: NationDTO = {
 
 function renderHome(nation: NationDTO = NATION) {
   const onChanged = vi.fn();
-  const onDeleteRequest = vi.fn();
   const view = renderWithProviders(
-    <PanelNationHome
-      nation={nation}
-      onChanged={onChanged}
-      onDeleteRequest={onDeleteRequest}
-    />,
+    <PanelNationHome nation={nation} onChanged={onChanged} />,
   );
-  return { onChanged, onDeleteRequest, ...view };
+  return { onChanged, ...view };
 }
 
 async function openEdit(user: ReturnType<typeof userEvent.setup>) {
@@ -369,11 +364,7 @@ describe('PanelNationHome — edit draft memory', () => {
   it('restores typed values on remount and deletes them on «Отмена»', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
-      <PanelNationHome
-        nation={NATION}
-        onChanged={() => {}}
-        onDeleteRequest={() => {}}
-      />,
+      <PanelNationHome nation={NATION} onChanged={() => {}} />,
     );
 
     // Type, leave (the panel unmounts like a screen switch) — the
@@ -386,11 +377,7 @@ describe('PanelNationHome — edit draft memory', () => {
     first.unmount();
 
     const second = renderWithProviders(
-      <PanelNationHome
-        nation={NATION}
-        onChanged={() => {}}
-        onDeleteRequest={() => {}}
-      />,
+      <PanelNationHome nation={NATION} onChanged={() => {}} />,
     );
     await openEdit(user);
     expect(screen.getByLabelText('Имя лидера')).toHaveValue(
@@ -402,11 +389,7 @@ describe('PanelNationHome — edit draft memory', () => {
     second.unmount();
 
     renderWithProviders(
-      <PanelNationHome
-        nation={NATION}
-        onChanged={() => {}}
-        onDeleteRequest={() => {}}
-      />,
+      <PanelNationHome nation={NATION} onChanged={() => {}} />,
     );
     await openEdit(user);
     expect(screen.getByLabelText('Имя лидера')).toHaveValue(

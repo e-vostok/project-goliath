@@ -33,6 +33,7 @@ from modules._00_core.models import (
     TickLog,
     TickLogStatus,
 )
+from modules._00_core.service import NationService
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
     pg_clean,  # noqa: F401 — autouse per-test data reset,
@@ -182,6 +183,8 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
             "gender": VALID_PROFILE["gender"],
             "succession_type": VALID_PROFILE["succession_type"],
             "capital_name": VALID_PROFILE["capital_name"],
+            "flag_id": VALID_PROFILE["flag_id"],
+            "portrait_id": VALID_PROFILE["portrait_id"],
         },
     )
     assert create.status_code == 201, create.text
@@ -230,14 +233,12 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
     assert bad.json()["code"] == "HISTORY_URL_INVALID"
     assert _nation_snapshot(await _fetch_nation(pg_db, nation_id)) == after
 
-    # DELETE: the row goes, the provinces are freed — not deleted.
-    delete = await client.request(
-        "DELETE",
-        "/api/v1/nations/me",
-        headers=_headers(token),
-        json={"confirm": True},
-    )
-    assert delete.status_code == 204
+    # Nation deletion: the row goes, the provinces are freed — not
+    # deleted. The player DELETE route is gone (0.9.0), so the test
+    # drives the internal service entry point directly.
+    async with pg_db() as session:
+        await NationService.delete(session, nation_id=nation_id)
+        await session.commit()
     assert await _fetch_nation(pg_db, nation_id) is None
     assert await _province_owners(pg_db, list(STARTING_GROUP)) == {
         pid: None for pid in STARTING_GROUP
@@ -634,13 +635,11 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
         )
         await session.commit()
 
-    delete = await client.request(
-        "DELETE",
-        "/api/v1/nations/me",
-        headers=_headers(token),
-        json={"confirm": True},
-    )
-    assert delete.status_code == 204
+    # The player DELETE route is gone (0.9.0): deletion is an internal
+    # operation — the service call orphans the scheduled action.
+    async with pg_db() as session:
+        await NationService.delete(session, nation_id=nation_id)
+        await session.commit()
 
     async with pg_db() as session:
         action = (

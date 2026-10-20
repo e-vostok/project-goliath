@@ -587,12 +587,15 @@ class TestNationProfile:
                 "leader_name": "  Ivan Grozny  ",
                 "leader_title": "\tSupreme Ruler\n",
                 "history_url": "  https://vk.com/@goliath-history  ",
+                "leader_bio": "  One\r\n\r\n\r\nTwo  ",
             },
         )
 
         assert nation.leader_name == "Ivan Grozny"
         assert nation.leader_title == "Supreme Ruler"
         assert nation.history_url == "https://vk.com/@goliath-history"
+        # CRLF folds, the empty-line run collapses to one (0.9.0).
+        assert nation.leader_bio == "One\n\nTwo"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -806,7 +809,9 @@ class TestNationProfile:
         test_db_session.add(legacy)
         await test_db_session.flush()
 
-        # Plain rename works without touching the profile.
+        # Plain rename works without touching the profile; a NULL
+        # legacy flag/portrait stays NULL while the field is absent
+        # (0.9.0: mandatory on create only).
         renamed = await NationService.update(
             test_db_session,
             nation_id=legacy.id,
@@ -817,6 +822,8 @@ class TestNationProfile:
         assert renamed.leader_name is None
         assert renamed.leader_title is None
         assert renamed.history_url is None
+        assert renamed.flag_id is None
+        assert renamed.portrait_id is None
 
         # Profile fields can then be filled one call at a time.
         step1 = await NationService.update(

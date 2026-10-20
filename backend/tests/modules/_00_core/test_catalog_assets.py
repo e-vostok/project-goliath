@@ -91,11 +91,11 @@ async def test_catalog_placeholder_set_end_to_end(client, test_db_session):
         "/api/v1/nations",
         headers=headers,
         json={
+            **VALID_PROFILE,
             "name": "Catalog Nation",
             "color_hex": "#FF0000",
             "province_ids": province_ids,
             "flag_id": "flag_not_in_catalog",
-            **VALID_PROFILE,
         },
     )
     assert rejected.status_code == 422
@@ -106,12 +106,12 @@ async def test_catalog_placeholder_set_end_to_end(client, test_db_session):
         "/api/v1/nations",
         headers=headers,
         json={
+            **VALID_PROFILE,
             "name": "Catalog Nation",
             "color_hex": "#FF0000",
             "province_ids": province_ids,
             "flag_id": "flag_placeholder_1",
             "portrait_id": "portrait_placeholder_1",
-            **VALID_PROFILE,
         },
     )
     assert created.status_code == 201

@@ -40,6 +40,7 @@ from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
 )
+from modules._00_core.service import NationService
 from modules._01_map.loader import MapDataError
 from modules._01_map.ownership_service import (
     owners_at_turn,
@@ -286,13 +287,11 @@ async def _full_scenario(client: AsyncClient) -> None:
     assert out_of_range.json()["code"] == "TURN_OUT_OF_RANGE"
 
     # -- deletion: releases journaled, history preserved -----------------
-    deleted = await client.request(
-        "DELETE",
-        "/api/v1/nations/me",
-        headers=player,
-        json={"confirm": True},
-    )
-    assert deleted.status_code == 204
+    # The player DELETE route is gone (0.9.0): deletion is an internal
+    # operation, NationService.delete is the only entry point left.
+    async with get_session_context() as session:
+        await NationService.delete(session, nation_id=nation_id)
+        await session.commit()
 
     async with get_session_context() as session:
         for pid in CONNECTED_FIVE:

@@ -47,7 +47,7 @@ def _base_config() -> dict:
         },
         "nation": {
             "nation_name_min_length": 2,
-            "nation_name_max_length": 40,
+            "nation_name_max_length": 50,
             "short_name_min_length": 2,
             "short_name_max_length": 16,
             "min_provinces_per_nation": 5,
@@ -135,7 +135,7 @@ def test_valid_config_loads():
     assert config.auth.vk_ts_freshness_window_minutes == 30
     assert config.auth.jwt_ttl_minutes == 60
     assert config.nation.nation_name_min_length == 2
-    assert config.nation.nation_name_max_length == 40
+    assert config.nation.nation_name_max_length == 50
     assert config.nation.short_name_min_length == 2
     assert config.nation.short_name_max_length == 16
     assert config.nation.min_provinces_per_nation == 5
