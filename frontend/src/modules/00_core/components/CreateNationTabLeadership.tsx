@@ -4,7 +4,7 @@
  * ALWAYS selected — no «Без портрета», the first catalog portrait is
  * preselected and stands in for a legacy NULL portrait), then one row
  * «Имя лидера *» + «Должность лидера *» + «Пол *» (two small square
- * icon buttons — the Venus mirror and the Mars spear, one active at a
+ * icon buttons — the Mars spear and the Venus mirror, one active at a
  * time), the optional «Биография лидера» TextArea of three lines, and
  * the four succession-type cards (one 2×2 radio group, marked by
  * outline + check, not color alone) with the «Пока без последствий в
@@ -58,8 +58,8 @@ const GENDER_ICONS = {
   male: MarsIcon,
 };
 
-/** Spec order of the gender buttons: Venus mirror, then Mars spear. */
-const GENDER_ORDER = ['female', 'male'] as const;
+/** Spec order of the gender buttons: Mars spear, then Venus mirror (mockup «Reg2»). */
+const GENDER_ORDER = ['male', 'female'] as const;
 
 /**
  * Arrow keys move selection and focus inside a role="radiogroup" of
@@ -97,15 +97,14 @@ export function CreateNationTabLeadership({
   const genderRefs = useRef(new Map<string, HTMLButtonElement>());
   const successionRefs = useRef(new Map<string, HTMLButtonElement>());
 
-  // Spec order is fixed (Venus first) — the rules list just gates
-  // which codes exist.
-  const genders = GENDER_ORDER.filter((code) =>
-    (rules?.genders ?? []).includes(code),
-  ).concat(
-    (rules?.genders ?? []).filter(
+  // Spec order is fixed (Mars first) — the rules list just gates
+  // which codes exist; unknown codes from the rules go last.
+  const genders: string[] = [
+    ...GENDER_ORDER.filter((code) => (rules?.genders ?? []).includes(code)),
+    ...(rules?.genders ?? []).filter(
       (code) => !GENDER_ORDER.includes(code as never),
     ),
-  );
+  ];
   const successionTypes = rules?.succession_types ?? [];
 
   return (
