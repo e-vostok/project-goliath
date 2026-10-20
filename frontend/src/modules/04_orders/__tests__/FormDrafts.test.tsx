@@ -1,12 +1,13 @@
 /**
  * Form draft memory (useFormDraft): typed values survive a dismissal —
- * click outside, Esc or the cross all route through closeWindow — and
- * are restored when the form is reopened. A successful send deletes
- * the draft, verdict drafts are keyed per order number, and a broken
- * sessionStorage must not break the form (memory mirror only).
+ * the cross routes through closeWindow (Esc and the scrim no longer
+ * close a dirty form, UI Spec 3.3) — and are restored when the form is
+ * reopened. A successful send deletes the draft, verdict drafts are
+ * keyed per order number, and a broken sessionStorage must not break
+ * the form (memory mirror only).
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
@@ -34,9 +35,9 @@ const JUDGE_ORDER_THREE: OrderDetailDTO = {
   title: 'Приказ №3',
 };
 
-/** Esc bubbles to the ModalOutlet key handler — the same as pressing Esc. */
-function escFrom(element: HTMLElement) {
-  fireEvent.keyDown(element, { key: 'Escape' });
+/** The header «×» of the open popup — the close path that keeps the draft. */
+async function dismissByCross(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Закрыть' }));
 }
 
 async function openComposer(user: ReturnType<typeof userEvent.setup>) {
@@ -68,7 +69,7 @@ afterEach(() => {
 });
 
 describe('OrderComposer — draft memory', () => {
-  it('restores the typed values after an Esc-dismissed window reopens', async () => {
+  it('restores the typed values after a dismissed window reopens', async () => {
     const user = userEvent.setup();
     renderWithOrders(<OrdersBlock />);
 
@@ -78,7 +79,7 @@ describe('OrderComposer — draft memory', () => {
       screen.getByLabelText('Краткая суть приказа'),
       'Черновая суть.',
     );
-    escFrom(screen.getByLabelText('Название'));
+    await dismissByCross(user);
     await waitFor(() =>
       expect(screen.queryByLabelText('Название')).not.toBeInTheDocument(),
     );
@@ -140,7 +141,7 @@ describe('OrderComposer — draft memory', () => {
 
     await openComposer(user);
     await user.type(screen.getByLabelText('Название'), 'Без хранилища');
-    escFrom(screen.getByLabelText('Название'));
+    await dismissByCross(user);
     await waitFor(() =>
       expect(screen.queryByLabelText('Название')).not.toBeInTheDocument(),
     );
@@ -169,7 +170,7 @@ describe('VerdictComposer — draft memory keyed per order', () => {
       screen.getByLabelText('Название'),
       'Вердикт по седьмому',
     );
-    escFrom(screen.getByLabelText('Название'));
+    await dismissByCross(user);
     await waitFor(() =>
       expect(
         screen.queryByText('Вердикт по приказу №7'),
@@ -184,7 +185,7 @@ describe('VerdictComposer — draft memory keyed per order', () => {
       screen.getByLabelText('Название'),
       'Вердикт по третьему',
     );
-    escFrom(screen.getByLabelText('Название'));
+    await dismissByCross(user);
     await waitFor(() =>
       expect(
         screen.queryByText('Вердикт по приказу №3'),

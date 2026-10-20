@@ -57,7 +57,7 @@ const NATION: NationDTO = {
 function renderHome() {
   renderWithBot(
     // PanelNationHome hosts the orders block — the provider must exist.
-    <OrdersUiProvider activeModal={null} onActiveModal={() => {}}>
+    <OrdersUiProvider>
       <PanelNationHome
         nation={NATION}
         onChanged={vi.fn()}
