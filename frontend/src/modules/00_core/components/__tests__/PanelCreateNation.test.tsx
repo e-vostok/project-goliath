@@ -360,6 +360,10 @@ describe('PanelCreateNation — submit', () => {
         anthem_url: null,
       },
     ]);
+    // The shared success bar reports «Государство создано» (UI Spec 7).
+    expect(await screen.findByTestId('notice')).toHaveTextContent(
+      'Государство создано',
+    );
   });
 });
 
@@ -561,35 +565,37 @@ describe('PanelCreateNation — server error mapping', () => {
     expect(within(item).queryByText(/invalid characters/i)).toBeNull();
   });
 
+  // The field shows the dictionary text of the code — the English
+  // `detail` never reaches the screen (UI Spec 7).
   it.each([
     [
       'PROVINCE_COUNT_OUT_OF_RANGE',
       'Province count 12 is out of range (must be between 1 and 5)',
-      /out of range/i,
+      'Число выбранных провинций не подходит.',
       'form-item-provinces',
     ],
     [
       'PROVINCE_TAKEN',
       'Province 1003 is already taken',
-      /already taken/i,
+      'Одна из провинций уже занята другим государством. Выберите другие.',
       'form-item-provinces',
     ],
     [
       'PROVINCE_NOT_FOUND',
       'Province 9999 not found',
-      /not found/i,
+      'Такой провинции нет.',
       'form-item-provinces',
     ],
     [
       'PROVINCE_NOT_LAND',
       'Province 2087 is a sea zone',
-      /sea zone/i,
+      'Выбрать можно только сухопутные провинции.',
       'form-item-provinces',
     ],
     [
       'STARTING_GROUP_NOT_CONNECTED',
       'Starting provinces are not connected (2 parts)',
-      /not connected/i,
+      'Выбранные провинции должны быть связаны между собой.',
       'form-item-provinces',
     ],
     [
@@ -621,6 +627,7 @@ describe('PanelCreateNation — server error mapping', () => {
       await goToTab(user, 4);
       const item = screen.getByTestId(itemTestId);
       expect(within(item).getByText(pattern)).toBeInTheDocument();
+      expect(within(item).queryByText(detail)).not.toBeInTheDocument();
     },
   );
 
@@ -639,7 +646,14 @@ describe('PanelCreateNation — server error mapping', () => {
     await user.click(submitButton());
 
     await screen.findByText('Не удалось создать государство');
-    expect(screen.getByText(/already own a nation/i)).toBeInTheDocument();
+    // The English detail never reaches the screen — the dictionary
+    // text of NATION_ALREADY_EXISTS does.
+    expect(
+      screen.getByText('У вас уже есть государство.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/already own a nation/i),
+    ).not.toBeInTheDocument();
   });
 });
 

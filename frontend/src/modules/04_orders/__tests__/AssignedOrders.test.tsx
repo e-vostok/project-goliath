@@ -1,5 +1,5 @@
 /**
- * «Мне на отсуд» — the judge's queue in the headquarters block
+ * «Ожидают вердикт» — the judge's queue in the headquarters block
  * (Spec 5.4).
  *
  * Covers: the list renders the assigned rows (number, nation mark,
@@ -23,7 +23,7 @@ beforeEach(() => {
   registerAssignedHandler();
 });
 
-describe('OrdersBlock — «Мне на отсуд»', () => {
+describe('OrdersBlock — «Ожидают вердикт»', () => {
   it('renders the assigned rows with nation, deadline and the overdue mark', async () => {
     renderWithOrders(<OrdersBlock />);
 

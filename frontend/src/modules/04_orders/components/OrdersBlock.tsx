@@ -2,7 +2,7 @@
  * OrdersBlock — the «Приказы» mini-block in the headquarters
  * (PanelNationHome, Spec 5.4 / D12 — never in PanelCreateNation).
  *
- * Below «Подать приказ» sits «Мне на отсуд»: the orders assigned to
+ * Below «Подать приказ» sits «Ожидают вердикт»: the orders assigned to
  * the player for judging. The list loads when the block mounts and on
  * «Обновить» — no polling; after a written or rejected verdict the
  * provider bumps `assignedRefreshKey` and the list refetches. A row
@@ -23,6 +23,7 @@ import {
   Text,
 } from '@vkontakte/vkui';
 
+import { errorText } from '../../../shared/errorTexts';
 import { useAssignedOrders } from '../hooks/useAssignedOrders';
 import { ORDERS_TEXTS } from '../texts';
 import type { AssignedOrderDTO } from '../types';
@@ -68,7 +69,7 @@ export function OrdersBlock() {
         {assigned.status === 'error' && (
           <>
             <FormStatus mode="error" title={ORDERS_TEXTS.assignedLoadError}>
-              {assigned.error.message}
+              {errorText(assigned.error)}
             </FormStatus>
             <Button size="s" onClick={assigned.refresh}>
               {ORDERS_TEXTS.retry}

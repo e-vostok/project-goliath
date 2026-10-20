@@ -207,10 +207,10 @@ describe('ConfirmVerdictModal — verdict already exists', () => {
       await screen.findByRole('button', { name: 'Да, отправить' }),
     );
 
-    // The server message is shown, the composer is closed and the
-    // detail window (now with the recorded verdict) plus the
-    // assigned list were reloaded.
-    await screen.findByText('По приказу №7 уже записан вердикт');
+    // The dictionary text of the refusal is shown in the shared notice
+    // bar, the composer is closed and the detail window (now with the
+    // recorded verdict) plus the assigned list were reloaded.
+    await screen.findByText('По этому приказу вердикт уже записан.');
     await screen.findByText('Вердикт');
     expect(
       screen.queryByRole('button', { name: 'Отправить вердикт' }),
@@ -250,6 +250,10 @@ describe('VerdictComposer — judge without a nation', () => {
     );
 
     await screen.findByText('Вердикт по приказу №7 записан');
+    // It arrives through the shared success bar (UI Spec 7).
+    expect(screen.getByTestId('notice')).toHaveTextContent(
+      'Вердикт по приказу №7 записан',
+    );
     // Back on the detail window, the recorded verdict is visible.
     await screen.findByText('Вердикт: исполнено');
     expect(detailGets).toBeGreaterThanOrEqual(2);

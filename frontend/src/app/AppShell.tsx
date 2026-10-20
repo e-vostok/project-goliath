@@ -34,7 +34,8 @@ import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalCon
 import { PanelMap } from '../modules/01_map/components/PanelMap';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
 import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
-import { PopupHost } from '../shared/ui';
+import { errorText } from '../shared/errorTexts';
+import { NoticeHost, PopupHost } from '../shared/ui';
 import {
   parseRegistryOrderHash,
   setRegistryEntryRequest,
@@ -99,7 +100,7 @@ export function AppShell() {
         <SplitCol>
           <Div>
             <FormStatus mode="error" title="Не удалось войти">
-              {auth.error.message}
+              {errorText(auth.error)}
             </FormStatus>
           </Div>
           <Div>
@@ -216,61 +217,63 @@ function AuthedArea() {
       style={{ position: 'relative' }}
     >
       <PopupHost container={shellRef}>
-        <OrdersUiProvider>
-          <TopBar activePanel={activePanel} clock={clock} />
-          <SplitLayout modal={modal}>
-            <SplitCol>
-              <View activePanel={activePanel}>
-                <Panel id={PANEL_CREATE}>
-                  {status === 'loading' ? (
-                    <LoadingCell />
-                  ) : (
-                    nation === null && (
-                      <PanelCreateNation onCreated={refresh} />
-                    )
-                  )}
-                  <AdminBlock onWorldChanged={handleWorldChanged} />
-                </Panel>
-                <Panel id={PANEL_HOME}>
-                  {status === 'loading' && <LoadingCell />}
-                  {status === 'error' && (
-                    <Div>
-                      <FormStatus
-                        mode="error"
-                        title="Не удалось загрузить государство"
-                      >
-                        {nationState.error.message}
-                      </FormStatus>
-                      <Button size="l" stretched onClick={refresh}>
-                        Повторить
-                      </Button>
-                    </Div>
-                  )}
-                  {status === 'ready' && nation && (
-                    <PanelNationHome
-                      key={worldVersion}
-                      nation={nation}
-                      onChanged={refresh}
-                      onDeleteRequest={() =>
-                        setActiveModal(MODAL_DELETE_NATION)
-                      }
+        <NoticeHost container={shellRef}>
+          <OrdersUiProvider>
+            <TopBar activePanel={activePanel} clock={clock} />
+            <SplitLayout modal={modal}>
+              <SplitCol>
+                <View activePanel={activePanel}>
+                  <Panel id={PANEL_CREATE}>
+                    {status === 'loading' ? (
+                      <LoadingCell />
+                    ) : (
+                      nation === null && (
+                        <PanelCreateNation onCreated={refresh} />
+                      )
+                    )}
+                    <AdminBlock onWorldChanged={handleWorldChanged} />
+                  </Panel>
+                  <Panel id={PANEL_HOME}>
+                    {status === 'loading' && <LoadingCell />}
+                    {status === 'error' && (
+                      <Div>
+                        <FormStatus
+                          mode="error"
+                          title="Не удалось загрузить государство"
+                        >
+                          {errorText(nationState.error)}
+                        </FormStatus>
+                        <Button size="l" stretched onClick={refresh}>
+                          Повторить
+                        </Button>
+                      </Div>
+                    )}
+                    {status === 'ready' && nation && (
+                      <PanelNationHome
+                        key={worldVersion}
+                        nation={nation}
+                        onChanged={refresh}
+                        onDeleteRequest={() =>
+                          setActiveModal(MODAL_DELETE_NATION)
+                        }
+                      />
+                    )}
+                    <AdminBlock onWorldChanged={handleWorldChanged} />
+                  </Panel>
+                  <Panel id={PANEL_MAP}>
+                    <PanelMap />
+                  </Panel>
+                  <Panel id={PANEL_REGISTRY}>
+                    <PanelRegistry
+                      entryRequest={registryRequest}
+                      active={activePanel === PANEL_REGISTRY}
                     />
-                  )}
-                  <AdminBlock onWorldChanged={handleWorldChanged} />
-                </Panel>
-                <Panel id={PANEL_MAP}>
-                  <PanelMap />
-                </Panel>
-                <Panel id={PANEL_REGISTRY}>
-                  <PanelRegistry
-                    entryRequest={registryRequest}
-                    active={activePanel === PANEL_REGISTRY}
-                  />
-                </Panel>
-              </View>
-            </SplitCol>
-          </SplitLayout>
-        </OrdersUiProvider>
+                  </Panel>
+                </View>
+              </SplitCol>
+            </SplitLayout>
+          </OrdersUiProvider>
+        </NoticeHost>
       </PopupHost>
     </div>
   );

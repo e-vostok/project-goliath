@@ -33,5 +33,7 @@ export { ErrorState, NETWORK_ERROR_TEXT } from './ErrorState';
 export { EmptyState } from './EmptyState';
 export { Popup, PopupHost } from './Popup';
 export type { PopupProps, PopupSize } from './Popup';
+export { NoticeHost, useNotice, NOTICE_TIMEOUT_MS } from './Notice';
+export type { NoticeHostProps } from './Notice';
 export { UiKitPage } from './UiKitPage';
 export { UiKitEntry } from './UiKitEntry';

@@ -24,6 +24,7 @@ import {
   Text,
 } from '@vkontakte/vkui';
 
+import { errorText } from '../../../shared/errorTexts';
 import { buildAdjacency } from '../lib/adjacency';
 import { buildOwnerMap } from '../lib/colors';
 import { formatMoscowTime } from '../lib/refresh';
@@ -288,7 +289,7 @@ export function PanelMap() {
         {manifestState.status === 'error' && (
           <div style={{ padding: 24 }}>
             <FormStatus mode="error" title="Не удалось загрузить карту">
-              {manifestState.error.message}
+              {errorText(manifestState.error)}
             </FormStatus>
             <Button
               size="l"
@@ -303,7 +304,7 @@ export function PanelMap() {
           geometryState.status === 'error' && (
             <div style={{ padding: 24 }}>
               <FormStatus mode="error" title="Не удалось загрузить геометрию">
-                {geometryState.error.message}
+                {errorText(geometryState.error)}
               </FormStatus>
               <Button
                 size="l"

@@ -1,5 +1,5 @@
 /**
- * useAssignedOrders — GET /orders/assigned for the «Мне на отсуд»
+ * useAssignedOrders — GET /orders/assigned for the «Ожидают вердикт»
  * list (Spec 5.4). Loads when the block mounts and on `refresh()` —
  * there is no polling; `refreshKey` is bumped by the provider when a
  * verdict is written or rejected, because the judge's queue changed

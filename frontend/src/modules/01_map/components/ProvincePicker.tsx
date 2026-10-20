@@ -47,7 +47,7 @@ import {
   Text,
 } from '@vkontakte/vkui';
 
-import { ApiError } from '../../../shared/api-client';
+import { errorText } from '../../../shared/errorTexts';
 import { Popup, tokenVar } from '../../../shared/ui';
 import { mapApi } from '../api';
 import { buildOwnerMap } from '../lib/colors';
@@ -309,11 +309,7 @@ export function ProvincePicker({
           : null,
       );
     } catch (error) {
-      setServerMessage(
-        error instanceof ApiError
-          ? error.message
-          : 'Ошибка сети — попробуйте ещё раз.',
-      );
+      setServerMessage(errorText(error));
     } finally {
       setChecking(false);
     }
@@ -498,7 +494,7 @@ export function ProvincePicker({
           {manifestState.status === 'error' && (
             <div style={{ padding: 24 }}>
               <FormStatus mode="error" title="Не удалось загрузить карту">
-                {manifestState.error.message}
+                {errorText(manifestState.error)}
               </FormStatus>
               <Button
                 size="l"
@@ -516,7 +512,7 @@ export function ProvincePicker({
                   mode="error"
                   title="Не удалось загрузить геометрию"
                 >
-                  {geometryState.error.message}
+                  {errorText(geometryState.error)}
                 </FormStatus>
                 <Button
                   size="l"

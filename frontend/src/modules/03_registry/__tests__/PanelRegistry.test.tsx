@@ -276,6 +276,26 @@ describe('PanelRegistry — filter panel', () => {
 });
 
 describe('PanelRegistry — load states', () => {
+  it('a failed tables load shows the dictionary text, never the English detail', async () => {
+    server.use(
+      http.get('*/api/v1/registry/tables', () =>
+        HttpResponse.json(
+          { detail: 'Provider exploded upstream', code: 'REGISTRY_PROVIDER_FAILED' },
+          { status: 500 },
+        ),
+      ),
+    );
+    renderRegistry();
+
+    await screen.findByText('Не удалось загрузить таблицы реестра');
+    expect(
+      screen.getByText('Не удалось собрать таблицу. Попробуйте ещё раз позже.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Provider exploded/),
+    ).not.toBeInTheDocument();
+  });
+
   it('a failed reload keeps the old rows and shows «Повторить»', async () => {
     const user = userEvent.setup();
     renderRegistry();
