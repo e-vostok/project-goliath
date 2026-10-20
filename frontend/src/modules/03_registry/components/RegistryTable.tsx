@@ -25,13 +25,14 @@ import type {
   RegistryRowDTO,
   RegistryTableDTO,
 } from '../types';
+import { Tooltip } from '../../../shared/ui';
 import { ActionTextCell } from './cells/ActionTextCell';
 import { DateCell } from './cells/DateCell';
 import { DatetimeCell } from './cells/DatetimeCell';
 import { FlagCell } from './cells/FlagCell';
 import { GaugeCell } from './cells/GaugeCell';
 import { IntegerCell } from './cells/IntegerCell';
-import { NationCell, NationOpenLink } from './cells/NationCell';
+import { NationCell, NationOpenLink, NationTip } from './cells/NationCell';
 import { PersonCell } from './cells/PersonCell';
 import { TextCell } from './cells/TextCell';
 import { HeaderIcon } from './HeaderIcon';
@@ -116,7 +117,8 @@ function Cell({
     case 'action_text':
       return <ActionTextCell value={value} />;
     case 'person':
-      return <PersonCell value={value} />;
+      // The whole row's cells feed the player tip (unit 11).
+      return <PersonCell value={value} cells={row.cells} />;
     case 'nation':
       return <NationCell value={value} onOpen={onOpenNation} />;
     case 'flag':
@@ -124,7 +126,8 @@ function Cell({
     default:
       // The nations table's «name» is a plain text cell; its row key
       // IS the nation id (sources.py) — the name opens the subscreen
-      // by that key (unit 14c).
+      // by that key (unit 14c) and carries the same «Подсказка»
+      // (unit 11).
       if (
         column.type === 'text' &&
         table.id === NATIONS_TABLE_ID &&
@@ -133,12 +136,13 @@ function Cell({
         value !== ''
       ) {
         return (
-          <NationOpenLink
-            title={value}
-            onOpen={() => onOpenNation?.(row.key)}
+          <Tooltip
+            content={() => <NationTip nationId={row.key} name={value} />}
           >
-            {value}
-          </NationOpenLink>
+            <NationOpenLink onOpen={() => onOpenNation?.(row.key)}>
+              {value}
+            </NationOpenLink>
+          </Tooltip>
         );
       }
       return <TextCell value={value} />;
