@@ -186,11 +186,13 @@ class TestScenarioA:
         assert [row["cells"]["number"] for row in p_rows] == [1, 2, 3]
         assert p_rows[0]["cells"]["player"]["name"] == "Игрок №1"
         assert p_rows[0]["cells"]["nation"] == {
+            "id": nation1_id,
             "name": "Северная Марка",
             "color": "#AA1111",
             "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert p_rows[1]["cells"]["nation"] == {
+            "id": nation2_id,
             "name": "Ладожский Союз",
             "color": "#22BB33",
             "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
@@ -230,6 +232,7 @@ class TestScenarioA:
         assert [row["key"] for row in p_rows] == ["p1", "p2", "p3"]
         assert p_rows[0]["cells"]["nation"] is None
         assert p_rows[1]["cells"]["nation"] == {
+            "id": nation2_id,
             "name": "Ладожский Союз",
             "color": "#22BB33",
             "flag_url": "/assets/nations/flags/flag_placeholder_1.png",

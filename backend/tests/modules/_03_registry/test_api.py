@@ -227,11 +227,13 @@ class TestNationDisplayNameAndFlag:
         assert resp.status_code == 200
         p_rows = {row["key"]: row["cells"] for row in resp.json()["rows"]}
         assert p_rows["p1"]["nation"] == {
+            "id": modern.id,
             "name": "СКВГ",
             "color": "#AA2201",
             "flag_url": flag_png,
         }
         assert p_rows["p2"]["nation"] == {
+            "id": legacy.id,
             "name": "Древнее Княжество Полное",
             "color": "#AA2202",
             "flag_url": None,

@@ -74,10 +74,18 @@ def cell_flag(color: str, image_url: str | None) -> dict:
     return {"color": color, "image_url": image_url}
 
 
-def cell_nation(name: str, color: str, flag_url: str | None = None) -> dict:
+def cell_nation(
+    name: str,
+    color: str,
+    flag_url: str | None = None,
+    nation_id: str | None = None,
+) -> dict:
     """``nation`` cell: colour mark and name; ``flag_url`` is the nation's
-    uploaded flag image (``None`` — the colour mark stands in for it)."""
-    return {"name": name, "color": color, "flag_url": flag_url}
+    uploaded flag image (``None`` — the colour mark stands in for it).
+    ``id`` is the nation uuid the client opens on click (a source that
+    knows only a name/colour snapshot passes ``nation_id=None`` — the
+    cell shows but does not link)."""
+    return {"id": nation_id, "name": name, "color": color, "flag_url": flag_url}
 
 
 def _is_int(value: object) -> bool:
@@ -149,9 +157,10 @@ def cell_matches(column_type: str, cell: Cell) -> bool:
             and (d["image_url"] is None or isinstance(d["image_url"], str))
         )
     if column_type == "nation":
-        d = _is_dict_exact(cell, frozenset({"name", "color", "flag_url"}))
+        d = _is_dict_exact(cell, frozenset({"id", "name", "color", "flag_url"}))
         return (
             d is not None
+            and (d["id"] is None or isinstance(d["id"], str))
             and isinstance(d["name"], str)
             and isinstance(d["color"], str)
             and _COLOR_RE.fullmatch(d["color"]) is not None

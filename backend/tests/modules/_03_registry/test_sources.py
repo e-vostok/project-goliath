@@ -37,7 +37,9 @@ class TestPlayersTable:
     ):
         await seed_player(test_db_session, 501001, created_at=T0)
         p2 = await seed_player(test_db_session, 501002, created_at=T0.replace(hour=13))
-        await seed_nation(test_db_session, p2, "Второе", "#112233", created_turn=0)
+        n2 = await seed_nation(
+            test_db_session, p2, "Второе", "#112233", created_turn=0
+        )
 
         built = await build_table(test_db_session, "players")
         rows = _rows_by_key(built)
@@ -56,9 +58,10 @@ class TestPlayersTable:
             "is_fallback": True,
         }
         # The nationless player's nation cell is null; the owner's
-        # carries {name, color, flag_url} (Spec 3.6).
+        # carries {id, name, color, flag_url} (Spec 3.6).
         assert first["nation"] is None
         assert second["nation"] == {
+            "id": n2.id,
             "name": "Второе",
             "color": "#112233",
             "flag_url": None,

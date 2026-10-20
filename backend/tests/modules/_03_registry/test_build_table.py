@@ -92,15 +92,24 @@ class TestBuildTable:
         p_alpha = await seed_player(test_db_session, 503101)
         p_beta = await seed_player(test_db_session, 503102)
         await seed_player(test_db_session, 503103)  # no nation
-        await seed_nation(test_db_session, p_alpha, "Alpha", "#AA0101", created_turn=0)
-        await seed_nation(test_db_session, p_beta, "Beta", "#AA0102", created_turn=0)
+        n_alpha = await seed_nation(
+            test_db_session, p_alpha, "Alpha", "#AA0101", created_turn=0
+        )
+        n_beta = await seed_nation(
+            test_db_session, p_beta, "Beta", "#AA0102", created_turn=0
+        )
 
         built = await build_table(test_db_session, "players")
 
         nations = [row.cells["nation"] for row in built.rows]
         assert nations == [
-            {"name": "Beta", "color": "#AA0102", "flag_url": None},
-            {"name": "Alpha", "color": "#AA0101", "flag_url": None},
+            {"id": n_beta.id, "name": "Beta", "color": "#AA0102", "flag_url": None},
+            {
+                "id": n_alpha.id,
+                "name": "Alpha",
+                "color": "#AA0101",
+                "flag_url": None,
+            },
             None,
         ]
 

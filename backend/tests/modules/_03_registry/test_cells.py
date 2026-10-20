@@ -19,7 +19,7 @@ from modules._03_registry.cells import (
 def test_new_cell_shapes_match_their_types():
     """``cell_datetime`` / ``cell_action_text`` / ``cell_nation`` emit the
     Spec 1.2 shapes and pass ``cell_matches``; a malformed ``mark`` or a
-    nation cell without ``flag_url`` does not."""
+    nation cell without ``id`` does not."""
     moment = datetime(2026, 10, 15, 18, 21, tzinfo=UTC)
     cell = cell_datetime(moment, "Europe/Moscow")
     assert cell == {
@@ -48,12 +48,19 @@ def test_new_cell_shapes_match_their_types():
     assert action == {"text": "Мобилизация", "action": "order:12"}
     assert cell_matches("action_text", action)
 
-    nation = cell_nation("Новгород", "#C0392B")
+    nation = cell_nation("Новгород", "#C0392B", nation_id="n-uuid-1")
     assert nation == {
+        "id": "n-uuid-1",
         "name": "Новгород",
         "color": "#C0392B",
         "flag_url": None,
     }
     assert cell_matches("nation", nation)
+    assert cell_matches("nation", {**nation, "id": None})
     assert cell_matches("nation", {**nation, "flag_url": "https://x.ru/f.png"})
-    assert not cell_matches("nation", {"name": "Новгород", "color": "#C0392B"})
+    # No `id`, an extra key, or a non-string `id` — all malformed.
+    assert not cell_matches(
+        "nation", {"name": "Новгород", "color": "#C0392B", "flag_url": None}
+    )
+    assert not cell_matches("nation", {**nation, "extra": 1})
+    assert not cell_matches("nation", {**nation, "id": 7})
