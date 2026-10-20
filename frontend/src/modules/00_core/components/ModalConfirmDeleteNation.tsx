@@ -15,7 +15,8 @@ import {
   type NavIdProps,
 } from '@vkontakte/vkui';
 
-import { api, ApiError } from '../../../shared/api-client';
+import { api } from '../../../shared/api-client';
+import { errorText } from '../../../shared/errorTexts';
 import { useSession } from '../hooks/useAuth';
 
 export interface ModalConfirmDeleteNationProps extends NavIdProps {
@@ -47,11 +48,7 @@ export function ModalConfirmDeleteNation({
         .catch(() => {});
       onDeleted();
     } catch (e) {
-      setError(
-        e instanceof ApiError
-          ? e.message
-          : 'Ошибка сети — попробуйте ещё раз.',
-      );
+      setError(errorText(e));
     } finally {
       // This component never unmounts (it is a permanent child of the
       // ModalRoot — only VKUI's inner card hides), so the flag must be

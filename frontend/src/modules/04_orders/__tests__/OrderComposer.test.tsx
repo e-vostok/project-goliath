@@ -197,6 +197,10 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
     await user.click(send);
 
     await screen.findByText('Приказ №7 подан');
+    // It arrives through the shared success bar (UI Spec 7).
+    expect(screen.getByTestId('notice')).toHaveTextContent(
+      'Приказ №7 подан',
+    );
     expect(posts).toBe(1);
   });
 
@@ -238,5 +242,38 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
     expect(screen.getByLabelText('Название')).toHaveValue(
       'Приказ о наступлении',
     );
+  });
+
+  it('a coded banner error shows the dictionary text, never the English detail', async () => {
+    server.use(
+      http.post('*/api/v1/orders', () =>
+        HttpResponse.json(
+          {
+            detail: 'Nation is required to submit an order',
+            code: 'ORDER_NATION_REQUIRED',
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithOrders(<OrdersBlock />);
+    await openComposer(user);
+    await fillComposer(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Отправить приказ' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Да, отправить' }),
+    );
+
+    // Bounced to the composer: the banner carries the dictionary text
+    // of ORDER_NATION_REQUIRED, and the English detail is absent.
+    await screen.findByText(
+      'Подать приказ может только владелец государства.',
+    );
+    expect(
+      screen.queryByText(/Nation is required/),
+    ).not.toBeInTheDocument();
   });
 });

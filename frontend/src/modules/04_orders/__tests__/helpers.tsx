@@ -18,7 +18,7 @@ import {
 
 import { server } from '../../../../vitest.setup';
 import { SessionProvider } from '../../00_core/hooks/useAuth';
-import { PopupHost } from '../../../shared/ui';
+import { NoticeHost, PopupHost } from '../../../shared/ui';
 import { OrdersUiProvider } from '../OrdersUiProvider';
 import type {
   AssignedOrdersDTO,
@@ -219,7 +219,9 @@ function OrdersHarness({ children }: { children?: ReactNode }) {
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <PopupHost container={containerRef}>
-        <OrdersUiProvider>{children}</OrdersUiProvider>
+        <NoticeHost container={containerRef}>
+          <OrdersUiProvider>{children}</OrdersUiProvider>
+        </NoticeHost>
       </PopupHost>
     </div>
   );

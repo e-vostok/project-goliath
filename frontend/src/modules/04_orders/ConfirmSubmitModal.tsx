@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { Button, FormStatus, Link, Text } from '@vkontakte/vkui';
 
 import { ApiError } from '../../shared/api-client';
+import { errorText } from '../../shared/errorTexts';
 import { Popup, RADII, tokenVar } from '../../shared/ui';
 import { useSession } from '../00_core/hooks/useAuth';
 import { ordersApi } from './api';
@@ -105,13 +106,12 @@ export function ConfirmSubmitModal() {
     } catch (e) {
       if (e instanceof ApiError && e.code.startsWith('ORDER_')) {
         // Coded domain errors land back on the composer — field codes
-        // highlight their field, nation/limit show as a banner.
-        backToComposer({ code: e.code, message: e.message });
+        // highlight their field, nation/limit show as a banner; the
+        // carried message is already the Russian `errorText`.
+        backToComposer({ code: e.code, message: errorText(e) });
         return;
       }
-      setError(
-        e instanceof ApiError ? e.message : ORDERS_TEXTS.networkError,
-      );
+      setError(errorText(e));
     } finally {
       // The component stays mounted under the composer view, so the
       // flag must be released on every settled request or the next

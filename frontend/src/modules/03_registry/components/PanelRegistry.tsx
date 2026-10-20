@@ -23,6 +23,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, FormStatus, Spinner, Title } from '@vkontakte/vkui';
 
+import { errorText } from '../../../shared/errorTexts';
+
 import { useNationOptions, NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { useRegistryRows } from '../hooks/useRegistryRows';
 import { useRegistryTables } from '../hooks/useRegistryTables';
@@ -180,7 +182,7 @@ export function PanelRegistry({
       return (
         <div style={{ padding: 24 }}>
           <FormStatus mode="error" title={REGISTRY_TEXTS.tablesLoadError}>
-            {tablesState.error?.message}
+            {errorText(tablesState.error)}
           </FormStatus>
           <Button size="l" style={{ marginTop: 12 }} onClick={tablesState.reload}>
             {REGISTRY_TEXTS.retry}
@@ -208,7 +210,7 @@ export function PanelRegistry({
       return (
         <div style={{ padding: 24 }}>
           <FormStatus mode="error" title={REGISTRY_TEXTS.rowsLoadError}>
-            {rows.error?.message}
+            {errorText(rows.error)}
           </FormStatus>
           <Button size="l" style={{ marginTop: 12 }} onClick={rows.reload}>
             {REGISTRY_TEXTS.retry}
@@ -221,7 +223,7 @@ export function PanelRegistry({
         {rows.status === 'error' && (
           <div style={{ padding: '8px 12px' }}>
             <FormStatus mode="error" title={REGISTRY_TEXTS.rowsLoadError}>
-              {rows.error?.message}
+              {errorText(rows.error)}
             </FormStatus>
             <Button
               size="s"

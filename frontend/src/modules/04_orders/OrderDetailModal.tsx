@@ -13,6 +13,7 @@
 
 import { Button, FormStatus, Link } from '@vkontakte/vkui';
 
+import { errorText } from '../../shared/errorTexts';
 import {
   BlockIcon,
   ErrorState,
@@ -112,7 +113,7 @@ export function OrderDetailModal() {
           <FormStatus mode="error" title={ORDERS_TEXTS.notFound} />
         ) : (
           <ErrorState
-            reason={`${ORDERS_TEXTS.detailLoadError} — ${detail.error.message}`}
+            reason={errorText(detail.error)}
             onRetry={detail.reload}
           />
         )

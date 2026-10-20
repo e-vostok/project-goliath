@@ -32,6 +32,7 @@ import {
 } from '@vkontakte/vkui';
 
 import { ApiError } from '../../shared/api-client';
+import { errorText } from '../../shared/errorTexts';
 import { useFormDraft } from '../../shared/formDraft';
 import { FONTS, Popup, RADII, tokenVar } from '../../shared/ui';
 import { useSession } from '../00_core/hooks/useAuth';
@@ -221,7 +222,7 @@ function VerdictForm({
       {rulesState.status === 'error' && (
         <>
           <FormStatus mode="error" title={ORDERS_TEXTS.rulesLoadError}>
-            {rulesState.error.message}
+            {errorText(rulesState.error)}
           </FormStatus>
           <Button size="s" onClick={rulesState.reload}>
             {ORDERS_TEXTS.retry}
@@ -367,8 +368,9 @@ export function ConfirmVerdictModal() {
       notifyVerdictSubmitted(order.number);
     } catch (e) {
       if (e instanceof ApiError && orderFieldForCode(e.code) !== null) {
-        // Field errors land back on the composer at their field.
-        backToVerdictComposer({ code: e.code, message: e.message });
+        // Field errors land back on the composer at their field; the
+        // carried message is already the Russian `errorText`.
+        backToVerdictComposer({ code: e.code, message: errorText(e) });
         return;
       }
       if (
@@ -378,12 +380,10 @@ export function ConfirmVerdictModal() {
       ) {
         // The verdict is recorded or the caller is not the judge —
         // the composer closes and the detail window reloads.
-        verdictRejected(win.number, e.message);
+        verdictRejected(win.number, errorText(e));
         return;
       }
-      setError(
-        e instanceof ApiError ? e.message : ORDERS_TEXTS.networkError,
-      );
+      setError(errorText(e));
     } finally {
       // The component stays mounted under the composer view, so the
       // flag must be released on every settled request or the next

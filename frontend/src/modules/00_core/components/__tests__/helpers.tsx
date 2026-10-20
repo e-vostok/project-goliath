@@ -35,7 +35,7 @@ import {
 } from '../registrationForm';
 import { SessionProvider } from '../../hooks/useAuth';
 import { OrdersUiProvider } from '../../../04_orders/OrdersUiProvider';
-import { PopupHost } from '../../../../shared/ui';
+import { NoticeHost, PopupHost } from '../../../../shared/ui';
 import {
   MINI_GEOMETRY,
   MINI_MANIFEST,
@@ -223,8 +223,11 @@ function PopupHarness({ children }: { children?: ReactNode }) {
     <div ref={containerRef} style={{ position: 'relative' }}>
       <PopupHost container={containerRef}>
         {/* PanelNationHome hosts the orders block — the provider
-            must exist; these tests never open its windows. */}
-        <OrdersUiProvider>{children}</OrdersUiProvider>
+            must exist; these tests never open its windows. NoticeHost
+            feeds the shared «done» bar. */}
+        <NoticeHost container={containerRef}>
+          <OrdersUiProvider>{children}</OrdersUiProvider>
+        </NoticeHost>
       </PopupHost>
     </div>
   );

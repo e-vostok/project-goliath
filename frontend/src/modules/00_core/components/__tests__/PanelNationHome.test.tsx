@@ -205,6 +205,10 @@ describe('PanelNationHome — edit form', () => {
     expect(
       screen.queryByTestId('edit-nation-form'),
     ).not.toBeInTheDocument();
+    // The shared success bar reports «Изменения сохранены» (UI Spec 7).
+    expect(await screen.findByTestId('notice')).toHaveTextContent(
+      'Изменения сохранены',
+    );
   });
 
   it('legacy nation: no capital line/input; a short-name edit patches only short_name', async () => {
@@ -350,7 +354,14 @@ describe('PanelNationHome — edit form', () => {
     await user.click(save);
 
     await screen.findByText('Не удалось обновить государство');
-    expect(screen.getByText(/Nation not found/i)).toBeInTheDocument();
+    // The English detail never reaches the screen — the dictionary
+    // text of NATION_NOT_FOUND does.
+    expect(
+      screen.getByText('Государство не найдено.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Nation not found/i),
+    ).not.toBeInTheDocument();
   });
 });
 

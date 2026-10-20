@@ -9,8 +9,8 @@ export const ORDERS_TEXTS = {
   cancel: 'Отмена',
   closeButton: 'Закрыть',
 
-  /* «Мне на отсуд» list */
-  assignedTitle: 'Мне на отсуд',
+  /* «Ожидают вердикт» list */
+  assignedTitle: 'Ожидают вердикт',
   assignedEmpty: 'Приказов на рассмотрении нет',
   assignedLoadError: 'Не удалось загрузить',
   assignedDeadline: (deadlineText: string) => `до ${deadlineText}`,
@@ -43,9 +43,6 @@ export const ORDERS_TEXTS = {
   openLink: 'Открыть ссылку',
   backToEdit: 'Вернуться к правке',
   confirmSend: 'Да, отправить',
-  networkError: 'Ошибка сети — попробуйте ещё раз.',
-
-  submittedNotice: (number: number) => `Приказ №${number} подан`,
 
   /* VerdictComposer + ConfirmVerdictModal */
   verdictComposerTitle: (number: number) => `Вердикт по приказу №${number}`,
@@ -55,14 +52,12 @@ export const ORDERS_TEXTS = {
   verdictConfirmWarning:
     'Уверены ли вы, всё ли проверили: изменить вердикт после отправки нельзя',
   verdictSubmitErrorTitle: 'Не удалось записать вердикт',
-  verdictNotice: (number: number) => `Вердикт по приказу №${number} записан`,
   effectsBlockTitle: 'Изменение показателей и модификаторы',
   effectsBlockHint: 'Раздел станет доступен позже',
 
   /* OrderDetailModal */
   detailTitle: (number: number) => `Приказ №${number}`,
   notFound: 'Приказ не найден',
-  detailLoadError: 'Не удалось загрузить приказ',
   summaryBlockTitle: 'Краткая суть приказа',
   articleLink: 'Статья приказа',
   verdictBlockTitle: 'Вердикт',

@@ -9,7 +9,7 @@
  * Assertions must read the numbers from the fixture, not from the spec.
  */
 
-import type { ReactElement, ReactNode } from 'react';
+import { useRef, type ReactElement, type ReactNode } from 'react';
 import { render } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import {
@@ -21,6 +21,7 @@ import {
 } from '@vkontakte/vkui';
 
 import { server } from '../../../../vitest.setup';
+import { NoticeHost } from '../../../shared/ui';
 import { SESSION } from '../../00_core/components/__tests__/helpers';
 import { SessionProvider } from '../../00_core/hooks/useAuth';
 import { BotStatusProvider } from '../hooks/useBotStatus';
@@ -101,12 +102,27 @@ export function registerBotHandlers() {
   );
 }
 
+/**
+ * The root container + NoticeHost AppShell wires — panels that send the
+ * shared «done» message (PanelCreateNation, PanelNationHome) need it.
+ */
+function NoticeHarness({ children }: { children: ReactNode }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <NoticeHost container={containerRef}>{children}</NoticeHost>
+    </div>
+  );
+}
+
 const BotWrapper = ({ children }: { children: ReactNode }) => (
   <ConfigProvider platform={Platform.VKCOM}>
     <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
       <AppRoot>
         <SessionProvider session={SESSION}>
-          <BotStatusProvider>{children}</BotStatusProvider>
+          <BotStatusProvider>
+            <NoticeHarness>{children}</NoticeHarness>
+          </BotStatusProvider>
         </SessionProvider>
       </AppRoot>
     </AdaptivityProvider>

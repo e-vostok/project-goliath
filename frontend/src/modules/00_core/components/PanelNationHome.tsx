@@ -37,8 +37,11 @@ import {
 import { Icon24Write, Icon24Delete } from '@vkontakte/icons';
 
 import { api, ApiError } from '../../../shared/api-client';
+import { errorText } from '../../../shared/errorTexts';
 import { useFormDraft } from '../../../shared/formDraft';
+import { SUCCESS_RU } from '../../../shared/texts/success.ru';
 import type { GameClockDTO, NationDTO } from '../../../shared/types';
+import { useNotice } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { nationRulesHints } from './CreateNationFields';
@@ -52,7 +55,6 @@ import {
   type NationField,
   type RegistrationForm,
 } from './registrationForm';
-import { nationErrorText } from './nationErrorTexts';
 import { GENDER_LABELS, SUCCESSION_LABELS } from './nationLabels';
 import { BotConsentRow } from '../../02_bot/components/BotConsentRow';
 import { OrdersBlock } from '../../04_orders/components/OrdersBlock';
@@ -83,6 +85,7 @@ export function PanelNationHome({
   onDeleteRequest,
 }: PanelNationHomeProps) {
   const { token } = useSession();
+  const notify = useNotice();
   const rulesState = useNationRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
   const hints = nationRulesHints(rules);
@@ -189,19 +192,20 @@ export function PanelNationHome({
       await api.updateNation(token, changes);
       clearDraft();
       setEditing(false);
+      notify(SUCCESS_RU.nationSaved);
       onChanged();
     } catch (error) {
       if (error instanceof ApiError) {
         const field = mapErrorCodeToField(error.code);
         if (field) {
           setFieldErrors({
-            [field]: nationErrorText(error.code, rules) ?? error.message,
+            [field]: errorText(error, { rules }),
           });
         } else {
-          setFormError(error.message);
+          setFormError(errorText(error));
         }
       } else {
-        setFormError('Ошибка сети — попробуйте ещё раз.');
+        setFormError(errorText(error));
       }
     } finally {
       setSubmitting(false);

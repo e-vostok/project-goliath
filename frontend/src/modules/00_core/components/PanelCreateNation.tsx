@@ -21,8 +21,9 @@
  * gates the button on `missingRequired`.
  *
  * Server-side `ErrorResponse.code` values map to inline FormItem errors
- * through `mapErrorCodeToField`, rendered in Russian via
- * `nationErrorText` (unknown codes keep the English `detail`). An error
+ * through `mapErrorCodeToField` and become Russian text through the
+ * shared `errorText` (nation field codes keep the limits-aware texts of
+ * `nationErrorTexts`; the English `detail` is never shown). An error
  * or a missing required field on an inactive tab marks its title with a
  * Badge — the window never switches tabs on its own. Anything else
  * surfaces as a generic FormStatus banner.
@@ -40,8 +41,11 @@ import {
 } from '@vkontakte/vkui';
 
 import { api, ApiError } from '../../../shared/api-client';
+import { errorText } from '../../../shared/errorTexts';
 import { useFormDraft } from '../../../shared/formDraft';
+import { SUCCESS_RU } from '../../../shared/texts/success.ru';
 import type { NationDTO } from '../../../shared/types';
+import { useNotice } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { useBotStatus } from '../../02_bot/hooks/useBotStatus';
@@ -68,7 +72,6 @@ import {
   type RegistrationForm,
   type RegistrationTab,
 } from './registrationForm';
-import { nationErrorText } from './nationErrorTexts';
 import { CreateNationTabBar } from './CreateNationTabBar';
 import { CreateNationTabSymbols } from './CreateNationTabSymbols';
 import { CreateNationTabLeadership } from './CreateNationTabLeadership';
@@ -88,6 +91,7 @@ export interface PanelCreateNationProps {
 
 export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const { token } = useSession();
+  const notify = useNotice();
   const rulesState = useNationRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
   const hints = nationRulesHints(rules);
@@ -206,6 +210,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       const nation = await api.createNation(token, toCreateRequest(form));
       sendTaptic();
       clearDraft();
+      notify(SUCCESS_RU.nationCreated);
       onCreated(nation);
     } catch (error) {
       if (isConsentRequiredError(error)) {
@@ -230,23 +235,23 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             // No usable status (bot off / malformed) — keep the
             // pre-Issue behavior: a generic banner on the form.
             setConsentRequired(false);
-            setFormError(error.message);
+            setFormError(errorText(error));
           }
         } catch {
           setConsentRequired(false);
-          setFormError(error.message);
+          setFormError(errorText(error));
         }
       } else if (error instanceof ApiError) {
         const field = mapErrorCodeToField(error.code);
         if (field) {
           setFieldErrors({
-            [field]: nationErrorText(error.code, rules) ?? error.message,
+            [field]: errorText(error, { rules }),
           });
         } else {
-          setFormError(error.message);
+          setFormError(errorText(error));
         }
       } else {
-        setFormError('Ошибка сети — попробуйте ещё раз.');
+        setFormError(errorText(error));
       }
     } finally {
       setSubmitting(false);

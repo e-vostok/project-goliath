@@ -24,6 +24,7 @@ import {
   Textarea,
 } from '@vkontakte/vkui';
 
+import { errorText } from '../../shared/errorTexts';
 import { Popup } from '../../shared/ui';
 import { useFormDraft } from '../../shared/formDraft';
 import { useOrderRules } from './hooks/useOrderRules';
@@ -233,7 +234,7 @@ function ComposerForm({
       {rulesState.status === 'error' && (
         <>
           <FormStatus mode="error" title={ORDERS_TEXTS.rulesLoadError}>
-            {rulesState.error.message}
+            {errorText(rulesState.error)}
           </FormStatus>
           <Button size="s" onClick={rulesState.reload}>
             {ORDERS_TEXTS.retry}

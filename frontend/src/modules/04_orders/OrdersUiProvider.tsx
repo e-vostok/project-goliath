@@ -12,10 +12,11 @@
  * It also registers the Registry cell action `order` once — a click
  * on an order title, and the `#registry/order-N` entry request that
  * lands through the same registry mechanism, open the detail window —
- * and hosts the «Приказ №N подан» / «Вердикт … записан» snackbars.
+ * and sends the «Приказ №N подан» / «Вердикт … записан» messages to the
+ * shared Notice bar.
  * The verdict flow always lands back on the order's detail window —
  * it reloads on re-entry — and bumps `assignedRefreshKey` so the
- * «Мне на отсуд» list refetches (Spec 5.4).
+ * «Ожидают вердикт» list refetches (Spec 5.4).
  */
 
 import {
@@ -26,14 +27,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Snackbar } from '@vkontakte/vkui';
 
 import { registerCellAction } from '../03_registry/lib/cellActions';
 import { clearFormDraft } from '../../shared/formDraft';
+import { SUCCESS_RU } from '../../shared/texts/success.ru';
+import { useNotice } from '../../shared/ui';
 import { ConfirmSubmitModal } from './ConfirmSubmitModal';
 import { OrderComposer } from './OrderComposer';
 import { OrderDetailModal } from './OrderDetailModal';
-import { ORDERS_TEXTS } from './texts';
 import { ConfirmVerdictModal, VerdictComposer } from './VerdictComposer';
 
 /** formDraft keys — one per form, verdicts additionally per order. */
@@ -90,8 +91,8 @@ interface OrdersUiContextValue {
   /** Successful submit — close and show «Приказ №N подан». */
   notifySubmitted: (number: number) => void;
   /**
-   * Bumped when the judge's queue may have changed — the «Мне на
-   * отсуд» list refetches on it.
+   * Bumped when the judge's queue may have changed — the «Ожидают
+   * вердикт» list refetches on it.
    */
   assignedRefreshKey: number;
   /** «Написать вердикт» (list row or detail window) — opens the verdict composer. */
@@ -101,12 +102,12 @@ interface OrdersUiContextValue {
   /** Confirmation → verdict composer; `error` is shown at a field. */
   backToVerdictComposer: (error: ComposerServerError | null) => void;
   /**
-   * ORDER_VERDICT_EXISTS / ORDER_VERDICT_FORBIDDEN — the server's
-   * message is shown, the composer closes and the detail window plus
-   * the assigned list reload.
+   * ORDER_VERDICT_EXISTS / ORDER_VERDICT_FORBIDDEN — the `errorText`
+   * of the refusal is shown in the shared notice bar, the composer
+   * closes and the detail window plus the assigned list reload.
    */
   verdictRejected: (number: number, message: string) => void;
-  /** Successful verdict — back to the order's detail, snackbar, list refresh. */
+  /** Successful verdict — back to the order's detail, notice, list refresh. */
   notifyVerdictSubmitted: (number: number) => void;
 }
 
@@ -122,7 +123,7 @@ export function useOrdersUi(): OrdersUiContextValue {
 
 export function OrdersUiProvider({ children }: { children: ReactNode }) {
   const [orderWindow, setOrderWindow] = useState<OrdersWindow | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const notify = useNotice();
   const [assignedRefreshKey, setAssignedRefreshKey] = useState(0);
 
   const openComposer = useCallback(() => {
@@ -172,12 +173,15 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
     setOrderWindow(null);
   }, []);
 
-  const notifySubmitted = useCallback((number: number) => {
-    // The send succeeded — the composer's stored draft is spent.
-    clearFormDraft(ORDER_DRAFT_KEY);
-    setOrderWindow(null);
-    setNotice(ORDERS_TEXTS.submittedNotice(number));
-  }, []);
+  const notifySubmitted = useCallback(
+    (number: number) => {
+      // The send succeeded — the composer's stored draft is spent.
+      clearFormDraft(ORDER_DRAFT_KEY);
+      setOrderWindow(null);
+      notify(SUCCESS_RU.orderSubmitted(number));
+    },
+    [notify],
+  );
 
   const openVerdictComposer = useCallback((number: number) => {
     if (!Number.isInteger(number) || number < 1) {
@@ -218,11 +222,14 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
   // Both verdict endings land back on the order's detail window:
   // leaving the verdict views and re-entering `detail` remounts its
   // loader, and the assigned list refetches via `assignedRefreshKey`.
-  const finishVerdict = useCallback((number: number, message: string) => {
-    setOrderWindow({ view: 'detail', number });
-    setAssignedRefreshKey((k) => k + 1);
-    setNotice(message);
-  }, []);
+  const finishVerdict = useCallback(
+    (number: number, message: string) => {
+      setOrderWindow({ view: 'detail', number });
+      setAssignedRefreshKey((k) => k + 1);
+      notify(message);
+    },
+    [notify],
+  );
 
   const verdictRejected = useCallback(
     (number: number, message: string) => finishVerdict(number, message),
@@ -233,7 +240,7 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
     (number: number) => {
       // The verdict send succeeded — that order's draft is spent.
       clearFormDraft(verdictDraftKey(number));
-      finishVerdict(number, ORDERS_TEXTS.verdictNotice(number));
+      finishVerdict(number, SUCCESS_RU.verdictSubmitted(number));
     },
     [finishVerdict],
   );
@@ -267,9 +274,6 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
           <VerdictComposer />
           <ConfirmVerdictModal />
         </>
-      )}
-      {notice !== null && (
-        <Snackbar onClose={() => setNotice(null)}>{notice}</Snackbar>
       )}
     </OrdersUiContext.Provider>
   );

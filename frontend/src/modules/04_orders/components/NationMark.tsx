@@ -1,6 +1,6 @@
 /**
  * NationMark — the author-nation snapshot: colour dot + name (INV-O6).
- * Shared by the order detail window and the «Мне на отсуд» rows.
+ * Shared by the order detail window and the «Ожидают вердикт» rows.
  */
 export function NationMark({ name, color }: { name: string; color: string }) {
   return (
