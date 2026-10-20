@@ -526,7 +526,7 @@ describe('PanelCreateNation — tab 2 leadership', () => {
     expect(screen.queryByText('Без портрета')).not.toBeInTheDocument();
   });
 
-  it('«Пол» is two small icon buttons — one active at a time', async () => {
+  it('«Пол» is two small icon buttons — Mars first, one active at a time', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
     await goToTab(user, 2);
@@ -534,18 +534,24 @@ describe('PanelCreateNation — tab 2 leadership', () => {
     const genderItem = await screen.findByTestId('form-item-gender');
     const radios = within(genderItem).getAllByRole('radio');
     expect(radios).toHaveLength(2);
+    // Mockup «Reg2» order: the Mars spear (male) first, the Venus
+    // mirror (female) second.
+    expect(radios.map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Мужской',
+      'Женский',
+    ]);
     expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual([
       'false',
       'false',
     ]);
 
-    const female = within(genderItem).getByRole('radio', {
-      name: 'Женский',
+    const male = within(genderItem).getByRole('radio', {
+      name: 'Мужской',
     });
-    await user.click(female);
-    expect(female).toHaveAttribute('aria-checked', 'true');
+    await user.click(male);
+    expect(male).toHaveAttribute('aria-checked', 'true');
     expect(
-      within(genderItem).getByRole('radio', { name: 'Мужской' }),
+      within(genderItem).getByRole('radio', { name: 'Женский' }),
     ).toHaveAttribute('aria-checked', 'false');
   });
 
