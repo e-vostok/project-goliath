@@ -61,10 +61,6 @@ export function nationErrorText(
       return 'Выберите способ смены лидера';
     case ErrorCodes.HISTORY_URL_INVALID:
       return 'Ссылка должна вести на статью ВКонтакте вида https://vk.com/@название-статьи';
-    case ErrorCodes.ANTHEM_URL_INVALID:
-      return rules
-        ? `Ссылка на гимн должна вести на ВКонтакте. Допустимые домены: ${rules.anthem_url_allowed_hosts.join(', ')}`
-        : 'Недопустимая ссылка на гимн';
     case ErrorCodes.CAPITAL_NAME_INVALID:
       return `Название столицы: ${range(rules, rules?.capital_name_min_length, rules?.capital_name_max_length)}без служебных символов`;
     case ErrorCodes.CAPITAL_NOT_IN_PROVINCES:

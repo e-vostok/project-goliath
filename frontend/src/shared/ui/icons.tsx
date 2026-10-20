@@ -134,3 +134,49 @@ export function PencilIcon() {
     </svg>
   );
 }
+
+/**
+ * Gender marks for the leader's pick-one buttons (UI Spec 9.6): the
+ * Venus mirror (female) — a circle with a cross below — and the Mars
+ * spear (male) — a circle with an arrow up-right. 18 px, stroke 1.5,
+ * inherit `currentColor`.
+ */
+export function VenusIcon() {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
+      <circle cx="8" cy="6" r="3.4" />
+      <path d="M8 9.4v4.4M5.8 11.8h4.4" />
+    </svg>
+  );
+}
+
+export function MarsIcon() {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
+      <circle cx="6.6" cy="9.4" r="3.4" />
+      <path d="M9.1 6.9L13.8 2.2M9.9 2.2h3.9v3.9" />
+    </svg>
+  );
+}

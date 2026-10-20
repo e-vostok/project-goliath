@@ -1,25 +1,33 @@
 /**
- * Tab 4 «Территории» of the registration window (Spec 1.3 Part 5):
- * the picked provinces as removable named chips (the capital chip
- * carries a star) plus the «Выбрать на карте» button that opens the
- * 01_map ProvincePicker modal; under the chips the «Столица: …» line
- * names the marked province — or shows that the first selected one
- * acts as the capital by default (INV-14); the capital name Input
- * auto-fills from the effective capital's province name until the
- * player edits it by hand. Purely presentational: all state lives in
- * PanelCreateNation.
+ * Tab 4 «Территории» of the registration window (UI Spec 9.6 —
+ * version 0.9.0 unit 8c, mockup_Reg4): the line «Выбрано N из M» and
+ * the «Выбрать на карте» button that opens the 01_map ProvincePicker
+ * popup; under them the chosen provinces as rows with their real NAMES
+ * (`useProvinceNames` from unit 8b resolves the manifest ids). The
+ * capital is the first row and carries «★» in `signal-ink`; every
+ * other row offers the link-button «Сделать столицей» and «×» to
+ * remove the province. Below, the «Название столицы *» field with the
+ * counter and the hint «По умолчанию совпадает с названием провинции».
+ * Purely presentational: all state lives in the container.
  *
- * `readOnly` is the nation edit mode (Issue 16, INV-14): provinces and
- * the capital mark never change — the chips render without remove
+ * `readOnly` is the nation edit mode (INV-14): provinces and the
+ * capital mark never change — the same rows render without the action
  * buttons and the picker button is gone. The capital name stays
  * editable only while the nation actually has a capital; a pre-0.8.0
  * nation (no mark) never sees the input, because the server refuses
  * `capital_name` for it.
  */
 
-import { Button, Chip, Div, FormItem, Text } from '@vkontakte/vkui';
-import { Icon12Star } from '@vkontakte/icons';
+import { Button } from '@vkontakte/vkui';
 
+import {
+  FieldLabel,
+  FieldMessage,
+  RADII,
+  TEXT_STYLES,
+  tokenVar,
+} from '../../../shared/ui';
+import { useProvinceNames } from '../../01_map/hooks/useProvinceNames';
 import {
   CreateNationTextField,
   type RegistrationTabProps,
@@ -36,63 +44,44 @@ export interface CreateNationTabTerritoriesProps
 export function CreateNationTabTerritories({
   form,
   rules,
-  hints,
   errors,
   onFieldChange,
   onOpenPicker,
   readOnly = false,
 }: CreateNationTabTerritoriesProps) {
+  const { names } = useProvinceNames();
   const provincesError = errors.provinces ?? errors.capitalProvinceId;
-  // The marked chip or, by INV-14, the first selected one. In read-only
+  // The marked row or, by INV-14, the first selected one. In read-only
   // mode the mark is fixed — a nation without one has no capital at all.
-  const capitalChip =
-    form.provinces.find((chip) => chip.value === form.capitalProvinceId) ??
-    (readOnly ? undefined : form.provinces[0]);
-  const capitalIsDefault = !readOnly && form.capitalProvinceId === null;
+  const effectiveCapital =
+    form.capitalProvinceId ?? (readOnly ? null : (form.provinces[0]?.value ?? null));
+  // The capital row first, the rest in selection order.
+  const ordered = [
+    ...form.provinces.filter((chip) => chip.value === effectiveCapital),
+    ...form.provinces.filter((chip) => chip.value !== effectiveCapital),
+  ];
+  const provinceName = (chip: { value: number; label: string }) =>
+    names.get(chip.value) ?? chip.label;
+
   return (
     <>
-      <FormItem
-        top="Провинции"
-        status={provincesError ? 'error' : 'default'}
-        bottom={
-          provincesError ??
-          (readOnly ? 'Состав провинций не меняется' : hints?.provinces)
-        }
-        data-testid="form-item-provinces"
-      >
+      <div data-testid="form-item-provinces">
+        <FieldLabel label="Провинции" required />
         <div
           style={{
             display: 'flex',
-            flexWrap: 'wrap',
-            gap: 6,
             alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
           }}
         >
-          {form.provinces.map((chip) => (
-            <Chip
-              key={chip.value}
-              value={chip.value}
-              role="option"
-              before={
-                chip.value === form.capitalProvinceId ? (
-                  <Icon12Star aria-hidden />
-                ) : undefined
-              }
-              onRemove={
-                readOnly
-                  ? undefined
-                  : () =>
-                      onFieldChange(
-                        'provinces',
-                        form.provinces.filter(
-                          (item) => item.value !== chip.value,
-                        ),
-                      )
-              }
-            >
-              {chip.label}
-            </Chip>
-          ))}
+          <span
+            style={{ ...TEXT_STYLES['body'], color: tokenVar('ink-muted') }}
+          >
+            {rules === null
+              ? `Выбрано ${form.provinces.length}`
+              : `Выбрано ${form.provinces.length} из ${rules.max_provinces}`}
+          </span>
           {!readOnly && (
             <Button
               mode="secondary"
@@ -101,33 +90,118 @@ export function CreateNationTabTerritories({
               onClick={onOpenPicker}
               data-testid="open-province-picker"
             >
-              {form.provinces.length === 0
-                ? 'Выбрать на карте'
-                : 'Изменить выбор'}
+              Выбрать на карте
             </Button>
           )}
         </div>
-      </FormItem>
-      {capitalChip !== undefined && (
-        <Div data-testid="capital-line" style={{ paddingTop: 0 }}>
-          <Text>
-            Столица: {capitalChip.label}
-            {capitalIsDefault ? ' (по умолчанию — первая выбранная)' : ''}
-          </Text>
-        </Div>
-      )}
+        {ordered.length > 0 && (
+          <div
+            role="list"
+            style={{
+              marginTop: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {ordered.map((chip) => {
+              const isCapital = chip.value === effectiveCapital;
+              return (
+                <div
+                  key={chip.value}
+                  role="listitem"
+                  data-testid="province-row"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    minHeight: 32,
+                    padding: '4px 8px',
+                    borderRadius: RADII['radius-md'],
+                    background: tokenVar('surface-inset'),
+                  }}
+                >
+                  <span
+                    style={{
+                      ...TEXT_STYLES['body'],
+                      color: tokenVar(isCapital ? 'signal-ink' : 'ink'),
+                      flex: '1 1 auto',
+                      minWidth: 0,
+                    }}
+                  >
+                    {isCapital && (
+                      <span
+                        aria-hidden="true"
+                        style={{ color: tokenVar('signal-ink') }}
+                      >
+                        {'★ '}
+                      </span>
+                    )}
+                    {provinceName(chip)}
+                  </span>
+                  {!readOnly && !isCapital && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onFieldChange('capitalProvinceId', chip.value)
+                      }
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        ...TEXT_STYLES['caption'],
+                        color: tokenVar('link'),
+                      }}
+                    >
+                      Сделать столицей
+                    </button>
+                  )}
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={`Убрать ${provinceName(chip)}`}
+                      onClick={() =>
+                        onFieldChange(
+                          'provinces',
+                          form.provinces.filter(
+                            (item) => item.value !== chip.value,
+                          ),
+                        )
+                      }
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        padding: '0 4px',
+                        cursor: 'pointer',
+                        ...TEXT_STYLES['body'],
+                        color: tokenVar('ink-muted'),
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <FieldMessage error={provincesError} />
+      </div>
       {(readOnly ? form.capitalProvinceId !== null : true) && (
-        <CreateNationTextField
-          id="nation-capital-name"
-          label="Название столицы"
-          testId="form-item-capital-name"
-          value={form.capitalName}
-          maxLength={rules?.capital_name_max_length}
-          error={errors.capitalName}
-          hint={hints?.capitalName}
-          counter
-          onChange={(v) => onFieldChange('capitalName', v)}
-        />
+        <div style={{ marginTop: 16 }}>
+          <CreateNationTextField
+            id="nation-capital-name"
+            label="Название столицы"
+            required
+            testId="form-item-capital-name"
+            value={form.capitalName}
+            maxLength={rules?.capital_name_max_length}
+            error={errors.capitalName}
+            hint="По умолчанию совпадает с названием провинции"
+            onChange={(v) => onFieldChange('capitalName', v)}
+          />
+        </div>
       )}
     </>
   );

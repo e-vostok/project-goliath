@@ -1,13 +1,17 @@
 /**
- * The pure form model of the registration window (Spec 1.3 Part 5).
+ * The pure form model of the registration window (Spec 1.3 Part 5,
+ * UI Spec 9.6 — version 0.9.0 unit 8c).
  *
  * One `RegistrationForm` object carries every NationCreateRequest field
- * across the four tabs, so switching tabs never loses or sends anything.
- * `fieldToTab` places each field on its tab, `mapErrorCodeToField` turns
- * a server `ErrorResponse.code` into the field that shows it inline,
- * `missingRequired` lists the still-empty mandatory fields (it gates the
- * single submit button and feeds the tab badges), and `toCreateRequest`
- * builds the POST /nations body.
+ * across the four tabs («Основные данные и символика», «Глава
+ * государства», «История», «Территории»), so switching tabs never loses
+ * or sends anything. `fieldToTab` places each field on its tab,
+ * `mapErrorCodeToField` turns a server `ErrorResponse.code` into the
+ * field that shows it inline, `missingRequired` lists the still-empty
+ * mandatory fields (it gates the single submit button and feeds the
+ * tab dots), and `toCreateRequest` builds the POST /nations body.
+ * The anthem field is gone from the interface — `anthem_url` is never
+ * sent (the server column stays unused).
  *
  * No React here — the container and the tests import the same logic.
  */
@@ -51,7 +55,6 @@ export interface RegistrationForm {
   portraitId: string | null;
   successionType: string;
   historyUrl: string;
-  anthemUrl: string;
   provinces: ChipOption[];
   capitalProvinceId: number | null;
   capitalName: string;
@@ -97,7 +100,6 @@ export function emptyRegistrationForm(): RegistrationForm {
     portraitId: null,
     successionType: '',
     historyUrl: '',
-    anthemUrl: '',
     provinces: [],
     capitalProvinceId: null,
     capitalName: '',
@@ -125,7 +127,6 @@ export function registrationFormIsEmpty(form: RegistrationForm): boolean {
     form.portraitId === null &&
     form.successionType === '' &&
     form.historyUrl === '' &&
-    form.anthemUrl === '' &&
     form.provinces.length === 0 &&
     form.capitalProvinceId === null &&
     form.capitalName === ''
@@ -169,7 +170,6 @@ export function fieldToTab(field: NationField): RegistrationTab {
     case 'successionType':
       return 2;
     case 'historyUrl':
-    case 'anthemUrl':
       return 3;
     case 'provinces':
     case 'capitalProvinceId':
@@ -210,8 +210,6 @@ export function mapErrorCodeToField(code: string): NationField | null {
       return 'successionType';
     case ErrorCodes.HISTORY_URL_INVALID:
       return 'historyUrl';
-    case ErrorCodes.ANTHEM_URL_INVALID:
-      return 'anthemUrl';
     case ErrorCodes.PROVINCE_TAKEN:
     case ErrorCodes.PROVINCE_NOT_FOUND:
     case ErrorCodes.PROVINCE_COUNT_OUT_OF_RANGE:
@@ -283,7 +281,10 @@ export function missingRequired(
 /**
  * Builds the POST /nations body: texts are trimmed, empty optional texts
  * become null (INV-12 stores them as NULL), `capital_province_id` stays
- * null unless the player marked a capital.
+ * null unless the player marked a capital. `anthem_url` is deliberately
+ * absent — the interface dropped the anthem field (0.9.0, unit 8c) while
+ * `NationCreateRequest` keeps the key because shared types mirror the
+ * server DTO field-for-field.
  */
 export function toCreateRequest(form: RegistrationForm): NationCreateRequest {
   const optionalText = (value: string): string | null => {
@@ -307,17 +308,17 @@ export function toCreateRequest(form: RegistrationForm): NationCreateRequest {
     portrait_id: form.portraitId,
     succession_type: form.successionType,
     history_url: form.historyUrl.trim(),
-    anthem_url: optionalText(form.anthemUrl),
-  };
+  } as NationCreateRequest;
 }
 
 /**
  * Seeds the edit form (PanelNationHome) from an existing nation: the
  * same RegistrationForm model, every missing value as the field's empty
- * state. Provinces are display-only chips labelled «Провинция N» —
- * the server never returns province names (Spec 1.3 Part 5: «столица:
- * название (провинция N)»). `capitalNameEdited` starts true: the stored
- * capital name is the player's own and must never be auto-overwritten.
+ * state. Provinces are display-only chips labelled «Провинция» — the
+ * server never returns province names and numbers are never shown;
+ * `useProvinceNames` resolves the real names on screen (UI Spec 9.6).
+ * `capitalNameEdited` starts true: the stored capital name is the
+ * player's own and must never be auto-overwritten.
  */
 export function registrationFormFromNation(
   nation: NationDTO,
@@ -336,10 +337,9 @@ export function registrationFormFromNation(
     portraitId: nation.portrait_id,
     successionType: nation.succession_type ?? '',
     historyUrl: nation.history_url ?? '',
-    anthemUrl: nation.anthem_url ?? '',
     provinces: nation.province_ids.map((id) => ({
       value: id,
-      label: `Провинция ${id}`,
+      label: 'Провинция',
     })),
     capitalProvinceId: nation.capital_province_id,
     capitalName: nation.capital_name ?? '',
@@ -350,12 +350,13 @@ export function registrationFormFromNation(
 /**
  * Builds the PATCH /nations/me body (Spec Part 3, INV-8): only fields
  * whose normalized value differs from the nation's. An optional field
- * cleared by the player goes as '' (the server stores NULL); a catalog
- * pick reset via «Без флага»/«Без портрета» likewise goes as ''. An
+ * cleared by the player goes as '' (the server stores NULL). An
  * emptied value equal to the nation's own (a NULL mandatory field the
  * player typed into and cleared) is omitted — nothing to change.
  * `capital_name` is emitted only for a nation that has a capital: the
- * server refuses the field for pre-0.8.0 nations (INV-14).
+ * server refuses the field for pre-0.8.0 nations (INV-14). A legacy
+ * NULL flag/portrait shows the first catalog entry as selected, so the
+ * first save already carries `flag_id`/`portrait_id` (0.9.0, unit 8c).
  */
 export function toUpdateRequest(
   form: RegistrationForm,
@@ -417,10 +418,6 @@ export function toUpdateRequest(
   const historyUrl = diffText(form.historyUrl, nation.history_url);
   if (historyUrl !== undefined) {
     request.history_url = historyUrl;
-  }
-  const anthemUrl = diffText(form.anthemUrl, nation.anthem_url);
-  if (anthemUrl !== undefined) {
-    request.anthem_url = anthemUrl;
   }
   if (nation.capital_province_id !== null) {
     const capitalName = diffText(form.capitalName, nation.capital_name);
