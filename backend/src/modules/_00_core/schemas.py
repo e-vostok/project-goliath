@@ -91,6 +91,41 @@ class NationDTO(BaseModel):
     history_url: str | None
     # не используется с 0.9.0, снятие — бэклог 00_core
     anthem_url: str | None
+    # Owner's player stats — since 0.9.0 (unit 14).
+    level: int
+    judge_rating: int
+
+
+class NationPublicDTO(BaseModel):
+    """
+    The public view of another player's nation (Bible §7, Spec Part 5).
+
+    Exactly the 20 keys listed in the Spec — the service fields
+    (``owner_player_id``, ``gender``, ``succession_type``, ``anthem_url``)
+    and any VK identifier can never leak: the route is declared with
+    ``response_model=NationPublicDTO``.
+    """
+
+    id: uuid.UUID
+    created_at: datetime
+    name: str
+    short_name: str | None
+    color_hex: str
+    motto: str | None
+    description: str | None
+    flag_id: str | None
+    flag_url: str | None
+    province_ids: list[int]
+    capital_province_id: int | None
+    capital_name: str | None
+    leader_name: str | None
+    leader_title: str | None
+    leader_bio: str | None
+    portrait_id: str | None
+    portrait_url: str | None
+    history_url: str | None
+    level: int
+    judge_rating: int
 
 
 class NationCreateRequest(BaseModel):

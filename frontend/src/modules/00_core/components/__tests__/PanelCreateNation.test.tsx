@@ -49,6 +49,8 @@ const NATION = {
   leader_title: 'Верховный правитель',
   history_url: 'https://vk.com/@testia-istoriya',
   created_at: '2026-09-27T00:00:00Z',
+  level: 1,
+  judge_rating: 0,
 };
 
 const submitButton = () =>
