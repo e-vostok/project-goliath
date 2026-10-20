@@ -1,7 +1,7 @@
 # 02_SYSTEM_SPECS / 03_registry
 
 > Формат игровой даты (19.10.2026, решение Project Owner): столбец «Сформировано» показывает «Месяц Год» (например, «Октябрь 2042») тем же правилом, что `00_core`; реальная дата `joined` не меняется.
-> Версия Spec: 1.4 (18.10.2026; государства показываются кратким названием и настоящим флагом из каталога `00_core` 1.3: `flag_url` больше не заглушка, добавлены поля `short_name`/`flag_id` в строки чтения ядра, Приложение B9). Предыдущая версия 1.3 (16.10.2026; новый вид фильтра `select_or_contains` для столбцов `nation` — выпадающий список всех государств реестра плюс «содержит»; прежние таблицы не меняются). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
+> Версия Spec: 1.5 (21.10.2026): ячейка `nation` получает `id`. Предыдущая версия 1.4 (18.10.2026; государства показываются кратким названием и настоящим флагом из каталога `00_core` 1.3: `flag_url` больше не заглушка, добавлены поля `short_name`/`flag_id` в строки чтения ядра, Приложение B9). Предыдущая версия 1.3 (16.10.2026; новый вид фильтра `select_or_contains` для столбцов `nation` — выпадающий список всех государств реестра плюс «содержит»; прежние таблицы не меняются). Вход: `docs/01_GAME_BIBLE/03_registry.md` (утверждена Project Owner 13.10.2026).
 > Артефакты шага: этот файл, `configs/03_registry.yaml`, `backend/src/modules/_03_registry/config_schema.py`.
 > Зависимость: `00_core`. Модули `01_map` и `02_bot` не требуются и не импортируются.
 > Релиз модуля: 0.7.0.
@@ -197,7 +197,7 @@ $$number(p) = 1 + \#\{\, q : (created\_at_q,\ id_q) < (created\_at_p,\ id_p) \,\
 
 - `player` — ячейка `person`. Профиль берётся из `registry_vk_profiles` одним запросом для всех игроков. Имя: `"{first_name} {last_name}"` без краевых пробелов; пустое или нет профиля — `fallback_name_template.format(number=number)`. `avatar_url` — `photo_url` при `status = OK`, иначе `None`. `is_fallback = true`, когда имя запасное.
 - `joined` — ячейка `date` (3.5).
-- `level`, `judge_rating` — числа; `nation` — `{name, color, flag_url}` либо `null`. `name` — отображаемое название: `short_name`, а если оно `NULL` (государство создано до 0.8.0) — полное `name`. `flag_url` — `catalog.flag_url(flag_id)` из `00_core` (адрес вида `/assets/nations/flags/<id>.png`) либо `null`, если флаг не выбран; источник не склеивает адрес сам (INV-16 `00_core`).
+- `level`, `judge_rating` — числа; `nation` — `{id, name, color, flag_url}` либо `null`; `id` — идентификатор государства (строка) либо `null`, если государство неизвестно источнику (источник `orders` хранит только снимок названия и цвета); клиент использует `id`, чтобы открыть подэкран «Государство» (версия 0.9.0, единица 14), и не показывает его. `name` — отображаемое название: `short_name`, а если оно `NULL` (государство создано до 0.8.0) — полное `name`. `flag_url` — `catalog.flag_url(flag_id)` из `00_core` (адрес вида `/assets/nations/flags/<id>.png`) либо `null`, если флаг не выбран; источник не склеивает адрес сам (INV-16 `00_core`).
 
 ### 3.3. Источник `nations`
 
@@ -242,7 +242,7 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
 | `action_text` | `{"text": str, "action": "<обработчик>:<аргумент>"}` или `null` |
 | `person` | `{"name": str, "avatar_url": str \| null, "is_fallback": bool}` |
 | `flag` | `{"color": "#RRGGBB", "image_url": str \| null}` |
-| `nation` | `{"name": str, "color": "#RRGGBB", "flag_url": str \| null}` или `null` |
+| `nation` | `{"id": str \| null, "name": str, "color": "#RRGGBB", "flag_url": str \| null}` или `null` |
 
 Форма точная: лишних ключей в ячейке нет, `cell_matches` проверяет набор ключей целиком. `date`/`time` ячейки `datetime` — текст в зоне `tz` (конструктор берёт зону параметром, источники передают `tick.tick_timezone`); `key` — Unix-секунды момента для сортировки; `day` — целые сутки от 1970-01-01 в той же зоне для фильтра `date_range`. Наивный `datetime` читается как UTC (соглашение хранения). `action` — строка вида `"order:12"`: клиент вызывает обработчик, зарегистрированный под именем до двоеточия, с остатком как аргументом (5.5).
 
@@ -359,7 +359,7 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
       "player": {"name": "Иван Петров", "avatar_url": "https://…", "is_fallback": false},
       "joined": {"text": "28 сентября 2026", "key": 20724},
       "level": 1, "judge_rating": 0,
-      "nation": {"name": "Новгород", "color": "#C0392B", "flag_url": "/assets/nations/flags/flag_placeholder_1.png"}
+      "nation": {"id": "3f2a…", "name": "Новгород", "color": "#C0392B", "flag_url": "/assets/nations/flags/flag_placeholder_1.png"}
     }}
   ]
 }
@@ -436,7 +436,7 @@ def register_table_source(
 # cell_action_text(text: str, action: str) -> dict
 # cell_person(name: str, avatar_url: str | None, is_fallback: bool) -> dict
 # cell_flag(color: str, image_url: str | None) -> dict
-# cell_nation(name: str, color: str, flag_url: str | None = None) -> dict
+# cell_nation(name: str, color: str, flag_url: str | None = None, nation_id: str | None = None) -> dict
 ```
 
 Источник читает только публичные функции своего модуля и не пишет в БД. Новый вид данных в существующей таблице: модуль-владелец добавляет ключ в `provides` своего источника (для встроенных `players` и `nations` — в `_03_registry`), затем столбец с этим `source` добавляется в конфиг.

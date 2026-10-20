@@ -483,7 +483,7 @@ register_table_source(
 Ключ строки — `o<number>`. Ячейки (формы — Spec Реестра 3.6 после расширения):
 
 - `number` — целое.
-- `nation` — `cell_nation(name, color)` по снимку; `flag_url = null`.
+- `nation` — `cell_nation(name, color)` по снимку; `flag_url = null`; `id = null`.
 - `title` — `cell_action_text(text=title, action=f"order:{number}")`.
 - `submitted` — `cell_datetime(submitted_at)`.
 - `distributed` — `cell_datetime(distributed_at)` либо пустая ячейка.
@@ -498,7 +498,7 @@ cell_datetime(moment: datetime | None, tz: str, mark: str | None = None) -> dict
 # {"date": "15.10.2026", "time": "21:21", "key": <Unix-секунды>, "day": <целые сутки от 1970>, "mark": None | "overdue"}
 # пустая: {"date": None, "time": None, "key": None, "day": None, "mark": None | "overdue"}
 cell_action_text(text: str, action: str) -> dict          # {"text": ..., "action": "order:12"}
-cell_nation(name: str, color: str, flag_url: str | None = None) -> dict
+cell_nation(name: str, color: str, flag_url: str | None = None, nation_id: str | None = None) -> dict
 ```
 
 Сортировка `datetime` — по `key` (пустые в конец, как для других типов); фильтры столбца `datetime` — `date_range` (по `day`) и `presence`; поиск и фильтр `text` для `action_text` — по `text`.
