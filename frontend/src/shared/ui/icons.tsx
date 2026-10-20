@@ -10,7 +10,13 @@ import type { ReactNode } from 'react';
 
 import { tokenVar } from './tokens';
 
-export type BlockIconName = 'person' | 'map' | 'lines' | 'document' | 'list';
+export type BlockIconName =
+  | 'person'
+  | 'map'
+  | 'lines'
+  | 'document'
+  | 'list'
+  | 'scales';
 
 const BLOCK_PATHS: Record<BlockIconName, ReactNode> = {
   person: (
@@ -36,6 +42,12 @@ const BLOCK_PATHS: Record<BlockIconName, ReactNode> = {
   ),
   list: (
     <path d="M2.2 4h1.4M2.2 8h1.4M2.2 12h1.4M5.8 4h8.4M5.8 8h8.4M5.8 12h8.4" />
+  ),
+  scales: (
+    <>
+      <path d="M8 2v11.5M5 14h6M3 4.5h10" />
+      <path d="M3 4.5L1.4 8.6h3.2zM13 4.5l-1.6 4.1h3.2z" />
+    </>
   ),
 };
 

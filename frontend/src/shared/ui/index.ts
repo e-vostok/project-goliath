@@ -31,5 +31,7 @@ export { PortraitStub } from './PortraitStub';
 export { LoadingState } from './LoadingState';
 export { ErrorState, NETWORK_ERROR_TEXT } from './ErrorState';
 export { EmptyState } from './EmptyState';
+export { Popup, PopupHost } from './Popup';
+export type { PopupProps, PopupSize } from './Popup';
 export { UiKitPage } from './UiKitPage';
 export { UiKitEntry } from './UiKitEntry';
