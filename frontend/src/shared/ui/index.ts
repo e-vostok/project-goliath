@@ -49,5 +49,7 @@ export { Popup, PopupHost } from './Popup';
 export type { PopupProps, PopupSize } from './Popup';
 export { NoticeHost, useNotice, NOTICE_TIMEOUT_MS } from './Notice';
 export type { NoticeHostProps } from './Notice';
+export { Tooltip, TooltipRow, TOOLTIP_DELAY_MS } from './Tooltip';
+export type { TooltipProps } from './Tooltip';
 export { UiKitPage } from './UiKitPage';
 export { UiKitEntry } from './UiKitEntry';

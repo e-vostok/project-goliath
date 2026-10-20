@@ -23,6 +23,7 @@ import { ProvinceChip } from './ProvinceChip';
 import { StatTile } from './StatTile';
 import { Subscreen } from './Subscreen';
 import { ThemeToggle, useTheme } from './theme';
+import { Tooltip, TooltipRow } from './Tooltip';
 import {
   FONTS,
   RADII,
@@ -84,6 +85,7 @@ export function UiKitPage() {
   return (
     <div
       ref={kitRef}
+      data-testid="app-root"
       style={{
         position: 'relative',
         width: SIZES['win-screen'],
@@ -423,6 +425,72 @@ export function UiKitPage() {
             }}
           >
             Нажатий «Повторить»: {retries}
+          </div>
+        </Section>
+
+        <Section>
+          <BlockTitle icon="list" title="Подсказка" />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: SPACING['space-4'],
+            }}
+          >
+            <Tooltip
+              content={
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: SPACING['space-2'],
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: SPACING['space-2'],
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                        background: tokenVar('action'),
+                      }}
+                    />
+                    <span
+                      style={{
+                        ...TEXT_STYLES['heading'],
+                        color: tokenVar('ink'),
+                      }}
+                    >
+                      Новгородская республика
+                    </span>
+                  </div>
+                  <TooltipRow label="Лидер" value="Борис Первый" />
+                  <TooltipRow label="Провинций" value={5} />
+                  <TooltipRow label="Столица" value="Новгород-град" />
+                </div>
+              }
+            >
+              <DemoButton onClick={() => {}}>
+                Наведите и держите
+              </DemoButton>
+            </Tooltip>
+            <span
+              style={{
+                ...TEXT_STYLES['caption'],
+                color: tokenVar('ink-muted'),
+              }}
+            >
+              Открывается через 0,5 с у курсора и следует за ним;
+              закрывается уходом курсора, щелчком, прокруткой или Esc.
+            </span>
           </div>
         </Section>
 
