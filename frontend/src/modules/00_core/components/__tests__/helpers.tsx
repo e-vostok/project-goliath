@@ -26,6 +26,8 @@ import {
 
 import { server } from '../../../../../vitest.setup';
 import type { NationRulesDTO } from '../../../../shared/types';
+import type { OrderRulesDTO } from '../../../04_orders/types';
+import type { RegistryRowsDTO } from '../../../03_registry/types';
 import { writeFormDraft } from '../../../../shared/formDraft';
 import {
   REGISTRATION_DRAFT_KEY,
@@ -97,6 +99,58 @@ export const GAME_CLOCK = {
   game_date: '2041-01-01',
   game_date_text: 'Январь 2041',
   next_tick_at: '2026-10-02T03:00:00Z',
+};
+
+/**
+ * Order limits for the «Неразрешённые приказы» tile — deliberately NOT
+ * the real config numbers: a hardcoded limit in the tile fails tests.
+ */
+export const ORDER_RULES: OrderRulesDTO = {
+  title_min_length: 4,
+  title_max_length: 77,
+  summary_min_length: 9,
+  summary_max_length: 444,
+  url_max_length: 188,
+  max_unresolved_orders: 7,
+  unresolved_orders: 2,
+};
+
+/**
+ * The Registry «players» table for the card's «Уровень»/«Судейский
+ * рейтинг» tiles: the owner's row (matched by the nation cell name +
+ * colour — the Registry hides player ids, INV-R2) and one stranger.
+ * Matches the default NATION of PanelNationHome.test (name Testia,
+ * short_name Тестия, color #e64545).
+ */
+export const REGISTRY_PLAYERS: RegistryRowsDTO = {
+  table_id: 'players',
+  total: 2,
+  truncated: false,
+  generated_at: '2026-10-20T12:00:00Z',
+  rows: [
+    {
+      key: 'p1',
+      cells: {
+        number: 1,
+        player: { name: 'Игрок №1', avatar_url: null, is_fallback: true },
+        joined: { text: '01.09.2026', key: 1 },
+        level: 3,
+        judge_rating: 12,
+        nation: { name: 'Тестия', color: '#e64545', flag_url: null },
+      },
+    },
+    {
+      key: 'p2',
+      cells: {
+        number: 2,
+        player: { name: 'Игрок №2', avatar_url: null, is_fallback: true },
+        joined: { text: '02.09.2026', key: 1 },
+        level: 8,
+        judge_rating: 40,
+        nation: { name: 'Чужая', color: '#111111', flag_url: null },
+      },
+    },
+  ],
 };
 
 /**
@@ -189,6 +243,13 @@ export function registerDefaultHandlers() {
     ),
     http.get('*/api/v1/provinces', () => HttpResponse.json(FREE_PROVINCES)),
     http.get('*/api/v1/game-clock', () => HttpResponse.json(GAME_CLOCK)),
+    http.get('*/api/v1/orders/rules', () => HttpResponse.json(ORDER_RULES)),
+    http.get('*/api/v1/orders/assigned', () =>
+      HttpResponse.json({ items: [] }),
+    ),
+    http.get('*/api/v1/registry/tables/players', () =>
+      HttpResponse.json(REGISTRY_PLAYERS),
+    ),
     http.get('*/api/v1/map/manifest', () =>
       HttpResponse.json(mswMap.manifest),
     ),
