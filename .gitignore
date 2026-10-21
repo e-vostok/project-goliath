@@ -88,6 +88,8 @@ $RECYCLE.BIN/
 # 6. ИНСТРУМЕНТ ПОДГОТОВКИ КАРТЫ (map_pipeline)
 # ==========================================
 tools/map_pipeline/out/
+# Пробы в браузере (Playwright): скриншоты и трассы — локальные артефакты
+tools/artifacts/
 # scratch / backup / platform junk
 *.bak
 *.orig
