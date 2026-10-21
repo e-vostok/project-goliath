@@ -311,6 +311,17 @@ describe('Tooltip — container, behaviour and look', () => {
     expect(box.style.pointerEvents).toBe('none');
   });
 
+  it('the trigger fills its container — the whole cell, not just the text', () => {
+    // 12b: an inline-flex wrapper shrank to the glyphs (~75 px of a
+    // 480 px cell), so sliding the pointer inside the cell closed the
+    // tip — the real-VK «doesn't follow» report.
+    vi.useFakeTimers();
+    render(<Harness />);
+    const wrapper = trigger().parentElement as HTMLElement;
+    expect(wrapper.style.display).toBe('flex');
+    expect(wrapper.style.height).toBe('100%');
+  });
+
   it('links the trigger with aria-describedby while open only', () => {
     vi.useFakeTimers();
     render(<Harness />);

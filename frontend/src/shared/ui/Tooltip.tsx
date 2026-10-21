@@ -84,14 +84,21 @@ export interface TooltipProps {
   content: ReactNode | (() => ReactNode);
   /** Hover delay before the tip opens — `TOOLTIP_DELAY_MS` (500 ms). */
   delayMs?: number;
-  /** The trigger, wrapped in an inline span that adds no layout. */
+  /** The trigger, wrapped in a span that fills its container box. */
   children: ReactNode;
 }
 
+// The trigger fills its box: an inline-flex wrapper would shrink to
+// the text and the tip would close the moment the pointer slid off
+// the glyphs while still inside the cell — the «doesn't follow» bug
+// seen in real VK (12b). `height: 100%` resolves against sized
+// containers (a table cell); elsewhere it is just auto.
 const TRIGGER_STYLE: CSSProperties = {
-  display: 'inline-flex',
+  display: 'flex',
+  alignItems: 'center',
   minWidth: 0,
   maxWidth: '100%',
+  height: '100%',
 };
 
 const TIP_STYLE: CSSProperties = {
