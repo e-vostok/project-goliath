@@ -1,8 +1,9 @@
 /**
  * AppShell — auth gate + top-level layout for module 00_core.
  *
- * Gate: ScreenSpinner while POST /auth/vk resolves; a blocking error screen
- * on failure; SessionProvider + routed panels once authenticated.
+ * Gate: the shared LoadingScreen while POST /auth/vk resolves; a blocking
+ * error screen on failure; SessionProvider + routed panels once
+ * authenticated.
  * Panel selection follows server truth (nation exists → home, else create),
  * kept in sync with the hash router.
  */
@@ -21,7 +22,6 @@ import {
   Div,
   FormStatus,
   Panel,
-  ScreenSpinner,
   SplitCol,
   SplitLayout,
   Spinner,
@@ -39,7 +39,12 @@ import { setMapEntryRequest } from '../modules/01_map/lib/mapEntryRequest';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
 import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
 import { errorText } from '../shared/errorTexts';
-import { NoticeHost, PopupHost } from '../shared/ui';
+import {
+  AuthErrorScreen,
+  LoadingScreen,
+  NoticeHost,
+  PopupHost,
+} from '../shared/ui';
 import {
   parseRegistryOrderHash,
   setRegistryEntryRequest,
@@ -115,29 +120,17 @@ export function AppShell() {
   const auth = useAuth();
 
   if (auth.status === 'loading') {
-    return <ScreenSpinner />;
+    return <LoadingScreen />;
   }
 
   if (auth.status === 'error') {
+    // The Mini App relaunches with fresh launch params every time, so
+    // retrying the exchange is a full page reload (useAuth).
     return (
-      <SplitLayout>
-        <SplitCol>
-          <Div>
-            <FormStatus mode="error" title="Не удалось войти">
-              {errorText(auth.error)}
-            </FormStatus>
-          </Div>
-          <Div>
-            <Button
-              size="l"
-              stretched
-              onClick={() => window.location.reload()}
-            >
-              Повторить
-            </Button>
-          </Div>
-        </SplitCol>
-      </SplitLayout>
+      <AuthErrorScreen
+        reason={errorText(auth.error)}
+        onRetry={() => window.location.reload()}
+      />
     );
   }
 

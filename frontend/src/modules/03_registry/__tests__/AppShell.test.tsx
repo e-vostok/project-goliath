@@ -254,6 +254,38 @@ function renderApp(overrides?: () => void) {
 
 const tab = (name: string) => screen.getByRole('tab', { name });
 
+describe('AppShell — auth gate (board «Loading», unit 12b)', () => {
+  it('shows the loading screen while POST /auth/vk resolves', () => {
+    window.location.hash = '#/';
+    renderApp();
+    // First paint — the answer has not arrived yet.
+    expect(screen.getByTestId('loading-screen')).toBeInTheDocument();
+    expect(screen.getByText('PAX ATOMICA')).toBeInTheDocument();
+    expect(screen.getByText('Загрузка…')).toBeInTheDocument();
+  });
+
+  it('shows the auth error screen with «Повторить» when /auth/vk fails', async () => {
+    window.location.hash = '#/';
+    renderApp(() => {
+      server.use(
+        http.post('*/api/v1/auth/vk', () =>
+          HttpResponse.json(
+            { detail: 'bad signature' },
+            { status: 403 },
+          ),
+        ),
+      );
+    });
+
+    await screen.findByTestId('auth-error-screen');
+    expect(screen.getByText('Ошибка')).toBeInTheDocument();
+    expect(screen.getByText(/Не удалось войти\./)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Повторить' }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('AppShell — /registry route', () => {
   it('a player without a nation opens /registry and is not redirected; «Реестр» is the active top bar tab', async () => {
     window.location.hash = '#/registry';

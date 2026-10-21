@@ -16,16 +16,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Button,
-  FormStatus,
-  ScreenSpinner,
-  Search,
-  Text,
-} from '@vkontakte/vkui';
+import { Button, FormStatus, Search, Text } from '@vkontakte/vkui';
 
 import { errorText } from '../../../shared/errorTexts';
-import { SPACING, tokenVar } from '../../../shared/ui';
+import { LoadingState, SPACING, tokenVar } from '../../../shared/ui';
 import { buildAdjacency } from '../lib/adjacency';
 import { buildOwnerMap } from '../lib/colors';
 import { formatMoscowTime } from '../lib/refresh';
@@ -341,7 +335,7 @@ export function PanelMap({ active = true }: { active?: boolean }) {
           )}
         {manifest === null || geometryState.geometry === null ? (
           manifestState.status !== 'error' &&
-          geometryState.status !== 'error' && <ScreenSpinner />
+          geometryState.status !== 'error' && <LoadingState height={520} />
         ) : (
           <MapView
             mode="view"
