@@ -357,7 +357,8 @@ export function UiKitPage() {
             style={{
               display: 'flex',
               flexWrap: 'wrap',
-              gap: 6,
+              gap: '6px 6px',
+              alignItems: 'center',
             }}
           >
             <ProvinceChip name="Стокгольм" capital />
@@ -365,6 +366,11 @@ export function UiKitPage() {
               name="Свейская равнина"
               capital
               capitalName="Королевский Вестерос"
+            />
+            <ProvinceChip
+              name="Нижние Предгорья"
+              capital
+              capitalName="Старосветская Столица-Прибрежная"
             />
             <ProvinceChip name="Вестерос" />
             <ProvinceChip name="Евле" />

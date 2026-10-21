@@ -174,12 +174,13 @@ describe('PanelNationHome — the card', () => {
     expect(within(leader).getByText('Правил долго и грозно'))
       .toBeInTheDocument();
 
-    // Territory — province NAMES in chips, the capital first with «★».
+    // Territory — province NAMES in chips, the capital first with «★»
+    // (the star is its own element — match the chip by its label text).
     const territory = screen.getByTestId('nation-territory-block');
     const capitalChip = await within(territory).findByText(
-      '★ Столицево (Альфа)',
+      'Столицево (Альфа)',
     );
-    expect(capitalChip).toBeInTheDocument();
+    expect(capitalChip).toHaveTextContent('★ Столицево (Альфа)');
     expect(within(territory).getByText('Бета')).toBeInTheDocument();
     // Province numbers are shown nowhere.
     expect(within(territory).queryByText(/1001|1002/))
@@ -209,8 +210,9 @@ describe('PanelNationHome — the card', () => {
     renderHome();
     const territory = screen.getByTestId('nation-territory-block');
     const capitalChip = await within(territory).findByText(
-      '★ Столицево (Альфа)',
+      'Столицево (Альфа)',
     );
+    expect(capitalChip).toHaveTextContent('★ Столицево (Альфа)');
     const chips = within(territory).getAllByText(/Бета|Столицево/);
     expect(chips[0]).toBe(capitalChip);
     expect(chips).toHaveLength(2);
@@ -221,7 +223,7 @@ describe('PanelNationHome — the card', () => {
       ...NATION,
       anthem_url: 'https://vk.com/music/playlist/-1_2',
     });
-    await screen.findByText('★ Столицево (Альфа)');
+    await screen.findByText('Столицево (Альфа)');
 
     expect(screen.queryByText('Пол')).not.toBeInTheDocument();
     expect(screen.queryByText('Мужской')).not.toBeInTheDocument();

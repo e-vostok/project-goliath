@@ -29,11 +29,16 @@ function ProvinceChipPlaceholder() {
       data-testid="province-chip-placeholder"
       aria-hidden="true"
       style={{
+        ...TEXT_STYLES['body'],
+        display: 'inline-flex',
+        alignItems: 'center',
+        height: 24,
+        lineHeight: '16px',
+        padding: '0 8px',
+        boxSizing: 'border-box',
         background: tokenVar('surface-inset'),
         borderRadius: RADII['radius-sm'],
-        padding: '2px 8px',
         color: 'transparent',
-        ...TEXT_STYLES['body'],
       }}
     >
       Провинция
@@ -64,7 +69,8 @@ export function TerritoryBlock({
         style={{
           display: 'flex',
           flexWrap: 'wrap',
-          gap: 6,
+          gap: '6px 6px',
+          alignItems: 'center',
         }}
       >
         {ordered.length === 0 ? (
