@@ -273,7 +273,11 @@ export function TextArea({
         style={{
           ...inputBase,
           padding: '8px 12px',
+          // Vertical drag only, never below the initial rows height
+          // (acceptance 12b) and never past the 320 px cap.
           resize: 'vertical',
+          minHeight: `calc(${rows} * 20px + 16px)`,
+          maxHeight: 320,
           border: `1px solid ${tokenVar(error ? 'danger' : 'ink-faint')}`,
         }}
       />
