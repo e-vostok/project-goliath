@@ -504,7 +504,8 @@ export function ProvincePicker({
             data-testid="picker-capital-caption"
             style={{
               marginLeft: 'auto',
-              flexShrink: 0,
+              flexShrink: 1,
+              minWidth: 0,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
