@@ -211,6 +211,42 @@ describe('ProvincePicker', () => {
     expect(doneButton()).toBeEnabled();
   });
 
+  it('keeps the info row one fixed 48px line across every selection state', async () => {
+    renderPicker({}, { limits: { min: 1, max: 5 } });
+    await pickerReady();
+    const row = () => screen.getByTestId('picker-info-row');
+    const connectivity = () => screen.getByTestId('picker-connectivity');
+
+    // 0 selected — the caption is there from the first render; the
+    // reserved connectivity slot is empty but keeps its min-width.
+    expect(row().style.height).toBe('48px');
+    expect(row().style.flexWrap).toBe('nowrap');
+    expect(row().style.overflow).toBe('hidden');
+    expect(row().style.whiteSpace).toBe('nowrap');
+    const caption = screen.getByTestId('picker-capital-caption');
+    expect(caption).toHaveTextContent(
+      'Правая кнопка мыши по выбранной провинции — столица',
+    );
+    expect(caption.style.marginLeft).toBe('auto');
+    expect(connectivity().textContent).toBe('');
+    expect(connectivity().style.minWidth).toBe('130px');
+
+    // 1 selected — the verdict appears; the row stays 48 px.
+    clickNode(1005);
+    expect(connectivity()).toHaveTextContent('Территория связна');
+    expect(row().style.height).toBe('48px');
+
+    // 5 selected across two components — still one line, and the map
+    // block keeps its fixed 520 px.
+    for (const id of [1003, 1004, 1006, 1007]) {
+      clickNode(id);
+    }
+    expect(counter()).toBe('Выбрано 5 из 5 · минимум 1');
+    expect(connectivity()).toHaveTextContent('Не связна: 2 части');
+    expect(row().style.height).toBe('48px');
+    expect(screen.getByTestId('picker-map').style.height).toBe('520px');
+  });
+
   it('Готово asks the server and returns ordered ids + names', async () => {
     const { onDone, stub } = renderPicker();
     await pickerReady();
