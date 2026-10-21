@@ -2,7 +2,8 @@
  * PanelNationHome — the nation card and the edit form (Spec 1.3 Part 5,
  * UI Spec 9.1 «Штаб», mockup «Main», version 0.9.0 unit 8b).
  *
- * Card covers: header (flag/stub, «ГОСУДАРСТВО · краткое», display
+ * Card covers: header (flag/stub, «Кратко: краткое» when it differs
+ * from the full name, display
  * name, motto, colour), the four stat tiles («N из M» from
  * /orders/rules, level/rating — the nation's own fields since 0.9.0),
  * leader block (no captions, title hidden when empty),
@@ -130,11 +131,11 @@ describe('PanelNationHome — the card', () => {
     };
     renderHome(nation);
 
-    // Header — flag image, «ГОСУДАРСТВО · краткое», display name,
+    // Header — flag image, «Кратко: краткое», display name,
     // motto, colour swatch + HEX.
     expect(screen.getByAltText('Флаг Testia')).toBeInTheDocument();
     const header = screen.getByTestId('nation-card-header');
-    expect(within(header).getByText('Государство · Тестия'))
+    expect(within(header).getByText('Кратко: Тестия'))
       .toBeInTheDocument();
     expect(within(header).getByText('Testia')).toBeInTheDocument();
     expect(within(header).getByText('Север помнит всё'))
@@ -196,6 +197,14 @@ describe('PanelNationHome — the card', () => {
     expect(history).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it('shows no label line when the short name is missing or equals the full name', async () => {
+    renderHome({ ...NATION, short_name: NATION.name });
+    const header = screen.getByTestId('nation-card-header');
+    // The duplicated «Testia = Тестия» line is meaningless — never shown.
+    expect(within(header).queryByText(/Кратко:/)).not.toBeInTheDocument();
+    expect(within(header).getByText('Testia')).toBeInTheDocument();
+  });
+
   it('the capital chip goes first and keeps the «★ Столица (Провинция)» form', async () => {
     renderHome();
     const territory = screen.getByTestId('nation-territory-block');
@@ -251,11 +260,12 @@ describe('PanelNationHome — the card', () => {
     expect(screen.getByLabelText('Заглушка флага')).toBeInTheDocument();
     expect(screen.getAllByLabelText('Заглушка портрета').length)
       .toBeGreaterThan(0);
+    // No short name → no «Кратко:» line at all.
     expect(
-      within(screen.getByTestId('nation-card-header')).getByText(
-        'Государство',
+      within(screen.getByTestId('nation-card-header')).queryByText(
+        /Кратко:/,
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
       within(screen.getByTestId('nation-leader-block')).getByText(
         'не указано',

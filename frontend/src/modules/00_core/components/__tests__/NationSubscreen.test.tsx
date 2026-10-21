@@ -80,7 +80,7 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
       'aria-label',
       'Реестр / Государство · Новгород',
     );
-    expect(screen.getByText('Государство · НВГ')).toBeInTheDocument();
+    expect(screen.getByText('Кратко: НВГ')).toBeInTheDocument();
     expect(screen.getByText('Слово и дело')).toBeInTheDocument();
 
     // Exactly three tiles — no «Приказы» tile, no «Изменить» button;
