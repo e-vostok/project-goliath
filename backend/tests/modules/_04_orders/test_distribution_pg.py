@@ -14,24 +14,22 @@ tests/fixtures/postgres.py).
 from __future__ import annotations
 
 import asyncio
-import uuid
 
 import pytest
 from sqlalchemy import func, select
 
 from modules._00_core.models import Player
 from modules._04_orders.models import Order
-from modules._04_orders.service import OrderService
 from tests.fixtures.factories import (
     NationFactory,
     PlayerFactory,
     make_order,
 )
 from tests.fixtures.postgres import (
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.modules._04_orders.test_submission_pg import (
     _submit_and_commit,
@@ -40,9 +38,7 @@ from tests.modules._04_orders.test_submission_pg import (
 pytestmark = pytest.mark.postgres
 
 
-async def _seed_player(
-    session, vk_user_id: int, *, judge_rating: int
-) -> Player:
+async def _seed_player(session, vk_user_id: int, *, judge_rating: int) -> Player:
     """A nation owner with a chosen judge rating (below 0 keeps them
     out of the candidate set under the real config's min_rating = 0)."""
     player = PlayerFactory.build(
@@ -73,15 +69,9 @@ class TestConcurrentDistribute:
         max_pending = orders_started.judge.max_pending_verdicts
         async with pg_db() as session:
             judge = await _seed_player(session, 772001, judge_rating=0)
-            filler = await _seed_player(
-                session, 772002, judge_rating=-1
-            )
-            author_a = await _seed_player(
-                session, 772003, judge_rating=-1
-            )
-            author_b = await _seed_player(
-                session, 772004, judge_rating=-1
-            )
+            filler = await _seed_player(session, 772002, judge_rating=-1)
+            author_a = await _seed_player(session, 772003, judge_rating=-1)
+            author_b = await _seed_player(session, 772004, judge_rating=-1)
             # One free slot: the only eligible judge is one pending
             # verdict below the limit.
             for _ in range(max_pending - 1):
@@ -98,15 +88,15 @@ class TestConcurrentDistribute:
 
         async with pg_db() as session:
             new_orders = (
-                await session.execute(
-                    select(Order).where(
-                        Order.author_player_id.in_(author_ids)
+                (
+                    await session.execute(
+                        select(Order).where(Order.author_player_id.in_(author_ids))
                     )
                 )
-            ).scalars().all()
-            assigned_to_judge = [
-                o for o in new_orders if o.judge_player_id == judge_id
-            ]
+                .scalars()
+                .all()
+            )
+            assigned_to_judge = [o for o in new_orders if o.judge_player_id == judge_id]
             # The free slot went to exactly one of the two orders.
             assert len(assigned_to_judge) == 1
             # ...and the judge's pending count reached, never crossed,

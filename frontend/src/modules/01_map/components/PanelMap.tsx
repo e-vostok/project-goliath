@@ -2,32 +2,30 @@
  * PanelMap — the map screen (Spec Part 5 «Клиентские компоненты»,
  * «Вход на экран карты»).
  *
- * Top row: search field, the big-window button, «Назад» (hidden in
- * fullscreen). Centre: MapView filling the remaining space, NodeCard
- * floating right. Bottom: status line «Ход N · обновлено ЧЧ:ММ»
- * (Moscow time) with «данные устарели» when 3.10 says so, the colour
- * legend and the attribution string.
+ * Top row: search field and the big-window button. Centre: MapView
+ * filling the remaining space, NodeCard floating right. Bottom:
+ * status line «Ход N · обновлено ЧЧ:ММ» (Moscow time) with «данные
+ * устарели» when 3.10 says so, the colour legend and the attribution
+ * string. Navigation lives in the shared top bar — no own «Назад».
  *
- * The screen is position:fixed — it covers the app viewport in normal
- * view and the whole monitor once the page goes fullscreen, regardless
- * of how VKUI lays out the surrounding panels.
+ * In normal view the screen is an ordinary 780 px block in the page
+ * flow (UI Spec 9.5 — the VK window follows the content height).
+ * Once the page goes fullscreen the panel turns position:fixed and
+ * covers the whole monitor, regardless of how VKUI lays out the
+ * surrounding panels.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
-import {
-  Button,
-  FormStatus,
-  ScreenSpinner,
-  Search,
-  Text,
-} from '@vkontakte/vkui';
+import { Button, FormStatus, Search, Text } from '@vkontakte/vkui';
 
+import { errorText } from '../../../shared/errorTexts';
+import { LoadingState, SPACING, tokenVar } from '../../../shared/ui';
 import { buildAdjacency } from '../lib/adjacency';
 import { buildOwnerMap } from '../lib/colors';
 import { formatMoscowTime } from '../lib/refresh';
 import { displayName } from '../lib/search';
 import type { MapNodeDTO } from '../types';
+import { takeMapEntryRequest } from '../lib/mapEntryRequest';
 import { useBigWindow } from '../hooks/useBigWindow';
 import { useMapBorders } from '../hooks/useMapBorders';
 import { useMapGeometry } from '../hooks/useMapGeometry';
@@ -44,8 +42,7 @@ const LEGEND: { key: string; label: string }[] = [
   { key: 'outside', label: 'За краем игрового поля' },
 ];
 
-export function PanelMap() {
-  const navigator = useRouteNavigator();
+export function PanelMap({ active = true }: { active?: boolean }) {
   const manifestState = useMapManifest();
   const manifest =
     manifestState.status === 'ready' ? manifestState.manifest : null;
@@ -124,6 +121,28 @@ export function PanelMap() {
     return () => window.removeEventListener('keydown', onKey);
   }, [searchOpen, selectedId]);
 
+  // «Показать на карте» of the nation subscreen (unit 14c): the
+  // stored entry request selects and centres the province once the
+  // panel is active and the manifest has arrived — the same
+  // select+focus a search result gets. A request for a node the
+  // manifest does not know is dropped; a read consumes it.
+  useEffect(() => {
+    if (!active || manifest === null) {
+      return;
+    }
+    const request = takeMapEntryRequest();
+    if (request === null) {
+      return;
+    }
+    const node = nodesById.get(request.provinceId);
+    if (node === undefined) {
+      return;
+    }
+    focusSeq.current += 1;
+    setSelectedId(node.id);
+    setFocus({ seq: focusSeq.current, mode: 'fit', bbox: node.bbox });
+  }, [active, manifest, nodesById]);
+
   const chooseResult = (node: MapNodeDTO) => {
     pickNode(node, 'fit');
     setSearchOpen(false);
@@ -174,21 +193,35 @@ export function PanelMap() {
   return (
     <div
       data-testid="panel-map"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 10,
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--vkui--color_background)',
-      }}
+      style={
+        bigWindow.isFullscreen
+          ? {
+              // Fullscreen covers the whole monitor, top bar too.
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              background: tokenVar('ground'),
+            }
+          : {
+              // Normal view: an ordinary block in the page flow.
+              height: 780,
+              display: 'flex',
+              flexDirection: 'column',
+              background: tokenVar('ground'),
+            }
+      }
     >
       <div
         style={{
           display: 'flex',
           gap: 8,
           alignItems: 'center',
-          padding: '8px 12px',
+          padding: SPACING['space-4'],
         }}
       >
         <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
@@ -264,11 +297,6 @@ export function PanelMap() {
               : 'Развернуть на весь экран'}
           </Button>
         )}
-        {!bigWindow.isFullscreen && (
-          <Button mode="secondary" onClick={() => navigator.push('/')}>
-            Назад
-          </Button>
-        )}
       </div>
 
       {bigWindow.error && (
@@ -279,7 +307,7 @@ export function PanelMap() {
         {manifestState.status === 'error' && (
           <div style={{ padding: 24 }}>
             <FormStatus mode="error" title="Не удалось загрузить карту">
-              {manifestState.error.message}
+              {errorText(manifestState.error)}
             </FormStatus>
             <Button
               size="l"
@@ -294,7 +322,7 @@ export function PanelMap() {
           geometryState.status === 'error' && (
             <div style={{ padding: 24 }}>
               <FormStatus mode="error" title="Не удалось загрузить геометрию">
-                {geometryState.error.message}
+                {errorText(geometryState.error)}
               </FormStatus>
               <Button
                 size="l"
@@ -307,7 +335,7 @@ export function PanelMap() {
           )}
         {manifest === null || geometryState.geometry === null ? (
           manifestState.status !== 'error' &&
-          geometryState.status !== 'error' && <ScreenSpinner />
+          geometryState.status !== 'error' && <LoadingState height={520} />
         ) : (
           <MapView
             mode="view"

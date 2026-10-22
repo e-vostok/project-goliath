@@ -19,7 +19,6 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { ModalRoot } from '@vkontakte/vkui';
 
 import { ProvincePicker } from '../components/ProvincePicker';
 import { PanelMap } from '../components/PanelMap';
@@ -56,15 +55,12 @@ function renderPicker(
   const onDone = vi.fn();
   const onCancel = vi.fn();
   renderWithSession(
-    <ModalRoot activeModal="picker">
-      <ProvincePicker
-        id="picker"
-        limits={LIMITS}
-        onDone={onDone}
-        onCancel={onCancel}
-        {...props}
-      />
-    </ModalRoot>,
+    <ProvincePicker
+      limits={LIMITS}
+      onDone={onDone}
+      onCancel={onCancel}
+      {...props}
+    />,
   );
   return { onDone, onCancel, stub };
 }
@@ -215,6 +211,42 @@ describe('ProvincePicker', () => {
     expect(doneButton()).toBeEnabled();
   });
 
+  it('keeps the info row one fixed 48px line across every selection state', async () => {
+    renderPicker({}, { limits: { min: 1, max: 5 } });
+    await pickerReady();
+    const row = () => screen.getByTestId('picker-info-row');
+    const connectivity = () => screen.getByTestId('picker-connectivity');
+
+    // 0 selected — the caption is there from the first render; the
+    // reserved connectivity slot is empty but keeps its min-width.
+    expect(row().style.height).toBe('48px');
+    expect(row().style.flexWrap).toBe('nowrap');
+    expect(row().style.overflow).toBe('hidden');
+    expect(row().style.whiteSpace).toBe('nowrap');
+    const caption = screen.getByTestId('picker-capital-caption');
+    expect(caption).toHaveTextContent(
+      'Правая кнопка мыши по выбранной провинции — столица',
+    );
+    expect(caption.style.marginLeft).toBe('auto');
+    expect(connectivity().textContent).toBe('');
+    expect(connectivity().style.minWidth).toBe('130px');
+
+    // 1 selected — the verdict appears; the row stays 48 px.
+    clickNode(1005);
+    expect(connectivity()).toHaveTextContent('Территория связна');
+    expect(row().style.height).toBe('48px');
+
+    // 5 selected across two components — still one line, and the map
+    // block keeps its fixed 520 px.
+    for (const id of [1003, 1004, 1006, 1007]) {
+      clickNode(id);
+    }
+    expect(counter()).toBe('Выбрано 5 из 5 · минимум 1');
+    expect(connectivity()).toHaveTextContent('Не связна: 2 части');
+    expect(row().style.height).toBe('48px');
+    expect(screen.getByTestId('picker-map').style.height).toBe('520px');
+  });
+
   it('Готово asks the server and returns ordered ids + names', async () => {
     const { onDone, stub } = renderPicker();
     await pickerReady();
@@ -301,6 +333,20 @@ describe('ProvincePicker', () => {
     expect(screen.queryByText('Эпсилон', { selector: 'span' })).toBeNull();
   });
 
+  it('the initial focus does not open the search list', async () => {
+    const { onCancel } = renderPicker();
+    await pickerReady();
+    // The window autofocuses the search field — the list must stay
+    // closed until the player types or clicks the field.
+    expect(
+      screen.queryByTestId('picker-search-results'),
+    ).not.toBeInTheDocument();
+    // …and the very first Esc already closes the picker (no swallowed
+    // keypress on an invisible list).
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
   it('Esc closes the search list first, then the picker', async () => {
     const { onCancel } = renderPicker();
     await pickerReady();
@@ -309,16 +355,17 @@ describe('ProvincePicker', () => {
     fireEvent.change(search, { target: { value: 'эпс' } });
     await screen.findByTestId('picker-search-results');
 
-    // First Esc: the list closes, the modal stays.
+    // First Esc: the list closes itself (preventDefault), the popup
+    // ignores the consumed event and stays open.
     fireEvent.keyDown(search, { key: 'Escape' });
     expect(
       screen.queryByTestId('picker-search-results'),
     ).not.toBeInTheDocument();
     expect(onCancel).not.toHaveBeenCalled();
 
-    // Second Esc — with focus on modal content (VKUI's Search swallows
-    // Esc while focused; the modal's close path sees events inside it).
-    fireEvent.keyDown(screen.getByTestId('province-picker'), {
+    // Second Esc — an unconsumed one inside the window — reaches the
+    // Popup's document listener → onCancel, selection unchanged.
+    fireEvent.keyDown(screen.getByTestId('picker-chips'), {
       key: 'Escape',
     });
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -335,14 +382,11 @@ describe('ProvincePicker', () => {
       <RouterProvider router={router}>
         <>
           <PanelMap />
-          <ModalRoot activeModal="picker">
-            <ProvincePicker
-              id="picker"
-              limits={LIMITS}
-              onDone={vi.fn()}
-              onCancel={vi.fn()}
-            />
-          </ModalRoot>
+          <ProvincePicker
+            limits={LIMITS}
+            onDone={vi.fn()}
+            onCancel={vi.fn()}
+          />
         </>
       </RouterProvider>,
     );
@@ -361,7 +405,7 @@ describe('ProvincePicker', () => {
     // The DOM contract of the fix (jsdom has no layout engine, so the
     // sizes themselves stay 0 here — the assertion is that the chips
     // box is ALWAYS mounted with the same reserved height + internal
-    // scroll, hence the flex-1 map area below can never change size).
+    // scroll, hence the fixed-height map area can never change size).
     const reservedHeight = chipsArea.style.height;
     expect(reservedHeight).not.toBe('');
     expect(chipsArea.style.overflowY).toBe('auto');
@@ -459,5 +503,50 @@ describe('ProvincePicker', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
     expect(onDone.mock.calls[0][0]).toEqual([1004, 1003]);
     expect(onDone.mock.calls[0][2]).toBe(1004);
+  });
+
+  it('fixed layout: the map block is 520 px, the chips sit below it and nothing uses vh', async () => {
+    renderPicker();
+    await pickerReady();
+    const mapArea = screen.getByTestId('picker-map');
+    expect(mapArea.style.height).toBe('520px');
+
+    // Chips are BELOW the map (mockup order), the server message last.
+    const chipsArea = screen.getByTestId('picker-chips');
+    expect(
+      mapArea.compareDocumentPosition(chipsArea) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // No window-height units anywhere inside the dialog — the window
+    // works with the automatic VK window height.
+    const dialog = screen.getByTestId('province-picker');
+    const vhOffenders = [dialog, ...dialog.querySelectorAll('*')].filter(
+      (el) => (el.getAttribute('style') ?? '').includes('vh'),
+    );
+    expect(vhOffenders).toEqual([]);
+  });
+
+  it('a dirty picker ignores Esc and the scrim; «Отмена» still closes it', async () => {
+    const { onCancel } = renderPicker(
+      {},
+      { initialSelectedIds: [1003, 1004] },
+    );
+    await pickerReady();
+
+    // Pristine (selection equals the initial one): Esc reports cancel.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // Change the selection → dirty: Esc and the scrim stop working.
+    clickNode(1005);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('province-picker-scrim'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // «Отмена» closes regardless of the dirty state.
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(onCancel).toHaveBeenCalledTimes(2);
   });
 });

@@ -20,16 +20,16 @@ every profile row is fresh.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from core.tick.orchestrator import TickOrchestrator, TickOutcome
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Player
+from modules._00_core.service import NationService
 from modules._00_core.tick_handler import register_tick_handlers
-from modules._03_registry.dates import game_date_text
 from modules._03_registry.profile_worker import install_wake_event, run_cycle
 from modules._03_registry.vk_profiles import VkProfilesClient
 from tests.fixtures.fake_vk import FakeVk
@@ -41,9 +41,8 @@ CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 TABLES_URL = "/api/v1/registry/tables"
 NATIONS_URL = "/api/v1/nations"
-NATIONS_ME_URL = "/api/v1/nations/me"
 
-NOW = datetime(2026, 10, 14, 9, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -61,16 +60,14 @@ async def _seed_clock(session, current_turn: int = 0) -> GameClock:
         id=1,
         current_turn=current_turn,
         last_tick_at=None,
-        next_tick_at=datetime.now(timezone.utc),
+        next_tick_at=datetime.now(UTC),
     )
     session.add(clock)
     await session.flush()
     return clock
 
 
-def _nation_body(
-    name: str, color: str, province_ids: list[int]
-) -> dict:
+def _nation_body(name: str, color: str, province_ids: list[int]) -> dict:
     return {
         "name": name,
         "color_hex": color,
@@ -155,10 +152,12 @@ class TestScenarioA:
         assert n1["cells"]["name"] == "Северная Марка"
         assert n1["cells"]["flag"] == {
             "color": "#AA1111",
-            "image_url": None,
+            "image_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert n1["cells"]["formed"] == {
-            "text": game_date_text(compute_game_date(0, CORE_CONFIG)),
+            "text": format_game_date(
+                compute_game_date(0, CORE_CONFIG), CORE_CONFIG
+            ),
             "key": 0,
         }
         assert n1["cells"]["provinces"] == 5
@@ -166,7 +165,9 @@ class TestScenarioA:
         assert n2["cells"]["number"] == 2
         assert n2["cells"]["name"] == "Ладожский Союз"
         assert n2["cells"]["formed"] == {
-            "text": game_date_text(compute_game_date(1, CORE_CONFIG)),
+            "text": format_game_date(
+                compute_game_date(1, CORE_CONFIG), CORE_CONFIG
+            ),
             "key": 1,
         }
         assert n2["cells"]["provinces"] == 5
@@ -185,32 +186,28 @@ class TestScenarioA:
         assert [row["cells"]["number"] for row in p_rows] == [1, 2, 3]
         assert p_rows[0]["cells"]["player"]["name"] == "Игрок №1"
         assert p_rows[0]["cells"]["nation"] == {
+            "id": nation1_id,
             "name": "Северная Марка",
             "color": "#AA1111",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert p_rows[1]["cells"]["nation"] == {
+            "id": nation2_id,
             "name": "Ладожский Союз",
             "color": "#22BB33",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)
 
-        resp = await client.get(
-            TABLES_URL, headers=bearer_headers(players[2].id)
-        )
+        resp = await client.get(TABLES_URL, headers=bearer_headers(players[2].id))
         assert resp.status_code == 200
         _assert_no_identifiers(resp.text, players)
 
-        # Player 1 deletes their nation through the real endpoint.
-        resp = await client.request(
-            "DELETE",
-            NATIONS_ME_URL,
-            headers=bearer_headers(players[0].id),
-            json={"confirm": True},
-        )
-        assert resp.status_code == 204
+        # The first nation is deleted (the player DELETE route is gone
+        # since 0.9.0 — the service is the only entry point left).
+        await NationService.delete(test_db_session, nation_id=nation1_id)
+        await test_db_session.commit()
 
         # The nations table renumbers; the players table loses the cell.
         resp = await client.get(
@@ -235,9 +232,10 @@ class TestScenarioA:
         assert [row["key"] for row in p_rows] == ["p1", "p2", "p3"]
         assert p_rows[0]["cells"]["nation"] is None
         assert p_rows[1]["cells"]["nation"] == {
+            "id": nation2_id,
             "name": "Ладожский Союз",
             "color": "#22BB33",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)
@@ -287,15 +285,13 @@ class TestScenarioB:
                 {"id": 9400002, "deactivated": "banned"},
             ]
         )
-        vk_client = VkProfilesClient(
-            profiles, "test-token", transport=fake.transport
-        )
+        vk_client = VkProfilesClient(profiles, "test-token", transport=fake.transport)
         await test_db_session.commit()
         await run_cycle(
             session_factory,
             vk_client,
             profiles,
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
         )
         await vk_client.aclose()
 
@@ -325,8 +321,6 @@ class TestScenarioB:
         assert resp.status_code == 200
         _assert_no_identifiers(resp.text, [p_ok, p_dead])
 
-        resp = await client.get(
-            TABLES_URL, headers=bearer_headers(p_ok.id)
-        )
+        resp = await client.get(TABLES_URL, headers=bearer_headers(p_ok.id))
         assert resp.status_code == 200
         _assert_no_identifiers(resp.text, [p_ok, p_dead])

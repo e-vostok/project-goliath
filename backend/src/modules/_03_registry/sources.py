@@ -14,12 +14,12 @@ grow with the number of players.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._00_core.calendar import compute_game_date
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.catalog import flag_url
 from modules._00_core.service import (
     NationService,
@@ -31,7 +31,7 @@ from modules._03_registry.cells import (
     cell_nation,
     cell_person,
 )
-from modules._03_registry.dates import game_date_text, real_date_parts
+from modules._03_registry.dates import real_date_parts
 from modules._03_registry.models import RegistryVkProfile
 from modules._03_registry.profile_worker import aware_utc, request_wake
 from modules._03_registry.registry import RegistryRow, register_table_source
@@ -41,9 +41,7 @@ from modules._03_registry.registry import RegistryRow, register_table_source
 PLAYERS_PROVIDES = frozenset(
     {"number", "player", "joined", "level", "judge_rating", "nation"}
 )
-NATIONS_PROVIDES = frozenset(
-    {"number", "name", "flag", "formed", "provinces"}
-)
+NATIONS_PROVIDES = frozenset({"number", "name", "flag", "formed", "provinces"})
 
 
 async def load_players(session: AsyncSession) -> list[RegistryRow]:
@@ -73,9 +71,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     profiles: dict[str, RegistryVkProfile] = {}
     if player_ids:
         result = await session.execute(
-            select(RegistryVkProfile).where(
-                RegistryVkProfile.player_id.in_(player_ids)
-            )
+            select(RegistryVkProfile).where(RegistryVkProfile.player_id.in_(player_ids))
         )
         profiles = {p.player_id: p for p in result.scalars().all()}
 
@@ -84,7 +80,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     # retry (next_attempt_at in the future) never do — an unreachable
     # VK adds no load from table opens. A plain function call: a no-op
     # while the worker is not running.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if any(
         (profile := profiles.get(row.player_id)) is None
         or aware_utc(profile.next_attempt_at) <= now
@@ -103,9 +99,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
                 avatar_url = profile.photo_url
         is_fallback = name == ""
         if is_fallback:
-            name = registry_config.profiles.fallback_name_template.format(
-                number=number
-            )
+            name = registry_config.profiles.fallback_name_template.format(number=number)
         joined_text, joined_key = real_date_parts(
             row.created_at, core_config.tick.tick_timezone
         )
@@ -123,6 +117,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
                             row.nation_short_name or row.nation_name,
                             row.nation_color,
                             flag_url(row.nation_flag_id),
+                            nation_id=row.nation_id,
                         )
                         if row.nation_id is not None
                         else None
@@ -163,8 +158,9 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
                     "name": row.short_name or row.name,
                     "flag": cell_flag(row.color_hex, flag_url(row.flag_id)),
                     "formed": cell_date(
-                        game_date_text(
-                            compute_game_date(row.created_turn, core_config)
+                        format_game_date(
+                            compute_game_date(row.created_turn, core_config),
+                            core_config,
                         ),
                         row.created_turn,
                     ),

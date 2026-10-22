@@ -13,7 +13,8 @@ import hashlib
 import hmac
 import time
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -28,8 +29,8 @@ from modules._00_core.models import GameClock, Nation, Player, Province
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import make_land_province
 
-TEST_VK_SECRET = "test-vk-app-secret"
-TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
+TEST_VK_SECRET = "test-vk-app-secret"  # noqa: S105
+TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"  # noqa: S105
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -67,14 +68,13 @@ def env_secrets(monkeypatch):
 @pytest_asyncio.fixture
 async def client(test_db_session):
     """HTTP client bound to the real app, backed by the test DB session."""
+
     async def _override_get_session():
         yield test_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
 
@@ -100,8 +100,11 @@ async def seed_provinces(session, ids: list[int]) -> list[Province]:
 
 
 async def seed_nation(
-    session, player: Player, name: str = "Existing Nation",
-    color_hex: str = "#112233", province_ids: list[int] | None = None,
+    session,
+    player: Player,
+    name: str = "Existing Nation",
+    color_hex: str = "#112233",
+    province_ids: list[int] | None = None,
     legacy: bool = False,
     short_name: str | None = None,
 ) -> Nation:
@@ -122,7 +125,7 @@ async def seed_nation(
                 "short_name": short_name or name[:16],
             }
         ),
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         created_turn=0,
     )
     session.add(nation)
@@ -147,7 +150,7 @@ class TestAuthVk:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["token_type"] == "bearer"
+        assert body["token_type"] == "bearer"  # noqa: S105
         assert body["expires_in"] == CORE_CONFIG.auth.jwt_ttl_minutes * 60
         assert body["player"]["vk_user_id"] == 555
         assert body["access_token"]
@@ -178,7 +181,8 @@ class TestAuthVk:
             "/api/v1/auth/vk",
             json={
                 "launch_params": make_launch_params(
-                    vk_user_id=555, secret="wrong-secret"
+                    vk_user_id=555,
+                    secret="wrong-secret",  # noqa: S106
                 )
             },
         )
@@ -207,9 +211,7 @@ class TestPlayersMe:
     async def test_returns_current_player(self, client, test_db_session):
         player = await seed_player(test_db_session)
 
-        resp = await client.get(
-            "/api/v1/players/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/players/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
@@ -222,9 +224,7 @@ class TestNationEndpoints:
 
     async def test_create_nation_happy_path(self, client, test_db_session):
         player = await seed_player(test_db_session)
-        await seed_provinces(
-            test_db_session, [1001, 1002, 1003, 1004, 1005]
-        )
+        await seed_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005])
 
         resp = await client.post(
             "/api/v1/nations",
@@ -252,17 +252,16 @@ class TestNationEndpoints:
         # INV-14: the capital defaults to the first province as sent.
         assert body["capital_province_id"] == 1001
         assert body["capital_name"] == VALID_PROFILE["capital_name"]
+        # The owner's stats ride the response since 0.9.0 (unit 14).
+        assert body["level"] == player.level
+        assert body["judge_rating"] == player.judge_rating
 
     async def test_get_nations_me(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002])
-        nation = await seed_nation(
-            test_db_session, player, province_ids=[1001, 1002]
-        )
+        nation = await seed_nation(test_db_session, player, province_ids=[1001, 1002])
 
-        resp = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
@@ -272,9 +271,7 @@ class TestNationEndpoints:
     async def test_get_nations_me_not_found(self, client, test_db_session):
         player = await seed_player(test_db_session)
 
-        resp = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 404
         assert resp.json()["code"] == "NATION_NOT_FOUND"
@@ -360,9 +357,7 @@ class TestNationEndpoints:
         assert resp.status_code == 409
         assert resp.json()["code"] == "NATION_ALREADY_EXISTS"
 
-    async def test_create_nation_province_not_found(
-        self, client, test_db_session
-    ):
+    async def test_create_nation_province_not_found(self, client, test_db_session):
         player = await seed_player(test_db_session)
 
         resp = await client.post(
@@ -385,9 +380,7 @@ class TestNationEndpoints:
         player = await seed_player(test_db_session)
         await seed_provinces(
             test_db_session,
-            list(
-                range(1001, 1002 + CORE_CONFIG.nation.max_provinces_per_nation)
-            ),
+            list(range(1001, 1002 + CORE_CONFIG.nation.max_provinces_per_nation)),
         )
 
         resp = await client.post(
@@ -444,9 +437,30 @@ class TestNationEndpoints:
 
         assert resp.status_code == 422
 
-    async def test_create_nation_bad_color_format(
-        self, client, test_db_session
-    ):
+    async def test_create_nation_name_at_max_length(self, client, test_db_session):
+        """The boundary is inclusive: exactly nation_name_max_length is fine."""
+        player = await seed_player(test_db_session)
+        province_ids = list(
+            range(1001, 1001 + CORE_CONFIG.nation.min_provinces_per_nation)
+        )
+        await seed_provinces(test_db_session, province_ids)
+        name = "x" * CORE_CONFIG.nation.nation_name_max_length
+
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json={
+                "name": name,
+                "color_hex": "#FF0000",
+                "province_ids": province_ids,
+                **VALID_PROFILE,
+            },
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["name"] == name
+
+    async def test_create_nation_bad_color_format(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
 
@@ -484,6 +498,8 @@ class TestNationEndpoints:
         assert body["name"] == "Renamed Nation"
         assert body["color_hex"] == "#00FF00"
         assert body["leader_title"] == "Tsar of All Rus"
+        assert body["level"] == player.level
+        assert body["judge_rating"] == player.judge_rating
         # Untouched fields keep their seeded values.
         assert body["leader_name"] == VALID_PROFILE["leader_name"]
         assert body["history_url"] == VALID_PROFILE["history_url"]
@@ -494,8 +510,11 @@ class TestNationEndpoints:
         await seed_provinces(test_db_session, [1001, 1002])
         await seed_nation(test_db_session, player, name="Mine", province_ids=[1001])
         await seed_nation(
-            test_db_session, other, name="Theirs",
-            color_hex="#445566", province_ids=[1002],
+            test_db_session,
+            other,
+            name="Theirs",
+            color_hex="#445566",
+            province_ids=[1002],
         )
 
         resp = await client.patch(
@@ -519,12 +538,12 @@ class TestNationEndpoints:
         assert resp.status_code == 404
         assert resp.json()["code"] == "NATION_NOT_FOUND"
 
-    async def test_delete_nation_happy_path(self, client, test_db_session):
+    async def test_delete_nations_me_route_gone(self, client, test_db_session):
+        """The player DELETE route was removed in 0.9.0: the server
+        answers 405 and the nation survives the call untouched."""
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002])
-        nation = await seed_nation(
-            test_db_session, player, province_ids=[1001, 1002]
-        )
+        nation = await seed_nation(test_db_session, player, province_ids=[1001, 1002])
 
         resp = await client.request(
             "DELETE",
@@ -533,45 +552,175 @@ class TestNationEndpoints:
             json={"confirm": True},
         )
 
-        assert resp.status_code == 204
-
+        assert resp.status_code == 405
         result = await test_db_session.execute(
             select(Nation).where(Nation.id == nation.id)
         )
-        assert result.scalar_one_or_none() is None
+        assert result.scalar_one_or_none() is not None
 
-        # Provinces were freed, not deleted (INV-6)
-        result = await test_db_session.execute(
-            select(Province).where(Province.id.in_([1001, 1002]))
+
+# The exact response contract of GET /nations/{nation_id} (Spec Part 5):
+# 20 keys, nothing more — a new key fails the key-set test.
+NATION_PUBLIC_KEYS = {
+    "id",
+    "created_at",
+    "name",
+    "short_name",
+    "color_hex",
+    "motto",
+    "description",
+    "flag_id",
+    "flag_url",
+    "province_ids",
+    "capital_province_id",
+    "capital_name",
+    "leader_name",
+    "leader_title",
+    "leader_bio",
+    "portrait_id",
+    "portrait_url",
+    "history_url",
+    "level",
+    "judge_rating",
+}
+
+
+class TestNationPublic:
+    """GET /api/v1/nations/{nation_id} — the public view of another
+    player's nation (Bible §7, Spec Part 5, version 0.9.0 unit 14)."""
+
+    async def test_returns_exact_public_key_set(self, client, test_db_session):
+        """200 with exactly the 20 Spec keys — the service fields
+        (owner_player_id, gender, succession_type, anthem_url) and any
+        VK identifier can never leak through this route."""
+        owner = await seed_player(test_db_session, vk_user_id=111)
+        viewer = await seed_player(test_db_session, vk_user_id=222)
+        await seed_provinces(test_db_session, [1001])
+        nation = await seed_nation(test_db_session, owner, province_ids=[1001])
+
+        resp = await client.get(
+            f"/api/v1/nations/{nation.id}",
+            headers=bearer_headers(viewer.id),
         )
-        assert all(p.nation_id is None for p in result.scalars().all())
 
-    async def test_delete_nation_requires_confirm(self, client, test_db_session):
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body) == NATION_PUBLIC_KEYS
+        assert body["id"] == nation.id
+        assert body["name"] == nation.name
+        for key in (
+            "owner_player_id",
+            "gender",
+            "succession_type",
+            "anthem_url",
+        ):
+            assert key not in body
+
+    async def test_unknown_and_malformed_id_are_404(
+        self, client, test_db_session
+    ):
+        """An unknown UUID and a non-UUID string answer the same
+        404 NATION_NOT_FOUND — a malformed id is never a 422."""
+        viewer = await seed_player(test_db_session)
+
+        for nation_id in (str(uuid.uuid4()), "abc"):
+            resp = await client.get(
+                f"/api/v1/nations/{nation_id}",
+                headers=bearer_headers(viewer.id),
+            )
+            assert resp.status_code == 404
+            assert resp.json()["code"] == "NATION_NOT_FOUND"
+
+    async def test_own_and_public_routes_carry_owner_stats(
+        self, client, test_db_session
+    ):
+        """level/judge_rating are the owner Player's columns: /nations/me
+        and /nations/{id} both serve them, and a change in the players
+        row shows on both routes."""
+        owner = await seed_player(test_db_session, vk_user_id=111)
+        viewer = await seed_player(test_db_session, vk_user_id=222)
+        await seed_provinces(test_db_session, [1001])
+        nation = await seed_nation(test_db_session, owner, province_ids=[1001])
+
+        me = await client.get(
+            "/api/v1/nations/me", headers=bearer_headers(owner.id)
+        )
+        assert me.status_code == 200
+        assert me.json()["level"] == owner.level
+        assert me.json()["judge_rating"] == owner.judge_rating
+
+        # Change the owner's row in the real DB — both routes reflect it.
+        owner.level = 7
+        owner.judge_rating = 42
+        await test_db_session.flush()
+
+        me = await client.get(
+            "/api/v1/nations/me", headers=bearer_headers(owner.id)
+        )
+        assert me.json()["level"] == 7
+        assert me.json()["judge_rating"] == 42
+
+        public = await client.get(
+            f"/api/v1/nations/{nation.id}",
+            headers=bearer_headers(viewer.id),
+        )
+        assert public.status_code == 200
+        assert public.json()["level"] == 7
+        assert public.json()["judge_rating"] == 42
+
+    async def test_fixed_nation_paths_still_win(self, client, test_db_session):
+        """The {nation_id} route is declared after /me, /rules and
+        /color-check — all three fixed paths answer as before."""
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
-        await seed_nation(test_db_session, player, province_ids=[1001])
+        nation = await seed_nation(test_db_session, player, province_ids=[1001])
+        headers = bearer_headers(player.id)
 
-        resp = await client.request(
-            "DELETE",
-            "/api/v1/nations/me",
-            headers=bearer_headers(player.id),
-            json={"confirm": False},
+        me = await client.get("/api/v1/nations/me", headers=headers)
+        assert me.status_code == 200
+        assert me.json()["id"] == nation.id
+
+        rules = await client.get("/api/v1/nations/rules", headers=headers)
+        assert rules.status_code == 200
+        assert (
+            rules.json()["max_provinces"]
+            == CORE_CONFIG.nation.max_provinces_per_nation
         )
 
-        assert resp.status_code == 422
+        color = await client.post(
+            "/api/v1/nations/color-check",
+            headers=headers,
+            json={"color_hex": "#FF0000"},
+        )
+        assert color.status_code == 200
+        assert color.json()["status"] == "OK"
 
-    async def test_delete_nation_not_found(self, client, test_db_session):
-        player = await seed_player(test_db_session)
-
-        resp = await client.request(
-            "DELETE",
-            "/api/v1/nations/me",
-            headers=bearer_headers(player.id),
-            json={"confirm": True},
+    async def test_public_province_ids_sorted_match_provinces_endpoint(
+        self, client, test_db_session
+    ):
+        """province_ids is the sorted ownership list — the same ids
+        GET /provinces reports for this nation."""
+        owner = await seed_player(test_db_session, vk_user_id=111)
+        viewer = await seed_player(test_db_session, vk_user_id=222)
+        await seed_provinces(test_db_session, [1001, 1002, 1003, 1004])
+        nation = await seed_nation(
+            test_db_session, owner, province_ids=[1003, 1001, 1002]
         )
 
-        assert resp.status_code == 404
-        assert resp.json()["code"] == "NATION_NOT_FOUND"
+        resp = await client.get(
+            f"/api/v1/nations/{nation.id}",
+            headers=bearer_headers(viewer.id),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["province_ids"] == [1001, 1002, 1003]
+
+        provinces = await client.get(
+            "/api/v1/provinces", headers=bearer_headers(viewer.id)
+        )
+        owned = sorted(
+            p["id"] for p in provinces.json() if p["nation_id"] == nation.id
+        )
+        assert resp.json()["province_ids"] == owned
 
 
 class TestNationProfileEndpoints:
@@ -604,6 +753,8 @@ class TestNationProfileEndpoints:
             ("leader_name", "x", "LEADER_NAME_INVALID"),
             ("leader_title", "", "LEADER_TITLE_INVALID"),
             ("history_url", "https://evil.com/@x", "HISTORY_URL_INVALID"),
+            ("flag_id", None, "FLAG_INVALID"),
+            ("portrait_id", None, "PORTRAIT_INVALID"),
         ],
     )
     async def test_create_nation_profile_error_maps_to_422(
@@ -631,19 +782,13 @@ class TestNationProfileEndpoints:
         assert payload["code"] == code
         assert payload["detail"]
 
-    async def test_get_nations_me_legacy_null_profile(
-        self, client, test_db_session
-    ):
+    async def test_get_nations_me_legacy_null_profile(self, client, test_db_session):
         """A pre-migration nation returns null profile fields."""
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
-        await seed_nation(
-            test_db_session, player, province_ids=[1001], legacy=True
-        )
+        await seed_nation(test_db_session, player, province_ids=[1001], legacy=True)
 
-        resp = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
@@ -662,9 +807,7 @@ class TestNationProfileEndpoints:
         assert body["portrait_id"] is None
         assert body["portrait_url"] is None
 
-    async def test_nations_rules_returns_config_values(
-        self, client, test_db_session
-    ):
+    async def test_nations_rules_returns_config_values(self, client, test_db_session):
         """GET /nations/rules mirrors the loaded CoreConfig."""
         player = await seed_player(test_db_session)
 
@@ -721,9 +864,7 @@ class TestProvincesEndpoint:
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002, 1003])
 
-        resp = await client.get(
-            "/api/v1/provinces", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/provinces", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         assert [p["id"] for p in resp.json()] == [1001, 1002, 1003]
@@ -762,26 +903,20 @@ class TestProvincesEndpoint:
 class TestGameClockEndpoint:
     """Tests for GET /api/v1/game-clock."""
 
-    async def test_game_clock_returns_derived_date(
-        self, client, test_db_session
-    ):
+    async def test_game_clock_returns_derived_date(self, client, test_db_session):
         """game_date at turn 0 is the calendar epoch — January 2040."""
         player = await seed_player(test_db_session)
-        next_tick = datetime.now(timezone.utc) + timedelta(hours=24)
-        test_db_session.add(
-            GameClock(id=1, current_turn=0, next_tick_at=next_tick)
-        )
+        next_tick = datetime.now(UTC) + timedelta(hours=24)
+        test_db_session.add(GameClock(id=1, current_turn=0, next_tick_at=next_tick))
         await test_db_session.flush()
 
-        resp = await client.get(
-            "/api/v1/game-clock", headers=bearer_headers(player.id)
-        )
+        resp = await client.get("/api/v1/game-clock", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["current_turn"] == 0
         assert body["game_date"] == "2040-01-01"
-        assert body["game_date_text"] == "01.январь.2040"
+        assert body["game_date_text"] == "Январь 2040"
 
 
 class TestAuthRequired:
@@ -794,6 +929,11 @@ class TestAuthRequired:
             ("GET", "/api/v1/nations/me", None),
             ("GET", "/api/v1/nations/rules", None),
             (
+                "GET",
+                "/api/v1/nations/00000000-0000-0000-0000-000000000000",
+                None,
+            ),
+            (
                 "POST",
                 "/api/v1/nations",
                 {
@@ -804,7 +944,6 @@ class TestAuthRequired:
                 },
             ),
             ("PATCH", "/api/v1/nations/me", {"name": "Valid Name"}),
-            ("DELETE", "/api/v1/nations/me", {"confirm": True}),
             ("GET", "/api/v1/provinces", None),
             ("GET", "/api/v1/game-clock", None),
         ],
@@ -822,6 +961,11 @@ class TestAuthRequired:
             ("GET", "/api/v1/nations/me", None),
             ("GET", "/api/v1/nations/rules", None),
             (
+                "GET",
+                "/api/v1/nations/00000000-0000-0000-0000-000000000000",
+                None,
+            ),
+            (
                 "POST",
                 "/api/v1/nations",
                 {
@@ -832,7 +976,6 @@ class TestAuthRequired:
                 },
             ),
             ("PATCH", "/api/v1/nations/me", {"name": "Valid Name"}),
-            ("DELETE", "/api/v1/nations/me", {"confirm": True}),
             ("GET", "/api/v1/provinces", None),
             ("GET", "/api/v1/game-clock", None),
         ],

@@ -497,3 +497,36 @@ describe('AdminBlock — удаление игрока', () => {
     expect(onWorldChanged).not.toHaveBeenCalled();
   });
 });
+
+function mockWindowSize(width: number, height: number) {
+  for (const [key, value] of [
+    ['innerWidth', width],
+    ['innerHeight', height],
+  ] as const) {
+    Object.defineProperty(window, key, {
+      configurable: true,
+      value,
+    });
+  }
+  return () => {
+    mockWindowSize(1024, 768);
+  };
+}
+
+describe('AdminBlock — окно приложения', () => {
+  it('renders the window size as «ширина × высота» for admins', async () => {
+    const restore = mockWindowSize(1234, 567);
+    try {
+      await renderAsAdmin();
+
+      const probe = screen.getByTestId('window-probe');
+      expect(probe).toHaveTextContent('1234 × 567');
+      expect(probe).toHaveTextContent('Горизонтальная прокрутка: нет');
+      expect(
+        screen.getByRole('button', { name: 'Обновить' }),
+      ).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+});

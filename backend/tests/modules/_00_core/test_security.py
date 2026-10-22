@@ -23,8 +23,8 @@ from core.security.vk_signature import (
     validate_launch_params,
 )
 
-TEST_APP_SECRET = "test-vk-app-secret"
-TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"
+TEST_APP_SECRET = "test-vk-app-secret"  # noqa: S105
+TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-long!!"  # noqa: S105
 FRESHNESS_MINUTES = 30
 
 
@@ -87,12 +87,10 @@ class TestValidateLaunchParams:
 
     def test_invalid_signature_raises(self):
         """A wrong/missing signature is rejected."""
-        launch_params = make_launch_params(secret="wrong-secret")
+        launch_params = make_launch_params(secret="wrong-secret")  # noqa: S106
 
         with pytest.raises(InvalidSignatureError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
     def test_tampered_param_raises(self):
         """Changing a vk_* param after signing invalidates the signature."""
@@ -100,9 +98,7 @@ class TestValidateLaunchParams:
         launch_params = launch_params.replace("vk_user_id=111", "vk_user_id=999")
 
         with pytest.raises(InvalidSignatureError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
     def test_expired_timestamp_raises(self):
         """A vk_ts older than the freshness window is rejected."""
@@ -111,9 +107,7 @@ class TestValidateLaunchParams:
         )
 
         with pytest.raises(TimestampExpiredError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
     def test_future_timestamp_raises(self):
         """A vk_ts in the future beyond the window is rejected."""
@@ -122,9 +116,7 @@ class TestValidateLaunchParams:
         )
 
         with pytest.raises(TimestampExpiredError):
-            validate_launch_params(
-                launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES
-            )
+            validate_launch_params(launch_params, TEST_APP_SECRET, FRESHNESS_MINUTES)
 
 
 class TestJwt:

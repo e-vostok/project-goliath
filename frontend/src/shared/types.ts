@@ -47,6 +47,38 @@ export interface NationDTO {
   succession_type: string | null;
   history_url: string | null;
   anthem_url: string | null;
+  /** Owner's player stats — since 0.9.0 (unit 14). */
+  level: number;
+  judge_rating: number;
+}
+
+/**
+ * The public view of another player's nation (Bible §7, Spec Part 5) —
+ * exactly the 20 keys the server sends; the service fields
+ * (`owner_player_id`, `gender`, `succession_type`, `anthem_url`) and VK
+ * identifiers are never part of it.
+ */
+export interface NationPublicDTO {
+  id: string;
+  created_at: string;
+  name: string;
+  short_name: string | null;
+  color_hex: string;
+  motto: string | null;
+  description: string | null;
+  flag_id: string | null;
+  flag_url: string | null;
+  province_ids: number[];
+  capital_province_id: number | null;
+  capital_name: string | null;
+  leader_name: string | null;
+  leader_title: string | null;
+  leader_bio: string | null;
+  portrait_id: string | null;
+  portrait_url: string | null;
+  history_url: string | null;
+  level: number;
+  judge_rating: number;
 }
 
 export interface NationCreateRequest {
@@ -125,10 +157,6 @@ export interface ColorCheckRequest {
 
 export interface ColorCheckDTO {
   status: 'OK' | 'TAKEN' | 'TOO_CLOSE';
-}
-
-export interface NationDeleteRequest {
-  confirm: true;
 }
 
 export interface ProvinceDTO {

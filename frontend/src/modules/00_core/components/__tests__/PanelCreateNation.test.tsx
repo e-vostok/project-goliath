@@ -1,12 +1,14 @@
 /**
- * PanelCreateNation — the registration window of four tabs.
+ * PanelCreateNation — the registration window of four tabs (UI Spec 9.6,
+ * unit 8c).
  *
- * Covers: tab navigation and state retention, rules-driven hints and
- * gating (msw returns non-default numbers — nothing may be hardcoded),
- * the single POST /nations with the whole form's data, Russian field-level
- * error texts with tab badges, and the v2 session draft. Fields without
- * inputs yet (Issue 15) are seeded through the draft — that is the only
- * way to reach an enabled submit for them this issue.
+ * Covers: the shared-UI frame (BlockTitle, «ШАГ N ИЗ 4», the numbered
+ * tab strip, one block per tab, the «Назад»/«Далее»/«Основать
+ * государство» row), tab navigation and state retention, rules-driven
+ * counters and hints (msw returns non-default numbers — nothing may be
+ * hardcoded), the single POST /nations with the whole form's data and
+ * no `anthem_url`, Russian field-level error texts with tab dots, the
+ * v2 session draft and the keyboard rule (Enter never submits).
  */
 
 import {
@@ -47,6 +49,8 @@ const NATION = {
   leader_title: 'Верховный правитель',
   history_url: 'https://vk.com/@testia-istoriya',
   created_at: '2026-09-27T00:00:00Z',
+  level: 1,
+  judge_rating: 0,
 };
 
 const submitButton = () =>
@@ -61,13 +65,15 @@ describe('PanelCreateNation — four-tab shell', () => {
       <PanelCreateNation onCreated={() => {}} />,
     );
 
-    // A user with an empty form starts on tab 1 of 4.
+    // A user with an empty form starts on tab 1 of 4 under the shared
+    // title «СОЗДАНИЕ ГОСУДАРСТВА».
+    expect(screen.getByText('Создание государства')).toBeInTheDocument();
     expect(screen.getByTestId('step-indicator')).toHaveTextContent(
       'Шаг 1 из 4',
     );
 
-    // Walking forward by arrows…
-    await user.type(screen.getByLabelText('Название государства'), 'Testia');
+    // Walking forward by «Далее →»…
+    await user.type(screen.getByLabelText('Полное название'), 'Testia');
     await user.click(screen.getByTestId('step-next'));
     expect(screen.getByTestId('step-indicator')).toHaveTextContent(
       'Шаг 2 из 4',
@@ -78,7 +84,7 @@ describe('PanelCreateNation — four-tab shell', () => {
       'Шаг 3 из 4',
     );
     await user.type(
-      screen.getByLabelText('Ссылка на историю государства'),
+      screen.getByLabelText('Ссылка на статью с историей государства'),
       'https://vk.com/@testia-istoriya',
     );
     await user.click(screen.getByTestId('step-next'));
@@ -88,15 +94,13 @@ describe('PanelCreateNation — four-tab shell', () => {
 
     // …and back by clickable titles — every typed value survives.
     await goToTab(user, 1);
-    expect(screen.getByLabelText('Название государства')).toHaveValue(
-      'Testia',
-    );
+    expect(screen.getByLabelText('Полное название')).toHaveValue('Testia');
     await goToTab(user, 2);
     expect(screen.getByLabelText('Имя лидера')).toHaveValue('Иван Грозный');
     await goToTab(user, 3);
-    expect(screen.getByLabelText('Ссылка на историю государства')).toHaveValue(
-      'https://vk.com/@testia-istoriya',
-    );
+    expect(
+      screen.getByLabelText('Ссылка на статью с историей государства'),
+    ).toHaveValue('https://vk.com/@testia-istoriya');
     first.unmount();
 
     // The remaining required fields have no inputs until Issues 13–15 —
@@ -111,51 +115,74 @@ describe('PanelCreateNation — four-tab shell', () => {
     );
     seedRegistrationDraft();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await goToTab(user, 4);
     await user.click(submitButton());
 
-    // The error belongs to tab 3: a badge marks its title while tab 1
+    // The error belongs to tab 3: a dot marks its title while tab 4
     // stays open…
     await screen.findByTestId('step-error-3');
     expect(screen.getByTestId('step-indicator')).toHaveTextContent(
-      'Шаг 1 из 4',
+      'Шаг 4 из 4',
     );
 
     // …and the Russian text waits under the history field on tab 3.
     await goToTab(user, 3);
     expect(
       within(screen.getByTestId('form-item-history-url')).getByText(
-        /статью ВКонтакте/,
+        /Ссылка должна вести/,
       ),
     ).toBeInTheDocument();
   });
 
-  it('walks all four tabs via the chevron arrows with disabled ends', async () => {
+  it('shows the four exact tab titles, one block per tab, and the nav row', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
     const indicator = screen.getByTestId('step-indicator');
 
+    // The strip carries the exact titles of the UI spec — the titles
+    // never truncate (flex 1 1 auto). Each also titles its block, so
+    // more than one node may carry it.
+    for (const title of [
+      'Основные данные и символика',
+      'Глава государства',
+      'История',
+      'Территории',
+    ]) {
+      expect(screen.getAllByText(title).length).toBeGreaterThan(0);
+    }
+
     expect(indicator).toHaveTextContent('Шаг 1 из 4');
-    expect(screen.getByTestId('step-prev')).toBeDisabled();
+    // Tab 1 hides «← Назад», the right button is «Далее →».
+    expect(screen.queryByTestId('step-prev')).not.toBeInTheDocument();
     expect(screen.getByTestId('step-next')).toBeEnabled();
-    expect(screen.getByLabelText('Название государства')).toBeInTheDocument();
+    expect(screen.getByLabelText('Полное название')).toBeInTheDocument();
     expect(
-      screen.queryByLabelText('Ссылка на историю государства'),
+      screen.queryByLabelText('Ссылка на статью с историей государства'),
     ).not.toBeInTheDocument();
 
-    const user = userEvent.setup();
     await user.click(screen.getByTestId('step-next'));
     expect(indicator).toHaveTextContent('Шаг 2 из 4');
+    expect(screen.getByTestId('step-prev')).toBeInTheDocument();
     expect(screen.getByLabelText('Имя лидера')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('step-next'));
     expect(indicator).toHaveTextContent('Шаг 3 из 4');
     expect(
-      screen.getByLabelText('Ссылка на историю государства'),
+      screen.getByLabelText('Ссылка на статью с историей государства'),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Ссылка на гимн')).toBeInTheDocument();
+    // The anthem field is gone from the interface entirely.
+    expect(
+      screen.queryByLabelText(/гимн/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('form-item-anthem-url'),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId('step-next'));
     expect(indicator).toHaveTextContent('Шаг 4 из 4');
-    expect(screen.getByTestId('step-next')).toBeDisabled();
+    // On tab 4 the right button is «Основать государство», not «Далее →».
+    expect(screen.queryByTestId('step-next')).not.toBeInTheDocument();
+    expect(submitButton()).toBeInTheDocument();
     expect(screen.getByTestId('form-item-provinces')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('step-prev'));
@@ -166,86 +193,117 @@ describe('PanelCreateNation — four-tab shell', () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
-    // A pristine form shows no badges at all.
+    // A pristine form shows no dots at all.
     expect(screen.queryByTestId('step-error-1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('step-error-2')).not.toBeInTheDocument();
     expect(screen.queryByTestId('step-error-3')).not.toBeInTheDocument();
     expect(screen.queryByTestId('step-error-4')).not.toBeInTheDocument();
 
-    // One typed field turns the missing-required marks on for the
-    // inactive tabs; the active tab is never badged.
-    await user.type(screen.getByLabelText('Название государства'), 'T');
+    // One typed field turns the missing-required dots on for the
+    // inactive tabs; the active tab is never dotted.
+    await user.type(screen.getByLabelText('Полное название'), 'T');
     await screen.findByTestId('step-error-2');
     expect(screen.getByTestId('step-error-3')).toBeInTheDocument();
     expect(screen.getByTestId('step-error-4')).toBeInTheDocument();
     expect(screen.queryByTestId('step-error-1')).not.toBeInTheDocument();
 
-    // Leaving tab 1 exposes its own mark (short name is still empty).
+    // Leaving tab 1 exposes its own dot (short name is still empty).
     await goToTab(user, 2);
     await screen.findByTestId('step-error-1');
   });
 });
 
-describe('PanelCreateNation — rules hints', () => {
-  it('shows limits and allowed hosts from GET /nations/rules', async () => {
+describe('PanelCreateNation — field grammar', () => {
+  it('«N из M» counters, star only on required fields, no «необязательно»', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
-    // All hint numbers come from the msw body, not from the code.
+    // The counter sits in the label row: «N из M» with the rules limit.
+    const nameItem = await screen.findByTestId('form-item-name');
     expect(
-      await screen.findByText(
-        `от ${RULES.name_min_length} до ${RULES.name_max_length} символов`,
-      ),
+      within(nameItem).getByText(`0 из ${RULES.name_max_length}`),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Название государства')).toHaveAttribute(
+    // maxlength comes from the same rules body.
+    expect(screen.getByLabelText('Полное название')).toHaveAttribute(
       'maxlength',
       String(RULES.name_max_length),
     );
 
-    const user = userEvent.setup();
+    // The star marks required fields only: «Полное название *» has it,
+    // «Описание» and «Девиз» do not.
+    expect(within(nameItem).getByText('*')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('form-item-description')).queryByText('*'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('form-item-motto')).queryByText('*'),
+    ).not.toBeInTheDocument();
+
+    // Tab 1 order: «Описание» left of «Девиз» (the wider TextArea).
+    const description = screen.getByLabelText('Описание');
+    const motto = screen.getByLabelText('Девиз');
+    expect(
+      description.compareDocumentPosition(motto) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // No «необязательно» anywhere, no «до N символов» under a field.
+    expect(screen.queryByText(/необязательно/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/до \d+ символов/)).not.toBeInTheDocument();
+
     await goToTab(user, 2);
+    expect(screen.queryByText(/необязательно/i)).not.toBeInTheDocument();
+    await goToTab(user, 4);
+    // «Название столицы *» is required and carries its star.
     expect(
-      screen.getByText(
-        `от ${RULES.leader_name_min_length} до ${RULES.leader_name_max_length} символов`,
-      ),
+      within(screen.getByTestId('form-item-capital-name')).getByText('*'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        `от ${RULES.leader_title_min_length} до ${RULES.leader_title_max_length} символов`,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Имя лидера')).toHaveAttribute(
-      'maxlength',
-      String(RULES.leader_name_max_length),
+  });
+
+  it('Enter in a one-line field submits nothing; Enter in a textarea adds a line break', async () => {
+    let posts = 0;
+    server.use(
+      http.post('*/api/v1/nations', () => {
+        posts += 1;
+        return HttpResponse.json(NATION, { status: 201 });
+      }),
     );
-    expect(screen.getByLabelText('Должность лидера')).toHaveAttribute(
-      'maxlength',
-      String(RULES.leader_title_max_length),
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+    const nameInput = await screen.findByLabelText('Полное название');
+    await user.click(nameInput);
+    await user.keyboard('{Enter}');
+    // No POST, no tab switch, focus stays in the field.
+    expect(posts).toBe(0);
+    expect(screen.getByTestId('step-indicator')).toHaveTextContent(
+      'Шаг 1 из 4',
     );
+    expect(nameInput).toHaveFocus();
+
+    const description = screen.getByLabelText('Описание');
+    await user.type(description, 'строка{Enter}две');
+    expect(description).toHaveValue('строка\nдве');
+    expect(posts).toBe(0);
+  });
+});
+
+describe('PanelCreateNation — rules hints', () => {
+  it('history: one field, the helper names the allowed domains from rules', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
     await goToTab(user, 3);
     const historyItem = screen.getByTestId('form-item-history-url');
-    expect(historyItem).toHaveTextContent('Поле обязательное');
-    expect(historyItem).toHaveTextContent(
-      `до ${RULES.history_url_max_length} символов`,
-    );
+    // One field on the tab — the star and the rules-driven hint.
+    expect(within(historyItem).getByText('*')).toBeInTheDocument();
     expect(historyItem).toHaveTextContent(
       `Допустимые домены: ${RULES.history_url_allowed_hosts.join(', ')}`,
     );
-    const anthemItem = screen.getByTestId('form-item-anthem-url');
-    expect(anthemItem).toHaveTextContent(
-      'музыка внутри игры не воспроизводится',
-    );
-    expect(anthemItem).toHaveTextContent(
-      `до ${RULES.anthem_url_max_length} символов`,
-    );
-    expect(anthemItem).toHaveTextContent(
-      `Допустимые домены: ${RULES.anthem_url_allowed_hosts.join(', ')}`,
-    );
-
-    await goToTab(user, 4);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
     expect(
-      screen.getByText(`Нужно выбрать ровно ${RULES.max_provinces}`),
-    ).toBeInTheDocument();
+      screen.getByLabelText('Ссылка на статью с историей государства'),
+    ).toHaveAttribute('maxlength', String(RULES.history_url_max_length));
   });
 
   it('stays usable without hints when GET /nations/rules fails', async () => {
@@ -265,36 +323,57 @@ describe('PanelCreateNation — rules hints', () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
 
-    // Rules failed → no hints and no maxLength anywhere, yet the seeded
-    // form still submits (fallback = non-empty checks).
+    // Rules failed → no counters and no maxLength anywhere, yet the
+    // seeded form still submits (fallback = non-empty checks).
+    await goToTab(user, 4);
     expect(submitButton()).toBeEnabled();
     await user.click(submitButton());
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
 
     expect(screen.queryByText(/символов/)).not.toBeInTheDocument();
+    // No «N из M» counter inside the form block («Шаг 4 из 4» of the
+    // title row is outside it and does not count).
+    await goToTab(user, 1);
+    expect(
+      within(screen.getByTestId('create-nation-form')).queryByText(
+        /\d+ из \d+/,
+      ),
+    ).not.toBeInTheDocument();
     await goToTab(user, 3);
     expect(
-      screen.getByLabelText('Ссылка на историю государства'),
+      screen.getByLabelText('Ссылка на статью с историей государства'),
     ).not.toHaveAttribute('maxlength');
   });
 });
 
 describe('PanelCreateNation — submit', () => {
-  it('gates the submit button on the required fields', async () => {
+  it('gates «Основать государство» on the required fields, with the red-dot hint', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
       <PanelCreateNation onCreated={() => {}} />,
     );
+    await goToTab(user, 4);
     expect(submitButton()).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Заполните обязательные поля (отмечены *) на вкладках с красной точкой',
+      ),
+    ).toBeInTheDocument();
     first.unmount();
 
     // A complete seeded draft enables it…
     seedRegistrationDraft();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await goToTab(user, 4);
     expect(submitButton()).toBeEnabled();
+    expect(
+      screen.queryByText(/вкладках с красной точкой/),
+    ).not.toBeInTheDocument();
 
     // …and emptying a required field disables it again.
-    await user.clear(screen.getByLabelText('Название государства'));
+    await goToTab(user, 1);
+    await user.clear(screen.getByLabelText('Полное название'));
+    await goToTab(user, 4);
     expect(submitButton()).toBeDisabled();
   });
 
@@ -305,19 +384,20 @@ describe('PanelCreateNation — submit', () => {
         { value: 1006, label: 'Провинция 1006' },
       ],
     });
+    const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
-    // Wait for the rules-driven hint so the exact-count gating is in force.
-    await screen.findByText(
-      `от ${RULES.name_min_length} до ${RULES.name_max_length} символов`,
-    );
+    await goToTab(user, 4);
+    // Wait for the rules-driven «Выбрано N из M» line so the
+    // exact-count gating is in force.
+    await screen.findByText(`Выбрано 2 из ${RULES.max_provinces}`);
     expect(submitButton()).toBeDisabled();
   });
 
-  it('sends exactly one POST /nations with trimmed values and null optionals', async () => {
-    const bodies: unknown[] = [];
+  it('sends exactly one POST /nations with trimmed values and null optionals — no anthem_url', async () => {
+    const bodies: Record<string, unknown>[] = [];
     server.use(
       http.post('*/api/v1/nations', async ({ request }) => {
-        bodies.push(await request.json());
+        bodies.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json(NATION, { status: 201 });
       }),
     );
@@ -332,10 +412,10 @@ describe('PanelCreateNation — submit', () => {
       leaderTitle: ' Верховный правитель   ',
       leaderBio: '  ',
       historyUrl: '  https://vk.com/@testia-istoriya ',
-      anthemUrl: '  ',
       capitalName: ' Столицево ',
     });
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    await goToTab(user, 4);
     await user.click(submitButton());
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
@@ -346,7 +426,7 @@ describe('PanelCreateNation — submit', () => {
         color_hex: '#E64545',
         motto: 'Мы победим',
         description: null,
-        flag_id: null,
+        flag_id: 'flag_stub',
         province_ids: [1005, 1006, 1007],
         capital_province_id: null,
         capital_name: 'Столицево',
@@ -354,16 +434,29 @@ describe('PanelCreateNation — submit', () => {
         gender: 'male',
         leader_title: 'Верховный правитель',
         leader_bio: null,
-        portrait_id: null,
+        portrait_id: 'portrait_stub',
         succession_type: 'elections',
         history_url: 'https://vk.com/@testia-istoriya',
-        anthem_url: null,
       },
     ]);
+    expect(bodies[0]).not.toHaveProperty('anthem_url');
+    // The shared success bar reports «Государство создано» (UI Spec 7).
+    expect(await screen.findByTestId('notice')).toHaveTextContent(
+      'Государство создано',
+    );
   });
 });
 
 describe('PanelCreateNation — tab 1 symbols', () => {
+  it('no «Без флага» tile — the first catalog flag is always selected', async () => {
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+
+    // Once the catalog lands, the first flag stands selected on a NEW form.
+    const flag = await screen.findByRole('button', { name: 'flag_stub' });
+    await waitFor(() => expect(flag).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.queryByText('Без флага')).not.toBeInTheDocument();
+  });
+
   it('debounced color-check hint, palette swatch fills HEX, flag + upper-case color submit', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -407,6 +500,7 @@ describe('PanelCreateNation — tab 1 symbols', () => {
       // color_hex — the «слишком похож» hint never blocks the button.
       await user.click(screen.getByRole('button', { name: 'flag_stub' }));
       fireEvent.change(hexInput, { target: { value: 'a1b2c3' } });
+      await goToTab(user, 4);
       await user.click(submitButton());
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({
@@ -420,6 +514,49 @@ describe('PanelCreateNation — tab 1 symbols', () => {
 });
 
 describe('PanelCreateNation — tab 2 leadership', () => {
+  it('no «Без портрета» tile — the first catalog portrait is always selected', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await goToTab(user, 2);
+
+    const portrait = await screen.findByRole('button', {
+      name: 'portrait_stub',
+    });
+    await waitFor(() =>
+      expect(portrait).toHaveAttribute('aria-pressed', 'true'),
+    );
+    expect(screen.queryByText('Без портрета')).not.toBeInTheDocument();
+  });
+
+  it('«Пол» is two small icon buttons — Mars first, one active at a time', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await goToTab(user, 2);
+
+    const genderItem = await screen.findByTestId('form-item-gender');
+    const radios = within(genderItem).getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    // Mockup «Reg2» order: the Mars spear (male) first, the Venus
+    // mirror (female) second.
+    expect(radios.map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Мужской',
+      'Женский',
+    ]);
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual([
+      'false',
+      'false',
+    ]);
+
+    const male = within(genderItem).getByRole('radio', {
+      name: 'Мужской',
+    });
+    await user.click(male);
+    expect(male).toHaveAttribute('aria-checked', 'true');
+    expect(
+      within(genderItem).getByRole('radio', { name: 'Женский' }),
+    ).toHaveAttribute('aria-checked', 'false');
+  });
+
   it('portrait, gender and a succession card submit their codes; the four cards form one radio group', async () => {
     const bodies: unknown[] = [];
     server.use(
@@ -435,7 +572,8 @@ describe('PanelCreateNation — tab 2 leadership', () => {
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
     await goToTab(user, 2);
 
-    // The grids render once GET /nations/rules has landed.
+    // The grids render once GET /nations/rules has landed (the NULL
+    // portrait of the seed already stands on the first catalog tile).
     await user.click(
       await screen.findByRole('button', { name: 'portrait_stub' }),
     );
@@ -485,6 +623,7 @@ describe('PanelCreateNation — tab 2 leadership', () => {
     expect(criteria).toHaveAttribute('aria-checked', 'true');
     expect(appointment).toHaveAttribute('aria-checked', 'false');
 
+    await goToTab(user, 4);
     await user.click(submitButton());
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
     expect(bodies).toEqual([
@@ -527,16 +666,16 @@ describe('PanelCreateNation — server error mapping', () => {
     expect(
       within(nameItem).getByText('Это название уже занято'),
     ).toBeInTheDocument();
-    // The badge is gone now that tab 1 is active…
+    // The dot is gone now that tab 1 is active…
     expect(screen.queryByTestId('step-error-1')).not.toBeInTheDocument();
     // …and editing the field clears the inline error.
-    await user.type(screen.getByLabelText('Название государства'), '!');
+    await user.type(screen.getByLabelText('Полное название'), '!');
     expect(
       within(nameItem).queryByText('Это название уже занято'),
     ).not.toBeInTheDocument();
   });
 
-  it('shows LEADER_NAME_INVALID in Russian under the leader name FormItem', async () => {
+  it('shows LEADER_NAME_INVALID in Russian under the leader name field', async () => {
     server.use(
       http.post('*/api/v1/nations', () =>
         HttpResponse.json(
@@ -548,6 +687,7 @@ describe('PanelCreateNation — server error mapping', () => {
     seedRegistrationDraft();
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await goToTab(user, 4);
     await user.click(submitButton());
 
     await screen.findByTestId('step-error-2');
@@ -561,35 +701,37 @@ describe('PanelCreateNation — server error mapping', () => {
     expect(within(item).queryByText(/invalid characters/i)).toBeNull();
   });
 
+  // The field shows the dictionary text of the code — the English
+  // `detail` never reaches the screen (UI Spec 7).
   it.each([
     [
       'PROVINCE_COUNT_OUT_OF_RANGE',
       'Province count 12 is out of range (must be between 1 and 5)',
-      /out of range/i,
+      'Число выбранных провинций не подходит.',
       'form-item-provinces',
     ],
     [
       'PROVINCE_TAKEN',
       'Province 1003 is already taken',
-      /already taken/i,
+      'Одна из провинций уже занята другим государством. Выберите другие.',
       'form-item-provinces',
     ],
     [
       'PROVINCE_NOT_FOUND',
       'Province 9999 not found',
-      /not found/i,
+      'Такой провинции нет.',
       'form-item-provinces',
     ],
     [
       'PROVINCE_NOT_LAND',
       'Province 2087 is a sea zone',
-      /sea zone/i,
+      'Выбрать можно только сухопутные провинции.',
       'form-item-provinces',
     ],
     [
       'STARTING_GROUP_NOT_CONNECTED',
       'Starting provinces are not connected (2 parts)',
-      /not connected/i,
+      'Выбранные провинции должны быть связаны между собой.',
       'form-item-provinces',
     ],
     [
@@ -605,7 +747,7 @@ describe('PanelCreateNation — server error mapping', () => {
       'form-item-provinces',
     ],
   ])(
-    'shows %s on its tab-4 FormItem',
+    'shows %s on its tab-4 field',
     async (code, detail, pattern, itemTestId) => {
       server.use(
         http.post('*/api/v1/nations', () =>
@@ -615,12 +757,17 @@ describe('PanelCreateNation — server error mapping', () => {
       seedRegistrationDraft();
       const user = userEvent.setup();
       renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+      await goToTab(user, 4);
       await user.click(submitButton());
 
-      await screen.findByTestId('step-error-4');
-      await goToTab(user, 4);
+      // The error lands on the OPEN tab — the Russian text shows
+      // inline; the dot appears only once another tab is active.
       const item = screen.getByTestId(itemTestId);
-      expect(within(item).getByText(pattern)).toBeInTheDocument();
+      await within(item).findByText(pattern);
+      expect(within(item).queryByText(detail)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('step-error-4')).not.toBeInTheDocument();
+      await goToTab(user, 3);
+      await screen.findByTestId('step-error-4');
     },
   );
 
@@ -636,17 +783,25 @@ describe('PanelCreateNation — server error mapping', () => {
     seedRegistrationDraft();
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await goToTab(user, 4);
     await user.click(submitButton());
 
     await screen.findByText('Не удалось создать государство');
-    expect(screen.getByText(/already own a nation/i)).toBeInTheDocument();
+    // The English detail never reaches the screen — the dictionary
+    // text of NATION_ALREADY_EXISTS does.
+    expect(
+      screen.getByText('У вас уже есть государство.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/already own a nation/i),
+    ).not.toBeInTheDocument();
   });
 });
 
 describe('PanelCreateNation — province picker', () => {
   const provincesItem = () => screen.getByTestId('form-item-provinces');
 
-  it('opens the picker, returns named chips, submits their ids', async () => {
+  it('opens the picker, returns named rows, submits their ids', async () => {
     const bodies: unknown[] = [];
     server.use(
       http.post('*/api/v1/nations', async ({ request }) => {
@@ -663,7 +818,7 @@ describe('PanelCreateNation — province picker', () => {
     await pickProvinces(user, [1005, 1006, 1007]);
     await waitFor(() =>
       expect(
-        within(provincesItem()).getAllByRole('option'),
+        within(provincesItem()).getAllByRole('listitem'),
       ).toHaveLength(3),
     );
     expect(provincesItem()).toHaveTextContent('Эпсилон');
@@ -683,7 +838,7 @@ describe('PanelCreateNation — province picker', () => {
     await pickProvinces(user, [1005, 1006, 1007]);
     await waitFor(() =>
       expect(
-        within(provincesItem()).getAllByRole('option'),
+        within(provincesItem()).getAllByRole('listitem'),
       ).toHaveLength(3),
     );
 
@@ -711,26 +866,26 @@ describe('PanelCreateNation — province picker', () => {
         screen.queryByText(/Выбрано 2 из 3/),
       ).not.toBeInTheDocument(),
     );
-    expect(within(provincesItem()).getAllByRole('option')).toHaveLength(3);
+    expect(within(provincesItem()).getAllByRole('listitem')).toHaveLength(3);
   });
 
-  it('removing a chip updates the form state', async () => {
+  it('removing a row updates the form state', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
     await pickProvinces(user, [1005, 1006, 1007]);
     await waitFor(() =>
       expect(
-        within(provincesItem()).getAllByRole('option'),
+        within(provincesItem()).getAllByRole('listitem'),
       ).toHaveLength(3),
     );
 
     await user.click(
       within(provincesItem()).getByRole('button', {
-        name: 'Удалить Эпсилон',
+        name: 'Убрать Эпсилон',
       }),
     );
-    const remaining = within(provincesItem()).getAllByRole('option');
+    const remaining = within(provincesItem()).getAllByRole('listitem');
     expect(remaining).toHaveLength(2);
     expect(provincesItem()).not.toHaveTextContent('Эпсилон');
     // 2 < RULES.max_provinces — the form notices the missing province.
@@ -744,7 +899,7 @@ describe('PanelCreateNation — province picker', () => {
     await pickProvinces(user, [1005, 1006, 1007]);
     await waitFor(() =>
       expect(
-        within(provincesItem()).getAllByRole('option'),
+        within(provincesItem()).getAllByRole('listitem'),
       ).toHaveLength(3),
     );
 
@@ -757,6 +912,19 @@ describe('PanelCreateNation — province picker', () => {
 
 describe('PanelCreateNation — tab 4 territories', () => {
   const capitalInput = () => screen.getByLabelText('Название столицы');
+  const provincesItem = () => screen.getByTestId('form-item-provinces');
+
+  /** The ★-marked row leads the list; the rest keep selection order. */
+  const rowTexts = () =>
+    within(provincesItem())
+      .getAllByRole('listitem')
+      .map((row) => row.textContent ?? '');
+
+  /** The row that carries `name` — for its own «Сделать столицей». */
+  const rowOf = (name: string) =>
+    within(provincesItem())
+      .getAllByRole('listitem')
+      .find((row) => (row.textContent ?? '').includes(name)) as HTMLElement;
 
   /** Reopens the picker on the current form and, optionally, presses
    *  the right button on `capital` before «Готово». */
@@ -780,14 +948,17 @@ describe('PanelCreateNation — tab 4 territories', () => {
     await user.click(screen.getByRole('button', { name: 'Готово' }));
   }
 
-  it('the capital name follows the marked province and stops after a manual edit', async () => {
+  it('the capital row is first with «★», «Сделать столицей» moves the mark, and the name follows until a manual edit', async () => {
     seedRegistrationDraft({ provinces: [], capitalName: '' });
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
     await goToTab(user, 4);
 
-    // No provinces yet — the default-capital line is hidden.
-    expect(screen.queryByTestId('capital-line')).not.toBeInTheDocument();
+    // No provinces yet — no rows, the capital-name field still shows.
+    expect(
+      within(provincesItem()).queryAllByRole('listitem'),
+    ).toHaveLength(0);
+    expect(provincesItem()).toHaveTextContent('Выбрано 0');
 
     // Pick the connected triple and mark Дзета (1006) as capital via
     // the right button inside the picker.
@@ -816,54 +987,37 @@ describe('PanelCreateNation — tab 4 territories', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Готово' }));
 
-    // After the picker returns: the marked chip, the line and the
-    // auto-filled name all say Дзета.
+    // After the picker returns: Дзета leads with «★», the name
+    // auto-fills from it.
     await waitFor(() => expect(capitalInput()).toHaveValue('Дзета'));
-    const capitalLine = screen.getByTestId('capital-line');
-    expect(capitalLine).toHaveTextContent('Столица: Дзета');
-    expect(capitalLine).not.toHaveTextContent('по умолчанию');
-
-    // Reopen and move the mark to Эта — the name follows.
-    await pickAgain(user, 1007);
-    await waitFor(() => expect(capitalInput()).toHaveValue('Эта'));
-    expect(screen.getByTestId('capital-line')).toHaveTextContent(
-      'Столица: Эта',
+    await waitFor(() =>
+      expect(rowTexts()[0]).toContain('★ Дзета'),
     );
+
+    // «Сделать столицей» on the Эта row moves the mark — the name follows.
+    await user.click(
+      within(rowOf('Эта')).getByRole('button', {
+        name: 'Сделать столицей',
+      }),
+    );
+    await waitFor(() => expect(capitalInput()).toHaveValue('Эта'));
+    await waitFor(() => expect(rowTexts()[0]).toContain('★ Эта'));
 
     // A manual edit pins the name: moving the mark no longer rewrites it.
     await user.clear(capitalInput());
     await user.type(capitalInput(), 'Моя Столица');
-    await pickAgain(user, 1005);
-    await waitFor(() =>
-      expect(screen.getByTestId('capital-line')).toHaveTextContent(
-        'Столица: Эпсилон',
-      ),
+    await user.click(
+      within(rowOf('Эпсилон')).getByRole('button', {
+        name: 'Сделать столицей',
+      }),
     );
+    await waitFor(() => expect(rowTexts()[0]).toContain('★ Эпсилон'));
     expect(capitalInput()).toHaveValue('Моя Столица');
 
-    // Clearing the mark → the line falls back to «по умолчанию», and
-    // the hand-typed name still is not overwritten.
-    await user.click(screen.getByTestId('open-province-picker'));
-    await waitFor(() =>
-      expect(
-        document.querySelectorAll(
-          '[data-testid="map-view"] path[data-id]',
-        ).length,
-      ).toBeGreaterThan(0),
-    );
-    const path1005 = document.querySelector(
-      '[data-testid="map-view"] path[data-id="1005"]',
-    ) as Element;
-    fireEvent(
-      path1005,
-      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Готово' }));
-    await waitFor(() =>
-      expect(screen.getByTestId('capital-line')).toHaveTextContent(
-        'Столица: Эпсилон (по умолчанию — первая выбранная)',
-      ),
-    );
+    // Clearing the mark → the first selected row is the capital again,
+    // and the hand-typed name still is not overwritten.
+    await pickAgain(user);
+    await waitFor(() => expect(rowTexts()[0]).toContain('★ Эпсилон'));
     expect(capitalInput()).toHaveValue('Моя Столица');
   });
 });
@@ -886,9 +1040,10 @@ describe('mapErrorCodeToField', () => {
     expect(mapErrorCodeToField('LEADER_BIO_INVALID')).toBe('leaderBio');
     expect(mapErrorCodeToField('PORTRAIT_INVALID')).toBe('portraitId');
     expect(mapErrorCodeToField('SUCCESSION_INVALID')).toBe('successionType');
-    // Tab 3.
+    // Tab 3 — history only; the anthem code maps nowhere (generic
+    // banner) — the interface no longer has the field.
     expect(mapErrorCodeToField('HISTORY_URL_INVALID')).toBe('historyUrl');
-    expect(mapErrorCodeToField('ANTHEM_URL_INVALID')).toBe('anthemUrl');
+    expect(mapErrorCodeToField('ANTHEM_URL_INVALID')).toBeNull();
     // Tab 4.
     for (const code of [
       'PROVINCE_TAKEN',
@@ -933,7 +1088,6 @@ describe('fieldToTab', () => {
       expect(fieldToTab(field)).toBe(2);
     }
     expect(fieldToTab('historyUrl')).toBe(3);
-    expect(fieldToTab('anthemUrl')).toBe(3);
     for (const field of [
       'provinces',
       'capitalProvinceId',
@@ -952,7 +1106,7 @@ describe('PanelCreateNation — draft memory', () => {
     );
 
     await user.type(
-      screen.getByLabelText('Название государства'),
+      screen.getByLabelText('Полное название'),
       'Черновия',
     );
     await goToTab(user, 2);
@@ -960,7 +1114,7 @@ describe('PanelCreateNation — draft memory', () => {
     first.unmount();
 
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
-    expect(screen.getByLabelText('Название государства')).toHaveValue(
+    expect(screen.getByLabelText('Полное название')).toHaveValue(
       'Черновия',
     );
     await goToTab(user, 2);
@@ -978,7 +1132,7 @@ describe('PanelCreateNation — draft memory', () => {
       historyUrl: '',
     });
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
-    expect(await screen.findByLabelText('Название государства')).toHaveValue(
+    expect(await screen.findByLabelText('Полное название')).toHaveValue(
       '',
     );
   });

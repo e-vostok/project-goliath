@@ -64,9 +64,7 @@ async def _create(session, player, province_ids, name="Realm"):
 
 
 class TestBeforeAllStage:
-    async def test_receives_player_id_and_runs_first(
-        self, test_db_session
-    ):
+    async def test_receives_player_id_and_runs_first(self, test_db_session):
         calls: list[tuple[str, object]] = []
 
         async def before_all(session, player_id):
@@ -78,22 +76,14 @@ class TestBeforeAllStage:
         async def after_count(session, provinces):
             calls.append(("after_count", [p.id for p in provinces]))
 
-        register_registration_check(
-            STAGE_AFTER_COUNT, "test.count", after_count
-        )
-        register_registration_check(
-            STAGE_BEFORE_ALL, "test.player", before_all
-        )
-        register_registration_check(
-            STAGE_AFTER_FREE, "test.free", after_free
-        )
+        register_registration_check(STAGE_AFTER_COUNT, "test.count", after_count)
+        register_registration_check(STAGE_BEFORE_ALL, "test.player", before_all)
+        register_registration_check(STAGE_AFTER_FREE, "test.free", after_free)
 
         player = await _player(test_db_session, 501)
         await make_starting_group(test_db_session)
 
-        nation = await _create(
-            test_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _create(test_db_session, player, list(STARTING_GROUP))
 
         assert nation.id is not None
         # before_all ran first and saw the player id, not provinces.
@@ -116,12 +106,8 @@ class TestBeforeAllStage:
         async def after_free(session, provinces):
             seen["after_free_ran"] = True
 
-        register_registration_check(
-            STAGE_BEFORE_ALL, "test.reject", before_all
-        )
-        register_registration_check(
-            STAGE_AFTER_FREE, "test.free", after_free
-        )
+        register_registration_check(STAGE_BEFORE_ALL, "test.reject", before_all)
+        register_registration_check(STAGE_AFTER_FREE, "test.free", after_free)
 
         player = await _player(test_db_session, 502)
         await make_land_province(test_db_session, id=1001)
@@ -134,9 +120,7 @@ class TestBeforeAllStage:
             await test_db_session.execute(select(Nation.id))
         ).scalar_one_or_none() is None
         province = (
-            await test_db_session.execute(
-                select(Province).where(Province.id == 1001)
-            )
+            await test_db_session.execute(select(Province).where(Province.id == 1001))
         ).scalar_one()
         assert province.nation_id is None
 
@@ -144,14 +128,10 @@ class TestBeforeAllStage:
         player = await _player(test_db_session, 503)
         await make_starting_group(test_db_session)
 
-        nation = await _create(
-            test_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _create(test_db_session, player, list(STARTING_GROUP))
 
         assert nation.owner_player_id == player.id
         province = (
-            await test_db_session.execute(
-                select(Province).where(Province.id == 1001)
-            )
+            await test_db_session.execute(select(Province).where(Province.id == 1001))
         ).scalar_one()
         assert province.nation_id == nation.id

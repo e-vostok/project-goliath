@@ -80,9 +80,7 @@ class TestNationCreatedHooks:
         player = await _player(test_db_session, 601)
         await make_starting_group(test_db_session)
 
-        nation = await _create(
-            test_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _create(test_db_session, player, list(STARTING_GROUP))
 
         assert calls == [(player.id, nation.id)]
 
@@ -92,18 +90,14 @@ class TestNationCreatedHooks:
         seen: list[tuple[str, int]] = []
 
         async def hook(session, player_id, nation_id):
-            summary = await NationService.player_nation_summary(
-                session, player_id
-            )
+            summary = await NationService.player_nation_summary(session, player_id)
             seen.append((summary.nation_id, summary.province_count))
 
         register_nation_created_hook("test.reader", hook)
         player = await _player(test_db_session, 602)
         await make_starting_group(test_db_session)
 
-        nation = await _create(
-            test_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _create(test_db_session, player, list(STARTING_GROUP))
 
         assert seen == [(nation.id, 5)]
 
@@ -146,9 +140,7 @@ class TestNationCreatedHooks:
 
         assert calls == ["new"]
 
-    async def test_failing_hook_isolated_and_logged(
-        self, test_db_session, caplog
-    ):
+    async def test_failing_hook_isolated_and_logged(self, test_db_session, caplog):
         """A raising hook loses only its own writes: the nation and the
         other hook's effects survive; one WARNING names hook + class."""
         calls: list[str] = []
@@ -169,9 +161,7 @@ class TestNationCreatedHooks:
         await make_starting_group(test_db_session)
 
         with caplog.at_level(logging.WARNING):
-            nation = await _create(
-                test_db_session, player, list(STARTING_GROUP)
-            )
+            nation = await _create(test_db_session, player, list(STARTING_GROUP))
 
         # The creation is intact and the next hook still ran.
         assert nation.id is not None
@@ -179,14 +169,10 @@ class TestNationCreatedHooks:
         assert await _nation(test_db_session, nation.id) is not None
         # ... while the failed hook's partial write is gone.
         assert (
-            await test_db_session.execute(
-                select(Player).where(Player.id == marker.id)
-            )
+            await test_db_session.execute(select(Player).where(Player.id == marker.id))
         ).scalar_one_or_none() is None
         province = (
-            await test_db_session.execute(
-                select(Province).where(Province.id == 1001)
-            )
+            await test_db_session.execute(select(Province).where(Province.id == 1001))
         ).scalar_one()
         assert province.nation_id == nation.id
         # The WARNING carries the hook name and exception class only.
@@ -206,23 +192,17 @@ class TestNationCreatedHooks:
         await make_starting_group(test_db_session)
 
         with pytest.raises(asyncio.CancelledError):
-            await _create(
-                test_db_session, player, list(STARTING_GROUP)
-            )
+            await _create(test_db_session, player, list(STARTING_GROUP))
 
     async def test_no_hooks_behaves_as_before(self, test_db_session):
         assert get_nation_created_hooks() == {}
         player = await _player(test_db_session, 607)
         await make_starting_group(test_db_session)
 
-        nation = await _create(
-            test_db_session, player, list(STARTING_GROUP)
-        )
+        nation = await _create(test_db_session, player, list(STARTING_GROUP))
 
         assert nation.owner_player_id == player.id
         province = (
-            await test_db_session.execute(
-                select(Province).where(Province.id == 1001)
-            )
+            await test_db_session.execute(select(Province).where(Province.id == 1001))
         ).scalar_one()
         assert province.nation_id == nation.id

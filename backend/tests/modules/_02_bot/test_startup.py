@@ -11,14 +11,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator
 from main import app
@@ -64,8 +63,7 @@ async def live_app(tmp_path, monkeypatch, mini_map_config, bot_isolation):
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -104,9 +102,7 @@ async def test_lifespan_registers_bot_hooks_once(live_app):
 async def test_health_response_unchanged(live_app):
     """/api/v1/health keeps its shape — the bot adds nothing to it."""
     transport = ASGITransport(app=live_app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/v1/health")
 
     assert response.status_code == 200

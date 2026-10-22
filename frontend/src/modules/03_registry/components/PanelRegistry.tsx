@@ -1,25 +1,32 @@
 /**
- * PanelRegistry — the «Реестр» window (Spec 5.5).
+ * PanelRegistry — the «Реестр» window (Spec 5.5, UI Spec 9.2).
  *
- * A column as tall as the app window: title row («Реестр» + «Назад»)
- * → tab row → toolbar (search, «Показано N из M», «Фильтры»,
- * «Обновить», «Сбросить») → the in-flow filter panel (toggled by
- * «Фильтры», normal document flow across the window width) → table
- * block (flex:1; min-height:0; overflow-x:hidden,
- * overflow-y:auto, sticky header — the 910 px window rule: no
- * horizontal scrollbar, Spec 5.5). With layout.tabs_position = right the tab row becomes
- * a vertical column to the right of the table block. The page height
- * never depends on the row count.
+ * An ordinary block in the page flow (the VK window follows the
+ * content height — nothing here is pinned to it): screen title
+ * («РЕЕСТР», shared BlockTitle without the filling line — the signed
+ * text tabs «Игроки / Государства / …» sit in the same row, UI Spec
+ * 9.2 mockup «Registry») → toolbar (search, «Показано N из M»,
+ * «Фильтры», «Обновить», «Сбросить») → the in-flow filter panel
+ * (toggled by «Фильтры», normal document flow across the window
+ * width) → table block (`surface`, `radius-lg`, max-height 720 px;
+ * overflow-x:hidden, overflow-y:auto, sticky header — the 910 px
+ * window rule: no horizontal scrollbar, Spec 5.5). With
+ * layout.tabs_position = right the tabs become a vertical icon column
+ * to the right of the table block. The screen is as tall as its
+ * content. Navigation lives in the shared top bar — no own «Назад».
  *
  * Sort, filters, search and the filter-panel toggle of each tab live
  * in this component's state and survive tab switches; leaving the
- * panel («Назад») resets them (Bible 2.7 — VKUI View keeps panels
- * mounted, so the reset is done explicitly, not by unmount).
+ * panel resets them (Bible 2.7 — VKUI View keeps panels mounted, so
+ * the reset is done explicitly on the `active` prop flipping to
+ * false, not by unmount).
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
-import { Button, FormStatus, Spinner, Title } from '@vkontakte/vkui';
+import { Button, FormStatus, Spinner } from '@vkontakte/vkui';
+
+import { errorText } from '../../../shared/errorTexts';
+import { BlockTitle, RADII, SPACING, tokenVar } from '../../../shared/ui';
 
 import { useNationOptions, NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { useRegistryRows } from '../hooks/useRegistryRows';
@@ -43,6 +50,8 @@ import { TabStrip } from './TabStrip';
 
 export function PanelRegistry({
   entryRequest = null,
+  active = true,
+  onOpenNation,
 }: {
   /**
    * Deep-link request from AppShell (Spec 04_orders 5.5): select `tab`
@@ -50,8 +59,19 @@ export function PanelRegistry({
    * like a click on an `action_text` cell would.
    */
   entryRequest?: RegistryEntryRequest | null;
+  /**
+   * Whether this screen is the visible one — AppShell feeds it the
+   * active panel. Going false is «the panel was left»: the per-tab
+   * view state resets (Bible 2.7).
+   */
+  active?: boolean;
+  /**
+   * A nation cell click opens the nation subscreen (unit 14c); the
+   * second argument is the active tab's title for the return path
+   * chain («Реестр / <tab> / <название>»).
+   */
+  onOpenNation?: (nationId: string, fromTabTitle: string) => void;
 }) {
-  const navigator = useRouteNavigator();
   const tablesState = useRegistryTables();
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [views, setViews] = useState<Record<string, TableView>>({});
@@ -138,12 +158,16 @@ export function PanelRegistry({
     [view.filters],
   );
 
-  const goBack = () => {
-    setViews({});
-    setSelectedTab(null);
-    setPendingRequest(null);
-    navigator.push('/');
-  };
+  // Leaving the screen is the old «Назад» reset — the panel stays
+  // mounted inside VKUI View, so it is done explicitly when the
+  // `active` flag drops (Bible 2.7).
+  useEffect(() => {
+    if (!active) {
+      setViews({});
+      setSelectedTab(null);
+      setPendingRequest(null);
+    }
+  }, [active]);
 
   const resetView = () =>
     updateView((v) => ({ ...v, search: '', filters: {} }));
@@ -168,7 +192,7 @@ export function PanelRegistry({
       return (
         <div style={{ padding: 24 }}>
           <FormStatus mode="error" title={REGISTRY_TEXTS.tablesLoadError}>
-            {tablesState.error?.message}
+            {errorText(tablesState.error)}
           </FormStatus>
           <Button size="l" style={{ marginTop: 12 }} onClick={tablesState.reload}>
             {REGISTRY_TEXTS.retry}
@@ -196,7 +220,7 @@ export function PanelRegistry({
       return (
         <div style={{ padding: 24 }}>
           <FormStatus mode="error" title={REGISTRY_TEXTS.rowsLoadError}>
-            {rows.error?.message}
+            {errorText(rows.error)}
           </FormStatus>
           <Button size="l" style={{ marginTop: 12 }} onClick={rows.reload}>
             {REGISTRY_TEXTS.retry}
@@ -209,7 +233,7 @@ export function PanelRegistry({
         {rows.status === 'error' && (
           <div style={{ padding: '8px 12px' }}>
             <FormStatus mode="error" title={REGISTRY_TEXTS.rowsLoadError}>
-              {rows.error?.message}
+              {errorText(rows.error)}
             </FormStatus>
             <Button
               size="s"
@@ -227,6 +251,11 @@ export function PanelRegistry({
             view={view}
             onSortClick={(columnId) =>
               updateView((v) => ({ ...v, sort: nextSort(v.sort, columnId) }))
+            }
+            onOpenNation={
+              onOpenNation === undefined
+                ? undefined
+                : (nationId) => onOpenNation(nationId, activeTable.title)
             }
           />
         ) : rows.data.rows.length === 0 ? (
@@ -249,36 +278,27 @@ export function PanelRegistry({
     <div
       data-testid="panel-registry"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 10,
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--vkui--color_background)',
+        padding: SPACING['space-4'],
+        background: tokenVar('ground'),
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 12px',
-        }}
-      >
-        <Title level="2">{REGISTRY_TEXTS.panelTitle}</Title>
-        <Button mode="secondary" onClick={goBack}>
-          {REGISTRY_TEXTS.back}
-        </Button>
-      </div>
-
-      {tabsPosition === 'top' && tables.length > 0 && (
-        <TabStrip
-          tables={tables}
-          activeId={activeTableId}
-          orientation="horizontal"
-          onSelect={setSelectedTab}
-        />
-      )}
+      <BlockTitle
+        icon="list"
+        title={REGISTRY_TEXTS.panelTitle}
+        line={tabsPosition !== 'top' || tables.length === 0}
+        trailing={
+          tabsPosition === 'top' && tables.length > 0 ? (
+            <TabStrip
+              tables={tables}
+              activeId={activeTableId}
+              orientation="horizontal"
+              onSelect={setSelectedTab}
+            />
+          ) : null
+        }
+      />
 
       {activeTable && (
         <TableToolbar
@@ -312,16 +332,19 @@ export function PanelRegistry({
         />
       )}
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex' }}>
         <div
           data-testid="registry-table-block"
           style={{
             flex: 1,
             minHeight: 0,
             minWidth: 0,
+            maxHeight: 720,
             overflowX: 'hidden',
             overflowY: 'auto',
             position: 'relative',
+            background: tokenVar('surface'),
+            borderRadius: RADII['radius-lg'],
           }}
         >
           {content}

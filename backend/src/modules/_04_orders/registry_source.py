@@ -10,7 +10,7 @@ rows come newest first from the service.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,7 @@ ORDERS_PROVIDES = frozenset(
 def _aware(moment: datetime) -> datetime:
     """Naive datetimes are read as UTC (storage convention, as in cells)."""
     if moment.tzinfo is None:
-        return moment.replace(tzinfo=timezone.utc)
+        return moment.replace(tzinfo=UTC)
     return moment
 
 
@@ -46,17 +46,19 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
     past its deadline carries ``mark = "overdue"``.
     """
     tz = get_core_config().tick.tick_timezone
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     rows = await OrderService.list_for_registry(session)
     return [
         RegistryRow(
             key=f"o{row.number}",
             cells={
                 "number": row.number,
-                "nation": cell_nation(row.nation_name, row.nation_color),
-                "title": cell_action_text(
-                    text=row.title, action=f"order:{row.number}"
+                # An order stores only the name/colour snapshot — no
+                # nation id, so the cell shows but does not link.
+                "nation": cell_nation(
+                    row.nation_name, row.nation_color, nation_id=None
                 ),
+                "title": cell_action_text(text=row.title, action=f"order:{row.number}"),
                 "submitted": cell_datetime(row.submitted_at, tz),
                 "distributed": cell_datetime(row.distributed_at, tz),
                 "verdict": cell_datetime(

@@ -10,12 +10,9 @@
 
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import bridge from '@vkontakte/vk-bridge';
 import {
   AdaptivityProvider,
   AppRoot,
-  ConfigProvider,
-  Platform,
   ViewWidth,
 } from '@vkontakte/vkui';
 import {
@@ -31,27 +28,44 @@ import {
   PANEL_MAP,
   PANEL_REGISTRY,
 } from './app/AppShell';
+import { sendVkInit } from './shared/vkInit';
+import { ThemeProvider } from './shared/ui';
+import { UiKitEntry } from './shared/ui/UiKitEntry';
 
 import '@vkontakte/vkui/dist/vkui.css';
+import './shared/ui/fonts.css';
+import './app/shell.css';
 
-// Deep link from the community menu: `https://vk.com/app<APP_ID>#map`
-// reaches the iframe as the bare hash `#map` — normalise before routing.
-normalizeEntryHash();
+// Hidden catalogue of the shared UI library (unit 5): no auth, no
+// router — the Project Owner opens `https://vk.com/app<APP_ID>#ui-kit`
+// in real VK to approve the look.
+const isUiKit =
+  window.location.hash === '#ui-kit' || window.location.hash === '#/ui-kit';
+
+if (!isUiKit) {
+  // Deep link from the community menu: `https://vk.com/app<APP_ID>#map`
+  // reaches the iframe as the bare hash `#map` — normalise before routing.
+  normalizeEntryHash();
+}
 
 const router = createHashRouter([
   { path: '/', panel: PANEL_HOME, view: 'main' },
   { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
   { path: '/map', panel: PANEL_MAP, view: 'main' },
   { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
+  // The nation subscreen (unit 14c): «Реестр» stays the active panel
+  // and tab; the `:sub` segment is `nation-<id>`, anything else shows
+  // the plain Registry.
+  { path: '/registry/:sub', panel: PANEL_REGISTRY, view: 'main' },
 ]);
 
 function App() {
   useEffect(() => {
-    void bridge.send('VKWebAppInit').catch(() => {});
+    sendVkInit();
   }, []);
 
   return (
-    <ConfigProvider platform={Platform.VKCOM}>
+    <ThemeProvider>
       <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
         <AppRoot>
           <RouterProvider router={router}>
@@ -59,8 +73,14 @@ function App() {
           </RouterProvider>
         </AppRoot>
       </AdaptivityProvider>
-    </ConfigProvider>
+    </ThemeProvider>
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+const root = createRoot(document.getElementById('root')!);
+if (isUiKit) {
+  sendVkInit();
+  root.render(<UiKitEntry />);
+} else {
+  root.render(<App />);
+}

@@ -36,7 +36,8 @@ def compute_game_date(current_turn: int, config: CoreConfig) -> date:
         raise ValueError("current_turn must not be negative")
     epoch = config.calendar.epoch_start_date
     total = (
-        epoch.year * 12 + (epoch.month - 1)
+        epoch.year * 12
+        + (epoch.month - 1)
         + current_turn * config.calendar.months_per_turn
     )
     year, month0 = divmod(total, 12)
@@ -47,11 +48,12 @@ def compute_game_date(current_turn: int, config: CoreConfig) -> date:
 
 def format_game_date(value: date, config: CoreConfig) -> str:
     """
-    Render a game date as ``дд.месяц.гггг`` (e.g. ``01.январь.2040``).
+    Render a game date as ``«Месяц Год»`` (e.g. ``«Январь 2040»``).
 
     The month is written as a full word from ``calendar.month_names``
-    (January first); the day keeps a leading zero and the year four
-    digits, so the text is stable for sorting and fixed-width UI.
+    (January first) with only its first character upper-cased — the
+    rest is kept verbatim from the config; the year is written without
+    leading zeros.
     """
     month_name = config.calendar.month_names[value.month - 1]
-    return f"{value.day:02d}.{month_name}.{value.year:04d}"
+    return f"{month_name[:1].upper()}{month_name[1:]} {value.year}"

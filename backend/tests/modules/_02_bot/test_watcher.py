@@ -12,20 +12,19 @@ needs a registered audience provider.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 
 from core.tick.orchestrator import TickOrchestrator, TickPhase
-from modules._00_core.models import GameClock, Player
+from modules._00_core.models import GameClock
 from modules._00_core.tick_handler import finalize_tick
 from modules._02_bot.claim import claim_batch
-from modules._02_bot.models import BotConsent, BotOutbox
+from modules._02_bot.models import BotOutbox
 from modules._02_bot.registry import register_deadline_audience
 from modules._02_bot.settings import BotEnv
 from modules._02_bot.watcher import digest_watcher_step
-from tests.fixtures.profile import VALID_PROFILE
 from tests.modules._02_bot._issue3_support import (
     NOW,
     add_bot_state,
@@ -37,8 +36,8 @@ from tests.modules._02_bot._issue3_support import (
 ENV = BotEnv(
     enabled=True,
     group_id="12345",
-    group_token="t",
-    callback_secret="s",
+    group_token="t",  # noqa: S106
+    callback_secret="s",  # noqa: S106
     callback_confirmation="c",
     app_id=777,
 )
@@ -52,8 +51,9 @@ def _orchestrator():
     TickOrchestrator.clear_handlers()
 
 
-async def _seed_clock(session, *, turn=0, next_tick=NOW - timedelta(minutes=1),
-                      last_tick=None):
+async def _seed_clock(
+    session, *, turn=0, next_tick=NOW - timedelta(minutes=1), last_tick=None
+):
     session.add(
         GameClock(
             id=1,
@@ -74,9 +74,7 @@ async def _rows(engine) -> list[BotOutbox]:
 async def _digest_rows(engine) -> list[BotOutbox]:
     async with make_session_factory(engine)() as session:
         result = await session.execute(
-            select(BotOutbox).where(
-                BotOutbox.type_key == "TICK_DIGEST"
-            )
+            select(BotOutbox).where(BotOutbox.type_key == "TICK_DIGEST")
         )
         return list(result.scalars().all())
 
@@ -100,9 +98,7 @@ class TestDigestAfterTick:
 
             nation = (
                 await session.execute(
-                    select(Nation).where(
-                        Nation.owner_player_id == guest.id
-                    )
+                    select(Nation).where(Nation.owner_player_id == guest.id)
                 )
             ).scalar_one()
             await session.delete(nation)
@@ -129,12 +125,11 @@ class TestDigestAfterTick:
     ):
         """A handler that raises aborts the tick: the turn stays 0,
         and the watcher finds nothing to digest."""
+
         async def _boom(session, turn):
             raise RuntimeError("tick blew up")
 
-        TickOrchestrator.register(
-            TickPhase.PHASE_2_PRODUCTION, _boom
-        )
+        TickOrchestrator.register(TickPhase.PHASE_2_PRODUCTION, _boom)
 
         sf = make_session_factory(test_db_engine)
         async with sf() as session:
@@ -147,9 +142,7 @@ class TestDigestAfterTick:
                 await TickOrchestrator.run_tick(session)
             await session.rollback()
 
-            clock = (
-                await session.execute(select(GameClock))
-            ).scalar_one()
+            clock = (await session.execute(select(GameClock))).scalar_one()
             assert clock.current_turn == 0
 
         await digest_watcher_step(sf, bot_config, now=NOW)
@@ -172,7 +165,7 @@ class TestDigestAfterTick:
                 )
             )
             await add_bot_state(session, 0)
-            player = await add_member(session, consent="ALLOWED")
+            await add_member(session, consent="ALLOWED")
             await session.commit()
 
         await digest_watcher_step(sf, bot_config, now=NOW)
@@ -184,9 +177,7 @@ class TestDigestAfterTick:
             groups = await claim_batch(session, bot_config, ENV, NOW)
             await session.commit()
         assert groups == []
-        assert (await _digest_rows(test_db_engine))[0].status == (
-            "EXPIRED"
-        )
+        assert (await _digest_rows(test_db_engine))[0].status == ("EXPIRED")
 
     async def test_second_worker_loses_the_swap(
         self, test_db_engine, bot_config, bot_started
@@ -215,9 +206,7 @@ class TestDeadlineWarning:
     async def _deadline_rows(self, engine) -> list[BotOutbox]:
         async with make_session_factory(engine)() as session:
             result = await session.execute(
-                select(BotOutbox).where(
-                    BotOutbox.type_key == "DEADLINE_WARNING"
-                )
+                select(BotOutbox).where(BotOutbox.type_key == "DEADLINE_WARNING")
             )
             return list(result.scalars().all())
 
@@ -262,9 +251,7 @@ class TestDeadlineWarning:
         await digest_watcher_step(sf, bot_config, now=NOW)
         assert len(await self._deadline_rows(test_db_engine)) == 1
 
-    async def test_no_provider_no_deadline(
-        self, test_db_engine, bot_started
-    ):
+    async def test_no_provider_no_deadline(self, test_db_engine, bot_started):
         """Without a registered audience provider the deadline part
         enqueues nothing even inside the window."""
         bot_config = bot_started

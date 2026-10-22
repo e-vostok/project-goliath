@@ -18,20 +18,20 @@ no mocks.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import IntegrityError
+
+from alembic import command
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 
 GUARD_MESSAGE = (
-    "Сначала выполните сброс мира: провинции 1..100 "
-    "закреплены за государствами"
+    "Сначала выполните сброс мира: провинции 1..100 закреплены за государствами"
 )
 
 
@@ -57,10 +57,7 @@ def _columns(url: str, table: str) -> dict[str, dict]:
     engine = sa.create_engine(url)
     try:
         with engine.connect() as conn:
-            return {
-                col["name"]: col
-                for col in sa.inspect(conn).get_columns(table)
-            }
+            return {col["name"]: col for col in sa.inspect(conn).get_columns(table)}
     finally:
         engine.dispose()
 
@@ -78,11 +75,7 @@ def _province_rows(url: str) -> list[dict]:
     engine = sa.create_engine(url)
     try:
         with engine.connect() as conn:
-            return (
-                conn.execute(sa.text("SELECT * FROM provinces"))
-                .mappings()
-                .all()
-            )
+            return conn.execute(sa.text("SELECT * FROM provinces")).mappings().all()
     finally:
         engine.dispose()
 
@@ -95,38 +88,30 @@ def _nation_owning(url: str, province_id: int) -> None:
     try:
         with engine.begin() as conn:
             conn.execute(
-                sa.text(
-                    "INSERT INTO players (id, vk_user_id) "
-                    "VALUES (:id, 42424201)"
-                ),
+                sa.text("INSERT INTO players (id, vk_user_id) VALUES (:id, 42424201)"),
                 {"id": player_id},
             )
             # created_turn exists only from migration 0008 on — the
             # guard tests run this helper against the 0005 schema too.
             has_created_turn = "created_turn" in {
-                c["name"]
-                for c in sa.inspect(conn).get_columns("nations")
+                c["name"] for c in sa.inspect(conn).get_columns("nations")
             }
             conn.execute(
                 sa.text(
-                    "INSERT INTO nations "
+                    "INSERT INTO nations "  # noqa: S608
                     "(id, owner_player_id, name, color_hex, created_at"
                     + (", created_turn" if has_created_turn else "")
                     + ") VALUES (:id, :owner, 'Guard Nation', '#123456',"
-                    " :ts"
-                    + (", 0" if has_created_turn else "")
-                    + ")"
+                    " :ts" + (", 0" if has_created_turn else "") + ")"
                 ),
                 {
                     "id": nation_id,
                     "owner": player_id,
-                    "ts": datetime.now(timezone.utc),
+                    "ts": datetime.now(UTC),
                 },
             )
             conn.execute(
-                sa.text(
-                    "UPDATE provinces SET nation_id = :nid WHERE id = :pid"
-                ),
+                sa.text("UPDATE provinces SET nation_id = :nid WHERE id = :pid"),
                 {"nid": nation_id, "pid": province_id},
             )
     finally:
@@ -147,9 +132,7 @@ class TestUpgradeToHead:
             with engine.connect() as conn:
                 checks = {
                     chk["name"]
-                    for chk in sa.inspect(conn).get_check_constraints(
-                        "provinces"
-                    )
+                    for chk in sa.inspect(conn).get_check_constraints("provinces")
                 }
         finally:
             engine.dispose()
@@ -172,9 +155,7 @@ class TestUpgradeToHead:
         try:
             with engine.connect() as conn:
                 insp = sa.inspect(conn)
-                indexes = {
-                    idx["name"] for idx in insp.get_indexes("map_ownership_log")
-                }
+                indexes = {idx["name"] for idx in insp.get_indexes("map_ownership_log")}
                 checks = {
                     chk["name"]
                     for chk in insp.get_check_constraints("map_ownership_log")
@@ -207,7 +188,7 @@ class TestUpgradeToHead:
                         "(province_id, turn_number, created_at) "
                         "VALUES (1001, 1, :ts)"
                     ),
-                    {"ts": datetime.now(timezone.utc)},
+                    {"ts": datetime.now(UTC)},
                 )
                 conn.execute(
                     sa.text(
@@ -215,7 +196,7 @@ class TestUpgradeToHead:
                         "(province_id, turn_number, created_at) "
                         "VALUES (1001, 2, :ts)"
                     ),
-                    {"ts": datetime.now(timezone.utc)},
+                    {"ts": datetime.now(UTC)},
                 )
                 ids = [
                     row[0]
@@ -313,9 +294,7 @@ class TestProvinceInvariants:
 
 
 class TestGuards:
-    def test_owned_placeholder_aborts_with_russian_message(
-        self, tmp_path, monkeypatch
-    ):
+    def test_owned_placeholder_aborts_with_russian_message(self, tmp_path, monkeypatch):
         url = _db_url(tmp_path)
         _upgrade(url, "0005", monkeypatch)
         _nation_owning(url, 5)
@@ -357,9 +336,7 @@ class TestGuards:
 
 
 class TestDowngradeRoundTrip:
-    def test_downgrade_restores_schema_and_placeholders(
-        self, tmp_path, monkeypatch
-    ):
+    def test_downgrade_restores_schema_and_placeholders(self, tmp_path, monkeypatch):
         url = _db_url(tmp_path)
         _upgrade(url, "head", monkeypatch)
         _downgrade(url, "0005", monkeypatch)

@@ -58,7 +58,9 @@ class TestAdminRegistry:
         AdminRegistry.register_state_view("mid", self._noop_view)
 
         assert list(AdminRegistry.get_state_view_hooks()) == [
-            "zeta", "alpha", "mid",
+            "zeta",
+            "alpha",
+            "mid",
         ]
 
     def test_duplicate_reset_slug_raises(self):
@@ -94,9 +96,7 @@ class TestAdminRegistry:
         assert AdminRegistry.get_state_view_hooks() == {}
 
     @pytest.mark.asyncio
-    async def test_registered_hooks_run_against_real_session(
-        self, test_db_session
-    ):
+    async def test_registered_hooks_run_against_real_session(self, test_db_session):
         """Hooks retrieved from the registry execute on the real test DB."""
         test_db_session.add(Player(vk_user_id=11111))
         await test_db_session.flush()
@@ -105,9 +105,7 @@ class TestAdminRegistry:
             await session.execute(delete(Player))
 
         async def view_hook(session):
-            result = await session.execute(
-                select(func.count()).select_from(Player)
-            )
+            result = await session.execute(select(func.count()).select_from(Player))
             return {"player_count": result.scalar_one()}
 
         AdminRegistry.register_state_view("00_core", view_hook)

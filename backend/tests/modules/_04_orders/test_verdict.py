@@ -10,7 +10,7 @@ VK_APP_ID=777).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -19,7 +19,7 @@ from modules._02_bot.models import BotOutbox
 from modules._02_bot.render import render_message
 from modules._04_orders.models import Order, OrderStage, stage_of
 from modules._04_orders.service import OrderService
-from tests.fixtures.factories import make_consent, make_order, utcnow
+from tests.fixtures.factories import make_consent, make_order
 from tests.modules._03_registry.conftest import bearer_headers
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
@@ -34,11 +34,7 @@ VALID_VERDICT = {
 
 def _aware(value: datetime) -> datetime:
     """SQLite returns naive datetimes even for timezone=True columns."""
-    return (
-        value
-        if value.tzinfo is not None
-        else value.replace(tzinfo=timezone.utc)
-    )
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class TestWriteVerdict:
@@ -52,13 +48,9 @@ class TestWriteVerdict:
         (Spec Part 1, INV-O15)."""
         author, nation = await seed_author(test_db_session, 773001)
         judge = await seed_judge(test_db_session, 773002, nation=True)
-        order = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        order = await make_order(test_db_session, author, nation=nation, judge=judge)
         assert (
-            await OrderService.unresolved_count(
-                test_db_session, player_id=author.id
-            )
+            await OrderService.unresolved_count(test_db_session, player_id=author.id)
             == 1
         )
 
@@ -95,16 +87,14 @@ class TestWriteVerdict:
         assert pending == 0
         # ...and so did the author's unresolved count.
         assert (
-            await OrderService.unresolved_count(
-                test_db_session, player_id=author.id
-            )
+            await OrderService.unresolved_count(test_db_session, player_id=author.id)
             == 0
         )
 
         # The judge's queue no longer lists the order.
-        assert await OrderService.list_assigned(
-            test_db_session, player_id=judge.id
-        ) == []
+        assert (
+            await OrderService.list_assigned(test_db_session, player_id=judge.id) == []
+        )
 
     async def test_forbidden_response_is_byte_identical(
         self, client, test_db_session, orders_started
@@ -114,12 +104,8 @@ class TestWriteVerdict:
         author, nation = await seed_author(test_db_session, 773101)
         judge = await seed_judge(test_db_session, 773102, nation=True)
         stranger = await seed_judge(test_db_session, 773103, nation=True)
-        judged = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
-        judgeless = await make_order(
-            test_db_session, author, nation=nation
-        )
+        judged = await make_order(test_db_session, author, nation=nation, judge=judge)
+        judgeless = await make_order(test_db_session, author, nation=nation)
 
         as_author = await client.post(
             f"{ORDERS_URL}/{judged.number}/verdict",
@@ -141,9 +127,7 @@ class TestWriteVerdict:
         assert as_stranger.status_code == 403
         assert no_judge.status_code == 403
         # Byte-identical bodies — no hint about the assignment leaks.
-        assert (
-            as_author.content == as_stranger.content == no_judge.content
-        )
+        assert as_author.content == as_stranger.content == no_judge.content
         assert as_author.json()["code"] == "ORDER_VERDICT_FORBIDDEN"
 
         await test_db_session.refresh(judged)
@@ -158,15 +142,11 @@ class TestWriteVerdict:
         ORDER_VERDICT_EXISTS and the stored text does not move."""
         author, nation = await seed_author(test_db_session, 773201)
         judge = await seed_judge(test_db_session, 773202, nation=True)
-        order = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        order = await make_order(test_db_session, author, nation=nation, judge=judge)
         headers = bearer_headers(judge.id)
         url = f"{ORDERS_URL}/{order.number}/verdict"
 
-        first = await client.post(
-            url, json=VALID_VERDICT, headers=headers
-        )
+        first = await client.post(url, json=VALID_VERDICT, headers=headers)
         assert first.status_code == 201
         body = first.json()
         assert body["verdict"] == VALID_VERDICT
@@ -200,9 +180,7 @@ class TestWriteVerdict:
         codes — the verdict columns stay empty (Spec 5.3)."""
         author, nation = await seed_author(test_db_session, 773301)
         judge = await seed_judge(test_db_session, 773302, nation=True)
-        order = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        order = await make_order(test_db_session, author, nation=nation, judge=judge)
         headers = bearer_headers(judge.id)
         url = f"{ORDERS_URL}/{order.number}/verdict"
 
@@ -223,9 +201,7 @@ class TestWriteVerdict:
                 "ORDER_URL_INVALID",
             ),
         ):
-            response = await client.post(
-                url, json=body, headers=headers
-            )
+            response = await client.post(url, json=body, headers=headers)
             assert response.status_code == 422
             assert response.json()["code"] == code
 
@@ -242,9 +218,7 @@ class TestWriteVerdict:
         422 — ``verdict_effects`` stays NULL."""
         author, nation = await seed_author(test_db_session, 773401)
         judge = await seed_judge(test_db_session, 773402, nation=True)
-        order = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        order = await make_order(test_db_session, author, nation=nation, judge=judge)
 
         response = await client.post(
             f"{ORDERS_URL}/{order.number}/verdict",
@@ -269,9 +243,7 @@ class TestWriteVerdict:
         )
         await make_consent(test_db_session, author, state="ALLOWED")
         judge = await seed_judge(test_db_session, 773502, nation=True)
-        order = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        order = await make_order(test_db_session, author, nation=nation, judge=judge)
 
         await OrderService.write_verdict(
             test_db_session,
@@ -290,14 +262,12 @@ class TestWriteVerdict:
         assert row.event_key == f"order_verdict:{order.id}"
         assert row.payload == {
             "order_number": order.number,
-            "order_link": (
-                f"https://vk.com/app777#registry/order-{order.number}"
-            ),
+            "order_link": (f"https://vk.com/app777#registry/order-{order.number}"),
         }
         # event_at = verdict_at -> expires_at counts from it.
-        assert _aware(row.expires_at) == _aware(
-            order.verdict_at
-        ) + timedelta(minutes=4320)
+        assert _aware(row.expires_at) == _aware(order.verdict_at) + timedelta(
+            minutes=4320
+        )
 
         # The rendered text quotes the number and the link — never the
         # verdict's wording (Spec 0, D9).
@@ -314,9 +284,7 @@ class TestWriteVerdict:
             payload=row.payload,
         )
         text = render_message(
-            ComposedMessage(
-                (row.id,), "SINGLE", "ORDER_VERDICT_READY", False
-            ),
+            ComposedMessage((row.id,), "SINGLE", "ORDER_VERDICT_READY", False),
             {row.id: view},
             orders_bot_started,
         )
@@ -332,9 +300,7 @@ class TestWriteVerdict:
         verdict still lands."""
         author, nation = await seed_author(test_db_session, 773601)
         judge = await seed_judge(test_db_session, 773602, nation=True)
-        order = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        order = await make_order(test_db_session, author, nation=nation, judge=judge)
 
         view = await OrderService.write_verdict(
             test_db_session,
@@ -347,8 +313,6 @@ class TestWriteVerdict:
         await test_db_session.refresh(order)
         assert order.verdict_at is not None
         assert (
-            await test_db_session.scalar(
-                select(func.count()).select_from(BotOutbox)
-            )
+            await test_db_session.scalar(select(func.count()).select_from(BotOutbox))
             == 0
         )

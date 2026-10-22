@@ -1,97 +1,152 @@
 /**
- * Tab navigation bar for the registration window: chevron IconButtons
- * («Назад»/«Вперёд»), the «Шаг N из 4» indicator and the four clickable
- * tab titles with the current one emphasized. A tab carrying a
- * field-level server error — or, once any field was edited, a missing
- * required field — while inactive is marked with a Badge; the bar never
- * switches tabs on its own. Titles wrap so the bar fits 910 px.
+ * The four-tab strip of the registration window (UI Spec 9.6 — version
+ * 0.9.0 unit 8c): «Основные данные и символика», «Глава государства»,
+ * «История», «Территории». Each tab shows a numbered round mark, the
+ * active tab carries an `action` underline, an inactive tab that needs
+ * attention shows a small `danger` dot. Titles never truncate — every
+ * tab is `flex: 1 1 auto` so it takes its fair share of the row.
+ *
+ * Arrow keys move the focus, a click switches the tab (the draft keeps
+ * everything); marks come from the container (`fieldToTab` over the
+ * server errors plus the required fields the player left empty).
  */
 
-import { Badge, Div, IconButton } from '@vkontakte/vkui';
-import { Icon24ChevronLeft, Icon24ChevronRight } from '@vkontakte/icons';
+import { useCallback } from 'react';
 
+import {
+  RADII,
+  TEXT_STYLES,
+  tokenVar,
+  type BlockIconName,
+} from '../../../shared/ui';
 import type { RegistrationTab } from './registrationForm';
 
 export interface CreateNationTabBarProps {
+  /** Active tab 1..4 — the strip is a pick-one-of-4 radio group. */
   tab: RegistrationTab;
   onTabChange: (tab: RegistrationTab) => void;
-  /** true when an inactive tab needs attention (error / missing field). */
+  /** Marks of the inactive tabs that hold an error or a missing field. */
   tabMarks: Record<RegistrationTab, boolean>;
 }
 
-const TAB_TITLES: Record<RegistrationTab, string> = {
-  1: 'Основные данные и символика',
-  2: 'Руководство',
-  3: 'История и культура',
-  4: 'Территории',
-};
-
-const TABS: readonly RegistrationTab[] = [1, 2, 3, 4];
+/** Title + block icon of each tab — the strip and the tab blocks share it. */
+export const CREATE_NATION_TABS: Array<{
+  title: string;
+  icon: BlockIconName;
+}> = [
+  { title: 'Основные данные и символика', icon: 'list' },
+  { title: 'Глава государства', icon: 'person' },
+  { title: 'История', icon: 'text' },
+  { title: 'Территории', icon: 'map' },
+];
 
 export function CreateNationTabBar({
   tab,
   onTabChange,
   tabMarks,
 }: CreateNationTabBarProps) {
+  const onRadioArrow = useCallback((key: string, index: number) => {
+    const step = key === 'ArrowRight' ? 1 : -1;
+    const next =
+      ((index + step + CREATE_NATION_TABS.length) % CREATE_NATION_TABS.length) +
+      1;
+    const input = document.querySelector<HTMLElement>(
+      `[data-testid="step-title-${next}"]`,
+    );
+    input?.focus();
+  }, []);
+
   return (
-    <Div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <IconButton
-        aria-label="Назад"
-        data-testid="step-prev"
-        disabled={tab === 1}
-        onClick={() => onTabChange((tab - 1) as RegistrationTab)}
-      >
-        <Icon24ChevronLeft />
-      </IconButton>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div data-testid="step-indicator">Шаг {tab} из 4</div>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 8,
-            alignItems: 'center',
-          }}
-        >
-          {TABS.map((s, index) => (
+    <div
+      role="radiogroup"
+      aria-label="Разделы регистрации"
+      style={{ display: 'flex', gap: 4 }}
+    >
+      {CREATE_NATION_TABS.map(({ title }, index) => {
+        const value = (index + 1) as RegistrationTab;
+        const active = value === tab;
+        const marked = tabMarks[value] && !active;
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            data-testid={`step-title-${value}`}
+            onClick={() => onTabChange(value)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                onRadioArrow(e.key, index);
+              }
+            }}
+            style={{
+              flex: '1 1 auto',
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 4px 0',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+            }}
+          >
             <span
-              key={s}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 24,
+                height: 24,
+                borderRadius: RADII['radius-pill'],
+                border: `1px solid ${tokenVar(active ? 'action' : 'ink-faint')}`,
+                background: tokenVar(active ? 'action' : 'surface-inset'),
+                color: tokenVar(active ? 'surface' : 'ink-muted'),
+                ...TEXT_STYLES['figure'],
+              }}
             >
-              {index > 0 && <span aria-hidden="true">·</span>}
-              <button
-                type="button"
-                data-testid={`step-title-${s}`}
-                onClick={() => onTabChange(s)}
-                style={{
-                  padding: 0,
-                  border: 'none',
-                  background: 'none',
-                  cursor: 'pointer',
-                  font: 'inherit',
-                  textAlign: 'left',
-                  ...(tab === s
-                    ? { fontWeight: 600 }
-                    : { color: 'var(--vkui--color_text_secondary)' }),
-                }}
-              >
-                {TAB_TITLES[s]}
-              </button>
-              {s !== tab && tabMarks[s] && (
-                <Badge mode="prominent" data-testid={`step-error-${s}`} />
+              {value}
+              {marked && (
+                <span
+                  data-testid={`step-error-${value}`}
+                  title="Есть незаполненные поля"
+                  style={{
+                    position: 'absolute',
+                    top: -3,
+                    right: -3,
+                    width: 8,
+                    height: 8,
+                    borderRadius: RADII['radius-pill'],
+                    background: tokenVar('danger'),
+                    border: `2px solid ${tokenVar('surface')}`,
+                  }}
+                />
               )}
             </span>
-          ))}
-        </div>
-      </div>
-      <IconButton
-        aria-label="Вперёд"
-        data-testid="step-next"
-        disabled={tab === 4}
-        onClick={() => onTabChange((tab + 1) as RegistrationTab)}
-      >
-        <Icon24ChevronRight />
-      </IconButton>
-    </Div>
+            <span
+              style={{
+                ...TEXT_STYLES['caption'],
+                color: tokenVar(active ? 'ink' : 'ink-muted'),
+                textAlign: 'center',
+              }}
+            >
+              {title}
+            </span>
+            <span
+              aria-hidden="true"
+              style={{
+                alignSelf: 'stretch',
+                height: 2,
+                borderRadius: 1,
+                background: tokenVar(active ? 'action' : 'line'),
+                opacity: active ? 1 : 0,
+              }}
+            />
+          </button>
+        );
+      })}
+    </div>
   );
 }

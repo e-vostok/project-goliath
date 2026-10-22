@@ -59,9 +59,7 @@ def register_table_source(
     previous registration — startup stays idempotent and tests can swap
     a builtin source for a failing double.
     """
-    _sources[key] = TableSource(
-        key=key, provides=frozenset(provides), load=load
-    )
+    _sources[key] = TableSource(key=key, provides=frozenset(provides), load=load)
 
 
 def get_table_source(key: str) -> TableSource | None:

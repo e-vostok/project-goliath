@@ -10,7 +10,7 @@ returns a wrong shape can never leak malformed JSON to the client.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 from modules._03_registry.registry import Cell
@@ -24,9 +24,7 @@ def cell_date(text: str, key: int) -> dict:
     return {"text": text, "key": key}
 
 
-def cell_datetime(
-    moment: datetime | None, tz: str, mark: str | None = None
-) -> dict:
+def cell_datetime(moment: datetime | None, tz: str, mark: str | None = None) -> dict:
     """
     ``datetime`` cell (Spec 04_orders, Appendix A): ``date``/``time``
     display lines in ``tz``, ``key`` — Unix seconds for sorting,
@@ -45,7 +43,7 @@ def cell_datetime(
             "mark": mark,
         }
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
+        moment = moment.replace(tzinfo=UTC)
     local = moment.astimezone(ZoneInfo(tz))
     return {
         "date": f"{local.day:02d}.{local.month:02d}.{local.year}",
@@ -62,9 +60,7 @@ def cell_action_text(text: str, action: str) -> dict:
     return {"text": text, "action": action}
 
 
-def cell_person(
-    name: str, avatar_url: str | None, is_fallback: bool
-) -> dict:
+def cell_person(name: str, avatar_url: str | None, is_fallback: bool) -> dict:
     """``person`` cell: name (never empty, INV-R7), avatar, fallback flag."""
     return {
         "name": name,
@@ -79,11 +75,17 @@ def cell_flag(color: str, image_url: str | None) -> dict:
 
 
 def cell_nation(
-    name: str, color: str, flag_url: str | None = None
+    name: str,
+    color: str,
+    flag_url: str | None = None,
+    nation_id: str | None = None,
 ) -> dict:
     """``nation`` cell: colour mark and name; ``flag_url`` is the nation's
-    uploaded flag image (``None`` — the colour mark stands in for it)."""
-    return {"name": name, "color": color, "flag_url": flag_url}
+    uploaded flag image (``None`` — the colour mark stands in for it).
+    ``id`` is the nation uuid the client opens on click (a source that
+    knows only a name/colour snapshot passes ``nation_id=None`` — the
+    cell shows but does not link)."""
+    return {"id": nation_id, "name": name, "color": color, "flag_url": flag_url}
 
 
 def _is_int(value: object) -> bool:
@@ -91,9 +93,7 @@ def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _is_dict_exact(
-    value: object, keys: frozenset[str]
-) -> dict | None:
+def _is_dict_exact(value: object, keys: frozenset[str]) -> dict | None:
     """The value as a dict with exactly ``keys``, else None."""
     if not isinstance(value, dict) or set(value.keys()) != keys:
         return None
@@ -118,15 +118,9 @@ def cell_matches(column_type: str, cell: Cell) -> bool:
         return isinstance(cell, str)
     if column_type == "date":
         d = _is_dict_exact(cell, frozenset({"text", "key"}))
-        return (
-            d is not None
-            and isinstance(d["text"], str)
-            and _is_int(d["key"])
-        )
+        return d is not None and isinstance(d["text"], str) and _is_int(d["key"])
     if column_type == "datetime":
-        d = _is_dict_exact(
-            cell, frozenset({"date", "time", "key", "day", "mark"})
-        )
+        d = _is_dict_exact(cell, frozenset({"date", "time", "key", "day", "mark"}))
         if d is None or d["mark"] not in (None, "overdue"):
             return False
         filled = (d["date"], d["time"], d["key"], d["day"])
@@ -146,9 +140,7 @@ def cell_matches(column_type: str, cell: Cell) -> bool:
             and isinstance(d["action"], str)
         )
     if column_type == "person":
-        d = _is_dict_exact(
-            cell, frozenset({"name", "avatar_url", "is_fallback"})
-        )
+        d = _is_dict_exact(cell, frozenset({"name", "avatar_url", "is_fallback"}))
         return (
             d is not None
             and isinstance(d["name"], str)
@@ -165,9 +157,10 @@ def cell_matches(column_type: str, cell: Cell) -> bool:
             and (d["image_url"] is None or isinstance(d["image_url"], str))
         )
     if column_type == "nation":
-        d = _is_dict_exact(cell, frozenset({"name", "color", "flag_url"}))
+        d = _is_dict_exact(cell, frozenset({"id", "name", "color", "flag_url"}))
         return (
             d is not None
+            and (d["id"] is None or isinstance(d["id"], str))
             and isinstance(d["name"], str)
             and isinstance(d["color"], str)
             and _COLOR_RE.fullmatch(d["color"]) is not None

@@ -7,7 +7,7 @@
  * GET /nations/rules) fails these tests.
  */
 
-import type { ReactElement } from 'react';
+import { useRef, type ReactElement, type ReactNode } from 'react';
 import {
   fireEvent,
   render,
@@ -26,6 +26,7 @@ import {
 
 import { server } from '../../../../../vitest.setup';
 import type { NationRulesDTO } from '../../../../shared/types';
+import type { OrderRulesDTO } from '../../../04_orders/types';
 import { writeFormDraft } from '../../../../shared/formDraft';
 import {
   REGISTRATION_DRAFT_KEY,
@@ -35,6 +36,7 @@ import {
 } from '../registrationForm';
 import { SessionProvider } from '../../hooks/useAuth';
 import { OrdersUiProvider } from '../../../04_orders/OrdersUiProvider';
+import { NoticeHost, PopupHost } from '../../../../shared/ui';
 import {
   MINI_GEOMETRY,
   MINI_MANIFEST,
@@ -94,8 +96,22 @@ export const FREE_PROVINCES = [
 export const GAME_CLOCK = {
   current_turn: 12,
   game_date: '2041-01-01',
-  game_date_text: '01.январь.2041',
+  game_date_text: 'Январь 2041',
   next_tick_at: '2026-10-02T03:00:00Z',
+};
+
+/**
+ * Order limits for the «Неразрешённые приказы» tile — deliberately NOT
+ * the real config numbers: a hardcoded limit in the tile fails tests.
+ */
+export const ORDER_RULES: OrderRulesDTO = {
+  title_min_length: 4,
+  title_max_length: 77,
+  summary_min_length: 9,
+  summary_max_length: 444,
+  url_max_length: 188,
+  max_unresolved_orders: 7,
+  unresolved_orders: 2,
 };
 
 /**
@@ -188,6 +204,10 @@ export function registerDefaultHandlers() {
     ),
     http.get('*/api/v1/provinces', () => HttpResponse.json(FREE_PROVINCES)),
     http.get('*/api/v1/game-clock', () => HttpResponse.json(GAME_CLOCK)),
+    http.get('*/api/v1/orders/rules', () => HttpResponse.json(ORDER_RULES)),
+    http.get('*/api/v1/orders/assigned', () =>
+      HttpResponse.json({ items: [] }),
+    ),
     http.get('*/api/v1/map/manifest', () =>
       HttpResponse.json(mswMap.manifest),
     ),
@@ -211,17 +231,34 @@ export function registerDefaultHandlers() {
   );
 }
 
+/**
+ * The same wiring AppShell has: a relative root container plus the
+ * PopupHost the shared windows (order windows, the province picker)
+ * portal into.
+ */
+function PopupHarness({ children }: { children?: ReactNode }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <PopupHost container={containerRef}>
+        {/* PanelNationHome hosts the orders block — the provider
+            must exist; these tests never open its windows. NoticeHost
+            feeds the shared «done» bar. */}
+        <NoticeHost container={containerRef}>
+          <OrdersUiProvider>{children}</OrdersUiProvider>
+        </NoticeHost>
+      </PopupHost>
+    </div>
+  );
+}
+
 export function renderWithProviders(ui: ReactElement) {
   return render(
     <ConfigProvider platform={Platform.VKCOM}>
       <AdaptivityProvider viewWidth={ViewWidth.DESKTOP}>
         <AppRoot>
           <SessionProvider session={SESSION}>
-            {/* PanelNationHome hosts the orders block — the provider
-                must exist; these tests never open its windows. */}
-            <OrdersUiProvider activeModal={null} onActiveModal={() => {}}>
-              {ui}
-            </OrdersUiProvider>
+            <PopupHarness>{ui}</PopupHarness>
           </SessionProvider>
         </AppRoot>
       </AdaptivityProvider>
@@ -245,7 +282,8 @@ const SEEDED_PROVINCES: ChipOption[] = [1005, 1006, 1007].map((id) => ({
 
 /**
  * A RegistrationForm with every required field filled (the optional
- * texts stay empty, no flag/portrait, no capital mark — the server
+ * texts stay empty, flag and portrait get the stub catalog ids — both
+ * are mandatory on create since 0.9.0, no capital mark — the server
  * defaults the capital to the first province). The UI cannot reach some
  * fields until Issues 13–15, so tests that need an enabled submit seed
  * this through the v2 draft.
@@ -259,15 +297,14 @@ export function completeRegistrationForm(
     color: '#e64545',
     motto: '',
     description: '',
-    flagId: null,
+    flagId: 'flag_stub',
     leaderName: 'Иван Грозный',
     gender: 'male',
     leaderTitle: 'Верховный правитель',
     leaderBio: '',
-    portraitId: null,
+    portraitId: 'portrait_stub',
     successionType: 'elections',
     historyUrl: 'https://vk.com/@testia-istoriya',
-    anthemUrl: '',
     provinces: SEEDED_PROVINCES.map((chip) => ({ ...chip })),
     capitalProvinceId: null,
     capitalName: 'Столицево',
@@ -320,18 +357,14 @@ export async function pickProvinces(user: UserEvent, ids: number[]) {
   await user.click(screen.getByRole('button', { name: 'Готово' }));
 }
 
-/** Fills the visible tab-3 fields (history link + optional anthem link). */
+/** Fills the one tab-3 field — the history link. */
 export async function fillTab3(
   user: UserEvent,
   url = 'https://vk.com/@testia-istoriya',
-  anthemUrl?: string,
 ) {
   await goToTab(user, 3);
   await user.type(
-    screen.getByLabelText('Ссылка на историю государства'),
+    screen.getByLabelText('Ссылка на статью с историей государства'),
     url,
   );
-  if (anthemUrl !== undefined) {
-    await user.type(screen.getByLabelText('Ссылка на гимн'), anthemUrl);
-  }
 }

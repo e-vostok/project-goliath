@@ -10,9 +10,8 @@ idempotent under the module slug ``02_bot``.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +21,7 @@ from modules._02_bot.admin_hooks import register_bot_admin_hooks
 from modules._02_bot.models import BotConsent, BotOutbox, BotState
 from tests.fixtures.factories import make_consent, make_outbox_row
 
-NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 async def _player(session: AsyncSession) -> Player:
@@ -66,28 +65,20 @@ class TestReset:
         await reset(test_db_session)
 
         assert (
-            await test_db_session.execute(
-                select(func.count()).select_from(BotOutbox)
-            )
+            await test_db_session.execute(select(func.count()).select_from(BotOutbox))
         ).scalar_one() == 0
         state = (
-            await test_db_session.execute(
-                select(BotState).where(BotState.id == 1)
-            )
+            await test_db_session.execute(select(BotState).where(BotState.id == 1))
         ).scalar_one()
         assert state.last_digest_turn == 0
         # Consents survive a world reset.
         assert (
-            await test_db_session.execute(
-                select(func.count()).select_from(BotConsent)
-            )
+            await test_db_session.execute(select(func.count()).select_from(BotConsent))
         ).scalar_one() == 1
 
 
 class TestStateView:
-    async def test_shape_without_secrets(
-        self, test_db_session, bot_started
-    ):
+    async def test_shape_without_secrets(self, test_db_session, bot_started):
         player = await _player(test_db_session)
         await make_consent(test_db_session, player, state="ALLOWED")
         await make_consent(
@@ -97,7 +88,9 @@ class TestStateView:
         )
         await make_outbox_row(test_db_session, player, status="PENDING")
         await make_outbox_row(
-            test_db_session, player, status="DROPPED",
+            test_db_session,
+            player,
+            status="DROPPED",
             drop_reason="NO_CONSENT",
         )
         test_db_session.add(BotState(id=1, last_digest_turn=7))
@@ -117,9 +110,7 @@ class TestStateView:
         for secret in ("test-group-token", "test-callback-secret"):
             assert secret not in as_text
 
-    async def test_empty_queue_has_null_age(
-        self, test_db_session, bot_started
-    ):
+    async def test_empty_queue_has_null_age(self, test_db_session, bot_started):
         view = AdminRegistry.get_state_view_hooks()["02_bot"]
         snapshot = await view(test_db_session)
         assert snapshot["oldest_ready_age_seconds"] is None

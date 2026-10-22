@@ -1,18 +1,27 @@
 /**
- * Shared primitives for the nation registration window and the nation
- * edit form:
+ * Field helpers of the registration window — thin adapters over the
+ * shared `TextField`/`TextArea` set (UI Spec 9.6 — version 0.9.0 unit
+ * 8c):
  *
- * - `nationRulesHints` builds the Russian hint strings from the server-side
- *   NationRulesDTO (the client never hardcodes limits — hints exist only
- *   while rules are loaded).
- * - `CreateNationTextField` is one labelled FormItem + Input pair; a field
- *   error wins over the hint in `bottom`.
+ * - `nationRulesHints` builds the one rules-driven hint (the history
+ *   link's allowed domains) so a config change rewrites the UI copy.
+ *   Length hints are gone: the «N из M» counter in the label row says
+ *   the limit — a second «до N символов» under a field is forbidden.
+ * - `CreateNationTextField` / `CreateNationTextArea` keep the form's
+ *   plumbing (label, `required` star, limits from `rules`, the field
+ *   error slot) while every pixel — label row, `surface-inset` input,
+ *   danger error with a mark — comes from the shared kit.
  * - `RegistrationTabProps` is the common prop contract of the four
  *   registration tab components: they are purely presentational and the
  *   container owns the single RegistrationForm object.
+ *
+ * The word «необязательно» is never written: a field without «*» is
+ * optional by itself.
  */
 
-import { FormItem, Input } from '@vkontakte/vkui';
+import { Icon16Done } from '@vkontakte/icons';
+
+import { RADII, TextArea, TextField, tokenVar } from '../../../shared/ui';
 
 import type { NationRulesDTO } from '../../../shared/types';
 import type {
@@ -20,21 +29,12 @@ import type {
   RegistrationForm,
 } from './registrationForm';
 
+/** Hint strings per field; null while rules are unavailable (loading/error). */
 export interface NationRulesHints {
-  name: string;
-  shortName: string;
-  motto: string;
-  description: string;
-  leaderName: string;
-  leaderTitle: string;
-  leaderBio: string;
-  capitalName: string;
+  /** Domains hint under the history link — the one rules-driven hint. */
   historyUrl: string;
-  anthemUrl: string;
-  provinces: string;
 }
 
-/** Hint strings per field; null while rules are unavailable (loading/error). */
 export function nationRulesHints(
   rules: NationRulesDTO | null,
 ): NationRulesHints | null {
@@ -42,24 +42,10 @@ export function nationRulesHints(
     return null;
   }
   return {
-    name: `от ${rules.name_min_length} до ${rules.name_max_length} символов`,
-    shortName: `от ${rules.short_name_min_length} до ${rules.short_name_max_length} символов`,
-    motto: `до ${rules.motto_max_length} символов`,
-    description: `до ${rules.description_max_length} символов`,
-    leaderName: `от ${rules.leader_name_min_length} до ${rules.leader_name_max_length} символов`,
-    leaderTitle: `от ${rules.leader_title_min_length} до ${rules.leader_title_max_length} символов`,
-    leaderBio: `до ${rules.leader_bio_max_length} символов`,
-    capitalName: `от ${rules.capital_name_min_length} до ${rules.capital_name_max_length} символов`,
     historyUrl:
-      `до ${rules.history_url_max_length} символов. ` +
-      `Допустимые домены: ${rules.history_url_allowed_hosts.join(', ')}`,
-    anthemUrl:
-      `до ${rules.anthem_url_max_length} символов. ` +
-      `Допустимые домены: ${rules.anthem_url_allowed_hosts.join(', ')}`,
-    provinces:
-      rules.min_provinces === rules.max_provinces
-        ? `Нужно выбрать ровно ${rules.max_provinces}`
-        : `Нужно выбрать от ${rules.min_provinces} до ${rules.max_provinces}`,
+      'Ссылка на вашу статью ВКонтакте вида ' +
+      'https://vk.com/@название-статьи. Допустимые домены: ' +
+      rules.history_url_allowed_hosts.join(', '),
   };
 }
 
@@ -80,13 +66,37 @@ export interface CreateNationTextFieldProps {
   label: string;
   value: string;
   placeholder?: string;
+  /** Required fields carry the «*» after the label name. */
+  required?: boolean;
+  /** The label row shows the «N из M» counter while a limit is known. */
   maxLength?: number;
   error?: string;
   hint?: string;
   testId?: string;
-  /** Show a «n / max» length counter inside the field (needs maxLength). */
-  counter?: boolean;
   onChange: (value: string) => void;
+}
+
+/** The selection badge on a picked tile/card: a check mark, not color alone. */
+export function PickCheck() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 20,
+        height: 20,
+        borderRadius: RADII['radius-pill'],
+        background: tokenVar('action'),
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Icon16Done width={12} height={12} style={{ color: '#FFFFFF' }} />
+    </span>
+  );
 }
 
 export function CreateNationTextField({
@@ -94,40 +104,55 @@ export function CreateNationTextField({
   label,
   value,
   placeholder,
+  required = false,
   maxLength,
   error,
   hint,
   testId,
-  counter = false,
   onChange,
 }: CreateNationTextFieldProps) {
-  const counterNode =
-    counter && maxLength !== undefined ? (
-      <span
-        style={{
-          color: 'var(--vkui--color_text_secondary)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {value.length} / {maxLength}
-      </span>
-    ) : undefined;
   return (
-    <FormItem
-      top={label}
-      htmlFor={id}
-      status={error ? 'error' : 'default'}
-      bottom={error ?? hint}
-      data-testid={testId}
-    >
-      <Input
-        id={id}
-        value={value}
-        maxLength={maxLength}
-        onChange={(e) => onChange(e.currentTarget.value)}
-        placeholder={placeholder}
-        after={counterNode}
-      />
-    </FormItem>
+    <TextField
+      id={id}
+      label={label}
+      value={value}
+      placeholder={placeholder}
+      required={required}
+      maxLength={maxLength}
+      error={error}
+      hint={hint}
+      testId={testId}
+      onChange={onChange}
+    />
+  );
+}
+
+export function CreateNationTextArea({
+  id,
+  label,
+  value,
+  placeholder,
+  required = false,
+  maxLength,
+  error,
+  hint,
+  rows = 2,
+  testId,
+  onChange,
+}: CreateNationTextFieldProps & { rows?: number }) {
+  return (
+    <TextArea
+      id={id}
+      label={label}
+      value={value}
+      placeholder={placeholder}
+      required={required}
+      maxLength={maxLength}
+      error={error}
+      hint={hint}
+      rows={rows}
+      testId={testId}
+      onChange={onChange}
+    />
   );
 }

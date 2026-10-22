@@ -7,7 +7,7 @@ the real test database using factories. No mocking of state.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -26,7 +26,13 @@ from modules._00_core.exceptions import (
     ProvinceNotFoundError,
     ProvinceTakenError,
 )
-from modules._00_core.models import Nation, Player, Province, ScheduledAction, ScheduledActionStatus
+from modules._00_core.models import (
+    Nation,
+    Player,
+    Province,
+    ScheduledAction,
+    ScheduledActionStatus,
+)
 from modules._00_core.service import (
     FrequencyRule,
     NationService,
@@ -39,21 +45,21 @@ from tests.fixtures.provinces import make_land_province
 
 class TestPlayerService:
     """Tests for PlayerService."""
-    
+
     @pytest.mark.asyncio
     async def test_get_or_create_new_player(self, test_db_session):
         """Test that a new player is created when vk_user_id doesn't exist."""
         player = await PlayerService.get_or_create(test_db_session, vk_user_id=12345)
-        
+
         assert player.vk_user_id == 12345
         assert player.id is not None
-        
+
         # Verify it was persisted
         result = await test_db_session.execute(
             select(Player).where(Player.vk_user_id == 12345)
         )
         assert result.scalar_one() is not None
-    
+
     @pytest.mark.asyncio
     async def test_get_or_create_existing_player(self, test_db_session):
         """Test that an existing player is returned when vk_user_id exists."""
@@ -61,36 +67,36 @@ class TestPlayerService:
         existing = Player(vk_user_id=999)
         test_db_session.add(existing)
         await test_db_session.flush()
-        
+
         # Get or create should return the existing one
         player = await PlayerService.get_or_create(test_db_session, vk_user_id=999)
-        
+
         assert player.id == existing.id
         assert player.vk_user_id == 999
 
 
 class TestNationService:
     """Tests for NationService."""
-    
+
     @pytest.fixture
     async def config(self):
         """Load the core config for tests."""
         return CoreConfig.from_yaml(CoreConfig.get_default_config_path())
-    
+
     async def _create_player(self, session, vk_user_id: int = 11111) -> Player:
         """Helper to create a player."""
         player = Player(vk_user_id=vk_user_id)
         session.add(player)
         await session.flush()
         return player
-    
+
     async def _create_provinces(self, session, ids: list[int]) -> list[Province]:
         """Helper to create provinces."""
         provinces = []
         for pid in ids:
             provinces.append(await make_land_province(session, id=pid))
         return provinces
-    
+
     @pytest.mark.asyncio
     async def test_create_nation_happy_path(self, test_db_session, config):
         """Test successful nation creation."""
@@ -115,15 +121,15 @@ class TestNationService:
 
         # Verify provinces are assigned
         result = await test_db_session.execute(
-            select(Province).where(
-                Province.id.in_([1001, 1002, 1003, 1004, 1005])
-            )
+            select(Province).where(Province.id.in_([1001, 1002, 1003, 1004, 1005]))
         )
         provinces = result.scalars().all()
         assert all(p.nation_id == nation.id for p in provinces)
-    
+
     @pytest.mark.asyncio
-    async def test_create_nation_inv1_player_already_has_nation(self, test_db_session, config):
+    async def test_create_nation_inv1_player_already_has_nation(
+        self, test_db_session, config
+    ):
         """Test INV-1: Player cannot have two nations."""
         player = await self._create_player(test_db_session)
         await self._create_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005])
@@ -138,7 +144,7 @@ class TestNationService:
             config=config,
             **VALID_PROFILE,
         )
-        
+
         # Try to create second nation - should fail
         with pytest.raises(NationAlreadyExistsError):
             await NationService.create(
@@ -150,7 +156,7 @@ class TestNationService:
                 config=config,
                 **VALID_PROFILE,
             )
-    
+
     @pytest.mark.asyncio
     async def test_create_nation_inv2_name_taken(self, test_db_session, config):
         """Test INV-2: Nation name must be unique."""
@@ -167,10 +173,10 @@ class TestNationService:
             config=config,
             **VALID_PROFILE,
         )
-        
+
         # Create another player
         other_player = await self._create_player(test_db_session, vk_user_id=22222)
-        
+
         # Try to create nation with same name - should fail
         with pytest.raises(NameTakenError):
             await NationService.create(
@@ -182,12 +188,15 @@ class TestNationService:
                 config=config,
                 **VALID_PROFILE,
             )
-    
+
     @pytest.mark.asyncio
     async def test_create_nation_inv2_color_taken(self, test_db_session, config):
         """Test INV-2: Nation color must be unique."""
         player = await self._create_player(test_db_session, vk_user_id=11111)
-        await self._create_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010])
+        await self._create_provinces(
+            test_db_session,
+            [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010],
+        )
 
         # Create first nation
         await NationService.create(
@@ -215,12 +224,12 @@ class TestNationService:
                 short_name="Second",
                 **{k: v for k, v in VALID_PROFILE.items() if k != "short_name"},
             )
-    
+
     @pytest.mark.asyncio
     async def test_create_nation_province_not_found(self, test_db_session, config):
         """Test that non-existent province raises error."""
         player = await self._create_player(test_db_session)
-        
+
         with pytest.raises(ProvinceNotFoundError):
             await NationService.create(
                 test_db_session,
@@ -231,13 +240,15 @@ class TestNationService:
                 config=config,
                 **VALID_PROFILE,
             )
-    
+
     @pytest.mark.asyncio
     async def test_create_nation_province_taken(self, test_db_session, config):
         """Test that already-owned province raises error."""
         player = await self._create_player(test_db_session, vk_user_id=11111)
         other_player = await self._create_player(test_db_session, vk_user_id=22222)
-        await self._create_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005, 1006])
+        await self._create_provinces(
+            test_db_session, [1001, 1002, 1003, 1004, 1005, 1006]
+        )
 
         # Create nation that owns province 1001
         await NationService.create(
@@ -262,13 +273,15 @@ class TestNationService:
                 short_name="Testland2",
                 **{k: v for k, v in VALID_PROFILE.items() if k != "short_name"},
             )
-    
+
     @pytest.mark.asyncio
-    async def test_create_nation_province_count_out_of_range_min(self, test_db_session, config):
+    async def test_create_nation_province_count_out_of_range_min(
+        self, test_db_session, config
+    ):
         """Test province count below minimum."""
         player = await self._create_player(test_db_session)
         await self._create_provinces(test_db_session, [1001])
-        
+
         with pytest.raises(ProvinceCountOutOfRangeError):
             await NationService.create(
                 test_db_session,
@@ -279,17 +292,19 @@ class TestNationService:
                 config=config,
                 **VALID_PROFILE,
             )
-    
+
     @pytest.mark.asyncio
-    async def test_create_nation_province_count_out_of_range_max(self, test_db_session, config):
+    async def test_create_nation_province_count_out_of_range_max(
+        self, test_db_session, config
+    ):
         """Test province count above maximum."""
         player = await self._create_player(test_db_session)
-        
+
         # Create many provinces
         province_ids = list(range(1001, 1011))
         for pid in province_ids:
             await make_land_province(test_db_session, id=pid)
-        
+
         with pytest.raises(ProvinceCountOutOfRangeError):
             await NationService.create(
                 test_db_session,
@@ -300,7 +315,7 @@ class TestNationService:
                 config=config,
                 **VALID_PROFILE,
             )
-    
+
     @pytest.mark.asyncio
     async def test_update_nation_name(self, test_db_session, config):
         """Test updating nation name."""
@@ -316,7 +331,7 @@ class TestNationService:
             config=config,
             **VALID_PROFILE,
         )
-        
+
         updated = await NationService.update(
             test_db_session,
             nation_id=nation.id,
@@ -326,7 +341,7 @@ class TestNationService:
 
         assert updated.name == "New Name"
         assert updated.color_hex == "#FF0000"
-    
+
     @pytest.mark.asyncio
     async def test_update_nation_color(self, test_db_session, config):
         """Test updating nation color."""
@@ -342,23 +357,26 @@ class TestNationService:
             config=config,
             **VALID_PROFILE,
         )
-        
+
         updated = await NationService.update(
             test_db_session,
             nation_id=nation.id,
             color_hex="#00FF00",
             config=config,
         )
-        
+
         assert updated.name == "Test Nation"
         assert updated.color_hex == "#00FF00"
-    
+
     @pytest.mark.asyncio
     async def test_update_nation_name_taken(self, test_db_session, config):
         """Test updating to a taken name."""
         player1 = await self._create_player(test_db_session, vk_user_id=11111)
         player2 = await self._create_player(test_db_session, vk_user_id=22222)
-        await self._create_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010])
+        await self._create_provinces(
+            test_db_session,
+            [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010],
+        )
 
         # Create two nations
         nation1 = await NationService.create(
@@ -381,7 +399,7 @@ class TestNationService:
             short_name="Nation2",
             **{k: v for k, v in VALID_PROFILE.items() if k != "short_name"},
         )
-        
+
         # Try to update nation1 to nation2's name
         with pytest.raises(NameTakenError):
             await NationService.update(
@@ -390,7 +408,7 @@ class TestNationService:
                 name="Nation 2",
                 config=config,
             )
-    
+
     @pytest.mark.asyncio
     async def test_update_nation_not_found(self, test_db_session, config):
         """Test updating non-existent nation."""
@@ -401,7 +419,7 @@ class TestNationService:
                 name="New Name",
                 config=config,
             )
-    
+
     @pytest.mark.asyncio
     async def test_delete_nation_inv6(self, test_db_session, config):
         """Test INV-6: Deleting nation frees provinces instead of deleting them."""
@@ -428,15 +446,15 @@ class TestNationService:
 
         # Verify provinces are freed (nation_id is NULL)
         result = await test_db_session.execute(
-            select(Province).where(
-                Province.id.in_([1001, 1002, 1003, 1004, 1005])
-            )
+            select(Province).where(Province.id.in_([1001, 1002, 1003, 1004, 1005]))
         )
         provinces = result.scalars().all()
         assert all(p.nation_id is None for p in provinces)
-    
+
     @pytest.mark.asyncio
-    async def test_delete_nation_orphans_pending_scheduled_actions(self, test_db_session, config):
+    async def test_delete_nation_orphans_pending_scheduled_actions(
+        self, test_db_session, config
+    ):
         """Deleting a nation orphans its PENDING scheduled actions.
 
         INV-6-style: like freed provinces, the action row survives as an
@@ -475,7 +493,9 @@ class TestNationService:
         assert orphaned.status == ScheduledActionStatus.PENDING
 
     @pytest.mark.asyncio
-    async def test_delete_nation_orphans_applied_scheduled_actions(self, test_db_session, config):
+    async def test_delete_nation_orphans_applied_scheduled_actions(
+        self, test_db_session, config
+    ):
         """Deleting a nation orphans its APPLIED scheduled actions too."""
         player = await self._create_player(test_db_session)
         await self._create_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005])
@@ -567,12 +587,15 @@ class TestNationProfile:
                 "leader_name": "  Ivan Grozny  ",
                 "leader_title": "\tSupreme Ruler\n",
                 "history_url": "  https://vk.com/@goliath-history  ",
+                "leader_bio": "  One\r\n\r\n\r\nTwo  ",
             },
         )
 
         assert nation.leader_name == "Ivan Grozny"
         assert nation.leader_title == "Supreme Ruler"
         assert nation.history_url == "https://vk.com/@goliath-history"
+        # CRLF folds, the empty-line run collapses to one (0.9.0).
+        assert nation.leader_bio == "One\n\nTwo"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -611,9 +634,7 @@ class TestNationProfile:
         assert await self._province_is_free(test_db_session, 1001)
 
     @pytest.mark.asyncio
-    async def test_create_inv1_before_profile_errors(
-        self, test_db_session, config
-    ):
+    async def test_create_inv1_before_profile_errors(self, test_db_session, config):
         """Spec Part 2 order: NATION_ALREADY_EXISTS wins over profile errors."""
         player = await self._create_player(test_db_session)
         await self._create_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005])
@@ -782,13 +803,15 @@ class TestNationProfile:
             owner_player_id=player.id,
             name="Legacy Nation",
             color_hex="#123456",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             created_turn=0,
         )
         test_db_session.add(legacy)
         await test_db_session.flush()
 
-        # Plain rename works without touching the profile.
+        # Plain rename works without touching the profile; a NULL
+        # legacy flag/portrait stays NULL while the field is absent
+        # (0.9.0: mandatory on create only).
         renamed = await NationService.update(
             test_db_session,
             nation_id=legacy.id,
@@ -799,6 +822,8 @@ class TestNationProfile:
         assert renamed.leader_name is None
         assert renamed.leader_title is None
         assert renamed.history_url is None
+        assert renamed.flag_id is None
+        assert renamed.portrait_id is None
 
         # Profile fields can then be filled one call at a time.
         step1 = await NationService.update(
@@ -845,12 +870,12 @@ class TestScheduledActionService:
             **VALID_PROFILE,
         )
         return nation
-    
+
     @pytest.mark.asyncio
     async def test_submit_action_once_per_turn(self, test_db_session):
         """Test ONCE_PER_TURN frequency rule."""
         nation = await self._create_nation(test_db_session)
-        
+
         # First action should succeed
         action1 = await ScheduledActionService.submit(
             test_db_session,
@@ -862,7 +887,7 @@ class TestScheduledActionService:
             frequency_rule=FrequencyRule.ONCE_PER_TURN,
         )
         assert action1.status == ScheduledActionStatus.PENDING
-        
+
         # Second action on same turn should fail
         with pytest.raises(FrequencyCapExceededError):
             await ScheduledActionService.submit(
@@ -874,12 +899,12 @@ class TestScheduledActionService:
                 turn_number=1,
                 frequency_rule=FrequencyRule.ONCE_PER_TURN,
             )
-    
+
     @pytest.mark.asyncio
     async def test_submit_action_once_per_game(self, test_db_session):
         """Test ONCE_PER_GAME frequency rule."""
         nation = await self._create_nation(test_db_session)
-        
+
         # First action should succeed
         action1 = await ScheduledActionService.submit(
             test_db_session,
@@ -891,7 +916,7 @@ class TestScheduledActionService:
             frequency_rule=FrequencyRule.ONCE_PER_GAME,
         )
         assert action1.status == ScheduledActionStatus.PENDING
-        
+
         # Second action on different turn should still fail
         with pytest.raises(FrequencyCapExceededError):
             await ScheduledActionService.submit(
@@ -903,12 +928,12 @@ class TestScheduledActionService:
                 turn_number=2,
                 frequency_rule=FrequencyRule.ONCE_PER_GAME,
             )
-    
+
     @pytest.mark.asyncio
     async def test_submit_action_multiple_per_turn(self, test_db_session):
         """Test MULTIPLE_PER_TURN frequency rule."""
         nation = await self._create_nation(test_db_session)
-        
+
         # Submit up to cap
         for i in range(3):
             action = await ScheduledActionService.submit(
@@ -922,7 +947,7 @@ class TestScheduledActionService:
                 frequency_cap=3,
             )
             assert action.status == ScheduledActionStatus.PENDING
-        
+
         # Fourth action should fail
         with pytest.raises(FrequencyCapExceededError):
             await ScheduledActionService.submit(
@@ -935,12 +960,12 @@ class TestScheduledActionService:
                 frequency_rule=FrequencyRule.MULTIPLE_PER_TURN,
                 frequency_cap=3,
             )
-    
+
     @pytest.mark.asyncio
     async def test_submit_action_unlimited(self, test_db_session):
         """Test UNLIMITED frequency rule."""
         nation = await self._create_nation(test_db_session)
-        
+
         # Should be able to submit many actions
         for i in range(10):
             action = await ScheduledActionService.submit(
@@ -953,12 +978,12 @@ class TestScheduledActionService:
                 frequency_rule=FrequencyRule.UNLIMITED,
             )
             assert action.status == ScheduledActionStatus.PENDING
-    
+
     @pytest.mark.asyncio
     async def test_submit_action_different_types_separate_limits(self, test_db_session):
         """Test that different action types have separate frequency limits."""
         nation = await self._create_nation(test_db_session)
-        
+
         # Submit action of type A
         await ScheduledActionService.submit(
             test_db_session,
@@ -969,7 +994,7 @@ class TestScheduledActionService:
             turn_number=1,
             frequency_rule=FrequencyRule.ONCE_PER_TURN,
         )
-        
+
         # Should be able to submit action of type B on same turn
         action = await ScheduledActionService.submit(
             test_db_session,

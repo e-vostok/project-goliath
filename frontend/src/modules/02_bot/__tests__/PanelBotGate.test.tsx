@@ -31,7 +31,7 @@ import {
 
 const GATE_TITLE = BOT_TEXTS.gateTitle;
 const gate = () => screen.queryByText(GATE_TITLE);
-const formField = () => screen.queryByLabelText('Название государства');
+const formField = () => screen.queryByLabelText('Полное название');
 const chatLink = () =>
   screen.getByRole('link', { name: BOT_TEXTS.gateButton });
 
@@ -101,7 +101,7 @@ describe('PanelBotGate — visibility matrix', () => {
       await screen.findByText(GATE_TITLE);
       expect(formField()).not.toBeInTheDocument();
     } else {
-      await screen.findByLabelText('Название государства');
+      await screen.findByLabelText('Полное название');
       expect(gate()).not.toBeInTheDocument();
     }
   });
@@ -119,7 +119,7 @@ describe('PanelBotGate — visibility matrix', () => {
   ])('status request fails (%s) → form, no gate (fail-open)', async (_n, handler) => {
     mswBot.status = handler;
     await renderCreate();
-    await screen.findByLabelText('Название государства');
+    await screen.findByLabelText('Полное название');
     expect(gate()).not.toBeInTheDocument();
   });
 
@@ -138,7 +138,7 @@ describe('PanelBotGate — visibility matrix', () => {
     expect(gate()).not.toBeInTheDocument();
 
     release(HttpResponse.json(BOT_STATUS_DISABLED));
-    await screen.findByLabelText('Название государства');
+    await screen.findByLabelText('Полное название');
   });
 });
 
@@ -198,7 +198,7 @@ describe('PanelBotGate — consent polling', () => {
     expect(mswBot.refreshCalls).toBe(2);
 
     vi.useRealTimers();
-    await screen.findByLabelText('Название государства');
+    await screen.findByLabelText('Полное название');
     expect(gate()).not.toBeInTheDocument();
   });
 
@@ -326,7 +326,7 @@ describe('PanelBotGate — consent polling', () => {
     expect(mswBot.refreshCalls).toBe(1);
 
     vi.useRealTimers();
-    await screen.findByLabelText('Название государства');
+    await screen.findByLabelText('Полное название');
     expect(gate()).not.toBeInTheDocument();
   });
 });

@@ -6,6 +6,8 @@
 
 import { Button, Input } from '@vkontakte/vkui';
 
+import { SPACING } from '../../../shared/ui';
+
 import { REGISTRY_TEXTS } from '../texts';
 
 export function TableToolbar({
@@ -41,7 +43,7 @@ export function TableToolbar({
         alignItems: 'center',
         flexWrap: 'wrap',
         gap: 8,
-        padding: '0 12px 8px',
+        paddingBottom: SPACING['space-3'],
       }}
     >
       <div style={{ flex: 1, maxWidth: 360 }}>

@@ -1,5 +1,5 @@
 /**
- * OrderComposer — the «Подать приказ» window (Spec 5.4).
+ * OrderComposer — the «Подать приказ» window (Spec 5.4): a Popup M.
  *
  * Three fields (title, multi-line summary, VK article link) with a
  * per-field length counter and the «Неразрешённых приказов: N из M»
@@ -8,39 +8,34 @@
  * just shows no counters). «Отправить приказ» leads to the
  * confirmation window; it is disabled at the author limit and shows
  * the Spec explanation. Errors bounced back from the submit land
- * here: field codes at their field, the rest as a banner.
+ * here through a prop update (the form stays mounted under the
+ * confirmation): field codes at their field, the rest as a banner.
+ * Enter in a single-line field does nothing; Enter in the textarea
+ * inserts a line break — no <form>, no implicit submit.
  */
 
 import { useEffect, useState } from 'react';
 import {
   Button,
-  Div,
   FormItem,
   FormStatus,
   Input,
-  ModalPage,
-  ModalPageHeader,
   Text,
   Textarea,
-  type NavIdProps,
 } from '@vkontakte/vkui';
 
+import { errorText } from '../../shared/errorTexts';
+import { Popup } from '../../shared/ui';
 import { useFormDraft } from '../../shared/formDraft';
 import { useOrderRules } from './hooks/useOrderRules';
 import { ORDERS_TEXTS } from './texts';
-import {
-  OrderErrorCodes,
-  type OrderRulesDTO,
-} from './types';
+import { OrderErrorCodes, type OrderRulesDTO } from './types';
 import {
   ORDER_DRAFT_KEY,
   useOrdersUi,
   type ComposerServerError,
   type OrderDraft,
 } from './OrdersUiProvider';
-
-/** Fits inside the 910 px window budget like every other window. */
-const MODAL_SIZE = 'min(880px, calc(100vw - 64px))';
 
 type OrderField = 'title' | 'summary' | 'articleUrl';
 
@@ -58,28 +53,64 @@ export function orderFieldForCode(code: string): OrderField | null {
   }
 }
 
-export function OrderComposer({ id, ...navIdProps }: NavIdProps) {
+/** What the live form reports up — feeds the Popup's dirty and footer. */
+interface ComposerLive {
+  dirty: boolean;
+  canSend: boolean;
+  draft: OrderDraft;
+}
+
+const EMPTY_LIVE: ComposerLive = {
+  dirty: false,
+  canSend: false,
+  draft: { title: '', summary: '', articleUrl: '' },
+};
+
+export function OrderComposer() {
   const { orderWindow, toConfirm, closeWindow } = useOrdersUi();
-  const win = orderWindow?.view === 'composer' ? orderWindow : null;
+  const [live, setLive] = useState<ComposerLive>(EMPTY_LIVE);
+
+  // The composer stays rendered (and keeps its input) while the S
+  // confirmation lies over it — both views carry the same draft.
+  const win =
+    orderWindow?.view === 'composer' || orderWindow?.view === 'confirm'
+      ? orderWindow
+      : null;
+  if (win === null) {
+    return null;
+  }
+  const serverError = win.view === 'composer' ? win.error : null;
 
   return (
-    <ModalPage
-      id={id}
-      {...navIdProps}
+    <Popup
+      size="M"
+      icon="document"
+      title={ORDERS_TEXTS.composerTitle}
       onClose={closeWindow}
-      size={MODAL_SIZE}
-      header={
-        <ModalPageHeader>{ORDERS_TEXTS.composerTitle}</ModalPageHeader>
+      dirty={live.dirty}
+      testId="popup-order-composer"
+      footer={
+        <>
+          <Button size="m" mode="secondary" onClick={closeWindow}>
+            {ORDERS_TEXTS.cancel}
+          </Button>
+          <Button
+            size="m"
+            mode="primary"
+            disabled={!live.canSend}
+            onClick={() => toConfirm(live.draft)}
+          >
+            {ORDERS_TEXTS.sendButton}
+          </Button>
+        </>
       }
     >
-      {win !== null && (
-        <ComposerForm
-          draft={win.draft}
-          serverError={win.error}
-          onSend={toConfirm}
-        />
-      )}
-    </ModalPage>
+      <ComposerForm
+        draft={win.draft}
+        serverError={serverError}
+        onLive={setLive}
+      />
+    </Popup>
   );
 }
 
@@ -103,11 +134,11 @@ function fieldCounter(
 function ComposerForm({
   draft,
   serverError,
-  onSend,
+  onLive,
 }: {
   draft: OrderDraft;
   serverError: ComposerServerError | null;
-  onSend: (draft: OrderDraft) => void;
+  onLive: (live: ComposerLive) => void;
 }) {
   const rulesState = useOrderRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
@@ -135,19 +166,33 @@ function ComposerForm({
       setStoredDraft({ title, summary, articleUrl });
     }
   }, [title, summary, articleUrl, setStoredDraft, clearDraft]);
+
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<OrderField, string>>
   >(() => {
     const field = serverError ? orderFieldForCode(serverError.code) : null;
     return field && serverError ? { [field]: serverError.message } : {};
   });
-  // A banner error bounced from the submit (no field owns it) — fixed
-  // for this mount; editing fields does not clear it, closing does.
-  const [formError] = useState<string | null>(() =>
+  // A banner error bounced from the submit (no field owns it).
+  const [formError, setFormError] = useState<string | null>(() =>
     serverError !== null && orderFieldForCode(serverError.code) === null
       ? serverError.message
       : null,
   );
+
+  // The composer stays mounted under the confirmation — a coded error
+  // bounced back arrives as a prop update, not a fresh mount.
+  useEffect(() => {
+    if (serverError === null) {
+      return;
+    }
+    const field = orderFieldForCode(serverError.code);
+    if (field !== null) {
+      setFieldErrors((prev) => ({ ...prev, [field]: serverError.message }));
+    } else {
+      setFormError(serverError.message);
+    }
+  }, [serverError]);
 
   const limitReached =
     rules !== null && rules.unresolved_orders >= rules.max_unresolved_orders;
@@ -156,6 +201,15 @@ function ComposerForm({
     summary.trim().length > 0 &&
     articleUrl.trim().length > 0;
   const canSend = filled && !limitReached;
+
+  // Report dirty/canSend/the live draft up for the Popup and footer.
+  useEffect(() => {
+    onLive({
+      dirty: title !== '' || summary !== '' || articleUrl !== '',
+      canSend,
+      draft: { title, summary, articleUrl },
+    });
+  }, [title, summary, articleUrl, canSend, onLive]);
 
   const clearFieldError = (field: OrderField) =>
     setFieldErrors((prev) => {
@@ -168,7 +222,7 @@ function ComposerForm({
     });
 
   return (
-    <Div>
+    <>
       {rules !== null && (
         <Text data-testid="order-unresolved-counter">
           {ORDERS_TEXTS.unresolvedCounter(
@@ -180,7 +234,7 @@ function ComposerForm({
       {rulesState.status === 'error' && (
         <>
           <FormStatus mode="error" title={ORDERS_TEXTS.rulesLoadError}>
-            {rulesState.error.message}
+            {errorText(rulesState.error)}
           </FormStatus>
           <Button size="s" onClick={rulesState.reload}>
             {ORDERS_TEXTS.retry}
@@ -262,15 +316,6 @@ function ComposerForm({
           {ORDERS_TEXTS.limitReached}
         </Text>
       )}
-
-      <Button
-        size="l"
-        stretched
-        disabled={!canSend}
-        onClick={() => onSend({ title, summary, articleUrl })}
-      >
-        {ORDERS_TEXTS.sendButton}
-      </Button>
-    </Div>
+    </>
   );
 }

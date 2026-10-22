@@ -1,11 +1,11 @@
 /**
  * Frozen-buttons regression (Track B): a confirm window must stay usable
  * after its previous send was abandoned — the window closed while the
- * request was still in flight. The modal hosts never unmount (they are
- * permanent children of the single ModalRoot), so a `submitting` flag
- * that survives the request must be released when it settles, or the
- * next window opens with «Да, отправить» spinning and «Вернуться к
- * правке» disabled forever.
+ * request was still in flight. The confirm components stay mounted under
+ * the provider while their window is hidden (the composer view returns),
+ * so a `submitting` flag that survives the request must be released when
+ * it settles, or the next window opens with «Да, отправить» spinning and
+ * «Вернуться к правке» disabled forever.
  */
 
 import { fireEvent, screen, waitFor } from '@testing-library/react';
@@ -39,7 +39,7 @@ const JUDGED_ORDER: OrderDetailDTO = {
   can_write_verdict: false,
 };
 
-/** Esc bubbles to the ModalOutlet key handler — the same as pressing Esc. */
+/** Esc bubbles to the top Popup's document key handler — the same as pressing Esc. */
 function escFrom(element: HTMLElement) {
   fireEvent.keyDown(element, { key: 'Escape' });
 }

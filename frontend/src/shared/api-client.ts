@@ -20,6 +20,7 @@ import type {
   GameClockDTO,
   NationCreateRequest,
   NationDTO,
+  NationPublicDTO,
   NationRulesDTO,
   NationUpdateRequest,
   ProvinceDTO,
@@ -218,6 +219,17 @@ export const api = {
   },
 
   /**
+   * GET /nations/{id} — the public view of another player's nation
+   * (Bible §7); 404/NATION_NOT_FOUND for an unknown id.
+   */
+  getNation(token: string, nationId: string, signal?: AbortSignal) {
+    return apiFetch<NationPublicDTO>(
+      `/nations/${encodeURIComponent(nationId)}`,
+      { token, signal },
+    );
+  },
+
+  /**
    * POST /nations/color-check — the unlocked color preview for the input
    * hint; an OK here does not guarantee creation succeeds (Spec Part 5).
    */
@@ -246,16 +258,6 @@ export const api = {
     return apiFetch<NationDTO>('/nations/me', {
       method: 'PATCH',
       body,
-      token,
-      signal,
-    });
-  },
-
-  /** DELETE /nations/me — requires { confirm: true }; frees provinces. */
-  deleteNation(token: string, signal?: AbortSignal) {
-    return apiFetch<void>('/nations/me', {
-      method: 'DELETE',
-      body: { confirm: true },
       token,
       signal,
     });

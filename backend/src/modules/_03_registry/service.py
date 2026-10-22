@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,9 +87,7 @@ def _default_sort(
     return [row for _, _, row in filled + empty]
 
 
-async def build_table(
-    session: AsyncSession, table_id: str
-) -> BuiltTable:
+async def build_table(session: AsyncSession, table_id: str) -> BuiltTable:
     """
     Build the rows of one configured table (Spec 3.1).
 
@@ -106,26 +104,22 @@ async def build_table(
     try:
         table = config.table(table_id)
     except KeyError:
-        raise RegistryTableNotFoundError(table_id)
+        raise RegistryTableNotFoundError(table_id) from None
 
     source = get_table_source(table.source)
     if source is None:
         # Startup validated this (Spec 2.5 step 3); reaching it at
         # request time means the registry was reset mid-process.
-        logger.error(
-            "registry table '%s' has no registered source", table.id
-        )
-        raise RegistryProviderError(table_id)
+        logger.error("registry table '%s' has no registered source", table.id)
+        raise RegistryProviderError(table_id) from None
 
     try:
         rows = await source.load(session)
     except RegistryDomainError:
         raise
     except Exception:
-        logger.exception(
-            "registry source failed: table=%s", table.id
-        )
-        raise RegistryProviderError(table_id)
+        logger.exception("registry source failed: table=%s", table.id)
+        raise RegistryProviderError(table_id) from None
 
     for row in rows:
         for column in table.columns:
@@ -133,16 +127,13 @@ async def build_table(
                 column.type, row.cells[column.source]
             ):
                 logger.error(
-                    "registry provider returned a bad cell: table=%s "
-                    "column=%s",
+                    "registry provider returned a bad cell: table=%s column=%s",
                     table.id,
                     column.id,
                 )
                 raise RegistryProviderError(table_id, column.id)
 
-    sort_column = next(
-        c for c in table.columns if c.id == table.default_sort.column
-    )
+    sort_column = next(c for c in table.columns if c.id == table.default_sort.column)
     rows = _default_sort(rows, sort_column, table.default_sort.direction)
 
     total = len(rows)
@@ -154,14 +145,11 @@ async def build_table(
         table_id=table.id,
         total=total,
         truncated=truncated,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         rows=[
             RegistryRow(
                 key=row.key,
-                cells={
-                    column.id: row.cells[column.source]
-                    for column in table.columns
-                },
+                cells={column.id: row.cells[column.source] for column in table.columns},
             )
             for row in rows
         ],

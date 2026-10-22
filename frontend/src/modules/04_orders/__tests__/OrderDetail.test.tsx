@@ -100,7 +100,7 @@ describe('OrderDetailModal — open and content', () => {
       screen.getByText('Перевести вторую армию к северной границе.'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Статья приказа' }),
+      screen.getByRole('link', { name: 'Статья приказа ↗' }),
     ).toHaveAttribute('href', 'https://vk.com/@order-seven');
     expect(
       screen.queryByRole('button', { name: 'Написать вердикт' }),

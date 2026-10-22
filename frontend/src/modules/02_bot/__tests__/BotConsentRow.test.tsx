@@ -1,5 +1,7 @@
 /**
  * BotConsentRow — the «Уведомления» line on the nation screen (Spec 5.6).
+ * Since unit 8b it lives as one compact row at the bottom of the edit
+ * view (the card no longer shows it) — the tests open «Изменить» first.
  *
  * ALLOWED → «Включены»; DENIED/UNKNOWN → «Выключены» + «Включить в чате»
  * with the same consent polling as the gate; hidden entirely when the
@@ -7,7 +9,7 @@
  * never appears for a player who already owns a nation.
  */
 
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { HttpResponse } from 'msw';
 
 import {
@@ -52,19 +54,23 @@ const NATION: NationDTO = {
   succession_type: 'elections',
   history_url: 'https://vk.com/@testia-istoriya',
   anthem_url: null,
+  level: 1,
+  judge_rating: 0,
 };
 
 function renderHome() {
   renderWithBot(
     // PanelNationHome hosts the orders block — the provider must exist.
-    <OrdersUiProvider activeModal={null} onActiveModal={() => {}}>
-      <PanelNationHome
-        nation={NATION}
-        onChanged={vi.fn()}
-        onDeleteRequest={vi.fn()}
-      />
+    <OrdersUiProvider>
+      <PanelNationHome nation={NATION} onChanged={vi.fn()} />
     </OrdersUiProvider>,
   );
+}
+
+/** The row left the card in unit 8b — it lives inside «Изменить». */
+async function openEditView() {
+  fireEvent.click(screen.getByRole('button', { name: 'Изменить' }));
+  await screen.findByTestId('edit-nation-form');
 }
 
 async function flushAsync() {
@@ -96,6 +102,7 @@ describe('BotConsentRow — visibility and states', () => {
     mswBot.status = () =>
       HttpResponse.json(botStatusReady({ consent: 'ALLOWED' }));
     renderHome();
+    await openEditView();
     expect(await screen.findByText(BOT_TEXTS.rowOn)).toBeInTheDocument();
     expect(screen.getByText(BOT_TEXTS.rowLabel)).toBeInTheDocument();
     expect(
@@ -112,6 +119,7 @@ describe('BotConsentRow — visibility and states', () => {
     async (_name, consent) => {
       mswBot.status = () => HttpResponse.json(botStatusReady({ consent }));
       renderHome();
+      await openEditView();
       expect(
         await screen.findByText(BOT_TEXTS.rowOff),
       ).toBeInTheDocument();
@@ -140,8 +148,11 @@ describe('BotConsentRow — visibility and states', () => {
   ])('row hidden when %s', async (_name, handler) => {
     mswBot.status = handler;
     renderHome();
-    // The rest of the screen renders; the row never appears.
-    await screen.findByText('Иван Грозный');
+    await openEditView();
+    // The edit form rendered and the status request settled; the row
+    // never appears.
+    await waitFor(() => expect(mswBot.statusCalls).toBe(1));
+    await flushAsync();
     expect(screen.queryByText(BOT_TEXTS.rowLabel)).not.toBeInTheDocument();
   });
 });
@@ -156,6 +167,7 @@ describe('BotConsentRow — enable flow', () => {
         botStatusReady({ consent: allowed ? 'ALLOWED' : 'DENIED' }),
       );
     renderHome();
+    await openEditView();
     const link = await screen.findByRole('link', {
       name: BOT_TEXTS.rowEnable,
     });
@@ -185,6 +197,7 @@ describe('BotConsentRow — enable flow', () => {
         }),
       );
     renderHome();
+    await openEditView();
     const link = await screen.findByRole('link', {
       name: BOT_TEXTS.rowEnable,
     });

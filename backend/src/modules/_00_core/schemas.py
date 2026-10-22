@@ -55,7 +55,7 @@ class AuthResponseDTO(BaseModel):
     """Response for POST /api/v1/auth/vk."""
 
     access_token: str
-    token_type: Literal["bearer"] = "bearer"
+    token_type: Literal["bearer"] = "bearer"  # noqa: S105
     expires_in: int
     player: PlayerDTO
 
@@ -89,7 +89,43 @@ class NationDTO(BaseModel):
     portrait_url: str | None
     succession_type: str | None
     history_url: str | None
+    # не используется с 0.9.0, снятие — бэклог 00_core
     anthem_url: str | None
+    # Owner's player stats — since 0.9.0 (unit 14).
+    level: int
+    judge_rating: int
+
+
+class NationPublicDTO(BaseModel):
+    """
+    The public view of another player's nation (Bible §7, Spec Part 5).
+
+    Exactly the 20 keys listed in the Spec — the service fields
+    (``owner_player_id``, ``gender``, ``succession_type``, ``anthem_url``)
+    and any VK identifier can never leak: the route is declared with
+    ``response_model=NationPublicDTO``.
+    """
+
+    id: uuid.UUID
+    created_at: datetime
+    name: str
+    short_name: str | None
+    color_hex: str
+    motto: str | None
+    description: str | None
+    flag_id: str | None
+    flag_url: str | None
+    province_ids: list[int]
+    capital_province_id: int | None
+    capital_name: str | None
+    leader_name: str | None
+    leader_title: str | None
+    leader_bio: str | None
+    portrait_id: str | None
+    portrait_url: str | None
+    history_url: str | None
+    level: int
+    judge_rating: int
 
 
 class NationCreateRequest(BaseModel):
@@ -201,12 +237,6 @@ class ColorCheckDTO(BaseModel):
     """The Part 3 color decision for the input hint."""
 
     status: Literal["OK", "TAKEN", "TOO_CLOSE"]
-
-
-class NationDeleteRequest(BaseModel):
-    """Request body for DELETE /api/v1/nations/me."""
-
-    confirm: Literal[True]
 
 
 class ProvinceDTO(BaseModel):

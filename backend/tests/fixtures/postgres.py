@@ -29,7 +29,6 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from dotenv import load_dotenv
@@ -42,6 +41,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 import modules._01_map.service as map_service_module
+from alembic import command
 from core.admin.registry import AdminRegistry
 from core.tick.orchestrator import TickOrchestrator
 from main import app  # noqa: F401 — importing main loads the root .env
@@ -82,9 +82,11 @@ def _database_name(url: str | None) -> str | None:
 
 def _sync_url(async_url: str) -> str:
     """postgresql+asyncpg URL -> psycopg2 (sync) equivalent."""
-    return make_url(async_url).set(
-        drivername="postgresql+psycopg2"
-    ).render_as_string(hide_password=False)
+    return (
+        make_url(async_url)
+        .set(drivername="postgresql+psycopg2")
+        .render_as_string(hide_password=False)
+    )
 
 
 def assert_safe_test_db(test_url: str, dev_url: str | None) -> None:
@@ -98,9 +100,7 @@ def assert_safe_test_db(test_url: str, dev_url: str | None) -> None:
     try:
         parsed = make_url(test_url)
     except Exception as exc:
-        pytest.fail(
-            f"DATABASE_URL_TEST is not a parseable SQLAlchemy URL: {exc}"
-        )
+        pytest.fail(f"DATABASE_URL_TEST is not a parseable SQLAlchemy URL: {exc}")
 
     driver = parsed.drivername
     if not (driver == "postgres" or driver.startswith("postgresql")):
@@ -150,9 +150,11 @@ def pg_url() -> str:
             )
         pytest.skip(_SKIP_REASON)
     assert_safe_test_db(raw, os.environ.get("DATABASE_URL"))
-    return make_url(raw).set(
-        drivername="postgresql+asyncpg"
-    ).render_as_string(hide_password=False)
+    return (
+        make_url(raw)
+        .set(drivername="postgresql+asyncpg")
+        .render_as_string(hide_password=False)
+    )
 
 
 def _reset_public_schema(sync_url: str) -> str:
@@ -175,17 +177,14 @@ def _reset_public_schema(sync_url: str) -> str:
             tables = (
                 conn.execute(
                     sa.text(
-                        "SELECT tablename FROM pg_tables "
-                        "WHERE schemaname = 'public'"
+                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
                     )
                 )
                 .scalars()
                 .all()
             )
             for table in tables:
-                conn.execute(
-                    sa.text(f'DROP TABLE IF EXISTS "{table}" CASCADE')
-                )
+                conn.execute(sa.text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
         return "tables"
     finally:
         engine.dispose()
@@ -266,8 +265,7 @@ async def pg_live_client(
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
     saved_handlers = {
-        phase: list(handlers)
-        for phase, handlers in TickOrchestrator._handlers.items()
+        phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
     saved_finalize = TickOrchestrator._finalize_callback
     saved_extensions = snapshot_extension_points()
@@ -275,9 +273,7 @@ async def pg_live_client(
 
     async with LifespanManager(app) as manager:
         transport = ASGITransport(app=manager.app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
     AdminRegistry._state_view_hooks.clear()
@@ -303,8 +299,6 @@ async def pg_db(
     sees truly committed state. Disposed after the test.
     """
     engine = create_async_engine(pg_url)
-    maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     yield maker
     await engine.dispose()

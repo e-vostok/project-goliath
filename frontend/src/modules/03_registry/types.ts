@@ -105,6 +105,7 @@ export interface RegistryFlagCell {
 }
 
 export interface RegistryNationCell {
+  id: string | null;
   name: string;
   color: string;
   flag_url: string | null;
@@ -152,6 +153,8 @@ export function isFlagCell(v: RegistryCell): v is RegistryFlagCell {
 export function isNationCell(v: RegistryCell): v is RegistryNationCell {
   return (
     isRecord(v) &&
+    'id' in v &&
+    (v.id === null || typeof v.id === 'string') &&
     typeof v.name === 'string' &&
     typeof v.color === 'string' &&
     'flag_url' in v

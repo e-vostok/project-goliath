@@ -31,9 +31,7 @@ VALID_URL = "https://vk.com/@defence-order"
 
 
 async def _submit_one(session, vk_user_id: int = 770301) -> None:
-    player, _ = await seed_author(
-        session, vk_user_id, nation_name="Северная Лига"
-    )
+    player, _ = await seed_author(session, vk_user_id, nation_name="Северная Лига")
     await OrderService.submit(
         session,
         player_id=player.id,
@@ -47,9 +45,7 @@ async def _submit_one(session, vk_user_id: int = 770301) -> None:
 class TestOrdersSource:
     """The row shape of the ``orders`` Registry source (Appendix A)."""
 
-    async def test_row_shape_has_no_judge_fields(
-        self, test_db_session, orders_started
-    ):
+    async def test_row_shape_has_no_judge_fields(self, test_db_session, orders_started):
         register_orders_extensions()
         startup_registry()
         await _submit_one(test_db_session)
@@ -69,7 +65,10 @@ class TestOrdersSource:
             "verdict",
         }
         assert row.cells["number"] == 1
+        # The order stores only a name/colour snapshot — `id` is None:
+        # the cell shows but cannot open the nation subscreen.
         assert row.cells["nation"] == {
+            "id": None,
             "name": "Северная Лига",
             "color": "#336699",
             "flag_url": None,
@@ -84,8 +83,7 @@ class TestOrdersSource:
         assert isinstance(submitted["key"], int)
         assert isinstance(submitted["day"], int)
         assert submitted["mark"] is None
-        empty = {"date": None, "time": None, "key": None,
-                 "day": None, "mark": None}
+        empty = {"date": None, "time": None, "key": None, "day": None, "mark": None}
         assert row.cells["distributed"] == empty
         assert row.cells["verdict"] == empty
 
@@ -149,9 +147,7 @@ class TestCoreConfigInjection:
     async def test_source_uses_injected_config_without_disk_read(
         self, test_db_session, orders_started, monkeypatch
     ):
-        core_config = CoreConfig.from_yaml(
-            CoreConfig.get_default_config_path()
-        )
+        core_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
         monkeypatch.setattr(
             CoreConfig,
             "from_yaml",
@@ -176,9 +172,7 @@ class TestStartupCheck:
     """Spec D11 + 03_registry 2.5: a config source nobody registered
     must abort the boot."""
 
-    def test_startup_aborts_on_unknown_registry_source(
-        self, orders_isolation
-    ):
+    def test_startup_aborts_on_unknown_registry_source(self, orders_isolation):
         # The real config lists the ``orders`` table; with no
         # register_orders_extensions() call the source is unknown and
         # startup_registry() must raise before serving.

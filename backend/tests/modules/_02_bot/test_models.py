@@ -11,7 +11,6 @@ same trick as tests/modules/_01_map/test_ownership_log.py.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
 
 import pytest
 import sqlalchemy as sa
@@ -38,9 +37,7 @@ from tests.fixtures.factories import (
 )
 
 
-async def _make_player(
-    session: AsyncSession, vk_user_id: int = 777000001
-) -> Player:
+async def _make_player(session: AsyncSession, vk_user_id: int = 777000001) -> Player:
     """Insert a real players row — the only FK target bot tables need."""
     player = Player(
         id=str(uuid.uuid4()),
@@ -57,7 +54,7 @@ class TestRoundTrip:
 
     async def test_consent_round_trip(self, test_db_session):
         player = await _make_player(test_db_session)
-        consent = await make_consent(test_db_session, player)
+        await make_consent(test_db_session, player)
 
         row = (
             await test_db_session.execute(
@@ -71,9 +68,7 @@ class TestRoundTrip:
 
     async def test_outbox_round_trip(self, test_db_session):
         player = await _make_player(test_db_session)
-        queued = await make_outbox_row(
-            test_db_session, player, payload={"turn": 1}
-        )
+        queued = await make_outbox_row(test_db_session, player, payload={"turn": 1})
 
         row = (
             await test_db_session.execute(
@@ -115,9 +110,7 @@ class TestRoundTrip:
         await test_db_session.flush()
 
         row = (
-            await test_db_session.execute(
-                select(BotState).where(BotState.id == 1)
-            )
+            await test_db_session.execute(select(BotState).where(BotState.id == 1))
         ).scalar_one()
         assert row.last_digest_turn == 0
 
@@ -160,13 +153,9 @@ class TestConstraints:
         player = await _make_player(test_db_session)
         await make_outbox_row(test_db_session, player, event_key="turn:1")
         with pytest.raises(IntegrityError):
-            await make_outbox_row(
-                test_db_session, player, event_key="turn:1"
-            )
+            await make_outbox_row(test_db_session, player, event_key="turn:1")
 
-    async def test_bot_state_singleton_rejects_second_row(
-        self, test_db_session
-    ):
+    async def test_bot_state_singleton_rejects_second_row(self, test_db_session):
         test_db_session.add(BotState(id=1, last_digest_turn=0))
         await test_db_session.flush()
         test_db_session.add(BotState(id=2, last_digest_turn=5))
@@ -208,9 +197,7 @@ async def _fk_enforcing_session():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return engine, maker
 
 

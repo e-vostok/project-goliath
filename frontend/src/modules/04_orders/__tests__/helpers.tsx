@@ -1,39 +1,25 @@
 /**
  * Shared helpers for 04_orders tests: a stateful harness that mirrors
- * the AppShell wiring (OrdersUiProvider + the single ModalRoot with
- * the three windows), a fake session, Spec-shaped fixtures and msw
- * handlers for /api/v1/orders/*.
+ * the AppShell wiring (a root container + PopupHost + OrdersUiProvider,
+ * which renders the five windows itself), a fake session, Spec-shaped
+ * fixtures and msw handlers for /api/v1/orders/*.
  */
 
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useRef, type ReactElement, type ReactNode } from 'react';
 import { render } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import {
   AdaptivityProvider,
   AppRoot,
   ConfigProvider,
-  ModalRoot,
   Platform,
   ViewWidth,
 } from '@vkontakte/vkui';
 
 import { server } from '../../../../vitest.setup';
 import { SessionProvider } from '../../00_core/hooks/useAuth';
-import {
-  MODAL_ORDER_COMPOSER,
-  MODAL_ORDER_CONFIRM,
-  MODAL_ORDER_DETAIL,
-  MODAL_VERDICT_COMPOSER,
-  MODAL_VERDICT_CONFIRM,
-  OrdersUiProvider,
-} from '../OrdersUiProvider';
-import { OrderComposer } from '../OrderComposer';
-import { ConfirmSubmitModal } from '../ConfirmSubmitModal';
-import { OrderDetailModal } from '../OrderDetailModal';
-import {
-  ConfirmVerdictModal,
-  VerdictComposer,
-} from '../VerdictComposer';
+import { NoticeHost, PopupHost } from '../../../shared/ui';
+import { OrdersUiProvider } from '../OrdersUiProvider';
 import type {
   AssignedOrdersDTO,
   OrderDetailDTO,
@@ -167,7 +153,12 @@ export const ORDERS_ROWS: RegistryRowsDTO = {
       key: 'o7',
       cells: {
         number: 7,
-        nation: { name: 'Автория', color: '#336699', flag_url: null },
+        nation: {
+          id: null,
+          name: 'Автория',
+          color: '#336699',
+          flag_url: null,
+        },
         title: {
           text: 'Приказ о перебазировании',
           action: 'order:7',
@@ -225,25 +216,19 @@ export function registerAssignedHandler(
 }
 
 /**
- * The same wiring AppShell has: OrdersUiProvider drives the single
- * ModalRoot that hosts all order windows.
+ * The same wiring AppShell has: a relative root container, PopupHost
+ * and the provider that renders the five windows as shared Popups.
  */
 function OrdersHarness({ children }: { children?: ReactNode }) {
-  const [activeModal, setActiveModal] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   return (
-    <OrdersUiProvider activeModal={activeModal} onActiveModal={setActiveModal}>
-      {children}
-      <ModalRoot
-        activeModal={activeModal}
-        onClose={() => setActiveModal(null)}
-      >
-        <OrderComposer id={MODAL_ORDER_COMPOSER} />
-        <ConfirmSubmitModal id={MODAL_ORDER_CONFIRM} />
-        <OrderDetailModal id={MODAL_ORDER_DETAIL} />
-        <VerdictComposer id={MODAL_VERDICT_COMPOSER} />
-        <ConfirmVerdictModal id={MODAL_VERDICT_CONFIRM} />
-      </ModalRoot>
-    </OrdersUiProvider>
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <PopupHost container={containerRef}>
+        <NoticeHost container={containerRef}>
+          <OrdersUiProvider>{children}</OrdersUiProvider>
+        </NoticeHost>
+      </PopupHost>
+    </div>
   );
 }
 

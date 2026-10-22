@@ -35,9 +35,7 @@ class TestTablesEndpoint:
     ):
         player = await seed_player(test_db_session, 505001)
 
-        resp = await client.get(
-            TABLES_URL, headers=bearer_headers(player.id)
-        )
+        resp = await client.get(TABLES_URL, headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         assert resp.headers["cache-control"] == "no-cache"
@@ -139,9 +137,7 @@ class TestRowsEndpoint:
         assert body["total"] == 0
         assert body["rows"] == []
 
-    async def test_unknown_table_404(
-        self, client, test_db_session, registry_started
-    ):
+    async def test_unknown_table_404(self, client, test_db_session, registry_started):
         player = await seed_player(test_db_session, 505103)
 
         resp = await client.get(
@@ -161,7 +157,8 @@ class TestRowsEndpoint:
         """INV-R2: no vk_user_id and no player uuid in either body."""
         me = await seed_player(test_db_session, 505201)
         other = await seed_player(
-            test_db_session, 505202,
+            test_db_session,
+            505202,
         )
 
         for url in (TABLES_URL, f"{TABLES_URL}/players", f"{TABLES_URL}/nations"):
@@ -230,11 +227,13 @@ class TestNationDisplayNameAndFlag:
         assert resp.status_code == 200
         p_rows = {row["key"]: row["cells"] for row in resp.json()["rows"]}
         assert p_rows["p1"]["nation"] == {
+            "id": modern.id,
             "name": "СКВГ",
             "color": "#AA2201",
             "flag_url": flag_png,
         }
         assert p_rows["p2"]["nation"] == {
+            "id": legacy.id,
             "name": "Древнее Княжество Полное",
             "color": "#AA2202",
             "flag_url": None,

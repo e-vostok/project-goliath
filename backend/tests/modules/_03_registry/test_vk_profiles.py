@@ -24,12 +24,10 @@ from modules._03_registry.vk_profiles import (
 )
 from tests.fixtures.fake_vk import FakeVk
 
-PROFILES = RegistryConfig.from_yaml(
-    RegistryConfig.get_default_config_path()
-).profiles
+PROFILES = RegistryConfig.from_yaml(RegistryConfig.get_default_config_path()).profiles
 # Bisect tests must not wait on the configured inter-call pause.
 FAST_PROFILES = PROFILES.model_copy(update={"batch_pause_seconds": 0})
-TEST_TOKEN = "test-group-token-SECRET"
+TEST_TOKEN = "test-group-token-SECRET"  # noqa: S105
 
 
 def make_client(fake: FakeVk, profiles=PROFILES) -> VkProfilesClient:
@@ -93,12 +91,8 @@ class TestGetProfiles:
         half resolves to UNAVAILABLE (Spec 3.4)."""
         fake = FakeVk()
         fake.respond_call_error(30)
-        fake.respond_users_get(
-            [{"id": 11, "first_name": "А", "last_name": "Б"}]
-        )
-        fake.respond_users_get(
-            [{"id": 33, "first_name": "В", "last_name": "Г"}]
-        )
+        fake.respond_users_get([{"id": 11, "first_name": "А", "last_name": "Б"}])
+        fake.respond_users_get([{"id": 33, "first_name": "В", "last_name": "Г"}])
         client = make_client(fake, profiles=FAST_PROFILES)
 
         result = await client.get_profiles([11, 22, 33])
@@ -120,9 +114,7 @@ class TestGetProfiles:
         result = await client.get_profiles([77])
 
         assert result.failure is None
-        assert result.outcomes == {
-            77: ProfileOutcome(OutcomeKind.UNAVAILABLE)
-        }
+        assert result.outcomes == {77: ProfileOutcome(OutcomeKind.UNAVAILABLE)}
         assert len(fake.users_get_requests()) == 1
 
     @pytest.mark.parametrize("code", [5, 27, 28])

@@ -16,6 +16,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../../../vitest.setup';
 import { PanelCreateNation } from '../PanelCreateNation';
 import {
+  goToTab,
   registerDefaultHandlers,
   renderWithProviders,
   seedRegistrationDraft,
@@ -33,6 +34,7 @@ describe('PanelCreateNation — network failure', () => {
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
 
     const user = userEvent.setup();
+    await goToTab(user, 4);
     await user.click(
       screen.getByRole('button', { name: /основать государство/i }),
     );

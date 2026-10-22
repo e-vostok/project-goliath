@@ -17,8 +17,7 @@ class ConsentRequiredError(CoreDomainError):
 
     def __init__(self):
         super().__init__(
-            "Разрешите сообщения от сообщества, чтобы создать "
-            "государство",
+            "Разрешите сообщения от сообщества, чтобы создать государство",
             "CONSENT_REQUIRED",
         )
 

@@ -1,16 +1,20 @@
 /**
- * ProvincePicker — the registration starting-group picker (Spec Part 5).
+ * ProvincePicker — the registration starting-group picker (Spec Part 5,
+ * UI Spec 3.3, unit 6b).
  *
- * A large ModalPage: a Search row (results only centre/fit the view —
- * they never toggle the selection), the counter «Выбрано N из M» with
- * «минимум K» and the capital caption under it, the local connectivity
- * indicator, a fixed-height removable-chips area of the current
- * selection (two chip rows, internal scroll, always rendered — the
- * map below never resizes when chips come and go), and a MapView in
- * `select` mode filling the rest. «Готово» is enabled while the count
- * is inside [min, max] from GET /nations/rules and — when
+ * A shared `Popup` of size L with a FIXED map height: a toolbar row
+ * (Search — results only centre/fit the view, they never toggle the
+ * selection — the counter «Выбрано N из M · минимум K», the local
+ * connectivity indicator and the capital caption), a MapView in
+ * `select` mode inside a 520 px block, and below it the fixed-height
+ * removable-chips area of the current selection (two chip rows,
+ * internal scroll, always rendered — the map above never resizes when
+ * chips come and go). «Готово» is enabled while the count is inside
+ * [min, max] from GET /nations/rules and — when
  * manifest.rules.require_connected_start is on — the selection is one
- * component over land/strait edges.
+ * component over land/strait edges. A selection or capital mark that
+ * differs from the initial ones makes the window `dirty`: Esc and the
+ * scrim stop closing it («×» and «Отмена» still do).
  *
  * The capital mark (Issue 15): the right mouse button on a SELECTED
  * province toggles it as capital (one at most; another province moves
@@ -38,15 +42,13 @@ import {
   Chip,
   FormStatus,
   IconButton,
-  ModalPage,
-  ModalPageHeader,
   Search,
   Spinner,
   Text,
-  unstable_ModalPageFooter as ModalPageFooter,
 } from '@vkontakte/vkui';
 
-import { ApiError } from '../../../shared/api-client';
+import { errorText } from '../../../shared/errorTexts';
+import { Popup, tokenVar } from '../../../shared/ui';
 import { mapApi } from '../api';
 import { buildOwnerMap } from '../lib/colors';
 import { displayName } from '../lib/search';
@@ -69,16 +71,17 @@ import { useMapState } from '../hooks/useMapState';
 import { useSession } from '../../00_core/hooks/useAuth';
 import { MapView, type MapViewFocus } from './MapView';
 
-/** How long a refusal hint stays visible under the header, ms. */
+/** How long a refusal hint stays visible inside the chips box, ms. */
 const HINT_TIMEOUT_MS = 3000;
+/** The map block height — fixed, so the window never depends on the
+ *  screen height (unit 6b; the VK window height is automatic). */
+const MAP_HEIGHT = 520;
 /** Reserved chips block: exactly two chip rows (2×32 + 6 gap) plus
- *  padding — fixed, so the map below never resizes (backlog «Дёрганье
+ *  padding — fixed, so the map above never resizes (backlog «Дёрганье
  *  карты»). */
 const CHIPS_AREA_HEIGHT = 78;
 
 export interface ProvincePickerProps {
-  /** ModalPage nav id inside the caller's ModalRoot. */
-  id: string;
   /** Ids already chosen in the form — the picker starts with them. */
   initialSelectedIds?: number[];
   /** The capital mark inside the initial selection; null = none. */
@@ -96,7 +99,6 @@ export interface ProvincePickerProps {
 }
 
 export function ProvincePicker({
-  id,
   initialSelectedIds,
   initialCapitalId,
   limits,
@@ -261,14 +263,13 @@ export function ProvincePicker({
   };
 
   // Esc with the list open closes only the list (Spec Part 5): the
-  // FocusTrap Escape path runs on document capture, so the trap is
-  // disabled while the list is open and this handler closes the list;
-  // the modal-level onKeyDown is neutralised by stopPropagation. Once
-  // the list is closed the next Esc reaches the modal → onCancel,
-  // selection unchanged.
+  // preventDefault marks the event as consumed, and the Popup's Esc
+  // listener skips `defaultPrevented` events — neither the picker nor
+  // anything else reacts. Once the list is closed the next Esc is a
+  // plain one and reaches the Popup → onCancel (or stays, if dirty).
   const onContentKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape' && searchOpen) {
-      e.stopPropagation();
+    if (e.key === 'Escape' && searchOpen && results.length > 0) {
+      e.preventDefault();
       setSearchOpen(false);
       setActiveIndex(-1);
     }
@@ -308,11 +309,7 @@ export function ProvincePicker({
           : null,
       );
     } catch (error) {
-      setServerMessage(
-        error instanceof ApiError
-          ? error.message
-          : 'Ошибка сети — попробуйте ещё раз.',
-      );
+      setServerMessage(errorText(error));
     } finally {
       setChecking(false);
     }
@@ -325,64 +322,87 @@ export function ProvincePicker({
   const minText =
     limits.min !== null ? `минимум ${limits.min}` : null;
 
+  // Unsaved input (UI Spec 3.3): the ordered selection or the capital
+  // mark differs from what the form handed in — Esc and the scrim stop
+  // closing, «×» and «Отмена» keep working.
+  const initialCapital =
+    initialCapitalId !== null &&
+    initialCapitalId !== undefined &&
+    (initialSelectedIds ?? []).includes(initialCapitalId)
+      ? initialCapitalId
+      : null;
+  const initialIds = initialSelectedIds ?? [];
+  const dirty =
+    capitalId !== initialCapital ||
+    selection.length !== initialIds.length ||
+    selection.some((sid, i) => sid !== initialIds[i]);
+
   return (
-    <ModalPage
-      id={id}
+    <Popup
+      size="L"
+      icon="map"
+      title="Выбор провинций"
       onClose={onCancel}
-      size="calc(100vw - 64px)"
-      height="calc(100vh - 96px)"
-      disableFocusTrap={searchOpen}
-      modalContentTestId="province-picker-content"
-      header={<ModalPageHeader>Выбор провинций</ModalPageHeader>}
+      dirty={dirty}
+      flush
+      testId="province-picker"
       footer={
-        <ModalPageFooter>
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              justifyContent: 'flex-end',
-            }}
+        <>
+          <Button
+            size="m"
+            mode="secondary"
+            onClick={onCancel}
+            data-testid="picker-cancel"
           >
-            <Button
-              mode="secondary"
-              onClick={onCancel}
-              data-testid="picker-cancel"
-            >
-              Отмена
-            </Button>
-            <Button
-              mode="primary"
-              onClick={() => void onConfirm()}
-              disabled={!valid || checking}
-              loading={checking}
-              data-testid="picker-done"
-            >
-              Готово
-            </Button>
-          </div>
-        </ModalPageFooter>
+            Отмена
+          </Button>
+          <Button
+            size="m"
+            mode="primary"
+            onClick={() => void onConfirm()}
+            disabled={!valid || checking}
+            loading={checking}
+            data-testid="picker-done"
+          >
+            Готово
+          </Button>
+        </>
       }
     >
       <div
-        data-testid="province-picker"
         onKeyDown={onContentKeyDown}
         style={{
           display: 'flex',
           flexDirection: 'column',
-          height: '100%',
-          minHeight: 0,
         }}
       >
+        {/* Info row: search + counter + connectivity + the capital
+            caption — ONE line of a fixed 48 px (incl. padding) that
+            never wraps: the caption is always rendered on the right
+            and the connectivity slot keeps its min-width even when
+            empty, so the map below never shifts (acceptance 12b). */}
         <div
+          data-testid="picker-info-row"
           style={{
             display: 'flex',
+            flexWrap: 'nowrap',
             gap: 12,
             alignItems: 'center',
-            padding: '0 12px 8px',
-            flexWrap: 'wrap',
+            boxSizing: 'border-box',
+            height: 48,
+            padding: '6px 16px',
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+            borderBottom: `1px solid ${tokenVar('line')}`,
           }}
         >
-          <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
+          <div
+            style={{
+              position: 'relative',
+              flex: 1,
+              minWidth: 160,
+            }}
+          >
             <Search
               value={query}
               placeholder="Найти провинцию"
@@ -392,7 +412,10 @@ export function ProvincePicker({
                 setActiveIndex(-1);
               }}
               onKeyDown={onSearchKeyDown}
-              onFocus={() => setSearchOpen(true)}
+              // The window's autofocus must NOT open the list (it
+              // stays closed until the player types or clicks) — so
+              // open on click, not on focus.
+              onClick={() => setSearchOpen(true)}
             />
             {searchOpen && results.length > 0 && (
               <div
@@ -445,47 +468,140 @@ export function ProvincePicker({
               </div>
             )}
           </div>
-          <div>
-            <Text data-testid="picker-count">
-              {countText}
-              {minText !== null ? ` · ${minText}` : ''}
-            </Text>
-            <Caption
-              data-testid="picker-capital-caption"
-              style={{
-                display: 'block',
-                color: 'var(--vkui--color_text_secondary)',
-              }}
-            >
-              Правая кнопка мыши по выбранной провинции — столица
-            </Caption>
-          </div>
-          {connectivityText !== null && (
-            <Text
-              data-testid="picker-connectivity"
-              style={{
-                color:
-                  componentCount === 1
+          <Text
+            data-testid="picker-count"
+            style={{
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {countText}
+            {minText !== null ? ` · ${minText}` : ''}
+          </Text>
+          {/* Reserved slot: always rendered, so the verdict appearing
+              or disappearing cannot move the map. */}
+          <Text
+            data-testid="picker-connectivity"
+            style={{
+              flexShrink: 0,
+              minWidth: 130,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              color:
+                connectivityText === null
+                  ? undefined
+                  : componentCount === 1
                     ? 'var(--vkui--color_text_positive)'
                     : 'var(--vkui--color_text_negative)',
-              }}
-            >
-              {connectivityText}
-            </Text>
+            }}
+          >
+            {connectivityText ?? ''}
+          </Text>
+          <Caption
+            data-testid="picker-capital-caption"
+            style={{
+              marginLeft: 'auto',
+              flexShrink: 1,
+              minWidth: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              color: 'var(--vkui--color_text_secondary)',
+            }}
+          >
+            Правая кнопка мыши по выбранной провинции — столица
+          </Caption>
+        </div>
+
+        {/* Map — a fixed-height block (520 px); MapView fills it.
+            Nothing in the window measures `vh` or 100 % of it. */}
+        <div
+          data-testid="picker-map"
+          style={{
+            position: 'relative',
+            height: MAP_HEIGHT,
+            overflow: 'hidden',
+          }}
+        >
+          {manifestState.status === 'error' && (
+            <div style={{ padding: 24 }}>
+              <FormStatus mode="error" title="Не удалось загрузить карту">
+                {errorText(manifestState.error)}
+              </FormStatus>
+              <Button
+                size="l"
+                style={{ marginTop: 12 }}
+                onClick={() => void manifestState.reload()}
+              >
+                Повторить
+              </Button>
+            </div>
+          )}
+          {manifestState.status !== 'error' &&
+            geometryState.status === 'error' && (
+              <div style={{ padding: 24 }}>
+                <FormStatus
+                  mode="error"
+                  title="Не удалось загрузить геометрию"
+                >
+                  {errorText(geometryState.error)}
+                </FormStatus>
+                <Button
+                  size="l"
+                  style={{ marginTop: 12 }}
+                  onClick={geometryState.retry}
+                >
+                  Повторить
+                </Button>
+              </div>
+            )}
+          {manifest === null || geometryState.geometry === null ? (
+            manifestState.status !== 'error' &&
+            geometryState.status !== 'error' && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  paddingTop: 48,
+                }}
+              >
+                <Spinner size="l" />
+              </div>
+            )
+          ) : (
+            <MapView
+              mode="select"
+              manifest={manifest}
+              geometry={geometryState.geometry}
+              borders={bordersState.borders}
+              bordersFailed={bordersState.status === 'error'}
+              state={mapState.state}
+              selectedIds={selection}
+              disabledIds={disabledIds}
+              capitalId={capitalId}
+              onNodeClick={onNodeClick}
+              onNodeContextMenu={onNodeContextMenu}
+              focus={focus}
+            />
           )}
         </div>
 
         {/* Chips area — a fixed two-row box with internal scroll,
-            always rendered: the map below keeps a constant height when
-            provinces are added or removed (backlog «Дёрганье карты»).
-            The refusal hint lives inside the same reserved box. */}
+            always rendered BELOW the map: the map keeps its constant
+            height when provinces are added or removed (backlog
+            «Дёрганье карты»). The refusal hint lives inside the same
+            reserved box. */}
         <div
           data-testid="picker-chips"
           style={{
             boxSizing: 'border-box',
             height: CHIPS_AREA_HEIGHT,
             overflowY: 'auto',
-            padding: '4px 12px',
+            padding: '4px 16px',
+            borderTop: `1px solid ${tokenVar('line')}`,
           }}
         >
           <div
@@ -553,83 +669,16 @@ export function ProvincePicker({
           </div>
         </div>
 
-        <div
-          data-testid="picker-map"
-          style={{ position: 'relative', flex: 1, minHeight: 0 }}
-        >
-          {manifestState.status === 'error' && (
-            <div style={{ padding: 24 }}>
-              <FormStatus mode="error" title="Не удалось загрузить карту">
-                {manifestState.error.message}
-              </FormStatus>
-              <Button
-                size="l"
-                style={{ marginTop: 12 }}
-                onClick={() => void manifestState.reload()}
-              >
-                Повторить
-              </Button>
-            </div>
-          )}
-          {manifestState.status !== 'error' &&
-            geometryState.status === 'error' && (
-              <div style={{ padding: 24 }}>
-                <FormStatus
-                  mode="error"
-                  title="Не удалось загрузить геометрию"
-                >
-                  {geometryState.error.message}
-                </FormStatus>
-                <Button
-                  size="l"
-                  style={{ marginTop: 12 }}
-                  onClick={geometryState.retry}
-                >
-                  Повторить
-                </Button>
-              </div>
-            )}
-          {manifest === null || geometryState.geometry === null ? (
-            manifestState.status !== 'error' &&
-            geometryState.status !== 'error' && (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  paddingTop: 48,
-                }}
-              >
-                <Spinner size="l" />
-              </div>
-            )
-          ) : (
-            <MapView
-              mode="select"
-              manifest={manifest}
-              geometry={geometryState.geometry}
-              borders={bordersState.borders}
-              bordersFailed={bordersState.status === 'error'}
-              state={mapState.state}
-              selectedIds={selection}
-              disabledIds={disabledIds}
-              capitalId={capitalId}
-              onNodeClick={onNodeClick}
-              onNodeContextMenu={onNodeContextMenu}
-              focus={focus}
-            />
-          )}
-        </div>
-
         {serverMessage !== null && (
           <FormStatus
             mode="error"
             data-testid="picker-server-message"
-            style={{ margin: '0 12px 8px' }}
+            style={{ margin: '8px 16px' }}
           >
             {serverMessage}
           </FormStatus>
         )}
       </div>
-    </ModalPage>
+    </Popup>
   );
 }

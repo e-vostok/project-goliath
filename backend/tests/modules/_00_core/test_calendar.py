@@ -29,17 +29,33 @@ def test_turn_advances_by_months_per_turn():
     assert compute_game_date(12, CORE_CONFIG) == date(2041, 1, 1)
 
 
-def test_format_game_date_renders_dotted_month_name():
-    """дд.месяц.гггг for the shipped calendar: turns 0, 1 and 12."""
-    assert format_game_date(
-        compute_game_date(0, CORE_CONFIG), CORE_CONFIG
-    ) == "01.январь.2040"
-    assert format_game_date(
-        compute_game_date(1, CORE_CONFIG), CORE_CONFIG
-    ) == "01.февраль.2040"
-    assert format_game_date(
-        compute_game_date(12, CORE_CONFIG), CORE_CONFIG
-    ) == "01.январь.2041"
+def test_format_game_date_renders_month_year():
+    """«Месяц Год» for the shipped calendar: turns 0, 1 and 12."""
+    assert (
+        format_game_date(compute_game_date(0, CORE_CONFIG), CORE_CONFIG)
+        == "Январь 2040"
+    )
+    assert (
+        format_game_date(compute_game_date(1, CORE_CONFIG), CORE_CONFIG)
+        == "Февраль 2040"
+    )
+    assert (
+        format_game_date(compute_game_date(12, CORE_CONFIG), CORE_CONFIG)
+        == "Январь 2041"
+    )
+
+
+def test_format_game_date_renders_october():
+    """Turn 9 lands on October — «Октябрь 2040»."""
+    assert (
+        format_game_date(compute_game_date(9, CORE_CONFIG), CORE_CONFIG)
+        == "Октябрь 2040"
+    )
+
+
+def test_format_game_date_year_has_no_leading_zeros():
+    """A short year stays short: «Январь 1», not «Январь 0001»."""
+    assert format_game_date(date(1, 1, 1), CORE_CONFIG) == "Январь 1"
 
 
 def test_far_future_turn_clamps_to_date_max():

@@ -1,20 +1,22 @@
 /**
  * PanelRegistry tests (jsdom; network via msw).
  *
- * Covered: sort+filter survive a tab switch and the view resets on
- * «Назад»; the in-flow filter panel under the toolbar (badge count,
+ * Covered: sort+filter survive a tab switch and the view resets when
+ * the screen is left (Bible 2.7 — the `active` flag AppShell feeds);
+ * the in-flow filter panel under the toolbar (badge count,
  * text and range inputs filtering the rows); a failed reload keeps
  * the old rows with «Повторить»; the table block is the scroll
  * container with a sticky header whose titles never break inside a
  * word; tabs_position: right renders the vertical tab column.
  */
 
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import {
   createHashRouter,
   RouterProvider,
+  useActiveVkuiLocation,
 } from '@vkontakte/vk-mini-apps-router';
 
 // RouterProvider pings VK Bridge on navigation; outside VK it would hit
@@ -46,17 +48,33 @@ import {
   TABLES,
 } from './helpers';
 
+/** Mirrors the AppShell wiring: the active flag follows the panel. */
+function RoutedRegistry({
+  entryRequest,
+}: {
+  entryRequest?: Parameters<typeof PanelRegistry>[0]['entryRequest'];
+}) {
+  const { panel } = useActiveVkuiLocation();
+  return (
+    <PanelRegistry
+      entryRequest={entryRequest}
+      active={panel === 'registry'}
+    />
+  );
+}
+
 function renderRegistry() {
   window.location.hash = '#/registry';
   const router = createHashRouter([
     { path: '/', panel: 'home', view: 'main' },
     { path: '/registry', panel: 'registry', view: 'main' },
   ]);
-  return renderWithSession(
+  const utils = renderWithSession(
     <RouterProvider router={router}>
-      <PanelRegistry />
+      <RoutedRegistry />
     </RouterProvider>,
   );
+  return { ...utils, router };
 }
 
 const rowKeys = () =>
@@ -98,9 +116,9 @@ describe('PanelRegistry — view state', () => {
     );
   });
 
-  it('«Назад» resets sort, filters and search to the default view', async () => {
+  it('leaving the screen resets sort, filters and search to the default view', async () => {
     const user = userEvent.setup();
-    renderRegistry();
+    const { router } = renderRegistry();
     await screen.findByText('Борис Иванов');
 
     await user.click(screen.getByTestId('sort-btn-player'));
@@ -110,7 +128,11 @@ describe('PanelRegistry — view state', () => {
     );
     await waitFor(() => expect(rowKeys()).toEqual(['p1']));
 
-    await user.click(screen.getByRole('button', { name: 'Назад' }));
+    // What the top bar's «Штаб» tab does: route away — the mounted
+    // panel's `active` flag drops and the view state resets (Bible 2.7).
+    act(() => {
+      void router.navigate('/');
+    });
     await waitFor(() => expect(window.location.hash).toBe('#/'));
 
     await waitFor(() => expect(rowKeys()).toEqual(['p1', 'p2', 'p3']));
@@ -216,7 +238,7 @@ describe('PanelRegistry — filter panel', () => {
               cells: {
                 number: 3,
                 name: 'Северия',
-                formed: { text: '1 мая 1300 г.', key: 55 },
+                formed: { text: 'Август 2044', key: 55 },
               },
             },
           ],
@@ -254,6 +276,26 @@ describe('PanelRegistry — filter panel', () => {
 });
 
 describe('PanelRegistry — load states', () => {
+  it('a failed tables load shows the dictionary text, never the English detail', async () => {
+    server.use(
+      http.get('*/api/v1/registry/tables', () =>
+        HttpResponse.json(
+          { detail: 'Provider exploded upstream', code: 'REGISTRY_PROVIDER_FAILED' },
+          { status: 500 },
+        ),
+      ),
+    );
+    renderRegistry();
+
+    await screen.findByText('Не удалось загрузить таблицы реестра');
+    expect(
+      screen.getByText('Не удалось собрать таблицу. Попробуйте ещё раз позже.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Provider exploded/),
+    ).not.toBeInTheDocument();
+  });
+
   it('a failed reload keeps the old rows and shows «Повторить»', async () => {
     const user = userEvent.setup();
     renderRegistry();
@@ -286,6 +328,9 @@ describe('PanelRegistry — load states', () => {
     expect(block.style.overflowY).toBe('auto');
     expect(block.style.flex).toContain('1');
     expect(block.style.minHeight).toBe('0');
+    // The screen is as tall as its content — the table caps at 720 px
+    // and scrolls inside (UI Spec 9.2).
+    expect(block.style.maxHeight).toBe('720px');
 
     const headCell = document.querySelector(
       '[data-testid="registry-table"] thead th',
@@ -320,6 +365,54 @@ describe('PanelRegistry — 910 px window rule (Spec 5.5)', () => {
       expect(share).toBeCloseTo((players[i].width_px / totalPx) * 100, 6);
     });
     expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
+  });
+});
+
+describe('PanelRegistry — screen frame (UI Spec 9.2)', () => {
+  it('shows the «РЕЕСТР» screen title with the three tab labels in the same row', async () => {
+    server.use(
+      http.get('*/api/v1/registry/tables', () =>
+        HttpResponse.json({
+          ...TABLES,
+          tables: [
+            ...TABLES.tables,
+            {
+              id: 'orders',
+              title: 'Приказы',
+              icon: 'orders',
+              empty_text: 'Приказов пока нет',
+              default_sort: { column: 'number', direction: 'desc' },
+              columns: [],
+            },
+          ],
+        }),
+      ),
+    );
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+
+    // The shared screen title carries the signed tabs right after
+    // «РЕЕСТР» — no separate tab row underneath (mockup «Registry»).
+    const title = document.querySelector(
+      '[data-testid="panel-registry"] h2',
+    ) as HTMLElement;
+    expect(title).not.toBeNull();
+    expect(title).toHaveTextContent('Реестр');
+    const strip = within(title).getByTestId('registry-tabstrip');
+    expect(
+      within(strip).getAllByRole('tab').map((t) => t.textContent),
+    ).toEqual(['Игроки', 'Государства', 'Приказы']);
+  });
+
+  it('the players table shows the «Дата регистрации» column title', async () => {
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+    const head = document.querySelector(
+      '[data-testid="registry-table"] thead',
+    ) as HTMLElement;
+    expect(
+      within(head).getByText('Дата регистрации'),
+    ).toBeInTheDocument();
   });
 });
 
@@ -404,7 +497,7 @@ describe('PanelRegistry — entry request (Spec 04_orders 5.5)', () => {
     ]);
     renderWithSession(
       <RouterProvider router={router}>
-        <PanelRegistry
+        <RoutedRegistry
           entryRequest={{ tab: 'orders', action: 'order:7' }}
         />
       </RouterProvider>,

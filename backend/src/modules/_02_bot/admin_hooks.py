@@ -28,7 +28,7 @@ registrars: membership check, never double-register.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +49,7 @@ _TASK_NAMES = ("sender", "digest_watcher", "consent_reconciler", "janitor")
 
 async def bot_state_view(session: AsyncSession) -> dict:
     """Read-only snapshot of the module for the admin panel (Spec 5.4)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     consent_rows = await session.execute(
         select(BotConsent.state, func.count()).group_by(BotConsent.state)
@@ -73,14 +73,10 @@ async def bot_state_view(session: AsyncSession) -> dict:
     if oldest_ready is not None:
         # SQLite returns naive datetimes even for timezone=True columns.
         if oldest_ready.tzinfo is None:
-            oldest_ready = oldest_ready.replace(tzinfo=timezone.utc)
-        oldest_ready_age_seconds = round(
-            (now - oldest_ready).total_seconds()
-        )
+            oldest_ready = oldest_ready.replace(tzinfo=UTC)
+        oldest_ready_age_seconds = round((now - oldest_ready).total_seconds())
     last_digest_turn = (
-        await session.execute(
-            select(BotState.last_digest_turn).where(BotState.id == 1)
-        )
+        await session.execute(select(BotState.last_digest_turn).where(BotState.id == 1))
     ).scalar_one_or_none()
 
     # The live runtime's sender state and task heartbeats; no secrets.
@@ -97,9 +93,7 @@ async def bot_state_view(session: AsyncSession) -> dict:
         "consents": dict(consent_rows.all()),
         "outbox": dict(outbox_rows.all()),
         "oldest_ready_age_seconds": oldest_ready_age_seconds,
-        "last_digest_turn": last_digest_turn
-        if last_digest_turn is not None
-        else 0,
+        "last_digest_turn": last_digest_turn if last_digest_turn is not None else 0,
         "sender": sender,
         "tasks": tasks,
     }
@@ -119,9 +113,7 @@ async def bot_reset(session: AsyncSession) -> None:
     await session.flush()
 
 
-async def bot_player_delete_preview(
-    session: AsyncSession, player_id: str
-) -> dict:
+async def bot_player_delete_preview(session: AsyncSession, player_id: str) -> dict:
     """Counts of the module's rows the player deletion removes."""
     outbox_rows = (
         await session.execute(
@@ -150,12 +142,8 @@ async def bot_delete_player(session: AsyncSession, player_id: str) -> None:
     keys. Inside the caller's transaction; never commits, and a raise
     rolls the whole player deletion back.
     """
-    await session.execute(
-        delete(BotOutbox).where(BotOutbox.player_id == player_id)
-    )
-    await session.execute(
-        delete(BotConsent).where(BotConsent.player_id == player_id)
-    )
+    await session.execute(delete(BotOutbox).where(BotOutbox.player_id == player_id))
+    await session.execute(delete(BotConsent).where(BotConsent.player_id == player_id))
 
 
 def register_bot_admin_hooks() -> None:
@@ -165,11 +153,7 @@ def register_bot_admin_hooks() -> None:
     if MODULE_SLUG not in AdminRegistry.get_reset_hooks():
         AdminRegistry.register_reset(MODULE_SLUG, bot_reset)
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
-        AdminRegistry.register_player_preview(
-            MODULE_SLUG, bot_player_delete_preview
-        )
+        AdminRegistry.register_player_preview(MODULE_SLUG, bot_player_delete_preview)
     # Player-delete hooks live in the 00_core registry; re-registering
     # the same name simply replaces the entry.
-    register_player_delete_hook(
-        f"{MODULE_SLUG}.player_delete", bot_delete_player
-    )
+    register_player_delete_hook(f"{MODULE_SLUG}.player_delete", bot_delete_player)

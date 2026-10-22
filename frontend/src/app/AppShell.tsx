@@ -1,8 +1,9 @@
 /**
  * AppShell — auth gate + top-level layout for module 00_core.
  *
- * Gate: ScreenSpinner while POST /auth/vk resolves; a blocking error screen
- * on failure; SessionProvider + routed panels once authenticated.
+ * Gate: the shared LoadingScreen while POST /auth/vk resolves; a blocking
+ * error screen on failure; SessionProvider + routed panels once
+ * authenticated.
  * Panel selection follows server truth (nation exists → home, else create),
  * kept in sync with the hash router.
  */
@@ -10,15 +11,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   useActiveVkuiLocation,
+  useParams,
   useRouteNavigator,
 } from '@vkontakte/vk-mini-apps-router';
+// `useLocation` exists in the package but is not re-exported from its
+// root — the subscreen's «fromTab» chain reads location.state.
+import { useLocation } from '@vkontakte/vk-mini-apps-router/dist/hooks/hooks';
 import {
   Button,
   Div,
   FormStatus,
-  ModalRoot,
   Panel,
-  ScreenSpinner,
   SplitCol,
   SplitLayout,
   Spinner,
@@ -26,29 +29,22 @@ import {
 } from '@vkontakte/vkui';
 
 import { useAuth, SessionProvider } from '../modules/00_core/hooks/useAuth';
+import { useGameClock } from '../modules/00_core/hooks/useGameClock';
 import { useNation } from '../modules/00_core/hooks/useNation';
 import { PanelCreateNation } from '../modules/00_core/components/PanelCreateNation';
 import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
-import { ModalConfirmDeleteNation } from '../modules/00_core/components/ModalConfirmDeleteNation';
+import { NationSubscreen } from '../modules/00_core/components/NationSubscreen';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
-import { MapEntryButton } from '../modules/01_map/components/MapEntryButton';
+import { setMapEntryRequest } from '../modules/01_map/lib/mapEntryRequest';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
-import { RegistryEntryButton } from '../modules/03_registry/components/RegistryEntryButton';
+import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
+import { errorText } from '../shared/errorTexts';
 import {
-  MODAL_ORDER_COMPOSER,
-  MODAL_ORDER_CONFIRM,
-  MODAL_ORDER_DETAIL,
-  MODAL_VERDICT_COMPOSER,
-  MODAL_VERDICT_CONFIRM,
-  OrdersUiProvider,
-} from '../modules/04_orders/OrdersUiProvider';
-import { OrderComposer } from '../modules/04_orders/OrderComposer';
-import { ConfirmSubmitModal } from '../modules/04_orders/ConfirmSubmitModal';
-import { OrderDetailModal } from '../modules/04_orders/OrderDetailModal';
-import {
-  ConfirmVerdictModal,
-  VerdictComposer,
-} from '../modules/04_orders/VerdictComposer';
+  AuthErrorScreen,
+  LoadingScreen,
+  NoticeHost,
+  PopupHost,
+} from '../shared/ui';
 import {
   parseRegistryOrderHash,
   setRegistryEntryRequest,
@@ -57,12 +53,26 @@ import {
 import { BotStatusProvider } from '../modules/02_bot/hooks/useBotStatus';
 import { parseStartHash } from '../modules/02_bot/lib/startHash';
 import { AdminBlock } from '../admin/AdminBlock';
+import { TopBar } from './TopBar';
+import {
+  PANEL_CREATE,
+  PANEL_HOME,
+  PANEL_MAP,
+  PANEL_REGISTRY,
+} from './panels';
+import { useWindowHeight } from './useWindowHeight';
 
-export const PANEL_HOME = 'nation-home';
-export const PANEL_CREATE = 'nation-create';
-export const PANEL_MAP = 'map';
-export const PANEL_REGISTRY = 'registry';
-const MODAL_DELETE_NATION = 'confirm-delete-nation';
+export { PANEL_CREATE, PANEL_HOME, PANEL_MAP, PANEL_REGISTRY };
+
+/**
+ * The nation id in the `#/registry/nation-<id>` address — hex + dash
+ * (the UUID alphabet), 8–64 chars (UI Spec 9.3). Anything else in the
+ * `:sub` segment or after `#registry/nation-` is not a nation address.
+ */
+export const NATION_SUB_RE = /^nation-[0-9a-fA-F-]{8,64}$/;
+
+/** `#registry/nation-<id>` — the bare (menu/bot) form of the address. */
+const NATION_BARE_HASH_RE = /^#registry\/(nation-[0-9a-fA-F-]{8,64})$/;
 
 /**
  * The community-menu deep link `https://vk.com/app<APP_ID>#map` arrives
@@ -82,6 +92,17 @@ export function normalizeEntryHash(): void {
     window.history.replaceState(null, '', '#/registry');
     return;
   }
+  // `#registry/nation-<id>` (UI Spec 9.3): the nation subscreen. A
+  // malformed id falls back to the plain Registry, no error shown.
+  if (window.location.hash.startsWith('#registry/nation-')) {
+    const match = NATION_BARE_HASH_RE.exec(window.location.hash);
+    window.history.replaceState(
+      null,
+      '',
+      match ? `#/registry/${match[1]}` : '#/registry',
+    );
+    return;
+  }
   if (window.location.hash === '#map') {
     window.history.replaceState(null, '', '#/map');
     return;
@@ -99,29 +120,17 @@ export function AppShell() {
   const auth = useAuth();
 
   if (auth.status === 'loading') {
-    return <ScreenSpinner />;
+    return <LoadingScreen />;
   }
 
   if (auth.status === 'error') {
+    // The Mini App relaunches with fresh launch params every time, so
+    // retrying the exchange is a full page reload (useAuth).
     return (
-      <SplitLayout>
-        <SplitCol>
-          <Div>
-            <FormStatus mode="error" title="Не удалось войти">
-              {auth.error.message}
-            </FormStatus>
-          </Div>
-          <Div>
-            <Button
-              size="l"
-              stretched
-              onClick={() => window.location.reload()}
-            >
-              Повторить
-            </Button>
-          </Div>
-        </SplitCol>
-      </SplitLayout>
+      <AuthErrorScreen
+        reason={errorText(auth.error)}
+        onRetry={() => window.location.reload()}
+      />
     );
   }
 
@@ -151,17 +160,40 @@ function LoadingCell() {
 function AuthedArea() {
   const { panel } = useActiveVkuiLocation();
   const navigator = useRouteNavigator();
+  const params = useParams();
+  const location = useLocation();
   const nationState = useNation();
-  const [activeModal, setActiveModal] = useState<string | null>(null);
+  // The root container the VK window height follows (UI Spec 2):
+  // top bar + layout, measured as one block — never the page.
+  const shellRef = useRef<HTMLDivElement>(null);
+  useWindowHeight(shellRef);
   // The entry request is consumed once — the first read wins, later
   // renders get null (takeRegistryEntryRequest clears the store).
   const registryRequest = useRef(takeRegistryEntryRequest()).current;
+
+  // The nation subscreen (unit 14c): the `/registry/:sub` route's
+  // `nation-<id>` segment → the nation id; any other segment shows the
+  // plain Registry. `fromTab` rides router state (a row click pushes
+  // {fromTab: <tab title>}); a bare link has none.
+  const subSegment = params?.sub;
+  const nationSubId =
+    typeof subSegment === 'string' && NATION_SUB_RE.test(subSegment)
+      ? subSegment.slice('nation-'.length)
+      : null;
+  const fromTab = (() => {
+    const state = location.state as { fromTab?: unknown } | null;
+    return state !== null && typeof state.fromTab === 'string'
+      ? state.fromTab
+      : null;
+  })();
 
   const { status, nation, refresh } = nationState;
   const activePanel = panel ?? PANEL_HOME;
   // Bumped by the admin block after tick/reset: remounts PanelNationHome so
   // it refetches the game clock, while refresh() reloads the nation itself.
   const [worldVersion, setWorldVersion] = useState(0);
+  // The top bar's turn badge follows the same refresh signal.
+  const clock = useGameClock(worldVersion);
   const handleWorldChanged = () => {
     refresh();
     setWorldVersion((v) => v + 1);
@@ -192,85 +224,100 @@ function AuthedArea() {
     }
   }, [status, nation, activePanel, navigator]);
 
-  const modal = (
-    <ModalRoot
-      activeModal={activeModal}
-      onClose={() => setActiveModal(null)}
-    >
-      <ModalConfirmDeleteNation
-        id={MODAL_DELETE_NATION}
-        nationName={nation?.name ?? ''}
-        onClose={() => setActiveModal(null)}
-        onDeleted={() => {
-          setActiveModal(null);
-          refresh();
-        }}
-      />
-      {/* 04_orders windows live inside the same ModalRoot; the
-          provider below owns which of them is open. */}
-      <OrderComposer id={MODAL_ORDER_COMPOSER} />
-      <ConfirmSubmitModal id={MODAL_ORDER_CONFIRM} />
-      <OrderDetailModal id={MODAL_ORDER_DETAIL} />
-      <VerdictComposer id={MODAL_VERDICT_COMPOSER} />
-      <ConfirmVerdictModal id={MODAL_VERDICT_CONFIRM} />
-    </ModalRoot>
-  );
-
   return (
-    <OrdersUiProvider
-      activeModal={activeModal}
-      onActiveModal={setActiveModal}
+    <div
+      ref={shellRef}
+      data-testid="app-root"
+      style={{ position: 'relative' }}
     >
-      <SplitLayout modal={modal}>
-      <SplitCol>
-        <View activePanel={activePanel}>
-          <Panel id={PANEL_CREATE}>
-            {status === 'loading' ? (
-              <LoadingCell />
-            ) : (
-              nation === null && <PanelCreateNation onCreated={refresh} />
-            )}
-            <AdminBlock onWorldChanged={handleWorldChanged} />
-          </Panel>
-          <Panel id={PANEL_HOME}>
-            {status === 'loading' && <LoadingCell />}
-            {status === 'error' && (
-              <Div>
-                <FormStatus mode="error" title="Не удалось загрузить государство">
-                  {nationState.error.message}
-                </FormStatus>
-                <Button size="l" stretched onClick={refresh}>
-                  Повторить
-                </Button>
-              </Div>
-            )}
-            {status === 'ready' && nation && (
-              <PanelNationHome
-                key={worldVersion}
-                nation={nation}
-                onChanged={refresh}
-                onDeleteRequest={() => setActiveModal(MODAL_DELETE_NATION)}
-              />
-            )}
-            <AdminBlock onWorldChanged={handleWorldChanged} />
-          </Panel>
-          <Panel id={PANEL_MAP}>
-            <PanelMap />
-          </Panel>
-          <Panel id={PANEL_REGISTRY}>
-            <PanelRegistry entryRequest={registryRequest} />
-          </Panel>
-        </View>
-        {/* Temporary service entries «Карта»/«Реестр» — remove with the
-            real navigation. One component, one import each. «Реестр»
-            sits directly above «Карта», hidden on its own panel. */}
-        {activePanel !== PANEL_MAP && <MapEntryButton />}
-        {activePanel !== PANEL_MAP && activePanel !== PANEL_REGISTRY && (
-          <RegistryEntryButton />
-        )}
-      </SplitCol>
-      </SplitLayout>
-    </OrdersUiProvider>
+      <PopupHost container={shellRef}>
+        <NoticeHost container={shellRef}>
+          <OrdersUiProvider>
+            <TopBar activePanel={activePanel} clock={clock} />
+            <SplitLayout>
+              <SplitCol>
+                <View activePanel={activePanel}>
+                  <Panel id={PANEL_CREATE}>
+                    {status === 'loading' ? (
+                      <LoadingCell />
+                    ) : (
+                      nation === null && (
+                        <PanelCreateNation onCreated={refresh} />
+                      )
+                    )}
+                    <AdminBlock onWorldChanged={handleWorldChanged} />
+                  </Panel>
+                  <Panel id={PANEL_HOME}>
+                    {status === 'loading' && <LoadingCell />}
+                    {status === 'error' && (
+                      <Div>
+                        <FormStatus
+                          mode="error"
+                          title="Не удалось загрузить государство"
+                        >
+                          {errorText(nationState.error)}
+                        </FormStatus>
+                        <Button size="l" stretched onClick={refresh}>
+                          Повторить
+                        </Button>
+                      </Div>
+                    )}
+                    {status === 'ready' && nation && (
+                      <PanelNationHome
+                        key={worldVersion}
+                        nation={nation}
+                        onChanged={refresh}
+                      />
+                    )}
+                    <AdminBlock onWorldChanged={handleWorldChanged} />
+                  </Panel>
+                  <Panel id={PANEL_MAP}>
+                    <PanelMap active={activePanel === PANEL_MAP} />
+                  </Panel>
+                  <Panel id={PANEL_REGISTRY}>
+                    {/* The nation subscreen replaces the Registry's
+                        content IN THE SAME panel — the Registry stays
+                        mounted (display:none) and keeps `active=true`,
+                        so its tab/search/sort/filters/scroll survive
+                        the round trip (Bible 2.7, UI Spec 9.3). */}
+                    <div
+                      style={
+                        nationSubId === null ? undefined : { display: 'none' }
+                      }
+                    >
+                      <PanelRegistry
+                        entryRequest={registryRequest}
+                        active={activePanel === PANEL_REGISTRY}
+                        onOpenNation={(nationId, fromTabTitle) =>
+                          void navigator.push(`/registry/nation-${nationId}`, {
+                            state: { fromTab: fromTabTitle },
+                          })
+                        }
+                      />
+                    </div>
+                    {nationSubId !== null && (
+                      <NationSubscreen
+                        nationId={nationSubId}
+                        fromTab={fromTab}
+                        onBack={() => void navigator.push('/registry')}
+                        onShowOnMap={(capitalProvinceId) => {
+                          if (capitalProvinceId !== null) {
+                            setMapEntryRequest({
+                              provinceId: capitalProvinceId,
+                            });
+                          }
+                          void navigator.push('/map');
+                        }}
+                      />
+                    )}
+                  </Panel>
+                </View>
+              </SplitCol>
+            </SplitLayout>
+          </OrdersUiProvider>
+        </NoticeHost>
+      </PopupHost>
+    </div>
   );
 }
 

@@ -3,8 +3,10 @@
  *
  * Covers: field errors land at the right field by server code, the
  * «Да, отправить» button sends a single request on a double click,
- * the confirmation window shows the entered values in full, and the
- * send button is disabled at the author limit with the Spec text.
+ * the confirmation window shows the entered values in full and lies
+ * over the still-mounted composer, Enter only breaks lines in the
+ * textarea, and the send button is disabled at the author limit with
+ * the Spec text.
  */
 
 import { screen, within } from '@testing-library/react';
@@ -85,24 +87,89 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
       screen.getByRole('button', { name: 'Отправить приказ' }),
     );
 
+    const confirm = await screen.findByTestId('popup-order-confirm');
+    expect(
+      within(confirm).getByText(
+        'Уверены ли вы, всё ли проверили: изменить приказ после подачи нельзя',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(confirm).getByText('Приказ о наступлении'),
+    ).toBeInTheDocument();
+    expect(
+      within(confirm).getByText('Все армии выступают на рассвете.'),
+    ).toBeInTheDocument();
+    // The stored https:// value renders as the link itself (mockup).
+    expect(
+      within(confirm).getByRole('link', {
+        name: 'https://vk.com/@nastuplenie',
+      }),
+    ).toHaveAttribute('href', 'https://vk.com/@nastuplenie');
+    expect(
+      within(confirm).getByRole('button', { name: 'Вернуться к правке' }),
+    ).toBeInTheDocument();
+  });
+
+  it('lies over the still-mounted composer, which keeps its input on the way back', async () => {
+    const user = userEvent.setup();
+    renderWithOrders(<OrdersBlock />);
+    await openComposer(user);
+    await fillComposer(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Отправить приказ' }),
+    );
+
+    // The S confirmation is up — and the M composer is still
+    // rendered underneath with the typed values in place.
     await screen.findByText(
       'Уверены ли вы, всё ли проверили: изменить приказ после подачи нельзя',
     );
-    expect(
-      screen.getByText('Приказ о наступлении'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Все армии выступают на рассвете.'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('https://vk.com/@nastuplenie'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Открыть ссылку' }),
-    ).toHaveAttribute('href', 'https://vk.com/@nastuplenie');
-    expect(
+    expect(screen.getByLabelText('Название')).toHaveValue(
+      'Приказ о наступлении',
+    );
+    expect(screen.getByLabelText('Краткая суть приказа')).toHaveValue(
+      'Все армии выступают на рассвете.',
+    );
+
+    // «Вернуться к правке» drops only the confirmation.
+    await user.click(
       screen.getByRole('button', { name: 'Вернуться к правке' }),
-    ).toBeInTheDocument();
+    );
+    expect(
+      screen.queryByText(
+        'Уверены ли вы, всё ли проверили: изменить приказ после подачи нельзя',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Название')).toHaveValue(
+      'Приказ о наступлении',
+    );
+  });
+
+  it('Enter in a single-line field does nothing; in the textarea it inserts a line break', async () => {
+    const user = userEvent.setup();
+    renderWithOrders(<OrdersBlock />);
+    await openComposer(user);
+
+    await user.type(screen.getByLabelText('Название'), 'Тест{Enter}');
+    expect(
+      screen.queryByText(
+        'Уверены ли вы, всё ли проверили: изменить приказ после подачи нельзя',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Название')).toHaveValue('Тест');
+
+    await user.type(
+      screen.getByLabelText('Краткая суть приказа'),
+      'Первая строка{Enter}Вторая строка',
+    );
+    expect(screen.getByLabelText('Краткая суть приказа')).toHaveValue(
+      'Первая строка\nВторая строка',
+    );
+    expect(
+      screen.queryByText(
+        'Уверены ли вы, всё ли проверили: изменить приказ после подачи нельзя',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('sends a single POST /orders even when «Да, отправить» is clicked twice', async () => {
@@ -130,6 +197,10 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
     await user.click(send);
 
     await screen.findByText('Приказ №7 подан');
+    // It arrives through the shared success bar (UI Spec 7).
+    expect(screen.getByTestId('notice')).toHaveTextContent(
+      'Приказ №7 подан',
+    );
     expect(posts).toBe(1);
   });
 
@@ -171,5 +242,38 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
     expect(screen.getByLabelText('Название')).toHaveValue(
       'Приказ о наступлении',
     );
+  });
+
+  it('a coded banner error shows the dictionary text, never the English detail', async () => {
+    server.use(
+      http.post('*/api/v1/orders', () =>
+        HttpResponse.json(
+          {
+            detail: 'Nation is required to submit an order',
+            code: 'ORDER_NATION_REQUIRED',
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithOrders(<OrdersBlock />);
+    await openComposer(user);
+    await fillComposer(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Отправить приказ' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Да, отправить' }),
+    );
+
+    // Bounced to the composer: the banner carries the dictionary text
+    // of ORDER_NATION_REQUIRED, and the English detail is absent.
+    await screen.findByText(
+      'Подать приказ может только владелец государства.',
+    );
+    expect(
+      screen.queryByText(/Nation is required/),
+    ).not.toBeInTheDocument();
   });
 });

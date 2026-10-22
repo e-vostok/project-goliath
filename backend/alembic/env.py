@@ -10,19 +10,13 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import Connection
 
+from alembic import context
+
 # Add src directory to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from core.db import Base
-from core.settings import (
-    format_database_target,
-    resolve_database_url,
-    to_sync_database_url,
-)
 
 # Register every module's ORM tables on Base.metadata so the migrated
 # schema can be compared against the models (drift-guard tests, future
@@ -32,6 +26,12 @@ import modules._01_map.models  # noqa: F401,E402
 import modules._02_bot.models  # noqa: F401,E402
 import modules._03_registry.models  # noqa: F401,E402
 import modules._04_orders.models  # noqa: F401,E402
+from core.db import Base
+from core.settings import (
+    format_database_target,
+    resolve_database_url,
+    to_sync_database_url,
+)
 
 # this is the Alembic Config object
 config = context.config
@@ -115,7 +115,7 @@ def run_migrations_online() -> None:
     """
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_database_url()
-    
+
     connectable = create_engine(
         configuration["sqlalchemy.url"],
         poolclass=pool.NullPool,

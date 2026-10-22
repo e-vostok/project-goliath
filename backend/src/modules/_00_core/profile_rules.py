@@ -58,12 +58,9 @@ def _validate_text(
     text = value.strip()
     if not (min_length <= len(text) <= max_length):
         raise error(
-            f"must be between {min_length} and {max_length} characters, "
-            f"got {len(text)}"
+            f"must be between {min_length} and {max_length} characters, got {len(text)}"
         )
-    if any(
-        unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text
-    ):
+    if any(unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text):
         raise error("contains control or formatting characters")
     return text
 
@@ -81,12 +78,8 @@ def _validate_optional_text(
     if not text:
         return None
     if len(text) > max_length:
-        raise error(
-            f"must be at most {max_length} characters, got {len(text)}"
-        )
-    if any(
-        unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text
-    ):
+        raise error(f"must be at most {max_length} characters, got {len(text)}")
+    if any(unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in text):
         raise error("contains control or formatting characters")
     return text
 
@@ -209,9 +202,7 @@ def validate_motto(value: str | None, config: CoreConfig) -> str | None:
     )
 
 
-def validate_description(
-    value: str | None, config: CoreConfig
-) -> str | None:
+def validate_description(value: str | None, config: CoreConfig) -> str | None:
     """Optional `description`: normalized text or None (INV-12)."""
     return _validate_optional_text(
         value,
@@ -220,17 +211,18 @@ def validate_description(
     )
 
 
-def validate_leader_bio(
-    value: str | None, config: CoreConfig
-) -> str | None:
+def validate_leader_bio(value: str | None, config: CoreConfig) -> str | None:
     """
     Optional multi-line `leader_bio` (Part 3): CR/LF are folded to `\\n`
-    first, then stripped; a newline is the only allowed control
-    character. Empty after normalization stores as NULL.
+    first, runs of three or more line breaks collapse to two (at most
+    one empty line between paragraphs), then the text is stripped; a
+    newline is the only allowed control character. The length limit
+    counts the normalized text. Empty after normalization stores NULL.
     """
     if value is None:
         return None
-    text = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if not text:
         return None
     max_length = config.nation.leader_bio_max_length
@@ -239,12 +231,9 @@ def validate_leader_bio(
             f"must be at most {max_length} characters, got {len(text)}"
         )
     if any(
-        unicodedata.category(ch) in _FORBIDDEN_CATEGORIES and ch != "\n"
-        for ch in text
+        unicodedata.category(ch) in _FORBIDDEN_CATEGORIES and ch != "\n" for ch in text
     ):
-        raise LeaderBioInvalidError(
-            "contains control or formatting characters"
-        )
+        raise LeaderBioInvalidError("contains control or formatting characters")
     return text
 
 
@@ -252,9 +241,7 @@ def validate_gender(value: str, config: CoreConfig) -> str:
     """`gender` must be one of ``GENDERS`` (code constants, INV-12)."""
     normalized = value.strip().lower()
     if normalized not in GENDERS:
-        raise GenderInvalidError(
-            f"must be one of {list(GENDERS)}, got {value!r}"
-        )
+        raise GenderInvalidError(f"must be one of {list(GENDERS)}, got {value!r}")
     return normalized
 
 
@@ -268,9 +255,7 @@ def validate_succession_type(value: str, config: CoreConfig) -> str:
     return normalized
 
 
-def validate_anthem_url(
-    value: str | None, config: CoreConfig
-) -> str | None:
+def validate_anthem_url(value: str | None, config: CoreConfig) -> str | None:
     """
     Optional `anthem_url` (Part 3, soft check): empty stores NULL;
     otherwise https scheme, an allowed host, no port/userinfo and no
@@ -288,12 +273,9 @@ def validate_anthem_url(
             f"must be at most {max_length} characters, got {len(url)}"
         )
     if any(
-        ch.isspace() or unicodedata.category(ch) in _FORBIDDEN_CATEGORIES
-        for ch in url
+        ch.isspace() or unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in url
     ):
-        raise AnthemUrlInvalidError(
-            "contains whitespace or control characters"
-        )
+        raise AnthemUrlInvalidError("contains whitespace or control characters")
     try:
         parsed = urlsplit(url)
         host = parsed.hostname
@@ -309,18 +291,12 @@ def validate_anthem_url(
     return url
 
 
-def validate_flag_id(
-    value: str | None, config: CoreConfig
-) -> str | None:
+def validate_flag_id(value: str | None, config: CoreConfig) -> str | None:
     """Optional `flag_id`: must name a `catalog.flag_ids` entry (INV-15)."""
-    return _validate_catalog_id(
-        value, config.catalog.flag_ids, FlagInvalidError
-    )
+    return _validate_catalog_id(value, config.catalog.flag_ids, FlagInvalidError)
 
 
-def validate_portrait_id(
-    value: str | None, config: CoreConfig
-) -> str | None:
+def validate_portrait_id(value: str | None, config: CoreConfig) -> str | None:
     """Optional `portrait_id`: must name a `catalog.portrait_ids` entry."""
     return _validate_catalog_id(
         value, config.catalog.portrait_ids, PortraitInvalidError

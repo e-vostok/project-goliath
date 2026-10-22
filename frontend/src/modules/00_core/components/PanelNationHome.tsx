@@ -1,44 +1,39 @@
 /**
- * PanelNationHome — the player's existing nation (Spec 1.3 Part 5).
+ * PanelNationHome — the player's own nation (Spec 1.3 Part 5, UI Spec
+ * 9.1, mockup «Main», version 0.9.0 unit 8b).
  *
- * The card shows every nation field: flag and portrait images (only
- * when set — a missing catalog picture leaves no broken icon), full and
- * short names, motto and description (only when present), the color
- * swatch, the province list, the capital line («название (провинция
- * N)», hidden while the nation has no capital), leader name, gender,
- * title and biography, the succession method with the «Пока без
- * последствий» caption, and the history/anthem links rendered as real
- * <a target="_blank" rel="noopener noreferrer"> only when the stored
- * value starts with "https://" — anything else is plain text (defense
- * in depth; the server remains the validator). A field that is null on
- * a pre-0.8.0 nation shows «не указано» — except the optional ones,
- * which are simply hidden.
+ * The card is built only from `shared/ui` elements and tokens: the
+ * header block (flag or `FlagStub`, «ГОСУДАРСТВО · краткое», name in
+ * `display-lg`, motto in italics, colour swatch + HEX, «Изменить»
+ * with the pencil icon), a row of four `StatTile`s («Провинции»,
+ * «Уровень», «Судейский рейтинг», «Неразрешённые приказы» — the limit
+ * arrives in GET /orders/rules), «Глава государства» and «Территория»
+ * in a 3 : 2 row (province chips BY NAME via `useProvinceNames`, the
+ * capital first with «★»), then «Описание» with the «История
+ * государства ↗» link (a real <a> only for https:// values). Gender,
+ * succession, anthem and the bot-consent row are not shown on the
+ * card; province numbers are shown nowhere.
  *
- * «Изменить» opens one form built from the same tab components as the
- * registration window (provinces and the capital mark stay read-only);
- * the PATCH /nations/me body carries only the changed fields
- * (`toUpdateRequest`), a cleared optional field goes as an empty
- * string, and a legacy nation may be saved partially — its missing
- * mandatory fields do not block the rest.
+ * «Изменить» opens the edit form — the same tab strip and tab blocks
+ * as the registration window (unit 8c): the PATCH /nations/me body
+ * carries only the changed fields (`toUpdateRequest`), a cleared
+ * optional field goes as an empty string, and a legacy nation may be
+ * saved partially — its missing mandatory fields do not block the
+ * rest; a legacy NULL flag/portrait shows the first catalog tile
+ * selected, so the first save already carries its id. The bot-consent
+ * row lives as one compact row at the bottom of the edit view — it was
+ * reachable only from this card before.
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Button,
-  ButtonGroup,
-  Div,
-  FormStatus,
-  Group,
-  Header,
-  Link,
-  PanelHeader,
-  SimpleCell,
-} from '@vkontakte/vkui';
-import { Icon24Write, Icon24Delete } from '@vkontakte/icons';
+import { FormStatus } from '@vkontakte/vkui';
 
 import { api, ApiError } from '../../../shared/api-client';
+import { errorText } from '../../../shared/errorTexts';
 import { useFormDraft } from '../../../shared/formDraft';
-import type { GameClockDTO, NationDTO } from '../../../shared/types';
+import { SUCCESS_RU } from '../../../shared/texts/success.ru';
+import type { NationDTO } from '../../../shared/types';
+import { SIZES, SPACING, tokenVar, useNotice } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { nationRulesHints } from './CreateNationFields';
@@ -52,37 +47,25 @@ import {
   type NationField,
   type RegistrationForm,
 } from './registrationForm';
-import { nationErrorText } from './nationErrorTexts';
-import { GENDER_LABELS, SUCCESSION_LABELS } from './nationLabels';
 import { BotConsentRow } from '../../02_bot/components/BotConsentRow';
 import { OrdersBlock } from '../../04_orders/components/OrdersBlock';
+import { CardBlock } from './card/CardBlock';
+import { NationCard } from './card/NationCard';
 
 export interface PanelNationHomeProps {
   nation: NationDTO;
   onChanged: () => void;
-  onDeleteRequest: () => void;
 }
 
 /** Session-draft key; v1 five-field drafts under 'nation-edit:*' die out. */
 const editDraftKey = (nationId: string) => `nation-edit-v2:${nationId}`;
 
-/** Only https values become real links — anything else is plain text. */
-function externalLink(url: string, label: string) {
-  return url.startsWith('https://') ? (
-    <Link href={url} target="_blank" rel="noopener noreferrer">
-      {label}
-    </Link>
-  ) : (
-    url
-  );
-}
-
 export function PanelNationHome({
   nation,
   onChanged,
-  onDeleteRequest,
 }: PanelNationHomeProps) {
   const { token } = useSession();
+  const notify = useNotice();
   const rulesState = useNationRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
   const hints = nationRulesHints(rules);
@@ -95,7 +78,6 @@ export function PanelNationHome({
     clearDraft,
   } = useFormDraft<RegistrationForm>(editDraftKey(nation.id));
 
-  const [clock, setClock] = useState<GameClockDTO | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<RegistrationForm>(() => {
     const seed = registrationFormFromNation(nation);
@@ -109,14 +91,23 @@ export function PanelNationHome({
   >({});
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Legacy NULL flag/portrait (pre-catalog nations): the edit form
+  // always shows a tile selected — the first catalog entry — so the
+  // first save already carries `flag_id`/`portrait_id` even when the
+  // player changed nothing else (UI Spec 9.6, unit 8c).
   useEffect(() => {
-    const controller = new AbortController();
-    api
-      .getGameClock(token, controller.signal)
-      .then(setClock)
-      .catch(() => {});
-    return () => controller.abort();
-  }, [token]);
+    if (!editing || rules === null) {
+      return;
+    }
+    setForm((prev) => {
+      const flagId = prev.flagId ?? rules.flags[0]?.id ?? null;
+      const portraitId = prev.portraitId ?? rules.portraits[0]?.id ?? null;
+      if (flagId === prev.flagId && portraitId === prev.portraitId) {
+        return prev;
+      }
+      return { ...prev, flagId, portraitId };
+    });
+  }, [editing, rules]);
 
   // PATCH body — only fields whose normalized value actually changed.
   const changes = toUpdateRequest(form, nation);
@@ -189,19 +180,20 @@ export function PanelNationHome({
       await api.updateNation(token, changes);
       clearDraft();
       setEditing(false);
+      notify(SUCCESS_RU.nationSaved);
       onChanged();
     } catch (error) {
       if (error instanceof ApiError) {
         const field = mapErrorCodeToField(error.code);
         if (field) {
           setFieldErrors({
-            [field]: nationErrorText(error.code, rules) ?? error.message,
+            [field]: errorText(error, { rules }),
           });
         } else {
-          setFormError(error.message);
+          setFormError(errorText(error));
         }
       } else {
-        setFormError('Ошибка сети — попробуйте ещё раз.');
+        setFormError(errorText(error));
       }
     } finally {
       setSubmitting(false);
@@ -216,129 +208,33 @@ export function PanelNationHome({
     setFormError(null);
   };
 
-  const headerText = clock
-    ? `Ход ${clock.current_turn} · ${clock.game_date_text}`
-    : 'Ваше государство';
-
-  const succession = nation.succession_type;
-  const gender = nation.gender;
-
   return (
-    <>
-      <PanelHeader>{nation.name}</PanelHeader>
-      <Group header={<Header size="l">{headerText}</Header>}>
-        {(nation.flag_url || nation.portrait_url) && (
-          <Div
-            style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}
-          >
-            {nation.flag_url && (
-              <img
-                src={nation.flag_url}
-                alt={`Флаг ${nation.name}`}
-                width={96}
-                height={64}
-                style={{ borderRadius: 6, objectFit: 'cover' }}
-              />
-            )}
-            {nation.portrait_url && (
-              <img
-                src={nation.portrait_url}
-                alt={`Портрет лидера ${nation.name}`}
-                width={96}
-                height={128}
-                style={{ borderRadius: 6, objectFit: 'cover' }}
-              />
-            )}
-          </Div>
-        )}
-        <SimpleCell disabled subtitle="Название" multiline>
-          {nation.name}
-        </SimpleCell>
-        <SimpleCell disabled subtitle="Краткое название" multiline>
-          {nation.short_name || 'не указано'}
-        </SimpleCell>
-        {nation.motto && (
-          <SimpleCell disabled subtitle="Девиз" multiline>
-            {nation.motto}
-          </SimpleCell>
-        )}
-        {nation.description && (
-          <SimpleCell disabled subtitle="Описание" multiline>
-            {nation.description}
-          </SimpleCell>
-        )}
-        <SimpleCell
-          disabled
-          subtitle="Цвет"
-          before={
-            <div
-              aria-label={`Цвет ${nation.color_hex}`}
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 6,
-                background: nation.color_hex,
-                border: '1px solid rgba(0,0,0,0.15)',
-              }}
-            />
-          }
+    <div
+      data-testid="panel-nation-home"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: SPACING['space-3'],
+        padding: SPACING['space-4'],
+        boxSizing: 'border-box',
+        maxWidth: SIZES['win-screen'],
+        background: tokenVar('ground'),
+      }}
+    >
+      {editing ? (
+        <div
+          data-testid="nation-edit-block"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: SPACING['space-3'],
+          }}
         >
-          {nation.color_hex}
-        </SimpleCell>
-        <SimpleCell disabled subtitle="Провинции" multiline>
-          {nation.province_ids.length > 0
-            ? nation.province_ids.join(', ')
-            : 'Нет'}
-        </SimpleCell>
-        {nation.capital_province_id !== null && (
-          <SimpleCell disabled subtitle="Столица" multiline>
-            {nation.capital_name || 'не указано'} (провинция{' '}
-            {nation.capital_province_id})
-          </SimpleCell>
-        )}
-        <SimpleCell disabled subtitle="Лидер" multiline>
-          {nation.leader_name || 'не указано'}
-        </SimpleCell>
-        <SimpleCell disabled subtitle="Пол">
-          {(gender && (GENDER_LABELS[gender] ?? gender)) || 'не указано'}
-        </SimpleCell>
-        <SimpleCell disabled subtitle="Должность" multiline>
-          {nation.leader_title || 'не указано'}
-        </SimpleCell>
-        {nation.leader_bio && (
-          <SimpleCell disabled subtitle="Биография лидера" multiline>
-            {nation.leader_bio}
-          </SimpleCell>
-        )}
-        <SimpleCell
-          disabled
-          subtitle="Способ смены лидера"
-          extraSubtitle="Пока без последствий в игре"
-          multiline
-        >
-          {(succession &&
-            (SUCCESSION_LABELS[succession]?.title ?? succession)) ||
-            'не указано'}
-        </SimpleCell>
-        <SimpleCell disabled subtitle="История государства" multiline>
-          {nation.history_url
-            ? externalLink(nation.history_url, 'Открыть статью')
-            : 'не указано'}
-        </SimpleCell>
-        {nation.anthem_url && (
-          <SimpleCell disabled subtitle="Гимн" multiline>
-            {externalLink(nation.anthem_url, 'Слушать гимн')}
-          </SimpleCell>
-        )}
-        <BotConsentRow />
-
-        {formError && (
-          <FormStatus mode="error" title="Не удалось обновить государство">
-            {formError}
-          </FormStatus>
-        )}
-
-        {editing ? (
+          {formError && (
+            <FormStatus mode="error" title="Не удалось обновить государство">
+              {formError}
+            </FormStatus>
+          )}
           <CreateNationEditForm
             form={form}
             rules={rules}
@@ -350,33 +246,14 @@ export function PanelNationHome({
             onSubmit={handleSave}
             onCancel={resetEdit}
           />
-        ) : (
-          <Div>
-            <ButtonGroup stretched>
-              <Button
-                size="l"
-                stretched
-                mode="secondary"
-                before={<Icon24Write />}
-                onClick={() => setEditing(true)}
-              >
-                Изменить
-              </Button>
-              <Button
-                size="l"
-                stretched
-                mode="primary"
-                appearance="negative"
-                before={<Icon24Delete />}
-                onClick={onDeleteRequest}
-              >
-                Удалить
-              </Button>
-            </ButtonGroup>
-          </Div>
-        )}
-      </Group>
+          <CardBlock>
+            <BotConsentRow />
+          </CardBlock>
+        </div>
+      ) : (
+        <NationCard nation={nation} onEdit={() => setEditing(true)} />
+      )}
       <OrdersBlock />
-    </>
+    </div>
   );
 }

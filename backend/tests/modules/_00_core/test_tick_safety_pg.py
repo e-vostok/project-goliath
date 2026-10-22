@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select, text, update
@@ -36,11 +36,11 @@ from modules._00_core.tick_recovery import (
 )
 from tests.fixtures.postgres import (
     ADMIN_VK_ID,
-    pg_clean,  # noqa: F401 — autouse per-test data reset
-    pg_db,
-    pg_live_client,
-    pg_schema,  # noqa: F401 — resolved through the fixture chain
-    pg_url,  # noqa: F401 — resolved through the fixture chain
+    pg_clean,  # noqa: F401 — autouse per-test data reset,
+    pg_db,  # noqa: F401 — resolved through the fixture chain
+    pg_live_client,  # noqa: F401 — resolved through the fixture chain
+    pg_schema,  # noqa: F401 — resolved through the fixture chain,
+    pg_url,  # noqa: F401 — resolved through the fixture chain,
 )
 from tests.modules._00_core.test_router import (
     TEST_VK_SECRET,
@@ -65,19 +65,14 @@ async def _make_overdue(pg_db) -> None:
         await session.execute(
             update(GameClock)
             .where(GameClock.id == 1)
-            .values(
-                next_tick_at=datetime.now(timezone.utc)
-                - timedelta(minutes=1)
-            )
+            .values(next_tick_at=datetime.now(UTC) - timedelta(minutes=1))
         )
         await session.commit()
 
 
 async def _clock(pg_db) -> GameClock:
     async with pg_db() as session:
-        result = await session.execute(
-            select(GameClock).where(GameClock.id == 1)
-        )
+        result = await session.execute(select(GameClock).where(GameClock.id == 1))
         return result.scalar_one()
 
 
@@ -151,9 +146,7 @@ class TestAdvisoryLock:
             await _acquire_advisory_lock(blocker)
 
             async with pg_db() as tick_session:
-                outcome = await run_scheduled_tick(
-                    tick_session, enforce_schedule=True
-                )
+                outcome = await run_scheduled_tick(tick_session, enforce_schedule=True)
             assert outcome is TickOutcome.SKIPPED_LOCKED
             assert await _tick_logs(pg_db) == []
             assert (await _clock(pg_db)).current_turn == 0
@@ -161,9 +154,7 @@ class TestAdvisoryLock:
             await _release_advisory_lock(blocker)
 
         async with pg_db() as tick_session:
-            outcome = await run_scheduled_tick(
-                tick_session, enforce_schedule=True
-            )
+            outcome = await run_scheduled_tick(tick_session, enforce_schedule=True)
         assert outcome is TickOutcome.EXECUTED
         assert (await _clock(pg_db)).current_turn == 1
         logs = await _tick_logs(pg_db)
@@ -182,14 +173,10 @@ class TestAdvisoryLock:
         async def exploding_handler(session, turn_number):
             raise RuntimeError("phase exploded")
 
-        TickOrchestrator.register(
-            TickPhase.PHASE_1_ENVIRONMENT, exploding_handler
-        )
+        TickOrchestrator.register(TickPhase.PHASE_1_ENVIRONMENT, exploding_handler)
 
         async with pg_db() as session:
-            outcome = await run_scheduled_tick(
-                session, enforce_schedule=True
-            )
+            outcome = await run_scheduled_tick(session, enforce_schedule=True)
         assert outcome is TickOutcome.FAILED
         assert (await _clock(pg_db)).current_turn == 0
         logs = await _tick_logs(pg_db)
@@ -201,9 +188,7 @@ class TestAdvisoryLock:
         # slot and the FAILED row stays as attempt history.
         TickOrchestrator.clear_handlers()
         async with pg_db() as session:
-            outcome = await run_scheduled_tick(
-                session, enforce_schedule=True
-            )
+            outcome = await run_scheduled_tick(session, enforce_schedule=True)
         assert outcome is TickOutcome.EXECUTED
         assert (await _clock(pg_db)).current_turn == 1
         logs = await _tick_logs(pg_db)
@@ -231,9 +216,7 @@ class TestScheduleRecheck:
         assert first is TickOutcome.EXECUTED
 
         async with pg_db() as session:
-            second = await run_scheduled_tick(
-                session, enforce_schedule=True
-            )
+            second = await run_scheduled_tick(session, enforce_schedule=True)
         assert second is TickOutcome.SKIPPED_NOT_DUE
 
         assert (await _clock(pg_db)).current_turn == 1
@@ -248,17 +231,13 @@ class TestScheduleRecheck:
         enforce_schedule=False — still takes the lock and runs.
         """
         async with pg_db() as session:
-            outcome = await run_scheduled_tick(
-                session, enforce_schedule=True
-            )
+            outcome = await run_scheduled_tick(session, enforce_schedule=True)
         assert outcome is TickOutcome.SKIPPED_NOT_DUE
         assert await _tick_logs(pg_db) == []
         assert (await _clock(pg_db)).current_turn == 0
 
         async with pg_db() as session:
-            manual = await run_scheduled_tick(
-                session, enforce_schedule=False
-            )
+            manual = await run_scheduled_tick(session, enforce_schedule=False)
         assert manual is TickOutcome.EXECUTED
         assert (await _clock(pg_db)).current_turn == 1
         logs = await _tick_logs(pg_db)
@@ -274,15 +253,13 @@ class TestInterruptedRecovery:
             session.add(
                 TickLog(
                     turn_number=turn_number,
-                    started_at=datetime.now(timezone.utc),
+                    started_at=datetime.now(UTC),
                     status=TickLogStatus.RUNNING,
                 )
             )
             await session.commit()
 
-    async def test_lock_held_by_other_connection_touches_nothing(
-        self, pg_db
-    ):
+    async def test_lock_held_by_other_connection_touches_nothing(self, pg_db):
         """
         Another process mid-tick holds the advisory mutex: the boot pass
         backs off (returns None) and the RUNNING row keeps its status —
@@ -299,9 +276,7 @@ class TestInterruptedRecovery:
 
             await _release_advisory_lock(blocker)
 
-    async def test_free_lock_marks_failed_and_next_tick_runs(
-        self, pg_db, caplog
-    ):
+    async def test_free_lock_marks_failed_and_next_tick_runs(self, pg_db, caplog):
         """
         No tick alive anywhere: leftover RUNNING rows become FAILED with
         the restart note (one WARNING with the count), and the stale
@@ -311,14 +286,10 @@ class TestInterruptedRecovery:
         await self._seed_running(pg_db, turn_number=7)
         await self._seed_running(pg_db, turn_number=8)
 
-        with caplog.at_level(
-            logging.WARNING, logger="modules._00_core.tick_recovery"
-        ):
+        with caplog.at_level(logging.WARNING, logger="modules._00_core.tick_recovery"):
             assert await recover_interrupted_ticks(pg_db) == 2
 
-        warnings = [
-            r for r in caplog.records if r.levelno == logging.WARNING
-        ]
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
         assert "2" in warnings[0].getMessage()
 
@@ -335,9 +306,7 @@ class TestInterruptedRecovery:
         # turn: the scheduler path fires normally.
         await _make_overdue(pg_db)
         async with pg_db() as session:
-            outcome = await run_scheduled_tick(
-                session, enforce_schedule=True
-            )
+            outcome = await run_scheduled_tick(session, enforce_schedule=True)
         assert outcome is TickOutcome.EXECUTED
         logs = await _tick_logs(pg_db)
         assert logs[-1].status == TickLogStatus.COMPLETED
@@ -346,9 +315,7 @@ class TestInterruptedRecovery:
 class TestAdminTickRunConflict:
     """POST /api/v1/admin/tick/run against a busy tick mutex."""
 
-    async def test_manual_run_returns_409_when_lock_held(
-        self, pg_live_client, pg_db
-    ):
+    async def test_manual_run_returns_409_when_lock_held(self, pg_live_client, pg_db):
         """
         Another connection holding the advisory lock -> the manual run
         answers 409 TICK_IN_PROGRESS. After the unlock the same endpoint
@@ -364,31 +331,23 @@ class TestAdminTickRunConflict:
             },
         )
         assert resp.status_code == 200
-        headers = {
-            "Authorization": f"Bearer {resp.json()['access_token']}"
-        }
+        headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
         async with pg_db() as blocker:
             await _acquire_advisory_lock(blocker)
 
-            tick = await client.post(
-                "/api/v1/admin/tick/run", headers=headers
-            )
+            tick = await client.post("/api/v1/admin/tick/run", headers=headers)
             assert tick.status_code == 409
             assert tick.json()["code"] == "TICK_IN_PROGRESS"
 
             # The busy attempt wrote nothing.
             async with pg_db() as session:
-                count = await session.execute(
-                    select(func.count()).select_from(TickLog)
-                )
+                count = await session.execute(select(func.count()).select_from(TickLog))
                 assert count.scalar_one() == 0
 
             await _release_advisory_lock(blocker)
 
-        tick = await client.post(
-            "/api/v1/admin/tick/run", headers=headers
-        )
+        tick = await client.post("/api/v1/admin/tick/run", headers=headers)
         assert tick.status_code == 200
         body = tick.json()
         assert body["ok"] is True

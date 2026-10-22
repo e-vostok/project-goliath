@@ -18,7 +18,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from modules._01_map.config_schema import FrameConfig, MapConfig
+from modules._01_map.config_schema import MapConfig
 
 
 def _base_config() -> dict:
@@ -163,9 +163,7 @@ class TestRealConfig:
             os.path.join("backend", "tests"),
         ],
     )
-    def test_default_path_resolves_from_any_cwd(
-        self, tmp_path, monkeypatch, cwd_name
-    ):
+    def test_default_path_resolves_from_any_cwd(self, tmp_path, monkeypatch, cwd_name):
         """get_default_config_path is resolved relative to the schema
         file, so loading works from src/ and tests/ alike."""
         from pathlib import Path
@@ -188,9 +186,7 @@ class TestUnknownKeys:
             MapConfig.from_yaml(str(path))
 
     def test_unknown_nested_key_rejected(self, tmp_path):
-        path = _write_config(
-            tmp_path, {"big_window": {"surprise": 1}}
-        )
+        path = _write_config(tmp_path, {"big_window": {"surprise": 1}})
 
         with pytest.raises(ValidationError) as exc_info:
             MapConfig.from_yaml(path)
@@ -200,9 +196,7 @@ class TestUnknownKeys:
     def test_removed_big_window_method_key_rejected(self, tmp_path):
         """The pre-1.6 big_window.method key must be rejected — strict
         extra='forbid' is exactly what guards removed keys."""
-        path = _write_config(
-            tmp_path, {"big_window": {"method": "fullscreen"}}
-        )
+        path = _write_config(tmp_path, {"big_window": {"method": "fullscreen"}})
 
         with pytest.raises(ValidationError) as exc_info:
             MapConfig.from_yaml(path)
@@ -268,16 +262,12 @@ class TestHover:
         """map2_0: hover.fill_opacity stays inside [0.0, 0.6] — the fill
         must never fully hide the owner colour nor vanish unnoticed."""
         for bad in (-0.01, 0.61):
-            path = _write_config(
-                tmp_path, {"hover": {"fill_opacity": bad}}
-            )
+            path = _write_config(tmp_path, {"hover": {"fill_opacity": bad}})
             with pytest.raises(ValidationError) as exc_info:
                 MapConfig.from_yaml(path)
             assert "fill_opacity" in str(exc_info.value)
         for edge in (0.0, 0.6):
-            path = _write_config(
-                tmp_path, {"hover": {"fill_opacity": edge}}
-            )
+            path = _write_config(tmp_path, {"hover": {"fill_opacity": edge}})
             assert MapConfig.from_yaml(path).hover.fill_opacity == edge
 
 
@@ -328,13 +318,12 @@ class TestRelief:
 
 
 class TestCrossFieldRules:
-
     @pytest.mark.parametrize(
         "field,value",
         [
             ("neutral_province", "#141E26"),  # collides with sea
-            ("sea", "#8C8C8C"),               # collides with neutral_province
-            ("outside", "#8C8C8C"),           # collides with neutral_province
+            ("sea", "#8C8C8C"),  # collides with neutral_province
+            ("outside", "#8C8C8C"),  # collides with neutral_province
         ],
     )
     def test_equal_base_colors_rejected(self, tmp_path, field, value):
@@ -348,8 +337,8 @@ class TestCrossFieldRules:
     @pytest.mark.parametrize(
         "section,key,bad",
         [
-            ("colors", "sea", "1E3547"),       # missing '#'
-            ("colors", "hover", "#FFF"),       # too short
+            ("colors", "sea", "1E3547"),  # missing '#'
+            ("colors", "hover", "#FFF"),  # too short
             ("colors", "outside", "#GGGGGG"),  # not hex
             ("borders", "state_color", "#FF00000"),  # too long
         ],
@@ -374,9 +363,7 @@ class TestSchemaYamlParity:
             path = f"{prefix}{key}"
             keys.add(path)
             if isinstance(value, dict):
-                keys |= TestSchemaYamlParity._flatten_yaml(
-                    value, path + "."
-                )
+                keys |= TestSchemaYamlParity._flatten_yaml(value, path + ".")
         return keys
 
     @staticmethod
@@ -387,9 +374,7 @@ class TestSchemaYamlParity:
             keys.add(path)
             annotation = field.annotation
             if hasattr(annotation, "model_fields"):
-                keys |= TestSchemaYamlParity._flatten_model(
-                    annotation, path + "."
-                )
+                keys |= TestSchemaYamlParity._flatten_model(annotation, path + ".")
         return keys
 
     def test_yaml_keys_and_schema_fields_match(self):

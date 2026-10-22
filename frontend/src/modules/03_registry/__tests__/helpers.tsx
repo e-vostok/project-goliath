@@ -67,7 +67,7 @@ export const TABLES: RegistryTablesDTO = {
           searchable: true, stub: false, scale_min: null, scale_max: null,
         },
         {
-          id: 'joined', title: 'В проекте с', type: 'date', width_px: 136,
+          id: 'joined', title: 'Дата регистрации', type: 'date', width_px: 136,
           sortable: true, filters: ['date_range'], filter_label: null,
           header_icon: null,
           searchable: false, stub: false, scale_min: null, scale_max: null,
@@ -131,7 +131,12 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
         player: { name: 'Борис Иванов', avatar_url: null, is_fallback: false },
         joined: { text: '1 сентября 2026', key: 20697 },
         level: 1,
-        nation: { name: 'Новгород', color: '#C0392B', flag_url: null },
+        nation: {
+          id: 'n1',
+          name: 'Новгород',
+          color: '#C0392B',
+          flag_url: null,
+        },
       },
     },
     {
@@ -155,7 +160,12 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
         player: { name: 'Игрок №3', avatar_url: null, is_fallback: true },
         joined: { text: '10 сентября 2026', key: 20706 },
         level: 1,
-        nation: { name: 'Рязань', color: '#2980B9', flag_url: null },
+        nation: {
+          id: 'n2',
+          name: 'Рязань',
+          color: '#2980B9',
+          flag_url: null,
+        },
       },
     },
   ],
@@ -172,7 +182,7 @@ export const NATIONS_ROWS: RegistryRowsDTO = {
       cells: {
         number: 1,
         name: 'Новгород',
-        formed: { text: '8 января 1 г.', key: 12 },
+        formed: { text: 'Январь 2041', key: 12 },
       },
     },
     {
@@ -180,7 +190,7 @@ export const NATIONS_ROWS: RegistryRowsDTO = {
       cells: {
         number: 2,
         name: 'Рязань',
-        formed: { text: '15 марта 1240 г.', key: 40 },
+        formed: { text: 'Май 2043', key: 40 },
       },
     },
   ],

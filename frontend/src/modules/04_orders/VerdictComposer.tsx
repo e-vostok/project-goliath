@@ -2,19 +2,20 @@
  * VerdictComposer + ConfirmVerdictModal — the judge's verdict windows
  * (Spec 5.4), mirroring the order submission pair.
  *
- * VerdictComposer: three fields with the same per-field counters and
- * limits from GET /orders/rules as the order composer (the server
- * stays the source of truth); under the fields sits the disabled
- * «Изменение показателей и модификаторы» block — verdict effects do
- * not exist in v1 (INV-O13). «Отправить вердикт» leads to the
- * confirmation window. Errors bounced back from the submit land at
- * their field here.
+ * VerdictComposer (Popup M, scales icon): three fields with the same
+ * per-field counters and limits from GET /orders/rules as the order
+ * composer (the server stays the source of truth); under the fields
+ * sits the dashed, dimmed «Изменение показателей и модификаторы»
+ * block — verdict effects do not exist in v1 (INV-O13). «Отправить
+ * вердикт» leads to the confirmation window. Errors bounced back
+ * from the submit land at their field through a prop update — the
+ * form stays mounted under the confirmation.
  *
- * ConfirmVerdictModal: the «everything checked?» window — warning
- * «изменить вердикт после отправки нельзя», all entered values,
- * «Открыть ссылку», «Вернуться к правке» and «Да, отправить». The
- * POST is guarded by `submitting`, so a double click sends a single
- * request. Field codes bounce back to the composer;
+ * ConfirmVerdictModal (Popup S over the form): the «everything
+ * checked?» window — warning «изменить вердикт после отправки
+ * нельзя», all entered values, «Вернуться к правке» and «Да,
+ * отправить». The POST is guarded by `submitting`, so a double click
+ * sends a single request. Field codes bounce back to the composer;
  * ORDER_VERDICT_EXISTS / ORDER_VERDICT_FORBIDDEN close the composer,
  * show the server's message and land on the reloaded detail window;
  * network and unknown errors stay here with a retry.
@@ -23,25 +24,21 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
-  ButtonGroup,
-  Div,
   FormItem,
   FormStatus,
   Input,
-  Link,
-  ModalCard,
-  ModalPage,
-  ModalPageHeader,
   Text,
   Textarea,
-  type NavIdProps,
 } from '@vkontakte/vkui';
 
 import { ApiError } from '../../shared/api-client';
+import { errorText } from '../../shared/errorTexts';
 import { useFormDraft } from '../../shared/formDraft';
+import { FONTS, Popup, RADII, tokenVar } from '../../shared/ui';
 import { useSession } from '../00_core/hooks/useAuth';
 import { ordersApi } from './api';
 import { useOrderRules } from './hooks/useOrderRules';
+import { ConfirmRecap } from './ConfirmSubmitModal';
 import { orderFieldForCode } from './OrderComposer';
 import { ORDERS_TEXTS } from './texts';
 import { OrderErrorCodes, type OrderRulesDTO } from './types';
@@ -52,37 +49,70 @@ import {
   type OrderDraft,
 } from './OrdersUiProvider';
 
-/** Fits inside the 910 px window budget like every other window. */
-const MODAL_SIZE = 'min(880px, calc(100vw - 64px))';
-
 type VerdictField = 'title' | 'summary' | 'articleUrl';
 
-export function VerdictComposer({ id, ...navIdProps }: NavIdProps) {
-  const { orderWindow, toVerdictConfirm, closeWindow } = useOrdersUi();
+/** What the live form reports up — feeds the Popup's dirty and footer. */
+interface VerdictLive {
+  dirty: boolean;
+  canSend: boolean;
+  draft: OrderDraft;
+}
+
+const EMPTY_LIVE: VerdictLive = {
+  dirty: false,
+  canSend: false,
+  draft: { title: '', summary: '', articleUrl: '' },
+};
+
+export function VerdictComposer() {
+  const {
+    orderWindow,
+    toVerdictConfirm,
+    closeWindow,
+  } = useOrdersUi();
+  const [live, setLive] = useState<VerdictLive>(EMPTY_LIVE);
+
   const win =
-    orderWindow?.view === 'verdict-composer' ? orderWindow : null;
+    orderWindow?.view === 'verdict-composer' ||
+    orderWindow?.view === 'verdict-confirm'
+      ? orderWindow
+      : null;
+  if (win === null) {
+    return null;
+  }
+  const serverError = win.view === 'verdict-composer' ? win.error : null;
 
   return (
-    <ModalPage
-      id={id}
-      {...navIdProps}
+    <Popup
+      size="M"
+      icon="scales"
+      title={ORDERS_TEXTS.verdictComposerTitle(win.number)}
       onClose={closeWindow}
-      size={MODAL_SIZE}
-      header={
-        <ModalPageHeader>
-          {win !== null ? ORDERS_TEXTS.verdictComposerTitle(win.number) : ''}
-        </ModalPageHeader>
+      dirty={live.dirty}
+      testId="popup-verdict-composer"
+      footer={
+        <>
+          <Button size="m" mode="secondary" onClick={closeWindow}>
+            {ORDERS_TEXTS.cancel}
+          </Button>
+          <Button
+            size="m"
+            mode="primary"
+            disabled={!live.canSend}
+            onClick={() => toVerdictConfirm(live.draft)}
+          >
+            {ORDERS_TEXTS.verdictSendButton}
+          </Button>
+        </>
       }
     >
-      {win !== null && (
-        <VerdictForm
-          draftKey={verdictDraftKey(win.number)}
-          draft={win.draft}
-          serverError={win.error}
-          onSend={toVerdictConfirm}
-        />
-      )}
-    </ModalPage>
+      <VerdictForm
+        draftKey={verdictDraftKey(win.number)}
+        draft={win.draft}
+        serverError={serverError}
+        onLive={setLive}
+      />
+    </Popup>
   );
 }
 
@@ -107,13 +137,13 @@ function VerdictForm({
   draftKey,
   draft,
   serverError,
-  onSend,
+  onLive,
 }: {
   /** formDraft key — verdict drafts are per form AND per order number. */
   draftKey: string;
   draft: OrderDraft;
   serverError: ComposerServerError | null;
-  onSend: (draft: OrderDraft) => void;
+  onLive: (live: VerdictLive) => void;
 }) {
   const rulesState = useOrderRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
@@ -137,22 +167,45 @@ function VerdictForm({
       setStoredDraft({ title, summary, articleUrl });
     }
   }, [title, summary, articleUrl, setStoredDraft, clearDraft]);
+
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<VerdictField, string>>
   >(() => {
     const field = serverError ? orderFieldForCode(serverError.code) : null;
     return field && serverError ? { [field]: serverError.message } : {};
   });
-  const [formError] = useState<string | null>(() =>
+  const [formError, setFormError] = useState<string | null>(() =>
     serverError !== null && orderFieldForCode(serverError.code) === null
       ? serverError.message
       : null,
   );
 
+  // The composer stays mounted under the confirmation — a coded error
+  // bounced back arrives as a prop update, not a fresh mount.
+  useEffect(() => {
+    if (serverError === null) {
+      return;
+    }
+    const field = orderFieldForCode(serverError.code);
+    if (field !== null) {
+      setFieldErrors((prev) => ({ ...prev, [field]: serverError.message }));
+    } else {
+      setFormError(serverError.message);
+    }
+  }, [serverError]);
+
   const filled =
     title.trim().length > 0 &&
     summary.trim().length > 0 &&
     articleUrl.trim().length > 0;
+
+  useEffect(() => {
+    onLive({
+      dirty: title !== '' || summary !== '' || articleUrl !== '',
+      canSend: filled,
+      draft: { title, summary, articleUrl },
+    });
+  }, [title, summary, articleUrl, filled, onLive]);
 
   const clearFieldError = (field: VerdictField) =>
     setFieldErrors((prev) => {
@@ -165,11 +218,11 @@ function VerdictForm({
     });
 
   return (
-    <Div>
+    <>
       {rulesState.status === 'error' && (
         <>
           <FormStatus mode="error" title={ORDERS_TEXTS.rulesLoadError}>
-            {rulesState.error.message}
+            {errorText(rulesState.error)}
           </FormStatus>
           <Button size="s" onClick={rulesState.reload}>
             {ORDERS_TEXTS.retry}
@@ -247,50 +300,61 @@ function VerdictForm({
         aria-disabled="true"
         data-testid="verdict-effects-block"
         style={{
-          marginTop: 8,
-          marginBottom: 12,
           opacity: 0.55,
           pointerEvents: 'none',
           userSelect: 'none',
+          border: `1px dashed ${tokenVar('ink-faint')}`,
+          borderRadius: RADII['radius-md'],
+          padding: '10px 12px',
         }}
       >
-        <Text weight="2" style={{ display: 'block' }}>
+        <div
+          style={{
+            fontFamily: FONTS.heading,
+            fontWeight: 500,
+            fontSize: 12,
+            lineHeight: '16px',
+            letterSpacing: '.06em',
+            textTransform: 'uppercase',
+          }}
+        >
           {ORDERS_TEXTS.effectsBlockTitle}
-        </Text>
-        <Text style={{ display: 'block', marginTop: 4 }}>
+        </div>
+        <div
+          style={{
+            color: tokenVar('ink-muted'),
+            fontSize: 12,
+            lineHeight: '16px',
+            marginTop: 2,
+          }}
+        >
           {ORDERS_TEXTS.effectsBlockHint}
-        </Text>
+        </div>
       </div>
-
-      <Button
-        size="l"
-        stretched
-        disabled={!filled}
-        onClick={() => onSend({ title, summary, articleUrl })}
-      >
-        {ORDERS_TEXTS.verdictSendButton}
-      </Button>
-    </Div>
+    </>
   );
 }
 
-export function ConfirmVerdictModal({ id, ...navIdProps }: NavIdProps) {
+export function ConfirmVerdictModal() {
   const { token } = useSession();
   const {
     orderWindow,
     backToVerdictComposer,
-    closeWindow,
     notifyVerdictSubmitted,
     verdictRejected,
   } = useOrdersUi();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const win = orderWindow?.view === 'verdict-confirm' ? orderWindow : null;
-  const draft = win?.draft ?? { title: '', summary: '', articleUrl: '' };
+  const win =
+    orderWindow?.view === 'verdict-confirm' ? orderWindow : null;
+  if (win === null) {
+    return null;
+  }
+  const draft = win.draft;
 
   const handleConfirm = async () => {
-    if (submitting || win === null) {
+    if (submitting) {
       return;
     }
     setSubmitting(true);
@@ -304,8 +368,9 @@ export function ConfirmVerdictModal({ id, ...navIdProps }: NavIdProps) {
       notifyVerdictSubmitted(order.number);
     } catch (e) {
       if (e instanceof ApiError && orderFieldForCode(e.code) !== null) {
-        // Field errors land back on the composer at their field.
-        backToVerdictComposer({ code: e.code, message: e.message });
+        // Field errors land back on the composer at their field; the
+        // carried message is already the Russian `errorText`.
+        backToVerdictComposer({ code: e.code, message: errorText(e) });
         return;
       }
       if (
@@ -315,78 +380,57 @@ export function ConfirmVerdictModal({ id, ...navIdProps }: NavIdProps) {
       ) {
         // The verdict is recorded or the caller is not the judge —
         // the composer closes and the detail window reloads.
-        verdictRejected(win.number, e.message);
+        verdictRejected(win.number, errorText(e));
         return;
       }
-      setError(
-        e instanceof ApiError ? e.message : ORDERS_TEXTS.networkError,
-      );
+      setError(errorText(e));
     } finally {
-      // This component never unmounts (it is a permanent child of the
-      // ModalRoot — only VKUI's inner card hides), so the flag must be
-      // released on every settled request or the next window freezes.
+      // The component stays mounted under the composer view, so the
+      // flag must be released on every settled request or the next
+      // «Да, отправить» freezes spinning.
       setSubmitting(false);
     }
   };
 
+  const back = () => backToVerdictComposer(null);
+
   return (
-    <ModalCard
-      id={id}
-      {...navIdProps}
-      onClose={closeWindow}
+    <Popup
+      size="S"
+      icon="scales"
       title={ORDERS_TEXTS.verdictConfirmTitle}
-      description={ORDERS_TEXTS.verdictConfirmWarning}
-      actions={
-        <ButtonGroup stretched mode="vertical" gap="m">
+      onClose={back}
+      testId="popup-verdict-confirm"
+      footer={
+        <>
           <Button
-            size="l"
-            stretched
+            size="m"
             mode="secondary"
             disabled={submitting}
-            onClick={() => backToVerdictComposer(null)}
+            onClick={back}
           >
             {ORDERS_TEXTS.backToEdit}
           </Button>
           <Button
-            size="l"
-            stretched
+            size="m"
             mode="primary"
             loading={submitting}
             onClick={() => void handleConfirm()}
           >
             {ORDERS_TEXTS.confirmSend}
           </Button>
-        </ButtonGroup>
+        </>
       }
     >
-      <div style={{ overflowWrap: 'break-word', minWidth: 0 }}>
-        <Text weight="2">{ORDERS_TEXTS.confirmTitleLabel}</Text>
-        <Text>{draft.title}</Text>
-        <Text weight="2" style={{ marginTop: 8 }}>
-          {ORDERS_TEXTS.confirmSummaryLabel}
-        </Text>
-        <Text style={{ whiteSpace: 'pre-wrap' }}>{draft.summary}</Text>
-        <Text weight="2" style={{ marginTop: 8 }}>
-          {ORDERS_TEXTS.confirmUrlLabel}
-        </Text>
-        <Text style={{ overflowWrap: 'anywhere' }}>{draft.articleUrl}</Text>
-        {draft.articleUrl.startsWith('https://') && (
-          <div style={{ marginTop: 4 }}>
-            <Link
-              href={draft.articleUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {ORDERS_TEXTS.openLink}
-            </Link>
-          </div>
-        )}
-      </div>
+      <Text style={{ color: tokenVar('ink-muted') }}>
+        {ORDERS_TEXTS.verdictConfirmWarning}
+      </Text>
+      <ConfirmRecap draft={draft} />
       {error !== null && (
         <FormStatus mode="error" title={ORDERS_TEXTS.verdictSubmitErrorTitle}>
           {error}
         </FormStatus>
       )}
-    </ModalCard>
+    </Popup>
   );
 }

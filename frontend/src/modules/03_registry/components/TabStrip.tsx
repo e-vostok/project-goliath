@@ -1,9 +1,10 @@
 /**
- * TabStrip — one icon tab per table (Spec 5.5). `horizontal` is the row
- * under the title (layout.tabs_position = top); `vertical` is the column
- * to the right of the table block (tabs_position = right). The table
- * title is the hover tooltip and the aria-label; unknown icon names
- * fall back to a generic table icon.
+ * TabStrip — the tabs of the «Реестр» (Spec 5.5, UI Spec 9.2).
+ * `horizontal` is the row of signed text tabs («Игроки / Государства /
+ * Приказы») sitting in the title row right after «РЕЕСТР» (layout.
+ * tabs_position = top); `vertical` is the icon column to the right of
+ * the table block (tabs_position = right). The table title is the
+ * aria-label; on the icon column it is also the hover tooltip.
  */
 
 import type { ComponentType } from 'react';
@@ -17,6 +18,8 @@ import {
   Icon28TablecellsOutline,
   Icon28UsersOutline,
 } from '@vkontakte/icons';
+
+import { TEXT_STYLES, tokenVar } from '../../../shared/ui';
 
 import type { RegistryTableDTO } from '../types';
 
@@ -48,6 +51,57 @@ export function TabStrip({
   onSelect: (tableId: string) => void;
 }) {
   const vertical = orientation === 'vertical';
+
+  // The horizontal strip lives inside the <h2> of the screen title, so
+  // its root is a span (phrasing content) and every label resets the
+  // inherited `title-uppercase` letterforms to plain `body` text.
+  if (!vertical) {
+    return (
+      <span
+        data-testid="registry-tabstrip"
+        data-orientation={orientation}
+        role="tablist"
+        aria-orientation={orientation}
+        style={{
+          display: 'inline-flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 4,
+          marginLeft: 8,
+        }}
+      >
+        {tables.map((table) => {
+          const active = table.id === activeId;
+          return (
+            <button
+              key={table.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-label={table.title}
+              onClick={() => onSelect(table.id)}
+              style={{
+                padding: '4px 8px',
+                border: 'none',
+                borderBottom: `2px solid ${
+                  active ? tokenVar('action') : 'transparent'
+                }`,
+                background: 'none',
+                color: tokenVar(active ? 'ink' : 'ink-muted'),
+                cursor: 'pointer',
+                ...TEXT_STYLES.body,
+                textTransform: 'none',
+                letterSpacing: 'normal',
+              }}
+            >
+              {table.title}
+            </button>
+          );
+        })}
+      </span>
+    );
+  }
+
   return (
     <div
       data-testid="registry-tabstrip"
@@ -56,10 +110,10 @@ export function TabStrip({
       aria-orientation={orientation}
       style={{
         display: 'flex',
-        flexDirection: vertical ? 'column' : 'row',
-        flexWrap: vertical ? 'nowrap' : 'wrap',
+        flexDirection: 'column',
+        flexWrap: 'nowrap',
         gap: 4,
-        padding: vertical ? '0 12px 0 4px' : '0 12px 8px',
+        padding: '0 0 0 4px',
       }}
     >
       {tables.map((table) => {

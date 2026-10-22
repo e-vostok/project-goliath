@@ -8,7 +8,7 @@ for the entire application.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import AsyncContextManager
+from contextlib import AbstractAsyncContextManager
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -50,25 +50,18 @@ def get_engine():
     return _engine
 
 
-def get_session_maker():
-    """Get the async session maker."""
-    if _async_session_maker is None:
-        raise RuntimeError("Session maker not initialized. Call init_engine() first.")
-    return _async_session_maker
-
-
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency injection helper for FastAPI routes."""
     if _async_session_maker is None:
         raise RuntimeError("Session maker not initialized. Call init_engine() first.")
-    
+
     async with _async_session_maker() as session:
         yield session
 
 
-def get_session_context() -> AsyncContextManager[AsyncSession]:
+def get_session_context() -> AbstractAsyncContextManager[AsyncSession]:
     """Get a session context manager for use outside FastAPI dependencies."""
     if _async_session_maker is None:
         raise RuntimeError("Session maker not initialized. Call init_engine() first.")
-    
+
     return _async_session_maker()
