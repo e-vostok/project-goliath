@@ -16,6 +16,7 @@ import { FlagStub } from './FlagStub';
 import { BlockIcon } from './icons';
 import type { BlockIconName } from './icons';
 import { LoadingState } from './LoadingState';
+import { AuthErrorScreen, LoadingScreen } from './LoadingScreen';
 import { Popup, PopupHost } from './Popup';
 import type { PopupSize } from './Popup';
 import { PortraitStub } from './PortraitStub';
@@ -357,7 +358,8 @@ export function UiKitPage() {
             style={{
               display: 'flex',
               flexWrap: 'wrap',
-              gap: 6,
+              gap: '6px 6px',
+              alignItems: 'center',
             }}
           >
             <ProvinceChip name="Стокгольм" capital />
@@ -365,6 +367,11 @@ export function UiKitPage() {
               name="Свейская равнина"
               capital
               capitalName="Королевский Вестерос"
+            />
+            <ProvinceChip
+              name="Нижние Предгорья"
+              capital
+              capitalName="Старосветская Столица-Прибрежная"
             />
             <ProvinceChip name="Вестерос" />
             <ProvinceChip name="Евле" />
@@ -425,6 +432,33 @@ export function UiKitPage() {
             }}
           >
             Нажатий «Повторить»: {retries}
+          </div>
+        </Section>
+
+        <Section>
+          <BlockTitle icon="document" title="Входной экран" />
+          <div
+            style={{
+              border: `1px solid ${tokenVar('line')}`,
+              borderRadius: RADII['radius-md'],
+              overflow: 'hidden',
+            }}
+          >
+            <LoadingScreen minHeight={280} />
+          </div>
+          <div
+            style={{
+              border: `1px solid ${tokenVar('line')}`,
+              borderRadius: RADII['radius-md'],
+              overflow: 'hidden',
+              marginTop: SPACING['space-3'],
+            }}
+          >
+            <AuthErrorScreen
+              reason={NETWORK_ERROR_TEXT}
+              onRetry={() => setRetries((n) => n + 1)}
+              minHeight={280}
+            />
           </div>
         </Section>
 

@@ -376,19 +376,33 @@ export function ProvincePicker({
           flexDirection: 'column',
         }}
       >
-        {/* Toolbar: search + counter + connectivity + the capital
-            caption — one row, fixed (nothing measures the window). */}
+        {/* Info row: search + counter + connectivity + the capital
+            caption — ONE line of a fixed 48 px (incl. padding) that
+            never wraps: the caption is always rendered on the right
+            and the connectivity slot keeps its min-width even when
+            empty, so the map below never shifts (acceptance 12b). */}
         <div
+          data-testid="picker-info-row"
           style={{
             display: 'flex',
+            flexWrap: 'nowrap',
             gap: 12,
             alignItems: 'center',
-            padding: '12px 16px',
-            flexWrap: 'wrap',
+            boxSizing: 'border-box',
+            height: 48,
+            padding: '6px 16px',
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
             borderBottom: `1px solid ${tokenVar('line')}`,
           }}
         >
-          <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
+          <div
+            style={{
+              position: 'relative',
+              flex: 1,
+              minWidth: 160,
+            }}
+          >
             <Search
               value={query}
               placeholder="Найти провинцию"
@@ -454,26 +468,47 @@ export function ProvincePicker({
               </div>
             )}
           </div>
-          <Text data-testid="picker-count">
+          <Text
+            data-testid="picker-count"
+            style={{
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
             {countText}
             {minText !== null ? ` · ${minText}` : ''}
           </Text>
-          {connectivityText !== null && (
-            <Text
-              data-testid="picker-connectivity"
-              style={{
-                color:
-                  componentCount === 1
+          {/* Reserved slot: always rendered, so the verdict appearing
+              or disappearing cannot move the map. */}
+          <Text
+            data-testid="picker-connectivity"
+            style={{
+              flexShrink: 0,
+              minWidth: 130,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              color:
+                connectivityText === null
+                  ? undefined
+                  : componentCount === 1
                     ? 'var(--vkui--color_text_positive)'
                     : 'var(--vkui--color_text_negative)',
-              }}
-            >
-              {connectivityText}
-            </Text>
-          )}
+            }}
+          >
+            {connectivityText ?? ''}
+          </Text>
           <Caption
             data-testid="picker-capital-caption"
             style={{
+              marginLeft: 'auto',
+              flexShrink: 1,
+              minWidth: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
               color: 'var(--vkui--color_text_secondary)',
             }}
           >

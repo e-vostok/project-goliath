@@ -15,8 +15,7 @@
  * monitor, not the app; on `fullscreenchange` the content is
  * measured again.
  *
- * Nothing else may call `VKWebAppResizeWindow` — the hand probe in
- * `AdminBlock`/`useAdminProbe` is the sanctioned exception.
+ * Nothing else may call `VKWebAppResizeWindow`.
  */
 
 import { useEffect, useRef } from 'react';
