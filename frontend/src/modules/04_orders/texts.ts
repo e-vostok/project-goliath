@@ -14,9 +14,8 @@ export const ORDERS_TEXTS = {
   assignedEmpty: 'Приказов на рассмотрении нет',
   assignedLoadError: 'Не удалось загрузить',
   assignedDeadline: (deadlineText: string) => `до ${deadlineText}`,
-  assignedOverdueMark: 'срок вышел',
+  assignedOverdue: (deadlineText: string) => `срок вышел ${deadlineText}`,
   refreshButton: 'Обновить',
-  openOrderLink: 'Открыть приказ',
 
   /* OrderComposer */
   composerTitle: 'Подать приказ',
