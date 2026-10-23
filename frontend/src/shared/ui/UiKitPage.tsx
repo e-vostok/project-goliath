@@ -17,6 +17,7 @@ import { BlockIcon } from './icons';
 import type { BlockIconName } from './icons';
 import { LoadingState } from './LoadingState';
 import { AuthErrorScreen, LoadingScreen } from './LoadingScreen';
+import { NationLabel } from './NationLabel';
 import { Popup, PopupHost } from './Popup';
 import type { PopupSize } from './Popup';
 import { PortraitStub } from './PortraitStub';
@@ -349,6 +350,30 @@ export function UiKitPage() {
             <FlagStub variant="row" />
             <PortraitStub variant="block" />
             <PortraitStub variant="row" />
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 24,
+              marginTop: SPACING['space-3'],
+              flexWrap: 'wrap',
+            }}
+          >
+            <NationLabel
+              name="НВГ"
+              flagUrl="/assets/nations/flags/flag_placeholder_1.png"
+              color="#2b2db0"
+              size="cell"
+            />
+            <NationLabel name="Рязань" color="#2980B9" size="cell" />
+            <NationLabel name="Безвестная вотчина" size="cell" />
+            <NationLabel
+              name="Новгородская республика"
+              flagUrl="/assets/nations/flags/flag_placeholder_1.png"
+              color="#2b2db0"
+              size="tip"
+            />
           </div>
         </Section>
 

@@ -40,6 +40,7 @@ export { TurnBadge } from './TurnBadge';
 export { ProvinceChip } from './ProvinceChip';
 export { ColorSwatch } from './ColorSwatch';
 export { FlagStub } from './FlagStub';
+export { NationLabel } from './NationLabel';
 export { PortraitStub } from './PortraitStub';
 export { LoadingState } from './LoadingState';
 export { LoadingScreen, AuthErrorScreen } from './LoadingScreen';
