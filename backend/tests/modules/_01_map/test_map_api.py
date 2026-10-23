@@ -908,6 +908,7 @@ class TestContract:
         map_paths = {p for p in paths if p.startswith("/api/v1/map")}
         assert map_paths == {
             "/api/v1/map/manifest",
+            "/api/v1/map/province-names",
             "/api/v1/map/geometry/{version}",
             "/api/v1/map/borders/{version}",
             "/api/v1/map/state",
