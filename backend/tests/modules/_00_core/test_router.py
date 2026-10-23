@@ -122,7 +122,8 @@ async def seed_nation(
             if legacy
             else {
                 **VALID_PROFILE,
-                "short_name": short_name or name[:16],
+                "short_name": short_name
+                or name[: CORE_CONFIG.nation.short_name_max_length],
             }
         ),
         created_at=datetime.now(UTC),
@@ -459,6 +460,51 @@ class TestNationEndpoints:
 
         assert resp.status_code == 201
         assert resp.json()["name"] == name
+
+    @pytest.mark.parametrize(
+        "field,limit,code",
+        [
+            ("name", 60, None),
+            ("short_name", 20, "SHORT_NAME_INVALID"),
+            ("motto", 50, "MOTTO_INVALID"),
+            ("description", 150, "DESCRIPTION_INVALID"),
+        ],
+    )
+    async def test_create_nation_field_length_boundaries(
+        self, client, test_db_session, field, limit, code
+    ):
+        """0.10.0 unit 3: the registration limits accept exactly
+        60 / 20 / 150 / 50 characters and refuse one character more.
+        An over-limit ``name`` fails in the DTO (plain 422); the other
+        fields fail in the service layer with their domain code."""
+        player = await seed_player(test_db_session)
+        province_ids = list(
+            range(1001, 1001 + CORE_CONFIG.nation.min_provinces_per_nation)
+        )
+        await seed_provinces(test_db_session, province_ids)
+        body = {
+            "name": "Boundary Realm",
+            "color_hex": "#FF0000",
+            "province_ids": province_ids,
+            **VALID_PROFILE,
+            field: "x" * limit,
+        }
+
+        over = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json={**body, field: "x" * (limit + 1)},
+        )
+        assert over.status_code == 422
+        if code is not None:
+            assert over.json()["code"] == code
+
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json=body,
+        )
+        assert resp.status_code == 201
 
     async def test_create_nation_bad_color_format(self, client, test_db_session):
         player = await seed_player(test_db_session)

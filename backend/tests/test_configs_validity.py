@@ -47,17 +47,17 @@ def _base_config() -> dict:
         },
         "nation": {
             "nation_name_min_length": 2,
-            "nation_name_max_length": 50,
+            "nation_name_max_length": 60,
             "short_name_min_length": 2,
-            "short_name_max_length": 16,
+            "short_name_max_length": 20,
             "min_provinces_per_nation": 5,
             "max_provinces_per_nation": 5,
             "leader_name_min_length": 2,
             "leader_name_max_length": 60,
             "leader_title_min_length": 2,
             "leader_title_max_length": 60,
-            "motto_max_length": 60,
-            "description_max_length": 100,
+            "motto_max_length": 50,
+            "description_max_length": 150,
             "leader_bio_max_length": 500,
             "capital_name_min_length": 2,
             "capital_name_max_length": 40,
@@ -135,17 +135,17 @@ def test_valid_config_loads():
     assert config.auth.vk_ts_freshness_window_minutes == 30
     assert config.auth.jwt_ttl_minutes == 60
     assert config.nation.nation_name_min_length == 2
-    assert config.nation.nation_name_max_length == 50
+    assert config.nation.nation_name_max_length == 60
     assert config.nation.short_name_min_length == 2
-    assert config.nation.short_name_max_length == 16
+    assert config.nation.short_name_max_length == 20
     assert config.nation.min_provinces_per_nation == 5
     assert config.nation.max_provinces_per_nation == 5
     assert config.nation.leader_name_min_length == 2
     assert config.nation.leader_name_max_length == 60
     assert config.nation.leader_title_min_length == 2
     assert config.nation.leader_title_max_length == 60
-    assert config.nation.motto_max_length == 60
-    assert config.nation.description_max_length == 100
+    assert config.nation.motto_max_length == 50
+    assert config.nation.description_max_length == 150
     assert config.nation.leader_bio_max_length == 500
     assert config.nation.capital_name_min_length == 2
     assert config.nation.capital_name_max_length == 40

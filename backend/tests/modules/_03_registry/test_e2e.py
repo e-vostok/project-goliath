@@ -74,7 +74,7 @@ def _nation_body(name: str, color: str, province_ids: list[int]) -> dict:
         "province_ids": province_ids,
         **VALID_PROFILE,
         # INV-11: each nation carries its own short name.
-        "short_name": name[:16],
+        "short_name": name[:20],
     }
 
 
