@@ -1977,7 +1977,7 @@ export function MapView(props: MapViewProps) {
                 {hoverNode.kind === 'SEA'
                   ? 'Морская зона'
                   : hoverOwner
-                    ? hoverOwner.name
+                    ? hoverOwner.short_name
                     : 'свободна'}
               </div>
             </>

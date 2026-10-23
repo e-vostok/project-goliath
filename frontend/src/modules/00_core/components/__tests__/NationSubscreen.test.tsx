@@ -74,15 +74,18 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
     renderSubscreen({});
 
     // The card arrives (getNation) — the header shows the label, name
-    // and motto; the chain becomes «Реестр / Государство · Новгород».
+    // and motto; the chain becomes «Реестр / Государство · НВГ» — the
+    // SHORT name (unit 6a), the card body keeps the full one.
     await screen.findByText('Новгород');
     expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
       'aria-label',
-      'Реестр / Государство · Новгород',
+      'Реестр / Государство · НВГ',
     );
     // The short name is the small label line above the name — no
-    // «Кратко:» words since 0.9.2 (0.10.0 unit 4a).
+    // «Кратко:» words since 0.9.2 (0.10.0 unit 4a); the trail's last
+    // segment carries it too (unit 6a) as «Государство · НВГ».
     expect(screen.getByText('НВГ')).toBeInTheDocument();
+    expect(screen.getByText('Государство · НВГ')).toBeInTheDocument();
     expect(screen.getByText('Слово и дело')).toBeInTheDocument();
 
     // Exactly three tiles — no «Приказы» tile, no «Изменить» button;
@@ -167,11 +170,11 @@ describe('NationSubscreen — chain from a table row', () => {
     registerNation();
     renderSubscreen({ fromTab: 'Игроки' });
 
-    // «Новгород» sits in the chain AND the header — wait on the card.
+    // «НВГ» sits in the chain, «Новгород» in the header — wait on the card.
     await screen.findByTestId('nation-subscreen');
     expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
       'aria-label',
-      'Реестр / Игроки / Новгород',
+      'Реестр / Игроки / НВГ',
     );
   });
 });
