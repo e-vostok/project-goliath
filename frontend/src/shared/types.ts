@@ -27,8 +27,8 @@ export interface NationDTO {
   owner_player_id: string;
   created_at: string;
   name: string;
-  /** null only for nations created before the 0.8.0 migration. */
-  short_name: string | null;
+  /** Mandatory — the column is NOT NULL since migration 0012. */
+  short_name: string;
   color_hex: string;
   motto: string | null;
   description: string | null;
@@ -62,7 +62,7 @@ export interface NationPublicDTO {
   id: string;
   created_at: string;
   name: string;
-  short_name: string | null;
+  short_name: string;
   color_hex: string;
   motto: string | null;
   description: string | null;

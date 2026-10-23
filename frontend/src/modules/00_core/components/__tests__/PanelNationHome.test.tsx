@@ -2,8 +2,8 @@
  * PanelNationHome — the nation card and the edit form (Spec 1.3 Part 5,
  * UI Spec 9.1 «Штаб», mockup «Main», version 0.9.0 unit 8b).
  *
- * Card covers: header (flag/stub, «Кратко: краткое» when it differs
- * from the full name, display
+ * Card covers: header (flag/stub, the short name as the small label
+ * line above the display
  * name, motto, colour), the four stat tiles («N из M» from
  * /orders/rules, level/rating — the nation's own fields since 0.9.0),
  * leader block (no captions, title hidden when empty),
@@ -68,10 +68,11 @@ const NATION: NationDTO = {
   judge_rating: 21,
 };
 
-/** All post-0.8.0 fields null, no capital — the legacy card. */
+/** All post-0.8.0 fields null except short_name (NOT NULL since
+ * migration 0012), no capital — the legacy card. */
 const LEGACY_NATION: NationDTO = {
   ...NATION,
-  short_name: null,
+  short_name: 'Легаси',
   capital_province_id: null,
   capital_name: null,
   leader_name: null,
@@ -131,12 +132,13 @@ describe('PanelNationHome — the card', () => {
     };
     renderHome(nation);
 
-    // Header — flag image, «Кратко: краткое», display name,
-    // motto, colour swatch + HEX.
+    // Header — flag image, the short name as the small label line
+    // (no «Кратко:» words), display name, motto, colour swatch + HEX.
     expect(screen.getByAltText('Флаг Testia')).toBeInTheDocument();
     const header = screen.getByTestId('nation-card-header');
-    expect(within(header).getByText('Кратко: Тестия'))
-      .toBeInTheDocument();
+    expect(within(header).getByText('Тестия')).toBeInTheDocument();
+    expect(within(header).queryByText(/Кратко:/))
+      .not.toBeInTheDocument();
     expect(within(header).getByText('Testia')).toBeInTheDocument();
     expect(within(header).getByText('Север помнит всё'))
       .toBeInTheDocument();
@@ -198,12 +200,12 @@ describe('PanelNationHome — the card', () => {
     expect(history).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
-  it('shows no label line when the short name is missing or equals the full name', async () => {
+  it('shows the short name label line unconditionally — even when it equals the full name', async () => {
     renderHome({ ...NATION, short_name: NATION.name });
     const header = screen.getByTestId('nation-card-header');
-    // The duplicated «Testia = Тестия» line is meaningless — never shown.
+    // The label line and the display name both render 'Testia'.
+    expect(within(header).getAllByText('Testia')).toHaveLength(2);
     expect(within(header).queryByText(/Кратко:/)).not.toBeInTheDocument();
-    expect(within(header).getByText('Testia')).toBeInTheDocument();
   });
 
   it('the capital chip goes first and keeps the «★ Столица (Провинция)» form', async () => {
@@ -262,12 +264,11 @@ describe('PanelNationHome — the card', () => {
     expect(screen.getByLabelText('Заглушка флага')).toBeInTheDocument();
     expect(screen.getAllByLabelText('Заглушка портрета').length)
       .toBeGreaterThan(0);
-    // No short name → no «Кратко:» line at all.
+    // The short name still heads the card as the label line — a
+    // legacy nation always has one (NOT NULL since 0012).
     expect(
-      within(screen.getByTestId('nation-card-header')).queryByText(
-        /Кратко:/,
-      ),
-    ).not.toBeInTheDocument();
+      within(screen.getByTestId('nation-card-header')).getByText('Легаси'),
+    ).toBeInTheDocument();
     expect(
       within(screen.getByTestId('nation-leader-block')).getByText(
         'не указано',
@@ -568,7 +569,9 @@ describe('PanelNationHome — edit form', () => {
     ).not.toBeInTheDocument();
 
     await goToTab(user, 1);
-    await user.type(screen.getByLabelText('Краткое название'), 'Тестия');
+    const shortNameInput = screen.getByLabelText('Краткое название');
+    await user.clear(shortNameInput);
+    await user.type(shortNameInput, 'Тестия');
     await user.click(save);
     await waitFor(() =>
       expect(bodies).toEqual([

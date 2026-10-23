@@ -80,7 +80,9 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
       'aria-label',
       'Реестр / Государство · Новгород',
     );
-    expect(screen.getByText('Кратко: НВГ')).toBeInTheDocument();
+    // The short name is the small label line above the name — no
+    // «Кратко:» words since 0.9.2 (0.10.0 unit 4a).
+    expect(screen.getByText('НВГ')).toBeInTheDocument();
     expect(screen.getByText('Слово и дело')).toBeInTheDocument();
 
     // Exactly three tiles — no «Приказы» tile, no «Изменить» button;

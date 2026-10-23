@@ -325,7 +325,7 @@ export function registrationFormFromNation(
 ): RegistrationForm {
   return {
     name: nation.name,
-    shortName: nation.short_name ?? '',
+    shortName: nation.short_name,
     color: nation.color_hex,
     motto: nation.motto ?? '',
     description: nation.description ?? '',
