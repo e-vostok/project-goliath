@@ -19,11 +19,12 @@ import {
 import { NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { isFilterActive, type TableView } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
-import type {
-  RegistryCell,
-  RegistryColumnDTO,
-  RegistryRowDTO,
-  RegistryTableDTO,
+import {
+  isNationCell,
+  type RegistryCell,
+  type RegistryColumnDTO,
+  type RegistryRowDTO,
+  type RegistryTableDTO,
 } from '../types';
 import { Tooltip } from '../../../shared/ui';
 import { ActionTextCell } from './cells/ActionTextCell';
@@ -124,6 +125,13 @@ function Cell({
     case 'flag':
       return <FlagCell value={value} />;
     default:
+      // Unit 6a/6b: the nations table's «name» may arrive as a
+      // `nation` cell instead of a plain string — the cell itself
+      // links and carries the tip, so the string special case below
+      // does NOT apply to it. The same holds under any column type.
+      if (isNationCell(value)) {
+        return <NationCell value={value} onOpen={onOpenNation} />;
+      }
       // The nations table's «name» is a plain text cell; its row key
       // IS the nation id (sources.py) — the name opens the subscreen
       // by that key (unit 14c) and carries the same «Подсказка»

@@ -185,10 +185,12 @@ describe('NationCell — nation «Подсказка»', () => {
     expect(within(box).getByText('Провинций')).toBeInTheDocument();
     expect(within(box).getByText('3')).toBeInTheDocument();
     expect(within(box).getByText('Новгород-град')).toBeInTheDocument();
-    // The FULL name from the public card, not the cell's short one.
+    // Unit 6a: the heading is the SHORT name — the loaded card's full
+    // «Новгородская республика» never replaces it.
+    expect(within(box).getByText('НВГ')).toBeInTheDocument();
     expect(
-      within(box).getByText('Новгородская республика'),
-    ).toBeInTheDocument();
+      within(box).queryByText('Новгородская республика'),
+    ).not.toBeInTheDocument();
     expect(
       within(box).getByText('Нажмите на название, чтобы открыть государство'),
     ).toBeInTheDocument();
