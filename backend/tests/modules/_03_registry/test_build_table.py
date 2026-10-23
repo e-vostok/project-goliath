@@ -92,11 +92,23 @@ class TestBuildTable:
         p_alpha = await seed_player(test_db_session, 503101)
         p_beta = await seed_player(test_db_session, 503102)
         await seed_player(test_db_session, 503103)  # no nation
+        # The nation cell shows short_name (mandatory since 0012) —
+        # seed it explicitly so the desc sort stays meaningful.
         n_alpha = await seed_nation(
-            test_db_session, p_alpha, "Alpha", "#AA0101", created_turn=0
+            test_db_session,
+            p_alpha,
+            "Alpha",
+            "#AA0101",
+            created_turn=0,
+            short_name="Alpha",
         )
         n_beta = await seed_nation(
-            test_db_session, p_beta, "Beta", "#AA0102", created_turn=0
+            test_db_session,
+            p_beta,
+            "Beta",
+            "#AA0102",
+            created_turn=0,
+            short_name="Beta",
         )
 
         built = await build_table(test_db_session, "players")

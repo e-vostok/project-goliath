@@ -348,7 +348,8 @@ class TestCreateRejections:
 
 async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
     """A pre-migration nation (NULL profile) reads nulls, accepts a plain
-    rename, fills its profile field by field, and refuses empty values."""
+    rename, fills its profile field by field, and refuses empty values.
+    short_name is the exception — NOT NULL since migration 0012."""
     client = pg_live_client
     # Mini-map ids — the startup sync already inserted these rows.
     await _seed_provinces(pg_db, [1003, 1004])
@@ -359,9 +360,9 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
         await session.execute(
             text(
                 "INSERT INTO nations "
-                "(id, owner_player_id, name, color_hex, created_at, "
-                " created_turn) "
-                "VALUES (:id, :owner, :name, :color, :created_at, 0)"
+                "(id, owner_player_id, name, short_name, color_hex, "
+                " created_at, created_turn) "
+                "VALUES (:id, :owner, :name, 'OR', :color, :created_at, 0)"
             ),
             {
                 "id": nation_id,
@@ -594,9 +595,9 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
             await session.execute(
                 text(
                     "INSERT INTO nations "
-                    "(id, owner_player_id, name, color_hex, created_at, "
-                    " created_turn) "
-                    "VALUES (:id, :owner, :name, :color, now(), 0)"
+                    "(id, owner_player_id, name, short_name, color_hex, "
+                    " created_at, created_turn) "
+                    "VALUES (:id, :owner, :name, 'GN', :color, now(), 0)"
                 ),
                 {
                     "id": str(uuid.uuid4()),

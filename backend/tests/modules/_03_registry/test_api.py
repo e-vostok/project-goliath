@@ -178,14 +178,14 @@ class TestRowsEndpoint:
 
 class TestNationDisplayNameAndFlag:
     """Spec 1.4 (3.2, 3.3, 3.7): short name + real catalog flag in both
-    tables; pre-0.8.0 nations (both fields NULL) keep the full name and
-    the colour mark."""
+    tables; a nation without a flag keeps the colour mark (short_name
+    is mandatory since migration 0012 — no full-name fallback)."""
 
     async def test_short_name_and_flag_in_both_tables(
         self, client, test_db_session, registry_started
     ):
         owner_modern = await seed_player(test_db_session, 506001)
-        owner_legacy = await seed_player(test_db_session, 506002)
+        owner_flagless = await seed_player(test_db_session, 506002)
         viewer = await seed_player(test_db_session, 506003)
         modern = await seed_nation(
             test_db_session,
@@ -196,13 +196,13 @@ class TestNationDisplayNameAndFlag:
             short_name="СКВГ",
             flag_id="flag_placeholder_1",
         )
-        legacy = await seed_nation(
+        flagless = await seed_nation(
             test_db_session,
-            owner_legacy,
+            owner_flagless,
             "Древнее Княжество Полное",
             "#AA2202",
             created_turn=1,
-            short_name=None,
+            short_name="ДКП",
             flag_id=None,
         )
         headers = bearer_headers(viewer.id)
@@ -217,8 +217,8 @@ class TestNationDisplayNameAndFlag:
             "color": "#AA2201",
             "image_url": flag_png,
         }
-        assert nations_by_key[legacy.id]["name"] == "Древнее Княжество Полное"
-        assert nations_by_key[legacy.id]["flag"] == {
+        assert nations_by_key[flagless.id]["name"] == "ДКП"
+        assert nations_by_key[flagless.id]["flag"] == {
             "color": "#AA2202",
             "image_url": None,
         }
@@ -233,8 +233,8 @@ class TestNationDisplayNameAndFlag:
             "flag_url": flag_png,
         }
         assert p_rows["p2"]["nation"] == {
-            "id": legacy.id,
-            "name": "Древнее Княжество Полное",
+            "id": flagless.id,
+            "name": "ДКП",
             "color": "#AA2202",
             "flag_url": None,
         }
