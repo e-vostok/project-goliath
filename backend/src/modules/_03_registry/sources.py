@@ -33,7 +33,6 @@ from modules._00_core.service import (
 )
 from modules._03_registry.cells import (
     cell_date,
-    cell_flag,
     cell_nation,
     cell_person,
 )
@@ -49,7 +48,7 @@ from modules._03_registry.registry import RegistryRow, register_table_source
 PLAYERS_PROVIDES = frozenset(
     {"number", "player", "joined", "level", "judge_rating", "nation"}
 )
-NATIONS_PROVIDES = frozenset({"number", "name", "flag", "formed", "provinces"})
+NATIONS_PROVIDES = frozenset({"number", "nation", "formed", "provinces"})
 
 
 async def load_players(session: AsyncSession) -> list[RegistryRow]:
@@ -195,12 +194,13 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
     ``number`` is the 1-based position in the (created_turn, created_at,
     id) order of ``NationService.list_for_registry`` — a nation's place
     among the existing ones (D2). ``formed`` is the game-calendar date of
-    ``created_turn``; the row key is the nation id. ``name`` shows the
-    short name (mandatory since migration 0012 — no full-name fallback)
-    so the ``select_or_contains`` options match the ``nation``
-    cells of the players table exactly (Spec 3.7); ``flag`` carries the
-    catalog flag image — the path is built only by
-    ``catalog.flag_url`` (INV-16).
+    ``created_turn``; the row key is the nation id. ``nation`` is the
+    very cell the players table gives for the owner nation — short name
+    (mandatory since migration 0012 — no full-name fallback), colour
+    and the catalog flag image whose path is built only by
+    ``catalog.flag_url`` (INV-16) — so the ``select_or_contains``
+    options match the ``nation`` cells of the players and orders
+    tables exactly (Spec 3.7).
     """
     # Local import, same cycle guard as in load_players.
     from modules._03_registry.startup import get_core_config
@@ -215,8 +215,12 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
                 key=row.nation_id,
                 cells={
                     "number": number,
-                    "name": row.short_name,
-                    "flag": cell_flag(row.color_hex, flag_url(row.flag_id)),
+                    "nation": cell_nation(
+                        row.short_name,
+                        row.color_hex,
+                        flag_url(row.flag_id),
+                        nation_id=row.nation_id,
+                    ),
                     "formed": cell_date(
                         format_game_date(
                             compute_game_date(row.created_turn, core_config),

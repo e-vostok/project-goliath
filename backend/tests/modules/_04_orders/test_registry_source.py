@@ -98,7 +98,7 @@ class TestOrdersSource:
         self, test_db_session, orders_started
     ):
         """Spec 3.7: the orders ``select_or_contains`` dropdown is built
-        from the nations-table ``name`` cells — the short name the
+        from the nations-table ``nation`` cells — the short name the
         orders ``nation`` cell shows must appear among them."""
         register_orders_extensions()
         startup_registry()
@@ -107,7 +107,9 @@ class TestOrdersSource:
         orders_table = await build_table(test_db_session, "orders")
         nations_table = await build_table(test_db_session, "nations")
 
-        option_names = [row.cells["name"] for row in nations_table.rows]
+        option_names = [
+            row.cells["name"]["name"] for row in nations_table.rows
+        ]
         cell = orders_table.rows[0].cells["nation"]
         assert cell["name"] == nation.short_name
         assert cell["name"] in option_names
