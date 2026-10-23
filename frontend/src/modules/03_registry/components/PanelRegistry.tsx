@@ -72,6 +72,7 @@ export function PanelRegistry({
   entryRequest = null,
   active = true,
   onOpenNation,
+  onOpenPlayer,
 }: {
   /**
    * Deep-link request from AppShell (Spec 04_orders 5.5): select `tab`
@@ -91,6 +92,12 @@ export function PanelRegistry({
    * chain («Реестр / <tab> / <название>»).
    */
   onOpenNation?: (nationId: string, fromTabTitle: string) => void;
+  /**
+   * A person cell click opens the «Игрок» subscreen (0.10.0 unit
+   * 8b); the arguments are the player's public Registry number (the
+   * row key `p<N>`) and the active tab's title for the path chain.
+   */
+  onOpenPlayer?: (playerNumber: number, fromTabTitle: string) => void;
 }) {
   const { token } = useSession();
   const tablesState = useRegistryTables();
@@ -445,6 +452,12 @@ export function PanelRegistry({
               onOpenNation === undefined
                 ? undefined
                 : (nationId) => onOpenNation(nationId, activeTable.title)
+            }
+            onOpenPlayer={
+              onOpenPlayer === undefined
+                ? undefined
+                : (playerNumber) =>
+                    onOpenPlayer(playerNumber, activeTable.title)
             }
           />
         ) : rows.data.rows.length === 0 ? (

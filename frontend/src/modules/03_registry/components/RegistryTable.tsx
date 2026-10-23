@@ -21,6 +21,7 @@ import { isFilterActive, type TableView } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
 import {
   isNationCell,
+  PLAYER_ROW_KEY_RE,
   type RegistryCell,
   type RegistryColumnDTO,
   type RegistryRowDTO,
@@ -91,12 +92,14 @@ function Cell({
   row,
   value,
   onOpenNation,
+  onOpenPlayer,
 }: {
   table: RegistryTableDTO;
   column: RegistryColumnDTO;
   row: RegistryRowDTO;
   value: RegistryCell;
   onOpenNation?: (nationId: string) => void;
+  onOpenPlayer?: (playerNumber: number) => void;
 }) {
   switch (column.type) {
     case 'index':
@@ -117,9 +120,24 @@ function Cell({
       return <DatetimeCell value={value} />;
     case 'action_text':
       return <ActionTextCell value={value} />;
-    case 'person':
-      // The whole row's cells feed the player tip (unit 11).
-      return <PersonCell value={value} cells={row.cells} />;
+    case 'person': {
+      // The whole row's cells feed the player tip (unit 11). The cell
+      // opens the «Игрок» subscreen only when the row key resolves to
+      // a players-table number `p<N>` (0.10.0 unit 8b) — any other
+      // key (orders' `o<N>`, …) stays a plain cell, no guessing.
+      const playerKey = PLAYER_ROW_KEY_RE.exec(row.key)?.[1];
+      return (
+        <PersonCell
+          value={value}
+          cells={row.cells}
+          onOpen={
+            playerKey !== undefined && onOpenPlayer !== undefined
+              ? () => onOpenPlayer(Number(playerKey))
+              : undefined
+          }
+        />
+      );
+    }
     case 'nation':
       return <NationCell value={value} onOpen={onOpenNation} />;
     case 'flag':
@@ -163,6 +181,7 @@ export function RegistryTable({
   view,
   onSortClick,
   onOpenNation,
+  onOpenPlayer,
 }: {
   table: RegistryTableDTO;
   rows: RegistryRowDTO[];
@@ -173,6 +192,11 @@ export function RegistryTable({
    * non-null id and the nations table's «name» cell (by row key).
    */
   onOpenNation?: (nationId: string) => void;
+  /**
+   * Opens the player subscreen (0.10.0 unit 8b): `person` cells
+   * whose row key is a players-table `p<N>` — the N is passed.
+   */
+  onOpenPlayer?: (playerNumber: number) => void;
 }) {
   const totalWidth = table.columns.reduce((sum, col) => sum + col.width_px, 0);
   return (
@@ -307,6 +331,7 @@ export function RegistryTable({
                   row={row}
                   value={row.cells[col.id] ?? null}
                   onOpenNation={onOpenNation}
+                  onOpenPlayer={onOpenPlayer}
                 />
               </td>
             ))}

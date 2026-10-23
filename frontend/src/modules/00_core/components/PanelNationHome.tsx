@@ -5,9 +5,10 @@
  * The card is built only from `shared/ui` elements and tokens: the
  * header block (flag or `FlagStub`, «ГОСУДАРСТВО · краткое», name in
  * `display-lg`, motto in italics, colour swatch + HEX, «Изменить»
- * with the pencil icon), a row of four `StatTile`s («Провинции»,
- * «Уровень», «Судейский рейтинг», «Неразрешённые приказы» — the limit
- * arrives in GET /orders/rules), «Глава государства» and «Территория»
+ * with the pencil icon), a row of `StatTile`s («Провинции»,
+ * «Неразрешённые приказы» — the limit arrives in GET /orders/rules;
+ * level and rating left the nation card in 0.10.0, unit 8b),
+ * «Глава государства» and «Территория»
  * in a 3 : 2 row (province chips BY NAME via `useProvinceNames`, the
  * capital first with «★»), then «Описание» with the «История
  * государства ↗» link (a real <a> only for https:// values). Gender,

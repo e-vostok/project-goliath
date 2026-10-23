@@ -1,7 +1,7 @@
 /**
  * NationCard — the «Штаб» state card (UI Spec 9.1, mockup «Main»):
  * the header (flag, names, motto, colour, «Изменить»), the row of
- * four stat tiles, «Глава государства» and «Территория» side by side
+ * stat tiles, «Глава государства» and «Территория» side by side
  * 3 : 2, then «Описание». Every block is `surface`/`radius-lg`/
  * `space-4`; the screen width stays inside `win-screen` (910 px).
  */

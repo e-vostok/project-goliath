@@ -68,7 +68,7 @@ function renderSubscreen(props: {
 }
 
 describe('NationSubscreen — content (direct link, no router state)', () => {
-  it('loads the public card: header, THREE tiles, leader, territory, description', async () => {
+  it('loads the public card: header, ONE tile, leader, territory, description', async () => {
     registerDefaultHandlers();
     registerNation();
     renderSubscreen({});
@@ -88,13 +88,15 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
     expect(screen.getByText('Государство · НВГ')).toBeInTheDocument();
     expect(screen.getByText('Слово и дело')).toBeInTheDocument();
 
-    // Exactly three tiles — no «Приказы» tile, no «Изменить» button;
-    // the header action is «Показать на карте».
+    // One tile — «Провинции»; «Уровень» and «Судейский рейтинг» left
+    // for the «Игрок» subscreen in 0.10.0 (unit 8b). No «Приказы»
+    // tile, no «Изменить» button; the header action is «Показать на
+    // карте».
     const stats = screen.getByTestId('nation-subscreen-stats');
-    expect(stats.children).toHaveLength(3);
+    expect(stats.children).toHaveLength(1);
     expect(stats).toHaveTextContent('Провинции');
-    expect(stats).toHaveTextContent('Уровень');
-    expect(stats).toHaveTextContent('Судейский рейтинг');
+    expect(stats).not.toHaveTextContent('Уровень');
+    expect(stats).not.toHaveTextContent('Судейский рейтинг');
     expect(screen.queryByText('Неразрешённые приказы')).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Изменить' }),

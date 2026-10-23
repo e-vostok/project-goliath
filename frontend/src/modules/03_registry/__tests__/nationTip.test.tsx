@@ -320,7 +320,7 @@ describe('PersonCell — player «Подсказка»', () => {
     expect(within(box).getByText('12')).toBeInTheDocument();
     expect(within(box).getByText('Государство')).toBeInTheDocument();
     expect(within(box).getByText('Новгород')).toBeInTheDocument();
-    // No «click to open» line — a player cannot be opened yet.
+    // No «click to open» line — the cell was given no number to open.
     expect(
       within(box).queryByText(/Нажмите/),
     ).not.toBeInTheDocument();
@@ -342,5 +342,29 @@ describe('PersonCell — player «Подсказка»', () => {
     expect(
       await within(tip()!).findByText('нет государства'),
     ).toBeInTheDocument();
+  });
+
+  it('an openable cell is a button, shows the «Нажмите на имя…» line and the tip does not block the click (0.10.0 unit 8b)', async () => {
+    vi.useFakeTimers();
+    const onOpen = vi.fn();
+    renderInRoot(
+      <PersonCell
+        value={PLAYER_CELLS.player}
+        cells={PLAYER_CELLS}
+        onOpen={onOpen}
+      />,
+    );
+
+    const cell = screen.getByRole('button', { name: 'Борис Иванов' });
+    openTip(cell);
+    vi.useRealTimers();
+    expect(
+      within(tip()!).getByText('Нажмите на имя, чтобы открыть игрока'),
+    ).toBeInTheDocument();
+
+    fireEvent.pointerDown(cell);
+    expect(tip()).toBeNull();
+    fireEvent.click(cell);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });

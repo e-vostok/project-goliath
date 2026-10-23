@@ -3,16 +3,21 @@
  * fallback when `avatar_url` is null or fails to load; name truncated
  * (Spec 5.5).
  *
- * Since unit 11 the cell carries the «Подсказка» (UI Spec 3.4): the
- * player name and the rows «Дата регистрации», «Уровень», «Судейский
- * рейтинг», «Государство» — all read from the row's own cells
- * (`cells` prop, fed by RegistryTable), so the tip makes NO request.
- * No «click to open» line: a player cannot be opened yet.
+ * Since unit 11 the cell carries the «Подсказка» (UI Spec 3.4, board
+ * 9b): the small avatar and the player name and the rows «Дата
+ * регистрации», «Уровень», «Судейский рейтинг», «Государство» — all
+ * read from the row's own cells (`cells` prop, fed by RegistryTable),
+ * so the tip makes NO request.
+ *
+ * Since version 0.10.0 (unit 8b) a cell whose row key resolves to a
+ * players-table number (`p<N>`) is a button — same look as the plain
+ * cell, `action` text colour, underline on hover/focus — that opens
+ * the «Игрок» subscreen, and the tip ends with the «Нажмите на имя…»
+ * line like the nation tip. A cell without a resolvable number stays
+ * plain text; its tip carries no hint.
  */
 
-import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Icon16User } from '@vkontakte/icons';
 
 import {
   SPACING,
@@ -29,6 +34,8 @@ import {
   type RegistryPersonCell,
 } from '../../types';
 import { REGISTRY_TEXTS } from '../../texts';
+import { PlayerAvatar } from '../PlayerAvatar';
+import { NationOpenLink } from './NationCell';
 
 const PLAYER_TIP_TEXTS = {
   joined: 'Дата регистрации',
@@ -36,6 +43,7 @@ const PLAYER_TIP_TEXTS = {
   judgeRating: 'Судейский рейтинг',
   nation: 'Государство',
   noNation: 'нет государства',
+  openHint: 'Нажмите на имя, чтобы открыть игрока',
 };
 
 /** Cell → display string: the date cell's text or a plain number. */
@@ -53,9 +61,12 @@ function tipCellText(cell: RegistryCell | undefined): string | null {
 function PlayerTip({
   person,
   cells,
+  openable,
 }: {
   person: RegistryPersonCell;
   cells: Record<string, RegistryCell> | undefined;
+  /** The cell opens the subscreen — the tip gets the «Нажмите…» line. */
+  openable: boolean;
 }) {
   const nation = cells?.nation ?? null;
   return (
@@ -66,8 +77,17 @@ function PlayerTip({
         gap: SPACING['space-2'],
       }}
     >
-      <div style={{ ...TEXT_STYLES['heading'], color: tokenVar('ink') }}>
-        {person.name}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: SPACING['space-2'],
+        }}
+      >
+        <PlayerAvatar person={person} size={32} />
+        <div style={{ ...TEXT_STYLES['heading'], color: tokenVar('ink') }}>
+          {person.name}
+        </div>
       </div>
       <TooltipRow
         label={PLAYER_TIP_TEXTS.joined}
@@ -87,6 +107,22 @@ function PlayerTip({
           isNationCell(nation) ? nation.name : PLAYER_TIP_TEXTS.noNation
         }
       />
+      {openable && (
+        <>
+          <div
+            aria-hidden
+            style={{ height: 1, background: tokenVar('line') }}
+          />
+          <div
+            style={{
+              ...TEXT_STYLES['caption'],
+              color: tokenVar('ink-muted'),
+            }}
+          >
+            {PLAYER_TIP_TEXTS.openHint}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -94,19 +130,22 @@ function PlayerTip({
 export function PersonCell({
   value,
   cells,
+  onOpen,
 }: {
   value: RegistryCell;
   /** The whole row's cells — the player tip reads them, no request. */
   cells?: Record<string, RegistryCell>;
+  /**
+   * Opens the «Игрок» subscreen (0.10.0 unit 8b) — set by RegistryTable
+   * only when the row key resolves to a players-table number `p<N>`.
+   */
+  onOpen?: () => void;
 }) {
-  const [failed, setFailed] = useState(false);
   const person = isPersonCell(value) ? value : null;
 
   if (!person) {
     return <span>{REGISTRY_TEXTS.emptyValue}</span>;
   }
-
-  const showImage = person.avatar_url !== null && !failed;
 
   const face: ReactNode = (
     <span
@@ -118,33 +157,7 @@ export function PersonCell({
         maxWidth: '100%',
       }}
     >
-      {showImage ? (
-        <img
-          src={person.avatar_url ?? ''}
-          alt=""
-          width={24}
-          height={24}
-          style={{ borderRadius: '50%', flexShrink: 0 }}
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <span
-          aria-hidden
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: '50%',
-            flexShrink: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--vkui--color_background_secondary)',
-            border: '1px solid var(--vkui--color_separator_primary)',
-          }}
-        >
-          <Icon16User fill="var(--vkui--color_icon_secondary)" />
-        </span>
-      )}
+      <PlayerAvatar person={person} size={24} />
       <span
         style={{
           overflow: 'hidden',
@@ -157,9 +170,24 @@ export function PersonCell({
     </span>
   );
 
+  const body =
+    onOpen === undefined ? (
+      face
+    ) : (
+      <NationOpenLink onOpen={onOpen}>{face}</NationOpenLink>
+    );
+
   return (
-    <Tooltip content={<PlayerTip person={person} cells={cells} />}>
-      {face}
+    <Tooltip
+      content={
+        <PlayerTip
+          person={person}
+          cells={cells}
+          openable={onOpen !== undefined}
+        />
+      }
+    >
+      {body}
     </Tooltip>
   );
 }
