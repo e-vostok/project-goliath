@@ -162,9 +162,12 @@ export function NationTip({
  */
 export function NationOpenLink({
   onOpen,
+  tone = 'action',
   children,
 }: {
   onOpen?: () => void;
+  /** PNG 09: nation links are `action`; person links are `ink`. */
+  tone?: 'action' | 'ink';
   children: ReactNode;
 }) {
   const [hot, setHot] = useState(false);
@@ -186,7 +189,7 @@ export function NationOpenLink({
         font: 'inherit',
         textAlign: 'left',
         cursor: 'pointer',
-        color: tokenVar('action'),
+        color: tokenVar(tone === 'action' ? 'action' : 'ink'),
         textDecoration: hot ? 'underline' : 'none',
         overflow: 'hidden',
         whiteSpace: 'nowrap',

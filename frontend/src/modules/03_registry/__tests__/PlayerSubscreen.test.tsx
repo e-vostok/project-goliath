@@ -30,7 +30,7 @@ const PLAYER: RegistryPlayerDTO = {
     avatar_url: 'https://pp.vk.me/avatar.png',
     is_fallback: false,
   },
-  joined: { text: '1 сентября 2026', key: 20697 },
+  joined: { text: '01.09.2026', key: 20697 },
   level: 2,
   judge_rating: 12,
   nation: {
@@ -73,7 +73,7 @@ beforeEach(() => {
 });
 
 describe('PlayerSubscreen — content', () => {
-  it('loads the public card: avatar, name and the four rows', async () => {
+  it('loads the public card: avatar, caption, three tiles, nation card', async () => {
     registerPlayer();
     renderSubscreen({});
 
@@ -85,30 +85,33 @@ describe('PlayerSubscreen — content', () => {
     );
 
     const header = screen.getByTestId('player-subscreen-header');
-    // The VK avatar is a real image at 64 px.
+    // PNG 12: the VK avatar is a real image at 96 px under the
+    // «ИГРОК» caption.
     const avatar = header.querySelector('img');
     expect(avatar).not.toBeNull();
     expect(avatar).toHaveAttribute('src', 'https://pp.vk.me/avatar.png');
+    expect(avatar).toHaveAttribute('width', '96');
+    expect(within(header).getByText('Игрок')).toBeInTheDocument();
     expect(within(header).getByText('Борис Иванов')).toBeInTheDocument();
 
-    const rows = screen.getByTestId('player-subscreen-rows');
-    expect(within(rows).getByText('Дата регистрации')).toBeInTheDocument();
-    expect(within(rows).getByText('1 сентября 2026')).toBeInTheDocument();
-    expect(within(rows).getByText('Уровень')).toBeInTheDocument();
-    expect(within(rows).getByText('2')).toBeInTheDocument();
+    // PNG 12: three tiles — «РЕГИСТРАЦИЯ», «УРОВЕНЬ», «РЕЙТИНГ» (the
+    // rating a bare signal number, no gauge bar).
+    const stats = screen.getByTestId('player-subscreen-stats');
+    expect(within(stats).getByText('Регистрация')).toBeInTheDocument();
+    expect(within(stats).getByText('01.09.2026')).toBeInTheDocument();
+    expect(within(stats).getByText('Уровень')).toBeInTheDocument();
+    expect(within(stats).getByText('2')).toBeInTheDocument();
+    expect(within(stats).getByText('Рейтинг')).toBeInTheDocument();
+    expect(within(stats).getByText('12')).toBeInTheDocument();
     expect(
-      within(rows).getByText('Судейский рейтинг'),
-    ).toBeInTheDocument();
-    // The rating is the table's gauge — a bar with a fill, not a bare
-    // number.
-    expect(within(rows).getByText('+12')).toBeInTheDocument();
+      within(stats).queryByTestId('gauge-fill'),
+    ).not.toBeInTheDocument();
+
+    // The nation card — the short name is a button to the subscreen.
+    const nation = screen.getByTestId('player-subscreen-nation');
+    expect(within(nation).getByText('Государство')).toBeInTheDocument();
     expect(
-      within(rows).getByTestId('gauge-fill'),
-    ).toBeInTheDocument();
-    // The nation line — the short name — is a button to the subscreen.
-    expect(within(rows).getByText('Государство')).toBeInTheDocument();
-    expect(
-      within(rows).getByRole('button', { name: 'НВГ' }),
+      within(nation).getByRole('button', { name: 'НВГ' }),
     ).toBeInTheDocument();
 
     // INV-R2: nothing that even looks like the hidden identifiers.
@@ -147,10 +150,12 @@ describe('PlayerSubscreen — content', () => {
     registerPlayer({ ...PLAYER, nation: null });
     renderSubscreen({});
 
-    const rows = await screen.findByTestId('player-subscreen-rows');
-    expect(within(rows).getByText('Государства нет')).toBeInTheDocument();
-    expect(within(rows).queryByRole('button')).toBeNull();
-    expect(within(rows).queryByRole('img')).toBeNull();
+    const nation = await screen.findByTestId('player-subscreen-nation');
+    expect(
+      within(nation).getByText('Государства нет'),
+    ).toBeInTheDocument();
+    expect(within(nation).queryByRole('button')).toBeNull();
+    expect(within(nation).queryByRole('img')).toBeNull();
   });
 
   it('a nation cell with id: null stays plain text', async () => {
@@ -165,11 +170,11 @@ describe('PlayerSubscreen — content', () => {
     });
     renderSubscreen({});
 
-    const rows = await screen.findByTestId('player-subscreen-rows');
+    const nation = await screen.findByTestId('player-subscreen-nation');
     expect(
-      within(rows).getByText('Безвестная вотчина'),
+      within(nation).getByText('Безвестная вотчина'),
     ).toBeInTheDocument();
-    expect(within(rows).queryByRole('button')).toBeNull();
+    expect(within(nation).queryByRole('button')).toBeNull();
   });
 
   it('the nation line opens the nation subscreen by its id', async () => {

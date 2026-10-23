@@ -130,7 +130,7 @@ class TestPlayersTable:
         rows = _rows_by_key(await build_table(test_db_session, "players"))
 
         assert rows["p1"]["joined"] == {
-            "text": "14 октября 2026",
+            "text": "14.10.2026",
             "key": (date(2026, 10, 14) - date(1970, 1, 1)).days,
         }
 

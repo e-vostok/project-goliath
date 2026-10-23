@@ -190,9 +190,12 @@ function AuthedArea() {
   // top bar + layout, measured as one block — never the page.
   const shellRef = useRef<HTMLDivElement>(null);
   useWindowHeight(shellRef);
-  // The entry request is consumed once — the first read wins, later
-  // renders get null (takeRegistryEntryRequest clears the store).
-  const registryRequest = useRef(takeRegistryEntryRequest()).current;
+  // The entry request is consumed once — a lazy useState initializer
+  // runs only on mount. A `useRef(takeRegistryEntryRequest())` would
+  // EVALUATE the take on every render, popping (and discarding) any
+  // request stored after the first paint — e.g. the «Штаб» badges'
+  // in-app entry, gone before PanelRegistry could read it.
+  const [registryRequest] = useState(() => takeRegistryEntryRequest());
 
   // The nation subscreen (unit 14c) and the player subscreen (0.10.0
   // unit 8b): the `/registry/:sub` route's segment → the nation id or

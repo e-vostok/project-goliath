@@ -1,8 +1,8 @@
 /**
- * DatetimeCell — `datetime` column: two lines, date over time (Spec
- * 1.2 / 04_orders Appendix A). With `mark` set the cell gets the
- * overdue style (negative colour); an empty cell carrying the mark
- * shows the mark text on the second line instead of a bare dash.
+ * DatetimeCell — `datetime` column: the game date and time on ONE
+ * JetBrains Mono line (PNG 10 — «22.10.2026 14:10», font-size 12).
+ * An overdue mark (`mark: "overdue"`) turns the text negative and,
+ * when no time came, appends the «по графику сдан» hint.
  */
 
 import { isDatetimeCell, type RegistryCell } from '../../types';
@@ -11,42 +11,28 @@ import { REGISTRY_TEXTS } from '../../texts';
 export function DatetimeCell({ value }: { value: RegistryCell }) {
   const dt = isDatetimeCell(value) ? value : null;
   const overdue = dt?.mark === 'overdue';
-  const overdueStyle = overdue
-    ? { color: 'var(--vkui--color_text_negative)' }
-    : undefined;
   const title = dt?.date
     ? `${dt.date} ${dt.time ?? ''}`.trim()
     : undefined;
 
   return (
-    <div
+    <span
       data-overdue={overdue || undefined}
       title={title}
       style={{
-        lineHeight: '15px',
+        display: 'block',
+        fontSize: 12,
         whiteSpace: 'nowrap',
         overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        color: overdue ? 'var(--vkui--color_text_negative)' : undefined,
       }}
     >
-      <div
-        style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          ...overdueStyle,
-        }}
-      >
-        {dt?.date ?? REGISTRY_TEXTS.emptyValue}
-      </div>
-      <div
-        style={{
-          fontSize: 11,
-          ...(overdueStyle ?? {
-            color: 'var(--vkui--color_text_secondary)',
-          }),
-        }}
-      >
-        {dt?.time ?? (overdue ? REGISTRY_TEXTS.overdueMark : '')}
-      </div>
-    </div>
+      {dt === null
+        ? REGISTRY_TEXTS.emptyValue
+        : [dt.date, dt.time ?? (overdue ? REGISTRY_TEXTS.overdueMark : '')]
+            .filter((part) => part !== '')
+            .join(' ')}
+    </span>
   );
 }

@@ -1,31 +1,16 @@
 /**
  * PlayerAvatar — the round avatar of a `person` cell (Spec 3.6): the
- * VK photo at `size` px, or a neutral circle with the user icon when
- * `avatar_url` is null, `is_fallback` is set or the image fails to
- * load (version 0.10.0 unit 8b — shared by the person cell, the
- * player «Подсказка» and the «Игрок» subscreen).
+ * VK photo at `size` px, or the neutral silhouette when `avatar_url`
+ * is null, `is_fallback` is set or the image fails to load (version
+ * 0.10.0 unit 8b — shared by the person cell, the player «Подсказка»
+ * and the «Игрок» subscreen; the silhouette is the approved mockup's —
+ * `surface-inset` circle, `ink-faint` head and shoulders).
  */
 
 import { useState } from 'react';
-import {
-  Icon16User,
-  Icon20User,
-  Icon28User,
-} from '@vkontakte/icons';
 
+import { tokenVar } from '../../../shared/ui';
 import type { RegistryPersonCell } from '../types';
-
-/** The biggest user glyph that still fits the circle. */
-function UserIcon({ size }: { size: number }) {
-  const fill = 'var(--vkui--color_icon_secondary)';
-  if (size <= 24) {
-    return <Icon16User fill={fill} />;
-  }
-  if (size <= 40) {
-    return <Icon20User fill={fill} />;
-  }
-  return <Icon28User fill={fill} />;
-}
 
 export function PlayerAvatar({
   person,
@@ -53,21 +38,21 @@ export function PlayerAvatar({
     );
   }
   return (
-    <span
-      aria-hidden
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        flexShrink: 0,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--vkui--color_background_secondary)',
-        border: '1px solid var(--vkui--color_separator_primary)',
-      }}
+    // Decorative — the name sits right next to it in every context
+    // (a labelled svg would leak into the cell button's name).
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 22 22"
+      aria-hidden="true"
+      style={{ borderRadius: '50%', flexShrink: 0, display: 'block' }}
     >
-      <UserIcon size={size} />
-    </span>
+      <circle cx={11} cy={11} r={11} fill={tokenVar('surface-inset')} />
+      <circle cx={11} cy={9} r={4} fill={tokenVar('ink-faint')} />
+      <path
+        d="M3 22c1-6 5-8 8-8s7 2 8 8z"
+        fill={tokenVar('ink-faint')}
+      />
+    </svg>
   );
 }

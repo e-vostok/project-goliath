@@ -6,7 +6,7 @@
 
 import { Button, Input } from '@vkontakte/vkui';
 
-import { SPACING } from '../../../shared/ui';
+import { SPACING, tokenVar } from '../../../shared/ui';
 
 import { REGISTRY_TEXTS } from '../texts';
 
@@ -42,11 +42,12 @@ export function TableToolbar({
         display: 'flex',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: 8,
+        gap: SPACING['space-3'],
         paddingBottom: SPACING['space-3'],
       }}
     >
-      <div style={{ flex: 1, maxWidth: 360 }}>
+      {/* PNG 09 — the search box is a fixed 240 px field. */}
+      <div style={{ width: 240, maxWidth: '100%' }}>
         <Input
           value={search}
           placeholder={REGISTRY_TEXTS.searchPlaceholder}
@@ -56,7 +57,7 @@ export function TableToolbar({
       </div>
       <span
         data-testid="registry-counter"
-        style={{ opacity: 0.7, whiteSpace: 'nowrap' }}
+        style={{ color: tokenVar('ink-muted'), whiteSpace: 'nowrap' }}
       >
         {shown !== null && total !== null
           ? REGISTRY_TEXTS.shownCounter(shown, total)
@@ -64,7 +65,7 @@ export function TableToolbar({
       </span>
       <span style={{ flex: 1 }} />
       <Button
-        size="s"
+        size="m"
         mode={filtersOpen ? 'primary' : 'secondary'}
         data-testid="filters-toggle"
         onClick={onToggleFilters}
@@ -77,6 +78,7 @@ export function TableToolbar({
               marginLeft: 6,
               padding: '0 6px',
               borderRadius: 8,
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
               fontSize: 12,
               lineHeight: '16px',
               background: 'var(--vkui--color_background_accent_themed)',
@@ -88,7 +90,7 @@ export function TableToolbar({
         )}
       </Button>
       <Button
-        size="s"
+        size="m"
         mode="secondary"
         onClick={onRefresh}
         disabled={refreshing}
@@ -96,7 +98,7 @@ export function TableToolbar({
         {REGISTRY_TEXTS.refresh}
       </Button>
       <Button
-        size="s"
+        size="m"
         mode="secondary"
         onClick={onReset}
         disabled={resetDisabled}

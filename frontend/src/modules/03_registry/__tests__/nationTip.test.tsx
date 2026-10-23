@@ -73,7 +73,7 @@ const NATION_CELL: RegistryCell = {
 
 const PLAYER_CELLS: Record<string, RegistryCell> = {
   player: { name: 'Борис Иванов', avatar_url: null, is_fallback: false },
-  joined: { text: '1 сентября 2026', key: 20697 },
+  joined: { text: '01.09.2026', key: 20697 },
   level: 2,
   judge_rating: 12,
   nation: NATION_CELL,
@@ -313,7 +313,7 @@ describe('PersonCell — player «Подсказка»', () => {
     const box = tip()!;
     expect(within(box).getByText('Борис Иванов')).toBeInTheDocument();
     expect(within(box).getByText('Дата регистрации')).toBeInTheDocument();
-    expect(within(box).getByText('1 сентября 2026')).toBeInTheDocument();
+    expect(within(box).getByText('01.09.2026')).toBeInTheDocument();
     expect(within(box).getByText('Уровень')).toBeInTheDocument();
     expect(within(box).getByText('2')).toBeInTheDocument();
     expect(within(box).getByText('Судейский рейтинг')).toBeInTheDocument();

@@ -493,7 +493,7 @@ register_table_source(
 Ключ строки — `o<number>`. Ячейки (формы — Spec Реестра 3.6 после расширения):
 
 - `number` — целое.
-- `nation` — `cell_nation(name=nation_short_name, color=nation_color, flag_url=catalog.flag_url(nation_flag_id))` по снимку: ячейка показывает краткое название и флаг на момент подачи; `id = null` (ссылки на живое государство у снимка нет); опции `select_or_contains` совпадают с ячейками (Spec 3.7).
+- `nation` — `cell_nation(name=nation_short_name, color=nation_color, flag_url=catalog.flag_url(nation_flag_id), nation_id=…)` по снимку: ячейка показывает краткое название и флаг на момент подачи (INV-O6); `id` — `nation_id` из снимка, но только когда государство ещё существует: наличие проверяется одним запросом `NationService.existing_ids(…)` на всю таблицу (единый публичный сервис `00_core`, версия 0.10.0 единица 13); у удалённого государства `id = null` — снимок остаётся текстом без ссылки и подсказки; опции `select_or_contains` совпадают с ячейками (Spec 3.7).
 - `title` — `cell_action_text(text=title, action=f"order:{number}")`.
 - `submitted` — `cell_datetime(submitted_at)`.
 - `distributed` — `cell_datetime(distributed_at)` либо пустая ячейка.
@@ -615,9 +615,9 @@ types:
       - {id: number, title: "№", type: index, source: number, width_px: 56, sortable: true, filters: [], searchable: false, stub: false}
       - {id: nation, title: "Государство", type: nation, source: nation, width_px: 168, sortable: true, filters: [select_or_contains], searchable: true, stub: false}
       - {id: title, title: "Название", type: action_text, source: title, width_px: 236, sortable: true, filters: [text], searchable: true, stub: false}
-      - {id: submitted, title: "Подача", header_icon: stage_submitted, type: datetime, source: submitted, width_px: 136, sortable: true, filters: [date_range], searchable: false, stub: false}
-      - {id: distributed, title: "Распределение", header_icon: stage_distributed, type: datetime, source: distributed, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
-      - {id: verdict, title: "Вердикт", header_icon: stage_verdict, type: datetime, source: verdict, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
+      - {id: submitted, title: "Подача", type: datetime, source: submitted, width_px: 136, sortable: true, filters: [date_range], searchable: false, stub: false}
+      - {id: distributed, title: "Распределение", type: datetime, source: distributed, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
+      - {id: verdict, title: "Вердикт", type: datetime, source: verdict, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
 ```
 
 ---

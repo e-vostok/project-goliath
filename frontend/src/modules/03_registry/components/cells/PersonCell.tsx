@@ -20,10 +20,11 @@
 import type { ReactNode } from 'react';
 
 import {
+  FONTS,
+  NationLabel,
   SPACING,
   TEXT_STYLES,
   Tooltip,
-  TooltipRow,
   tokenVar,
 } from '../../../../shared/ui';
 import {
@@ -58,6 +59,33 @@ function tipCellText(cell: RegistryCell | undefined): string | null {
   return null;
 }
 
+/** PNG 09b — one «label : value» line of the player tip's 96 px
+ * label grid: muted label left, JetBrains Mono value right. */
+function TipLine({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: ReactNode;
+  accent?: boolean;
+}) {
+  return (
+    <>
+      <span style={{ color: tokenVar('ink-muted') }}>{label}</span>
+      <span
+        style={{
+          fontFamily: FONTS.mono,
+          fontSize: 13,
+          color: accent ? tokenVar('signal-ink') : tokenVar('ink'),
+        }}
+      >
+        {value}
+      </span>
+    </>
+  );
+}
+
 function PlayerTip({
   person,
   cells,
@@ -69,6 +97,7 @@ function PlayerTip({
   openable: boolean;
 }) {
   const nation = cells?.nation ?? null;
+  const rating = tipCellText(cells?.judge_rating);
   return (
     <div
       style={{
@@ -84,29 +113,57 @@ function PlayerTip({
           gap: SPACING['space-2'],
         }}
       >
-        <PlayerAvatar person={person} size={32} />
+        <PlayerAvatar person={person} size={28} />
         <div style={{ ...TEXT_STYLES['heading'], color: tokenVar('ink') }}>
           {person.name}
         </div>
       </div>
-      <TooltipRow
-        label={PLAYER_TIP_TEXTS.joined}
-        value={tipCellText(cells?.joined) ?? REGISTRY_TEXTS.emptyValue}
-      />
-      <TooltipRow
-        label={PLAYER_TIP_TEXTS.level}
-        value={tipCellText(cells?.level) ?? REGISTRY_TEXTS.emptyValue}
-      />
-      <TooltipRow
-        label={PLAYER_TIP_TEXTS.judgeRating}
-        value={tipCellText(cells?.judge_rating) ?? REGISTRY_TEXTS.emptyValue}
-      />
-      <TooltipRow
-        label={PLAYER_TIP_TEXTS.nation}
-        value={
-          isNationCell(nation) ? nation.name : PLAYER_TIP_TEXTS.noNation
-        }
-      />
+      {/* PNG 09b — a 96 px label column, mono figures, rating in
+          signal-ink, the nation as flag + short name. */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '96px minmax(0, 1fr)',
+          rowGap: 2,
+          columnGap: SPACING['space-2'],
+          alignItems: 'center',
+        }}
+      >
+        <TipLine
+          label={PLAYER_TIP_TEXTS.joined}
+          value={tipCellText(cells?.joined) ?? REGISTRY_TEXTS.emptyValue}
+        />
+        <TipLine
+          label={PLAYER_TIP_TEXTS.level}
+          value={tipCellText(cells?.level) ?? REGISTRY_TEXTS.emptyValue}
+        />
+        <TipLine
+          label={PLAYER_TIP_TEXTS.judgeRating}
+          accent
+          value={rating ?? REGISTRY_TEXTS.emptyValue}
+        />
+        <span style={{ color: tokenVar('ink-muted') }}>
+          {PLAYER_TIP_TEXTS.nation}
+        </span>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            minWidth: 0,
+          }}
+        >
+          {isNationCell(nation) ? (
+            <NationLabel
+              name={nation.name}
+              flagUrl={nation.flag_url}
+              color={nation.color}
+              size="cell"
+            />
+          ) : (
+            PLAYER_TIP_TEXTS.noNation
+          )}
+        </span>
+      </div>
       {openable && (
         <>
           <div
@@ -157,7 +214,7 @@ export function PersonCell({
         maxWidth: '100%',
       }}
     >
-      <PlayerAvatar person={person} size={24} />
+      <PlayerAvatar person={person} size={22} />
       <span
         style={{
           overflow: 'hidden',
@@ -174,7 +231,9 @@ export function PersonCell({
     onOpen === undefined ? (
       face
     ) : (
-      <NationOpenLink onOpen={onOpen}>{face}</NationOpenLink>
+      <NationOpenLink onOpen={onOpen} tone="ink">
+        {face}
+      </NationOpenLink>
     );
 
   return (

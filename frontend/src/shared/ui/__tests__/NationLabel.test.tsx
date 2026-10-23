@@ -22,8 +22,8 @@ describe('NationLabel', () => {
 
     const img = container.querySelector('img')!;
     expect(img).toHaveAttribute('src', '/assets/nations/flags/f1.png');
-    expect(img).toHaveAttribute('width', '24');
-    expect(img).toHaveAttribute('height', '16');
+    expect(img).toHaveAttribute('width', '22');
+    expect(img).toHaveAttribute('height', '14');
     expect(screen.getByText('НВГ')).toBeInTheDocument();
   });
 
@@ -42,8 +42,8 @@ describe('NationLabel', () => {
 
     const block = container.querySelector('[aria-hidden]') as HTMLElement;
     expect(block.style.background).toBe('rgb(192, 57, 43)');
-    expect(block.style.width).toBe('24px');
-    expect(block.style.height).toBe('16px');
+    expect(block.style.width).toBe('22px');
+    expect(block.style.height).toBe('14px');
     expect(block.style.borderRadius).toBe('2px');
     expect(screen.getByText('НВГ')).toBeInTheDocument();
   });
