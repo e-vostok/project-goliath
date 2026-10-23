@@ -1,52 +1,72 @@
 /**
  * OrdersBlock — the «Приказы» block of the headquarters card
  * (PanelNationHome, Spec 5.4 / D12 — never in PanelCreateNation;
- * UI Spec 9.1, mockup «Main», version 0.9.0 unit 12d).
+ * UI Spec 9.1, mockup «Main», boards 10/10b, version 0.10.0 unit 7b).
  *
  * A surface block with the shared BlockTitle («Приказы», document
  * icon) whose trailing slot carries the «Подать приказ» button.
- * Below sits «Ожидают вердикт · N» (the count appears once the
- * queue is loaded and non-empty): the orders assigned to the
- * player for judging. The list loads when the block mounts and on
- * «Обновить» — no polling; after a written or rejected verdict the
- * provider bumps `assignedRefreshKey` and the list refetches. A row
- * is a calm two-line card: the order title (one line with
- * ellipsis, the full text as a tooltip) over the nation and the
- * deadline — «до DD.MM.YYYY HH:MM», or the inline danger mark
- * «срок вышел …» when overdue — with the single «Написать
- * вердикт» action on the right; a click or Enter/Space on the row
- * itself opens the order's detail window. A failed refresh keeps
- * the shown list under «Не удалось загрузить» and «Повторить».
+ * Below it sit the two order badges — «Мои приказы» and «Приказы
+ * других игроков» — that replaced the stat tiles and the «Ожидают
+ * вердикт» list in 0.10.0: the judge path now runs through the
+ * Registry (badge → orders tab → row → order window).
+ *
+ * «Мои приказы» counts the player's own submitted orders without a
+ * verdict (`unresolved_orders` from GET /orders/rules — the same
+ * route the composer reads); «Приказы других игроков» counts the
+ * orders assigned to the player for judging (the GET /orders/assigned
+ * list length — the endpoint is unpaginated and returns the whole
+ * queue). A zero count gets no circle, counts of 100+ show «99+»;
+ * a failed or in-flight fetch leaves the badge numberless — never
+ * «0», never an error popup. Both counts load on mount and refetch
+ * when `ordersRefreshKey` bumps (an order submitted, a verdict
+ * written or rejected).
+ *
+ * A badge click hands the host an entry request for the Registry's
+ * orders tab with the preset filter («Мои приказы» — the nation
+ * dropdown set to my short name, «Приказы других игроков» — the
+ * «Назначены мне» extension on «Да»); navigation itself lives in
+ * AppShell, which stores the request and pushes '/registry'.
  */
 
 import { useState } from 'react';
-import { Icon16Replay } from '@vkontakte/icons';
-import { Button, FormStatus } from '@vkontakte/vkui';
+import { Button } from '@vkontakte/vkui';
 
-import { errorText } from '../../../shared/errorTexts';
 import {
   BlockTitle,
-  EmptyState,
-  LoadingState,
   RADII,
   SPACING,
   TEXT_STYLES,
   tokenVar,
 } from '../../../shared/ui';
+import type { RegistryEntryRequest } from '../../03_registry/lib/entryRequest';
 import { useAssignedOrders } from '../hooks/useAssignedOrders';
-import { NationMark } from './NationMark';
+import { useOrderRules } from '../hooks/useOrderRules';
+import { ORDERS_TABLE_ID } from '../registryFilters';
 import { ORDERS_TEXTS } from '../texts';
-import type { AssignedOrderDTO } from '../types';
 import { useOrdersUi } from '../OrdersUiProvider';
 
-export function OrdersBlock() {
-  const {
-    openComposer,
-    openOrder,
-    openVerdictComposer,
-    assignedRefreshKey,
-  } = useOrdersUi();
-  const assigned = useAssignedOrders(assignedRefreshKey);
+/** A count of 100 or more collapses to «99+» (board 10b). */
+const countText = (count: number) => (count >= 100 ? '99+' : String(count));
+
+export function OrdersBlock({
+  nationShortName,
+  onOpenRegistry,
+}: {
+  /** My nation's short name — the «Мои приказы» preset's dropdown value
+   * (the Registry's nation options list short names, Spec 03_registry 3.3). */
+  nationShortName: string;
+  /** Hands the badge's entry request to the host (AppShell stores it
+   * and navigates to the Registry). */
+  onOpenRegistry: (request: RegistryEntryRequest) => void;
+}) {
+  const { openComposer, ordersRefreshKey } = useOrdersUi();
+  const rulesState = useOrderRules(ordersRefreshKey);
+  const assigned = useAssignedOrders(ordersRefreshKey);
+
+  const mineCount =
+    rulesState.status === 'ready' ? rulesState.rules.unresolved_orders : null;
+  const assignedCount =
+    assigned.status === 'ready' ? assigned.items.length : null;
 
   return (
     <section
@@ -68,101 +88,60 @@ export function OrdersBlock() {
       />
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          marginBottom: SPACING['space-2'],
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: SPACING['space-2'],
         }}
       >
-        <span
-          style={{
-            ...TEXT_STYLES['label'],
-            color: tokenVar('ink-muted'),
-          }}
-        >
-          {ORDERS_TEXTS.assignedTitle}
-          {assigned.status === 'ready' && assigned.items.length > 0
-            ? ` · ${assigned.items.length}`
-            : ''}
-        </span>
-        <Button
-          size="s"
-          mode="tertiary"
-          before={<Icon16Replay />}
-          loading={assigned.status === 'loading'}
-          onClick={assigned.refresh}
-        >
-          {ORDERS_TEXTS.refreshButton}
-        </Button>
+        <OrderBadge
+          testId="orders-badge-mine"
+          label={ORDERS_TEXTS.badgeMine}
+          count={mineCount}
+          onClick={() =>
+            onOpenRegistry({
+              tab: ORDERS_TABLE_ID,
+              preset: { nation: nationShortName },
+            })
+          }
+        />
+        <OrderBadge
+          testId="orders-badge-assigned"
+          label={ORDERS_TEXTS.badgeOthers}
+          count={assignedCount}
+          onClick={() =>
+            onOpenRegistry({
+              tab: ORDERS_TABLE_ID,
+              preset: { assignedToMe: true },
+            })
+          }
+        />
       </div>
-
-      {assigned.status === 'error' && (
-        <>
-          <FormStatus mode="error" title={ORDERS_TEXTS.assignedLoadError}>
-            {errorText(assigned.error)}
-          </FormStatus>
-          <Button size="s" onClick={assigned.refresh}>
-            {ORDERS_TEXTS.retry}
-          </Button>
-        </>
-      )}
-
-      {assigned.items.length === 0 && assigned.status === 'loading' ? (
-        <LoadingState height={36} />
-      ) : assigned.items.length === 0 && assigned.status === 'ready' ? (
-        <EmptyState text={ORDERS_TEXTS.assignedEmpty} />
-      ) : (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}
-        >
-          {assigned.items.map((item) => (
-            <AssignedRow
-              key={item.number}
-              item={item}
-              onVerdict={openVerdictComposer}
-              onOpen={openOrder}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
 
-function AssignedRow({
-  item,
-  onVerdict,
-  onOpen,
+function OrderBadge({
+  testId,
+  label,
+  count,
+  onClick,
 }: {
-  item: AssignedOrderDTO;
-  onVerdict: (number: number) => void;
-  onOpen: (number: number) => void;
+  testId: string;
+  label: string;
+  /** null — the count is not loaded (in-flight or failed): no circle. */
+  count: number | null;
+  onClick: () => void;
 }) {
   // `hot` paints the hover state, `focused` the keyboard focus ring.
   const [hot, setHot] = useState(false);
   const [focused, setFocused] = useState(false);
   return (
-    <div
-      data-testid={`assigned-order-${item.number}`}
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(item.number)}
-      onKeyDown={(e) => {
-        // Keys bubbled from the inner «Написать вердикт» button are
-        // its own — the row activates only on its own focus.
-        if (e.target !== e.currentTarget) {
-          return;
-        }
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen(item.number);
-        }
-      }}
+    <button
+      type="button"
+      // The count circle must not leak into the accessible name.
+      aria-label={label}
+      data-testid={testId}
+      onClick={onClick}
       onMouseEnter={() => setHot(true)}
       onMouseLeave={() => setHot(false)}
       onFocus={() => setFocused(true)}
@@ -170,10 +149,12 @@ function AssignedRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        justifyContent: 'center',
+        gap: 8,
         minWidth: 0,
         padding: '10px 12px',
         background: tokenVar(hot ? 'surface-raised' : 'surface-inset'),
+        border: 'none',
         borderRadius: RADII['radius-md'],
         cursor: 'pointer',
         outline: focused ? `2px solid ${tokenVar('action')}` : 'none',
@@ -182,66 +163,38 @@ function AssignedRow({
     >
       <span
         style={{
-          width: 36,
-          flexShrink: 0,
+          ...TEXT_STYLES['body'],
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          ...TEXT_STYLES['figure'],
-          color: tokenVar('ink-muted'),
+          color: tokenVar('ink'),
         }}
       >
-        №{item.number}
+        {label}
       </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          title={item.title}
+      {count !== null && count > 0 && (
+        <span
+          data-testid={`${testId}-count`}
           style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            color: tokenVar('ink'),
+            ...TEXT_STYLES['figure'],
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minWidth: 22,
+            height: 22,
+            padding: '0 6px',
+            boxSizing: 'border-box',
+            flexShrink: 0,
+            fontSize: 12,
+            lineHeight: '16px',
+            background: tokenVar('signal'),
+            color: tokenVar('on-signal'),
+            borderRadius: RADII['radius-pill'],
           }}
         >
-          {item.title}
-        </div>
-        <div
-          style={{
-            ...TEXT_STYLES['caption'],
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            color: tokenVar('ink-muted'),
-          }}
-        >
-          {item.overdue ? (
-            <>
-              <NationMark nation={item.nation} />
-              {' · '}
-              <span
-                data-testid="assigned-overdue-mark"
-                style={{ color: tokenVar('danger') }}
-              >
-                {ORDERS_TEXTS.assignedOverdue(item.deadline_text)}
-              </span>
-            </>
-          ) : (
-            <>
-              <NationMark nation={item.nation} />
-              {` · ${ORDERS_TEXTS.assignedDeadline(item.deadline_text)}`}
-            </>
-          )}
-        </div>
-      </div>
-      <Button
-        size="s"
-        mode="secondary"
-        style={{ flexShrink: 0 }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onVerdict(item.number);
-        }}
-      >
-        {ORDERS_TEXTS.writeVerdict}
-      </Button>
-    </div>
+          {countText(count)}
+        </span>
+      )}
+    </button>
   );
 }

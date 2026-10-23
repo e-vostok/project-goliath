@@ -4,8 +4,9 @@
  *
  * Card covers: header (flag/stub, the short name as the small label
  * line above the display
- * name, motto, colour), the stat tiles («Провинции», «N из M» from
- * /orders/rules — level/rating left the card in 0.10.0, unit 8b),
+ * name, motto, colour), no stat-tiles row (0.10.0 unit 7b — the two
+ * order badges inside «Приказы» carry the counts; level/rating left
+ * earlier, unit 8b), the badges' entry-request click,
  * leader block (no captions, title hidden when empty),
  * territory chips BY NAME with the capital first («★ Столица
  * (Провинция)»), the description/history block rules, the removed
@@ -95,10 +96,15 @@ const FULL_NATION: NationDTO = {
 
 function renderHome(nation: NationDTO = NATION) {
   const onChanged = vi.fn();
+  const onOpenRegistry = vi.fn();
   const view = renderWithProviders(
-    <PanelNationHome nation={nation} onChanged={onChanged} />,
+    <PanelNationHome
+      nation={nation}
+      onChanged={onChanged}
+      onOpenRegistry={onOpenRegistry}
+    />,
   );
-  return { onChanged, ...view };
+  return { onChanged, onOpenRegistry, ...view };
 }
 
 async function openEdit(user: ReturnType<typeof userEvent.setup>) {
@@ -121,7 +127,7 @@ function capturePatch(reply: NationDTO) {
 beforeEach(registerDefaultHandlers);
 
 describe('PanelNationHome — the card', () => {
-  it('renders the full card: header, tiles, leader, territory names, description', async () => {
+  it('renders the full card: header, order badges, leader, territory names, description', async () => {
     const nation: NationDTO = {
       ...NATION,
       motto: 'Север помнит всё',
@@ -130,7 +136,7 @@ describe('PanelNationHome — the card', () => {
       portrait_url: '/assets/nations/portraits/portrait_stub.png',
       leader_bio: 'Правил долго и грозно',
     };
-    renderHome(nation);
+    const { onOpenRegistry } = renderHome(nation);
 
     // Header — flag image, the short name as the small label line
     // (no «Кратко:» words), display name, motto, colour swatch + HEX.
@@ -147,20 +153,46 @@ describe('PanelNationHome — the card', () => {
       within(header).getByRole('button', { name: 'Изменить' }),
     ).toBeInTheDocument();
 
-    // Two tiles (0.10.0 unit 8b): level and rating — the player's
-    // numbers — left the nation card for the «Игрок» subscreen.
-    const tiles = await screen.findByTestId('nation-stats-row');
-    const tileOf = (label: string) =>
-      within(tiles).getByText(label).parentElement as HTMLElement;
-    expect(tileOf('Провинции').textContent).toContain('2');
-    await waitFor(() =>
-      expect(tileOf('Неразрешённые приказы').textContent).toContain(
-        '2 из 7',
-      ),
+    // No stat-tiles row anywhere (0.10.0 unit 7b) — and no trace of
+    // the old judge queue either: its counts moved to the two badges
+    // inside «Приказы» (Spec 5.4).
+    expect(screen.queryByTestId('nation-stats-row')).toBeNull();
+    expect(screen.queryByText('Уровень')).toBeNull();
+    expect(screen.queryByText('Судейский рейтинг')).toBeNull();
+    expect(screen.queryByText('Провинции')).toBeNull();
+    expect(screen.queryByText('Ожидают вердикт')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Написать вердикт' }),
+    ).toBeNull();
+
+    // «Подать приказ» stays; the badges show the live counts:
+    // «Мои приказы» — unresolved_orders from GET /orders/rules (2),
+    // «Приказы других игроков» — the assigned queue is empty, so the
+    // badge renders with no circle.
+    expect(
+      screen.getByRole('button', { name: 'Подать приказ' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByTestId('orders-badge-mine-count'))
+      .toHaveTextContent('2');
+    expect(screen.queryByTestId('orders-badge-assigned-count'))
+      .toBeNull();
+
+    // Each badge hands its 7a entry request to the host (AppShell
+    // stores it and pushes /registry).
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Мои приказы' }),
     );
-    expect(tiles.children).toHaveLength(2);
-    expect(within(tiles).queryByText('Уровень')).toBeNull();
-    expect(within(tiles).queryByText('Судейский рейтинг')).toBeNull();
+    expect(onOpenRegistry).toHaveBeenLastCalledWith({
+      tab: 'orders',
+      preset: { nation: 'Тестия' },
+    });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Приказы других игроков' }),
+    );
+    expect(onOpenRegistry).toHaveBeenLastCalledWith({
+      tab: 'orders',
+      preset: { assignedToMe: true },
+    });
 
     // Leader — portrait image, name, uppercase title, bio; no captions.
     const leader = screen.getByTestId('nation-leader-block');
@@ -740,7 +772,7 @@ describe('PanelNationHome — edit form', () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotStatusProvider>
-        <PanelNationHome nation={NATION} onChanged={() => {}} />
+        <PanelNationHome nation={NATION} onChanged={() => {}} onOpenRegistry={() => {}} />
       </BotStatusProvider>,
     );
 
@@ -756,7 +788,7 @@ describe('PanelNationHome — edit draft memory', () => {
   it('restores typed values on remount and deletes them on «Отмена»', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
-      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} onOpenRegistry={() => {}} />,
     );
 
     // Type, leave (the panel unmounts like a screen switch) — the
@@ -770,7 +802,7 @@ describe('PanelNationHome — edit draft memory', () => {
     first.unmount();
 
     const second = renderWithProviders(
-      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} onOpenRegistry={() => {}} />,
     );
     await openEdit(user);
     await goToTab(user, 2);
@@ -783,7 +815,7 @@ describe('PanelNationHome — edit draft memory', () => {
     second.unmount();
 
     renderWithProviders(
-      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} onOpenRegistry={() => {}} />,
     );
     await openEdit(user);
     await goToTab(user, 2);

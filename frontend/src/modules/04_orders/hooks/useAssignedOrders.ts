@@ -1,10 +1,11 @@
 /**
- * useAssignedOrders — GET /orders/assigned for the «Ожидают вердикт»
- * list (Spec 5.4). Loads when the block mounts and on `refresh()` —
- * there is no polling; `refreshKey` is bumped by the provider when a
- * verdict is written or rejected, because the judge's queue changed
- * under it. A failed refresh keeps the last loaded list: the block
- * shows «Не удалось загрузить» with «Повторить» over it.
+ * useAssignedOrders — GET /orders/assigned for the «Приказы других
+ * игроков» badge (Spec 5.4, unit 7b — the endpoint is unpaginated and
+ * returns the judge's whole queue, so the badge counts `items.length`).
+ * Loads on mount and whenever `refreshKey` changes — the provider
+ * bumps it when a verdict is written or rejected, because the judge's
+ * queue changed under it. A failed refresh keeps the last loaded list
+ * (the badge simply keeps showing the previous count — or none).
  */
 
 import { useCallback, useEffect, useState } from 'react';

@@ -101,8 +101,9 @@ export const GAME_CLOCK = {
 };
 
 /**
- * Order limits for the «Неразрешённые приказы» tile — deliberately NOT
- * the real config numbers: a hardcoded limit in the tile fails tests.
+ * Order limits for the «Мои приказы» badge and the composer's counter —
+ * deliberately NOT the real config numbers: a hardcoded limit fails
+ * tests.
  */
 export const ORDER_RULES: OrderRulesDTO = {
   title_min_length: 4,
