@@ -11,6 +11,12 @@ import { act, render } from '@testing-library/react';
 
 import { MapView } from '../components/MapView';
 import { MINI_GEOMETRY, MINI_MANIFEST, MINI_RULES } from '../fixtures/miniMap';
+import { startReliefDownload, clearReliefDownload } from '../lib/relief';
+import {
+  clearMapSessionCache,
+  loadGeometryCached,
+  writeManifestCache,
+} from '../lib/sessionCache';
 import type { MapManifestDTO } from '../types';
 
 /** Real images never fire load events under jsdom — capture them. */
@@ -43,6 +49,10 @@ async function fireAll(event: 'onload' | 'onerror') {
 describe('MapView — relief layers (map2_16)', () => {
   beforeEach(() => {
     StubImage.instances = [];
+    // The download is a shared module promise now — reset it so every
+    // test loads fresh stub images.
+    clearReliefDownload();
+    clearMapSessionCache();
     vi.stubGlobal('Image', StubImage);
   });
   afterEach(() => {
@@ -185,5 +195,84 @@ describe('MapView — relief layers (map2_16)', () => {
       ),
     );
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+});
+
+describe('relief — early start (load-speed unit 10)', () => {
+  beforeEach(() => {
+    StubImage.instances = [];
+    clearReliefDownload();
+    clearMapSessionCache();
+    vi.stubGlobal('Image', StubImage);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('a download started before MapView mounts is reused — one request per file', async () => {
+    // The map panel kicks the download as soon as the manifest arrives;
+    // by the time MapView mounts the images are already in flight.
+    const early = startReliefDownload();
+    expect(early).not.toBeNull();
+    expect(StubImage.instances).toHaveLength(2);
+
+    render(<MapView manifest={MANIFEST_ON} geometry={MINI_GEOMETRY} />);
+    // useRelief joined the in-flight load — no second pair of images.
+    expect(StubImage.instances).toHaveLength(2);
+
+    await fireAll('onload');
+    expect(
+      document.querySelector('[data-layer="relief-inactive"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-layer="relief-playable"]'),
+    ).not.toBeNull();
+  });
+
+  it('loading the geometry kicks the relief download when enabled', async () => {
+    // sessionCache.loadGeometryCached fires at map-panel mount — before
+    // MapView exists — and starts the rasters under the same
+    // rules.relief switch useRelief reads.
+    writeManifestCache({ etag: null, body: MANIFEST_ON });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response(JSON.stringify(MINI_GEOMETRY), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ) as unknown as typeof fetch,
+    );
+
+    await loadGeometryCached('token', 'v1');
+
+    expect(StubImage.instances).toHaveLength(2);
+    await fireAll('onload');
+    await expect(startReliefDownload()).resolves.toMatchObject({
+      inactive: { file: expect.stringContaining('relief.inactive.') },
+      playable: { file: expect.stringContaining('relief.playable.') },
+    });
+  });
+
+  it('the geometry load does not kick relief when disabled', async () => {
+    writeManifestCache({ etag: null, body: MINI_MANIFEST });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response(JSON.stringify(MINI_GEOMETRY), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ) as unknown as typeof fetch,
+    );
+
+    await loadGeometryCached('token', 'v1');
+
+    expect(StubImage.instances).toHaveLength(0);
   });
 });

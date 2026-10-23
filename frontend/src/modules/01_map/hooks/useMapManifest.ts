@@ -2,10 +2,12 @@
  * useMapManifest — GET /map/manifest with ETag revalidation.
  *
  * The last ETag/body live in the session-level map cache
- * (lib/sessionCache) so the viewing screen and the province picker share
- * one copy. Mount-time revalidation still sends `If-None-Match`; a 304
- * reuses the session copy; a 304 without one triggers one unconditional
- * refetch (decided by lib/cache.decideConditional).
+ * (lib/sessionCache) — mirrored to localStorage so a cold start
+ * revalidates instead of re-downloading — so the viewing screen and the
+ * province picker share one copy. Mount-time revalidation still sends
+ * `If-None-Match`; a 304 reuses the session copy; a 304 without one
+ * triggers one unconditional refetch (decided by
+ * lib/cache.decideConditional).
  */
 
 import { useCallback, useEffect, useState } from 'react';
