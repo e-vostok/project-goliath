@@ -1,5 +1,5 @@
 """
-Response schemas of module 03_registry (Spec 5.1, 5.2).
+Response schemas of module 03_registry (Spec 5.1, 5.2, 5.6).
 
 The ``source`` fields of the config (table source key, column value
 keys) are deliberately absent — the client addresses cells by column id
@@ -77,3 +77,44 @@ class RegistryRowsDTO(BaseModel):
     # "YYYY-MM-DDTHH:MM:SSZ" — the client never parses dates itself.
     generated_at: str
     rows: list[RegistryRowDTO]
+
+
+class RegistryPlayerPersonDTO(BaseModel):
+    """``person`` of ``RegistryPlayerDTO`` — the Spec 3.6 ``person`` cell
+    (the ``player`` cell of the players table)."""
+
+    name: str
+    avatar_url: str | None
+    is_fallback: bool
+
+
+class RegistryPlayerJoinedDTO(BaseModel):
+    """``joined`` of ``RegistryPlayerDTO`` — the Spec 3.6 ``date`` cell."""
+
+    text: str
+    key: int
+
+
+class RegistryPlayerNationDTO(BaseModel):
+    """``nation`` of ``RegistryPlayerDTO`` — the Spec 3.6 ``nation``
+    cell; ``name`` is the nation's short name."""
+
+    id: str | None
+    name: str
+    color: str
+    flag_url: str | None
+
+
+class RegistryPlayerDTO(BaseModel):
+    """
+    Response for ``GET /api/v1/registry/players/{number}`` (Spec 5.6) —
+    exactly the cells the players table shows in row ``p<N>`` and
+    nothing more (INV-R2: no ``player_id``, no ``vk_user_id``).
+    """
+
+    number: int
+    person: RegistryPlayerPersonDTO
+    joined: RegistryPlayerJoinedDTO
+    level: int
+    judge_rating: int
+    nation: RegistryPlayerNationDTO | None
