@@ -24,12 +24,13 @@ auth:
   jwt_ttl_minutes: 60
 
 nation:
-  # Полное название государства (решение Project Owner 20.10.2026: от 2 до 50).
+  # Полное название государства (решение Project Owner 20.10.2026,
+  # расширено в версии 0.10.0: от 2 до 60).
   nation_name_min_length: 2
-  nation_name_max_length: 50
-  # Краткое название (обязательное, уникальное): от 2 до 16.
+  nation_name_max_length: 60
+  # Краткое название (обязательное, уникальное): от 2 до 20.
   short_name_min_length: 2
-  short_name_max_length: 16
+  short_name_max_length: 20
   # Стартовые провинции: ровно 5 (решение Project Owner 17.10.2026).
   # Ключи остаются двумя, чтобы позже число могло зависеть от бонусов.
   min_provinces_per_nation: 5
@@ -39,8 +40,8 @@ nation:
   leader_title_min_length: 2
   leader_title_max_length: 60
   # Необязательные тексты: пустое значение допустимо, длина считается только сверху.
-  motto_max_length: 60
-  description_max_length: 100
+  motto_max_length: 50
+  description_max_length: 150
   leader_bio_max_length: 500
   # Название столицы (обязательное; клиент подставляет название провинции из карты).
   capital_name_min_length: 2
