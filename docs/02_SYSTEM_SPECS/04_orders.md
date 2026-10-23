@@ -448,7 +448,7 @@ AssignedOrdersDTO = { items: list[AssignedOrderDTO] }    # все приказы
 
 ### 5.4. Клиент (VKUI, только desktop)
 
-**Файлы** (`frontend/src/modules/04_orders/`): `api.ts`, `types.ts`, `texts.ts`, `hooks/useAssignedOrders.ts`, `hooks/useOrderDetail.ts`, `hooks/useOrderRules.ts`, `OrdersUiProvider.tsx` (контекст и хост окон), `OrderComposer.tsx`, `ConfirmSubmitModal.tsx`, `OrderDetailModal.tsx`, `VerdictComposer.tsx`, `components/OrdersBlock.tsx`, `components/NationMark.tsx` (цветная метка и название государства-автора). Все окна не шире 910 px, без горизонтальной прокрутки; текст не ломается посреди слова.
+**Файлы** (`frontend/src/modules/04_orders/`): `api.ts`, `types.ts`, `texts.ts`, `hooks/useAssignedOrders.ts`, `hooks/useOrderDetail.ts`, `hooks/useOrderRules.ts`, `OrdersUiProvider.tsx` (контекст и хост окон), `registryFilters.ts` (регистрация фильтра «Назначены мне» в таблице Реестра — 5.6), `OrderComposer.tsx`, `ConfirmSubmitModal.tsx`, `OrderDetailModal.tsx`, `VerdictComposer.tsx`, `components/OrdersBlock.tsx`, `components/NationMark.tsx` (цветная метка и название государства-автора). Все окна не шире 910 px, без горизонтальной прокрутки; текст не ломается посреди слова.
 
 **Интеграция.** `OrdersUiProvider` монтируется один раз в `AppShell` и хостит модальные окна модуля; он же регистрирует в Реестре обработчик действия `order` (5.6). `OrdersBlock` вставляется в `PanelNationHome`; в `PanelCreateNation` блока нет (D12).
 
@@ -467,6 +467,8 @@ AssignedOrdersDTO = { items: list[AssignedOrderDTO] }    # все приказы
 ### 5.6. Расширения Реестра (клиент и сервер)
 
 Подробный контракт — Приложение A, список правок — Приложение B (B3). Кратко: столбец может иметь иконку вместо текста заголовка (`header_icon`, текст `title` остаётся подсказкой и подписью для доступности); новые типы ячеек `datetime` (дата и время в две строки) и `action_text` (кликабельный текст, действие `<обработчик>:<ссылка>`); у ячейки `nation` необязательный `flag_url` (в таблице приказов — снимок флага автора; при его отсутствии `null` и показывается цветная метка государства); клиентская точка `registerCellAction(handler, fn)`, которой пользуется `OrdersUiProvider`.
+
+**Фильтр «Назначены мне» (версия 0.10.0).** `OrdersUiProvider` регистрирует в таблице `orders` фильтр расширения Реестра `registerTableFilterExtension('orders', {id: 'assigned_to_me', label: 'Назначены мне', load})` (механизм — Spec 03_registry 5.5 «Фильтры расширений»): `load` читает `GET /orders/assigned` — очередь вердиктов самого вызывающего — и возвращает номера её приказов. Позиция «Да» оставляет строки `o<N>`, чьи номера входят в множество. Запрос строк таблицы не меняется и одинаков для всех игроков (INV-R10); судья никуда не передаётся и не раскрывается — фильтр целиком вычисляется в браузере из данных, которые вызывающий уже имеет (INV-O5). Этот же фильтр открывается предустановкой входа `preset: {assignedToMe: true}` (Spec 03_registry 5.5 «Вход с предустановкой»).
 
 ### 5.7. Админ-панель (`AdminRegistry`)
 
