@@ -24,6 +24,7 @@ import {
   MINI_BORDERS,
   MINI_GEOMETRY,
   MINI_MANIFEST,
+  MINI_NAMES,
   MINI_STATE,
 } from '../fixtures/miniMap';
 import { CONNECTING_EDGE_TYPES } from '../lib/selection';
@@ -31,6 +32,7 @@ import { clearMapSessionCache } from '../lib/sessionCache';
 import type {
   MapBordersDTO,
   MapManifestDTO,
+  MapProvinceNamesDTO,
   StartingGroupCheckDTO,
 } from '../types';
 
@@ -104,6 +106,10 @@ export interface MapStubOptions {
   manifestEtag?: string;
   /** Called per manifest request — tracks If-None-Match and count. */
   onManifest?: (ifNoneMatch: string | null) => Response | void;
+  names?: MapProvinceNamesDTO;
+  namesEtag?: string;
+  /** Called per province-names request (load-speed unit 11). */
+  onNames?: (ifNoneMatch: string | null) => Response | void;
   geometry?: typeof MINI_GEOMETRY;
   /** Per-geometry-version overrides: status or a body. */
   onGeometry?: (version: string) => Response | void;
@@ -125,12 +131,14 @@ export interface MapStubOptions {
 export interface MapStub {
   calls: {
     manifest: number;
+    names: number;
     geometry: number;
     borders: number;
     state: number;
     check: number;
   };
   manifestIfNoneMatch: (string | null)[];
+  namesIfNoneMatch: (string | null)[];
   /** province_ids of every starting-group check request. */
   checkRequests: number[][];
 }
@@ -219,13 +227,23 @@ export function stubMapFetch(options: MapStubOptions = {}): MapStub {
   clearMapSessionCache();
 
   const manifest = options.manifest ?? MINI_MANIFEST;
+  const names = options.names ?? MINI_NAMES;
   const geometry = options.geometry ?? MINI_GEOMETRY;
   const borders = options.borders ?? MINI_BORDERS;
   const state = options.state ?? MINI_STATE;
   const etag = options.manifestEtag ?? '"mini-etag-1"';
+  const namesEtag = options.namesEtag ?? '"mini-names-etag-1"';
   const stub: MapStub = {
-    calls: { manifest: 0, geometry: 0, borders: 0, state: 0, check: 0 },
+    calls: {
+      manifest: 0,
+      names: 0,
+      geometry: 0,
+      borders: 0,
+      state: 0,
+      check: 0,
+    },
     manifestIfNoneMatch: [],
+    namesIfNoneMatch: [],
     checkRequests: [],
   };
 
@@ -251,6 +269,25 @@ export function stubMapFetch(options: MapStubOptions = {}): MapStub {
         return new Response(null, { status: 304, headers: { ETag: etag } });
       }
       return json(manifest, { headers: { ETag: etag } });
+    }
+    if (path === '/api/v1/map/province-names') {
+      stub.calls.names += 1;
+      const inm =
+        (init?.headers as Record<string, string> | undefined)?.[
+          'If-None-Match'
+        ] ?? null;
+      stub.namesIfNoneMatch.push(inm);
+      const override = options.onNames?.(inm);
+      if (override) {
+        return override;
+      }
+      if (inm === namesEtag) {
+        return new Response(null, {
+          status: 304,
+          headers: { ETag: namesEtag },
+        });
+      }
+      return json(names, { headers: { ETag: namesEtag } });
     }
     if (path.startsWith('/api/v1/map/geometry/')) {
       stub.calls.geometry += 1;

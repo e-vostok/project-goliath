@@ -212,6 +212,16 @@ export function registerDefaultHandlers() {
     http.get('*/api/v1/map/manifest', () =>
       HttpResponse.json(mswMap.manifest),
     ),
+    // load-speed unit 11: province names ride their own light route,
+    // resolved the way the server resolves them (name_ru over name).
+    http.get('*/api/v1/map/province-names', () =>
+      HttpResponse.json({
+        map_version: mswMap.manifest.geometry_version,
+        names: Object.fromEntries(
+          mswMap.manifest.nodes.map((n) => [n.id, n.name_ru ?? n.name]),
+        ),
+      }),
+    ),
     http.get('*/api/v1/map/geometry/:version', () =>
       HttpResponse.json(mswMap.geometry),
     ),

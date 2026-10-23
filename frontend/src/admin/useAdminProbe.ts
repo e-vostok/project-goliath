@@ -12,6 +12,13 @@
  * sub survives the fresh JWT each launch brings. A stored «admin»
  * still revalidates silently (rights can be revoked). Storage can
  * throw or come back empty inside VK — every access is wrapped.
+ *
+ * Only a 403 — the server's definite «not an admin» — is worth
+ * caching (load-speed unit 11 fix): a 401 (expired token), a 5xx or a
+ * network failure resolves false for this render but writes nothing,
+ * so a real admin is never locked out for the whole session by one
+ * bad answer. The `v2` prefix keeps possibly-wrong `0`s written by
+ * unit 10 (which cached 401s too) from being trusted.
  */
 
 import { useEffect, useState } from 'react';
@@ -19,7 +26,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../shared/api-client';
 import { useSession } from '../modules/00_core/hooks/useAuth';
 
-const STORAGE_PREFIX = 'pax.admin.';
+const STORAGE_PREFIX = 'pax.admin.v2.';
 
 /**
  * Short, token-free fingerprint of the session token's subject. The JWT
@@ -91,12 +98,11 @@ export function useAdminProbe(): boolean {
         }
       })
       .catch((error: unknown) => {
-        // A definitive refusal is worth remembering; a network failure
-        // is not — the next entry probes again as before.
-        if (
-          error instanceof ApiError &&
-          (error.status === 401 || error.status === 403)
-        ) {
+        // Only the server's definite «not an admin» is worth
+        // remembering; a 401 (expired/invalid token), a 5xx or a
+        // network failure writes nothing — the next entry probes
+        // again as before.
+        if (error instanceof ApiError && error.status === 403) {
           writeCached(key, false);
         }
       });

@@ -185,6 +185,22 @@ class MapManifestDTO(BaseModel):
     attribution: str
 
 
+class MapProvinceNamesDTO(BaseModel):
+    """
+    Response for GET /api/v1/map/province-names (load-speed unit 11).
+
+    The light names-only payload for screens that need province names
+    but not the map itself: ``map_version`` is the manifest's
+    ``geometry_version`` string, ``names`` maps every node id to its
+    display name (``name_ru`` when set, else ``name``, else the node
+    key — the same rule ``MapNode.display_name`` applies). No geometry,
+    coordinates or edges.
+    """
+
+    map_version: str
+    names: dict[int, str]
+
+
 class MapGeometryDTO(BaseModel):
     """Response for GET /api/v1/map/geometry/{version}."""
 

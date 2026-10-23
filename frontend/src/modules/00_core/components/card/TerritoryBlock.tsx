@@ -5,10 +5,11 @@
  * «★ Столица (Провинция)» form when its name differs from the
  * province name.
  *
- * Names come from the map manifest via `useProvinceNames` (shared
- * session cache — no second download after the map/picker). While
- * they load, same-size neutral placeholders stand in; a province
- * absent from the manifest shows «Провинция» without its number.
+ * Names come from `useProvinceNames` (the light GET
+ * /map/province-names payload — load-speed unit 11 — not the full
+ * manifest). While they load, same-size neutral placeholders stand
+ * in; a province absent from the answer shows «Провинция» without
+ * its number.
  */
 
 import type { NationDTO, NationPublicDTO } from '../../../../shared/types';

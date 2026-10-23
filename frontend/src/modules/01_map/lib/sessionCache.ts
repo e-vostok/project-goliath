@@ -12,6 +12,8 @@
  *   the app version, so a cold start revalidates against the stored
  *   ETag instead of re-downloading ~103 KB; a new build ignores — and
  *   replaces — the old copy;
+ * - the province-names pair the same way (load-speed unit 11): the
+ *   non-map screens download ~5 KB of names instead of the manifest;
  * - geometry bodies keyed by their immutable version, plus an in-flight
  *   dedup so two consumers mounting together fire one request.
  *
@@ -28,24 +30,37 @@ import type {
   MapBordersDTO,
   MapGeometryDTO,
   MapManifestDTO,
+  MapProvinceNamesDTO,
 } from '../types';
 
 /**
- * The stored manifest copy: `{ v, etag, body }` under a key that carries
- * the app version, so every build revalidates fresh instead of trusting
- * a previous deploy's data. `v` is the envelope schema — bump it if the
- * stored shape changes.
+ * Stored payload copies use a `{ v, etag, body }` envelope under keys
+ * that carry the app version, so every build revalidates fresh instead
+ * of trusting a previous deploy's data. `v` is the envelope schema —
+ * bump it if the stored shape changes.
+ */
+const STORAGE_ENVELOPE_SCHEMA = 1;
+
+/**
+ * The stored manifest copy. The body is ~0.8 MB — anything much
+ * bigger is corrupt; ignore it.
  */
 export const MANIFEST_STORAGE_KEY = `pax.map.manifest:${APP_VERSION}`;
-const MANIFEST_STORAGE_SCHEMA = 1;
-/** The body is ~0.8 MB — anything much bigger is corrupt; ignore it. */
 const MANIFEST_STORAGE_MAX_CHARS = 4_000_000;
 const MANIFEST_STORAGE_PREFIX = 'pax.map.manifest:';
 
-function readStoredManifest(): CachedBody<MapManifestDTO> | null {
+/**
+ * The stored province-names copy (load-speed unit 11): the body is
+ * ~30 KB of id → display-name pairs.
+ */
+export const NAMES_STORAGE_KEY = `pax.map.names:${APP_VERSION}`;
+const NAMES_STORAGE_MAX_CHARS = 300_000;
+const NAMES_STORAGE_PREFIX = 'pax.map.names:';
+
+function readStoredBody<T>(key: string, maxChars: number): CachedBody<T> | null {
   try {
-    const raw = window.localStorage.getItem(MANIFEST_STORAGE_KEY);
-    if (raw === null || raw.length > MANIFEST_STORAGE_MAX_CHARS) {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null || raw.length > maxChars) {
       return null;
     }
     const parsed: unknown = JSON.parse(raw);
@@ -54,7 +69,7 @@ function readStoredManifest(): CachedBody<MapManifestDTO> | null {
     }
     const entry = parsed as { v?: unknown; etag?: unknown; body?: unknown };
     if (
-      entry.v !== MANIFEST_STORAGE_SCHEMA ||
+      entry.v !== STORAGE_ENVELOPE_SCHEMA ||
       entry.body === null ||
       typeof entry.body !== 'object'
     ) {
@@ -62,7 +77,7 @@ function readStoredManifest(): CachedBody<MapManifestDTO> | null {
     }
     return {
       etag: typeof entry.etag === 'string' ? entry.etag : null,
-      body: entry.body as MapManifestDTO,
+      body: entry.body as T,
     };
   } catch {
     // Corrupt JSON or unavailable storage — treated as no stored copy.
@@ -70,24 +85,25 @@ function readStoredManifest(): CachedBody<MapManifestDTO> | null {
   }
 }
 
-function writeStoredManifest(value: CachedBody<MapManifestDTO>): void {
+function writeStoredBody<T>(
+  key: string,
+  prefix: string,
+  value: CachedBody<T>,
+): void {
   try {
     window.localStorage.setItem(
-      MANIFEST_STORAGE_KEY,
+      key,
       JSON.stringify({
-        v: MANIFEST_STORAGE_SCHEMA,
+        v: STORAGE_ENVELOPE_SCHEMA,
         etag: value.etag,
         body: value.body,
       }),
     );
     // One stored copy per app build — older builds' entries would
-    // otherwise accumulate ~0.8 MB each.
-    for (const key of Object.keys(window.localStorage)) {
-      if (
-        key.startsWith(MANIFEST_STORAGE_PREFIX) &&
-        key !== MANIFEST_STORAGE_KEY
-      ) {
-        window.localStorage.removeItem(key);
+    // otherwise accumulate (~0.8 MB each for the manifest).
+    for (const stored of Object.keys(window.localStorage)) {
+      if (stored.startsWith(prefix) && stored !== key) {
+        window.localStorage.removeItem(stored);
       }
     }
   } catch {
@@ -95,8 +111,26 @@ function writeStoredManifest(value: CachedBody<MapManifestDTO>): void {
   }
 }
 
+function readStoredManifest(): CachedBody<MapManifestDTO> | null {
+  return readStoredBody(MANIFEST_STORAGE_KEY, MANIFEST_STORAGE_MAX_CHARS);
+}
+
+function writeStoredManifest(value: CachedBody<MapManifestDTO>): void {
+  writeStoredBody(MANIFEST_STORAGE_KEY, MANIFEST_STORAGE_PREFIX, value);
+}
+
+function readStoredNames(): CachedBody<MapProvinceNamesDTO> | null {
+  return readStoredBody(NAMES_STORAGE_KEY, NAMES_STORAGE_MAX_CHARS);
+}
+
+function writeStoredNames(value: CachedBody<MapProvinceNamesDTO>): void {
+  writeStoredBody(NAMES_STORAGE_KEY, NAMES_STORAGE_PREFIX, value);
+}
+
 let manifestCache: CachedBody<MapManifestDTO> | null = null;
 let manifestSeeded = false;
+let namesCache: CachedBody<MapProvinceNamesDTO> | null = null;
+let namesSeeded = false;
 const geometryCache = new Map<string, MapGeometryDTO>();
 const geometryInflight = new Map<string, Promise<MapGeometryDTO>>();
 const bordersCache = new Map<string, MapBordersDTO>();
@@ -122,6 +156,29 @@ export function writeManifestCache(
   }
   manifestCache = value;
   writeStoredManifest(value);
+}
+
+/**
+ * The province-names pair, seeded from storage on first read — the
+ * same cold-start `If-None-Match` story as the manifest, for the
+ * light names payload (load-speed unit 11).
+ */
+export function readNamesCache(): CachedBody<MapProvinceNamesDTO> | null {
+  if (!namesSeeded) {
+    namesSeeded = true;
+    namesCache = readStoredNames();
+  }
+  return namesCache;
+}
+
+export function writeNamesCache(
+  value: CachedBody<MapProvinceNamesDTO>,
+): void {
+  if (value === namesCache) {
+    return;
+  }
+  namesCache = value;
+  writeStoredNames(value);
 }
 
 export function readGeometryCache(version: string): MapGeometryDTO | null {
@@ -209,8 +266,11 @@ export function loadBordersCached(
 export function clearMapSessionCache(): void {
   manifestCache = null;
   manifestSeeded = false;
+  namesCache = null;
+  namesSeeded = false;
   try {
     window.localStorage.removeItem(MANIFEST_STORAGE_KEY);
+    window.localStorage.removeItem(NAMES_STORAGE_KEY);
   } catch {
     // Storage unavailable — nothing to forget there anyway.
   }

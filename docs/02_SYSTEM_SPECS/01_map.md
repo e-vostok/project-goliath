@@ -385,12 +385,13 @@ $$mult(\text{strait})=\begin{cases}\text{multiplier}, & \text{если зада�
 | Метод | Путь | Request | Response | Код |
 | --- | --- | --- | --- | --- |
 | GET | `/map/manifest` | — | `MapManifestDTO` | 200 / 304 |
+| GET | `/map/province-names` | — | `MapProvinceNamesDTO` | 200 / 304 |
 | GET | `/map/geometry/{version}` | — | `MapGeometryDTO` | 200 / 404 |
 | GET | `/map/borders/{version}` | — | `MapBordersDTO` | 200 / 404 |
 | GET | `/map/state` | `?turn=` | `MapStateDTO` | 200 / 422 |
 | POST | `/map/starting-group/check` | `StartingGroupCheckRequest` | `StartingGroupCheckResponse` | 200 / 404 |
 
-`GET /map/manifest` отдаёт содержимое `manifest.json` плюс правила интерфейса; поддерживает `ETag` (значение — хэш от `geometry_version`, хэша `manifest.json` и канонического JSON блока `rules`, поэтому правка конфига меняет `ETag`) и условный запрос `If-None-Match` (слабое сравнение RFC 9110); заголовок `Cache-Control: no-cache`. `GET /map/geometry/{version}` и `GET /map/borders/{version}` отдают геометрию и границы с заголовком `Cache-Control: public, max-age=31536000, immutable` и `ETag`, равным версии; версия, отличная от текущей, даёт 404 `MAP_VERSION_UNKNOWN` (клиент перезапрашивает manifest). Тела manifest, геометрии и границ собираются один раз при старте и отдаются готовыми байтами. `GET /map/state` без `turn` — текущий ход; с `turn` — прошлый ход по журналу; вне диапазона `0…current_turn` — 422 `TURN_OUT_OF_RANGE`. Выведенные из игры узлы в ответе `state` не появляются.
+`GET /map/manifest` отдаёт содержимое `manifest.json` плюс правила интерфейса; поддерживает `ETag` (значение — хэш от `geometry_version`, хэша `manifest.json` и канонического JSON блока `rules`, поэтому правка конфига меняет `ETag`) и условный запрос `If-None-Match` (слабое сравнение RFC 9110); заголовок `Cache-Control: no-cache`. `GET /map/province-names` (версия 0.10.0, единица 11) отдаёт только пары `id узла → показываемое название` для экранов без карты (карточка государства, регистрация, подэкраны): `map_version` — та же строка `geometry_version`, что в манифесте; название разрешается на сервере правилом `name_ru` → `name` → `key`; ни геометрии, ни координат, ни связей в ответе нет. Собственный `ETag` — хэш от `geometry_version` и хэша `manifest.json` (без `rules`: правка конфига не инвалидирует названия); условный запрос и `Cache-Control: no-cache` — как у манифеста. `GET /map/geometry/{version}` и `GET /map/borders/{version}` отдают геометрию и границы с заголовком `Cache-Control: public, max-age=31536000, immutable` и `ETag`, равным версии; версия, отличная от текущей, даёт 404 `MAP_VERSION_UNKNOWN` (клиент перезапрашивает manifest). Тела manifest, province-names, геометрии и границ собираются один раз при старте и отдаются готовыми байтами. `GET /map/state` без `turn` — текущий ход; с `turn` — прошлый ход по журналу; вне диапазона `0…current_turn` — 422 `TURN_OUT_OF_RANGE`. Выведенные из игры узлы в ответе `state` не появляются.
 
 ### DTO
 
@@ -405,6 +406,7 @@ MapNodeLabelDTO  = { x: float, y: float, w: float, h: float,
                      len: float, thick: float }
 MapEdgeDTO       = { a: int, b: int, type: "land" | "coast" | "sea" | "strait",
                      name: str | None, multiplier: float | None }    # multiplier — итоговое значение с учётом конфига; len не отдаётся
+MapProvinceNamesDTO = { map_version: str, names: dict[int, str] }   # map_version = geometry_version манифеста; names — id узла → показываемое название (name_ru → name → key)
 MapBordersDTO    = { version: str, pairs: dict[str, str], coasts: dict[str, str] }   # ключи "a-b" и id узла → SVG path d
 MapGeometryDTO   = { version: str, paths: dict[int, str], outside: str, sea_water: str }
 MapStateDTO      = { geometry_version: str, borders_version: str, turn: int, nations: list[MapNationDTO],

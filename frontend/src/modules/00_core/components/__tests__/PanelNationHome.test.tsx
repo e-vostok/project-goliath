@@ -348,13 +348,18 @@ describe('PanelNationHome — the card', () => {
   });
 
   it('shows same-size placeholders while province names load — no numbers flash', async () => {
-    let resolveManifest!: () => void;
+    let resolveNames!: () => void;
     server.use(
-      http.get('*/api/v1/map/manifest', async () => {
+      http.get('*/api/v1/map/province-names', async () => {
         await new Promise<void>((resolve) => {
-          resolveManifest = resolve;
+          resolveNames = resolve;
         });
-        return HttpResponse.json(mswMap.manifest);
+        return HttpResponse.json({
+          map_version: mswMap.manifest.geometry_version,
+          names: Object.fromEntries(
+            mswMap.manifest.nodes.map((n) => [n.id, n.name_ru ?? n.name]),
+          ),
+        });
       }),
     );
     renderHome();
@@ -363,7 +368,7 @@ describe('PanelNationHome — the card', () => {
     expect(within(territory).queryByText(/1001|1002/))
       .not.toBeInTheDocument();
 
-    resolveManifest();
+    resolveNames();
     expect(await within(territory).findByText('Бета'))
       .toBeInTheDocument();
   });
@@ -388,27 +393,32 @@ describe('PanelNationHome — the card', () => {
     expect(within(territory).queryByText(/9999/)).not.toBeInTheDocument();
   });
 
-  it('loads province names once through the shared map cache', async () => {
+  it('loads province names via the light route — never the manifest', async () => {
     let manifestCalls = 0;
-    let geometryCalls = 0;
+    let namesCalls = 0;
     server.use(
       http.get('*/api/v1/map/manifest', () => {
         manifestCalls += 1;
         return HttpResponse.json(mswMap.manifest);
       }),
-      http.get('*/api/v1/map/geometry/:version', () => {
-        geometryCalls += 1;
-        return HttpResponse.json(mswMap.geometry);
+      http.get('*/api/v1/map/province-names', () => {
+        namesCalls += 1;
+        return HttpResponse.json({
+          map_version: mswMap.manifest.geometry_version,
+          names: Object.fromEntries(
+            mswMap.manifest.nodes.map((n) => [n.id, n.name_ru ?? n.name]),
+          ),
+        });
       }),
     );
     renderHome();
 
     const territory = screen.getByTestId('nation-territory-block');
     await within(territory).findByText('Бета');
-    // One manifest request total — the names ride the shared map
-    // data, not a second download; geometry is never touched.
-    expect(manifestCalls).toBe(1);
-    expect(geometryCalls).toBe(0);
+    // One names request total (load-speed unit 11) — the ~20× heavier
+    // manifest is never touched for chips.
+    expect(namesCalls).toBe(1);
+    expect(manifestCalls).toBe(0);
   });
 });
 

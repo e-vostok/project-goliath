@@ -25,6 +25,7 @@ from modules._01_map.schemas import (
     MapBordersDTO,
     MapGeometryDTO,
     MapManifestDTO,
+    MapProvinceNamesDTO,
     MapStateDTO,
     StartingGroupCheckRequest,
     StartingGroupCheckResponse,
@@ -60,6 +61,32 @@ async def get_map_manifest(
         return Response(status_code=304, headers=headers)
     return Response(
         content=payloads.manifest_body,
+        media_type="application/json",
+        headers=headers,
+    )
+
+
+@router.get(
+    "/map/province-names",
+    response_model=MapProvinceNamesDTO,
+    responses={304: {"description": "Not Modified — ETag still matches"}},
+)
+async def get_province_names(
+    player: Player = Depends(get_current_player),
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> Response:
+    """
+    Province id → display name only (load-speed unit 11): the
+    non-map screens read names without downloading the ~100-times
+    heavier manifest. Same auth, ETag/304 and no-cache rules as
+    ``/map/manifest``; the body is prebuilt at startup like it.
+    """
+    payloads = api_service.get_api_payloads()
+    headers = {**_MANIFEST_HEADERS, "ETag": payloads.names_etag}
+    if api_service.etag_matches(if_none_match, payloads.names_etag):
+        return Response(status_code=304, headers=headers)
+    return Response(
+        content=payloads.names_body,
         media_type="application/json",
         headers=headers,
     )
