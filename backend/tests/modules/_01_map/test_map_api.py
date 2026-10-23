@@ -44,6 +44,7 @@ from modules._01_map.schemas import (
     MapBordersDTO,
     MapGeometryDTO,
     MapManifestDTO,
+    MapProvinceNamesDTO,
     MapStateDTO,
     StartingGroupCheckResponse,
 )
@@ -82,6 +83,7 @@ REAL_MAP_DIR = REPO_ROOT / "data" / "map"
 ADMIN_VK_ID = 515151
 
 MANIFEST_URL = "/api/v1/map/manifest"
+NAMES_URL = "/api/v1/map/province-names"
 GEOMETRY_URL = "/api/v1/map/geometry/{version}"
 STATE_URL = "/api/v1/map/state"
 CHECK_URL = "/api/v1/map/starting-group/check"
@@ -379,6 +381,90 @@ class TestManifest:
         assert "content-encoding" not in plain.headers
         assert zipped.headers["content-encoding"] == "gzip"
         assert int(zipped.headers["content-length"]) < len(plain.content)
+
+
+class TestProvinceNames:
+    """GET /api/v1/map/province-names — light names payload (unit 11)."""
+
+    async def test_shape_and_names(self, client, map_db_session, map_installed):
+        player = await seed_player(map_db_session)
+        resp = await client.get(NAMES_URL, headers=bearer_headers(player.id))
+
+        assert resp.status_code == 200
+        body = resp.json()
+        dto = MapProvinceNamesDTO.model_validate(body)
+
+        # Exactly the two documented fields — no coordinates, no edges.
+        assert set(body) == {"map_version", "names"}
+        assert dto.map_version == map_installed.geometry_version
+        assert all(isinstance(name, str) for name in dto.names.values())
+
+        # Every manifest node id is present; the display-name rule is
+        # name_ru over name over key — the same rule the client applied
+        # to MapNodeDTO before.
+        manifest = load_manifest(FIXTURE_DIR)
+        assert set(dto.names) == {n["id"] for n in manifest["nodes"]}
+        for node in manifest["nodes"]:
+            expected = node.get("name_ru") or node.get("name") or node["key"]
+            assert dto.names[node["id"]] == expected
+        # The mini sea nodes carry a name_ru — it must win over name.
+        sea = next(n for n in manifest["nodes"] if n["id"] == 2001)
+        assert dto.names[2001] == sea["name_ru"]
+
+        assert resp.headers["cache-control"] == "no-cache"
+        assert resp.headers["etag"] == api_service.get_api_payloads().names_etag
+
+    async def test_requires_auth(self, client):
+        resp = await client.get(NAMES_URL)
+        assert resp.status_code == 401
+
+    async def test_etag_304_cycle(self, client, map_db_session):
+        player = await seed_player(map_db_session)
+        headers = bearer_headers(player.id)
+        first = await client.get(NAMES_URL, headers=headers)
+        etag = first.headers["etag"]
+        assert etag.startswith('"') and etag.endswith('"')
+
+        second = await client.get(
+            NAMES_URL, headers={**headers, "If-None-Match": etag}
+        )
+        assert second.status_code == 304
+        assert second.content == b""
+        assert second.headers["etag"] == etag
+        assert second.headers["cache-control"] == "no-cache"
+
+        miss = await client.get(
+            NAMES_URL,
+            headers={**headers, "If-None-Match": '"0000000000000000"'},
+        )
+        assert miss.status_code == 200
+
+    async def test_etag_ignores_rules_changes(
+        self, client, map_db_session, flat_map_service, config
+    ):
+        """A config-only edit moves the manifest tag but not this one —
+        names carry no rules, so a config save must not force ~5 KB."""
+        player = await seed_player(map_db_session)
+        etag = (
+            await client.get(NAMES_URL, headers=bearer_headers(player.id))
+        ).headers["etag"]
+        changed = config.model_copy(
+            update={"colors": config.colors.model_copy(update={"hover": "#EEEEEE"})}
+        )
+        other = api_service.build_api_payloads(
+            MapService(flat_map_service.map_data, changed)
+        )
+        assert other.names_etag == etag
+        assert other.manifest_etag != etag
+
+    async def test_names_body_is_prepared_once(
+        self, client, map_db_session, map_installed
+    ):
+        """The served bytes are the prebuilt payload — no per-request
+        reassembly (same serving model as the manifest)."""
+        player = await seed_player(map_db_session)
+        resp = await client.get(NAMES_URL, headers=bearer_headers(player.id))
+        assert resp.content == api_service.get_api_payloads().names_body
 
 
 def test_names_ru_reach_node_dto(mini_dir, config):

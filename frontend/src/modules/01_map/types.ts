@@ -210,6 +210,19 @@ export interface MapManifestDTO {
   attribution: string;
 }
 
+/**
+ * `GET /map/province-names` (load-speed unit 11): node id → display
+ * name only — the light names payload for screens that are not the
+ * map (nation card, registration, subscreens). `map_version` is the
+ * same string the manifest advertises as `geometry_version`; names
+ * are already resolved server-side (`name_ru` over `name` over key),
+ * so the client never falls back itself.
+ */
+export interface MapProvinceNamesDTO {
+  map_version: string;
+  names: Record<number, string>;
+}
+
 export interface MapGeometryDTO {
   version: string;
   paths: Record<number, string>;
