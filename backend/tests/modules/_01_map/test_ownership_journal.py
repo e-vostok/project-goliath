@@ -100,6 +100,8 @@ class TestListenerWrites:
             assert row.prev_nation_id is None
             assert row.new_nation_id == nation.id
             assert row.new_nation_name == "Test Nation"
+            # The event-time snapshot carries the short name too.
+            assert row.new_nation_short_name == "Testland"
             assert row.new_nation_color == "#FF0000"
             assert row.turn_number == 0  # no game_clock row -> turn 0
 
@@ -133,6 +135,7 @@ class TestListenerWrites:
         for row in releases:
             assert row.prev_nation_id == nation.id
             assert row.new_nation_name is None
+            assert row.new_nation_short_name is None
             assert row.new_nation_color is None
             assert row.turn_number == 4
 
@@ -235,6 +238,7 @@ class TestOwnersAtTurn:
                     prev_nation_id=None,
                     new_nation_id="nation-a",
                     new_name="Old A Name",
+                    new_short_name="OldA",
                     new_color="#111111",
                     turn=1,
                 ),
@@ -243,6 +247,7 @@ class TestOwnersAtTurn:
                     prev_nation_id="nation-a",
                     new_nation_id=None,
                     new_name=None,
+                    new_short_name=None,
                     new_color=None,
                     turn=3,
                 ),
@@ -251,6 +256,7 @@ class TestOwnersAtTurn:
                     prev_nation_id=None,
                     new_nation_id="nation-b",
                     new_name="B Renamed",
+                    new_short_name="B",
                     new_color="#222222",
                     turn=5,
                 ),
@@ -270,6 +276,7 @@ class TestOwnersAtTurn:
                     nation_id="nation-a",
                     name="Old A Name",
                     color="#111111",
+                    short_name="OldA",
                 )
             }
 
@@ -284,6 +291,7 @@ class TestOwnersAtTurn:
                     nation_id="nation-b",
                     name="B Renamed",
                     color="#222222",
+                    short_name="B",
                 )
             }
 
@@ -327,11 +335,40 @@ class TestServiceGuards:
             prev_nation_id=None,
             new_nation_id="nation-x",
             new_name=None,  # inconsistent: id set, name NULL
+            new_short_name="X",
             new_color="#ABCDEF",
             turn=0,
         )
         with pytest.raises(ValueError, match="all set"):
             await record_changes(map_db_session, [change])
+
+    @pytest.mark.asyncio
+    async def test_short_name_pairs_with_nation_id(self, map_db_session):
+        """Spec Part 1: the short name follows the nation id — a claim
+        without it and a release carrying it are both rejected."""
+        missing = OwnershipChange(
+            province_id=1001,
+            prev_nation_id=None,
+            new_nation_id="nation-x",
+            new_name="X Realm",
+            new_short_name=None,  # claim without the short name
+            new_color="#ABCDEF",
+            turn=0,
+        )
+        with pytest.raises(ValueError, match="all set"):
+            await record_changes(map_db_session, [missing])
+
+        orphan = OwnershipChange(
+            province_id=1001,
+            prev_nation_id="nation-x",
+            new_nation_id=None,
+            new_name=None,
+            new_short_name="X",  # release carrying a short name
+            new_color=None,
+            turn=1,
+        )
+        with pytest.raises(ValueError, match="all set"):
+            await record_changes(map_db_session, [orphan])
 
     @pytest.mark.asyncio
     async def test_clear_all_wipes_journal(

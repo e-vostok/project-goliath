@@ -233,6 +233,8 @@ export interface MapBordersDTO {
 export interface MapNationDTO {
   id: string | null;
   name: string;
+  /** Event-time short-name snapshot; the map shows short names only (no flags). */
+  short_name: string;
   color_hex: string;
 }
 

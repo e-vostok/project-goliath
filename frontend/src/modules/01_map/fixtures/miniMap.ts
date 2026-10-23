@@ -184,6 +184,7 @@ export const MINI_STATE: MapStateDTO = {
     {
       id: 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d',
       name: 'Тестия',
+      short_name: 'Тестия',
       color_hex: '#e64545',
     },
   ],

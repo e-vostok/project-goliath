@@ -129,6 +129,7 @@ class OwnedProvinceInfo:
     nation_id: str
     nation_name: str
     nation_color: str
+    nation_short_name: str
 
 
 @dataclass(frozen=True)
@@ -137,7 +138,8 @@ class PlayerNationSummary:
     The player's nation as satellites need it (Spec 02_bot Part 1.3):
     display fields plus the province count — enough for digests and
     the "has nation" check. ``leader_name``/``leader_title`` may be
-    None for nations predating the profile migration.
+    None for nations predating the profile migration. ``flag_id`` is
+    None for nations created before 0.9.0.
     """
 
     nation_id: str
@@ -146,6 +148,8 @@ class PlayerNationSummary:
     leader_title: str | None
     province_count: int
     color_hex: str
+    short_name: str
+    flag_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -330,7 +334,13 @@ class ProvinceService:
         ck_provinces_sea_unowned keeps their nation_id NULL.
         """
         result = await session.execute(
-            select(Province.id, Nation.id, Nation.name, Nation.color_hex)
+            select(
+                Province.id,
+                Nation.id,
+                Nation.name,
+                Nation.color_hex,
+                Nation.short_name,
+            )
             .join(Nation, Province.nation_id == Nation.id)
             .order_by(Province.id)
         )
@@ -341,6 +351,7 @@ class ProvinceService:
                 nation_id=row[1],
                 nation_name=row[2],
                 nation_color=row[3],
+                nation_short_name=row[4],
             )
             for row in result.all()
         ]
@@ -834,6 +845,7 @@ class NationService:
                     prev_nation_id=None,
                     new_nation_id=nation.id,
                     new_name=nation.name,
+                    new_short_name=nation.short_name,
                     new_color=nation.color_hex,
                     turn=turn,
                 )
@@ -878,6 +890,8 @@ class NationService:
             leader_title=nation.leader_title,
             province_count=count_result.scalar_one(),
             color_hex=nation.color_hex,
+            short_name=nation.short_name,
+            flag_id=nation.flag_id,
         )
 
     @staticmethod
@@ -1183,6 +1197,7 @@ class NationService:
                     prev_nation_id=nation_id,
                     new_nation_id=None,
                     new_name=None,
+                    new_short_name=None,
                     new_color=None,
                     turn=turn,
                 )

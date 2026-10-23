@@ -522,8 +522,10 @@ class TestState:
         assert dto.owners == [[1001, 0], [1002, 0], [1003, 1]]
         assert [str(n.id) for n in dto.nations] == [nation_a.id, nation_b.id]
         assert dto.nations[0].name == "Alpha"
+        assert dto.nations[0].short_name == nation_a.short_name
         assert dto.nations[0].color_hex == "#AA1100"
         assert dto.nations[1].name == "Bravo"
+        assert dto.nations[1].short_name == nation_b.short_name
         # SEA nodes are never listed.
         assert all(pid < 2001 for pid, _ in dto.owners)
 
@@ -542,6 +544,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id="nation-gone",
                     new_name="Gone Realm",
+                    new_short_name="Gone",
                     new_color="#101010",
                     turn=0,
                 ),
@@ -550,6 +553,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id="nation-b",
                     new_name="B Realm",
+                    new_short_name="B",
                     new_color="#202020",
                     turn=1,
                 ),
@@ -558,6 +562,7 @@ class TestState:
                     prev_nation_id="nation-gone",
                     new_nation_id=None,
                     new_name=None,
+                    new_short_name=None,
                     new_color=None,
                     turn=2,
                 ),
@@ -569,13 +574,21 @@ class TestState:
         at_0 = (await client.get(STATE_URL, params={"turn": 0}, headers=headers)).json()
         assert at_0["turn"] == 0
         assert at_0["owners"] == [[1001, 0]]
+        # A vanished nation's journal snapshot keeps name, short name
+        # and colour; its live id resolves to null.
         assert at_0["nations"] == [
-            {"id": None, "name": "Gone Realm", "color_hex": "#101010"}
+            {
+                "id": None,
+                "name": "Gone Realm",
+                "short_name": "Gone",
+                "color_hex": "#101010",
+            }
         ]
 
         at_1 = (await client.get(STATE_URL, params={"turn": 1}, headers=headers)).json()
         assert at_1["owners"] == [[1001, 0], [1002, 1]]
         assert at_1["nations"][1]["name"] == "B Realm"
+        assert at_1["nations"][1]["short_name"] == "B"
         # Two distinct journal ids stay two entries even though both
         # resolve to id=null (unique by (id, name, color)).
         assert [n["id"] for n in at_1["nations"]] == [None, None]
@@ -583,7 +596,12 @@ class TestState:
         at_2 = (await client.get(STATE_URL, params={"turn": 2}, headers=headers)).json()
         assert at_2["owners"] == [[1002, 0]]
         assert at_2["nations"] == [
-            {"id": None, "name": "B Realm", "color_hex": "#202020"}
+            {
+                "id": None,
+                "name": "B Realm",
+                "short_name": "B",
+                "color_hex": "#202020",
+            }
         ]
 
     async def test_turn_equals_current_matches_default(self, client, map_db_session):
@@ -625,6 +643,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id="nation-old",
                     new_name="Old Realm",
+                    new_short_name="Old",
                     new_color="#303030",
                     turn=0,
                 ),
@@ -633,6 +652,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id=nation.id,
                     new_name="Alpha",
+                    new_short_name=nation.short_name,
                     new_color="#AA1100",
                     turn=0,
                 ),
@@ -897,6 +917,10 @@ class TestLiveHistory:
             *[[pid, 1] for pid in range(1009, 1014)],
         ]
         assert [n["name"] for n in now["nations"]] == ["Alpha", "Bravo"]
+        assert [n["short_name"] for n in now["nations"]] == [
+            "Testland",
+            "Bravonia",
+        ]
 
         # --- tick -> 1, then rename Alpha -> Beta ------------------
         assert await tick() == 1
@@ -909,6 +933,7 @@ class TestLiveHistory:
 
         at_0 = await state(turn=0)
         assert at_0["nations"][0]["name"] == "Alpha"
+        assert at_0["nations"][0]["short_name"] == "Testland"
         assert at_0["nations"][0]["color_hex"] == "#AA1100"
         assert at_0["nations"][0]["id"] == nation_a["id"]
 
@@ -932,6 +957,7 @@ class TestLiveHistory:
             {
                 "id": nation_b["id"],
                 "name": "Bravo",
+                "short_name": "Bravonia",
                 "color_hex": "#2211BB",
             }
         ]
@@ -945,6 +971,7 @@ class TestLiveHistory:
         assert at_0["nations"][0] == {
             "id": None,
             "name": "Alpha",
+            "short_name": "Testland",
             "color_hex": "#AA1100",
         }
         assert at_0["nations"][1]["id"] == nation_b["id"]
@@ -953,6 +980,7 @@ class TestLiveHistory:
         # The journal records ownership events only: the rename does
         # not appear in past snapshots (Spec 3.5 formula).
         assert at_1["nations"][0]["name"] == "Alpha"
+        assert at_1["nations"][0]["short_name"] == "Testland"
         assert at_1["nations"][0]["id"] is None
 
         at_current = await state(turn=2)

@@ -31,7 +31,12 @@ const JUDGE_ORDER: OrderDetailDTO = {
 const JUDGE_ORDER_THREE: OrderDetailDTO = {
   ...JUDGE_ORDER,
   number: 3,
-  nation: { name: 'Северия', color: '#993366' },
+  nation: {
+    name: 'Северия',
+    color: '#993366',
+    short_name: 'Сев',
+    flag_url: null,
+  },
   title: 'Приказ №3',
 };
 

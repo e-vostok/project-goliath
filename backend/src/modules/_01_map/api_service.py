@@ -346,14 +346,16 @@ async def build_state(
     """
     current = await GameClockService.current_turn(session)
 
-    # (province_id, journal nation id, dto nation id, name, color) —
-    # the journal id stays in the dedup key even when the nation is
-    # gone, so two vanished look-alikes never merge (Spec Part 5).
-    # Retired/absent nodes (id not in the active manifest) never appear
-    # in the answer — live rows or journal snapshot alike (Spec 1.9:
-    # ``GET /map/state`` does not return owners of withdrawn nodes).
+    # (province_id, journal nation id, dto nation id, name, short
+    # name, color) — the journal id stays in the dedup key even when
+    # the nation is gone, so two vanished look-alikes never merge
+    # (Spec Part 5); the short name rides along for the DTO but is
+    # not part of the key. Retired/absent nodes (id not in the active
+    # manifest) never appear in the answer — live rows or journal
+    # snapshot alike (Spec 1.9: ``GET /map/state`` does not return
+    # owners of withdrawn nodes).
     active_ids = service.map_data.nodes
-    entries: list[tuple[int, str, str | None, str, str]] = []
+    entries: list[tuple[int, str, str | None, str, str, str]] = []
     if turn is None or turn == current:
         described = current
         for row in await ProvinceService.list_current_owners(session):
@@ -365,6 +367,7 @@ async def build_state(
                     row.nation_id,
                     row.nation_id,
                     row.nation_name,
+                    row.nation_short_name,
                     row.nation_color,
                 )
             )
@@ -383,6 +386,7 @@ async def build_state(
                     owner.nation_id,
                     (owner.nation_id if owner.nation_id in existing else None),
                     owner.name,
+                    owner.short_name,
                     owner.color,
                 )
             )
@@ -392,13 +396,20 @@ async def build_state(
     nations: list[MapNationDTO] = []
     nation_index: dict[tuple[str, str, str], int] = {}
     owners: list[list[int]] = []
-    for province_id, log_id, dto_id, name, color in entries:
+    for province_id, log_id, dto_id, name, short_name, color in entries:
         key = (log_id, name, color)
         index = nation_index.get(key)
         if index is None:
             index = len(nations)
             nation_index[key] = index
-            nations.append(MapNationDTO(id=dto_id, name=name, color_hex=color))
+            nations.append(
+                MapNationDTO(
+                    id=dto_id,
+                    name=name,
+                    short_name=short_name,
+                    color_hex=color,
+                )
+            )
         owners.append([province_id, index])
 
     return MapStateDTO(

@@ -96,6 +96,7 @@ class TestOwnershipRegistry:
             prev_nation_id=None,
             new_nation_id="n",
             new_name="N",
+            new_short_name="SN",
             new_color="#FFFFFF",
             turn=0,
         )
@@ -124,6 +125,7 @@ class TestOwnershipRegistry:
                     prev_nation_id=None,
                     new_nation_id="n",
                     new_name="N",
+                    new_short_name="SN",
                     new_color="#FFFFFF",
                     turn=0,
                 )
@@ -148,6 +150,7 @@ class TestOwnershipRegistry:
                         prev_nation_id=None,
                         new_nation_id=None,
                         new_name=None,
+                        new_short_name=None,
                         new_color=None,
                         turn=0,
                     )

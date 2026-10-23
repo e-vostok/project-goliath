@@ -207,12 +207,14 @@ class MapNationDTO(BaseModel):
     One nation referenced by ``MapStateDTO.owners``.
 
     ``id`` is ``None`` for nations that no longer exist in the live
-    table (possible only in past-turn answers); ``name``/``color_hex``
-    are always the values recorded at the described turn.
+    table (possible only in past-turn answers); ``name``/
+    ``short_name``/``color_hex`` are always the values recorded at the
+    described turn.
     """
 
     id: uuid.UUID | None
     name: str
+    short_name: str
     color_hex: str
 
 

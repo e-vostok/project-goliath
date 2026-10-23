@@ -30,8 +30,8 @@ VALID_SUMMARY = "Удержать переправу до подхода рез�
 VALID_URL = "https://vk.com/@defence-order"
 
 
-async def _submit_one(session, vk_user_id: int = 770301) -> None:
-    player, _ = await seed_author(session, vk_user_id, nation_name="Северная Лига")
+async def _submit_one(session, vk_user_id: int = 770301):
+    player, nation = await seed_author(session, vk_user_id, nation_name="Северная Лига")
     await OrderService.submit(
         session,
         player_id=player.id,
@@ -40,6 +40,7 @@ async def _submit_one(session, vk_user_id: int = 770301) -> None:
         summary=VALID_SUMMARY,
         article_url=VALID_URL,
     )
+    return nation
 
 
 class TestOrdersSource:
@@ -48,7 +49,7 @@ class TestOrdersSource:
     async def test_row_shape_has_no_judge_fields(self, test_db_session, orders_started):
         register_orders_extensions()
         startup_registry()
-        await _submit_one(test_db_session)
+        nation = await _submit_one(test_db_session)
 
         built = await build_table(test_db_session, "orders")
 
@@ -65,13 +66,14 @@ class TestOrdersSource:
             "verdict",
         }
         assert row.cells["number"] == 1
-        # The order stores only a name/colour snapshot — `id` is None:
-        # the cell shows but cannot open the nation subscreen.
+        # The order stores an identity snapshot — `id` is None: the
+        # cell shows the short name and flag but cannot open the
+        # nation subscreen.
         assert row.cells["nation"] == {
             "id": None,
-            "name": "Северная Лига",
+            "name": nation.short_name,
             "color": "#336699",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert row.cells["title"] == {
             "text": VALID_TITLE,
@@ -91,6 +93,24 @@ class TestOrdersSource:
         text = json.dumps(row.cells, ensure_ascii=False)
         for needle in ("judge", "vk_user", "player_id"):
             assert needle not in text
+
+    async def test_nation_cell_matches_select_options(
+        self, test_db_session, orders_started
+    ):
+        """Spec 3.7: the orders ``select_or_contains`` dropdown is built
+        from the nations-table ``name`` cells — the short name the
+        orders ``nation`` cell shows must appear among them."""
+        register_orders_extensions()
+        startup_registry()
+        nation = await _submit_one(test_db_session)
+
+        orders_table = await build_table(test_db_session, "orders")
+        nations_table = await build_table(test_db_session, "nations")
+
+        option_names = [row.cells["name"] for row in nations_table.rows]
+        cell = orders_table.rows[0].cells["nation"]
+        assert cell["name"] == nation.short_name
+        assert cell["name"] in option_names
 
     async def test_verdict_cell_fills_and_overdue_mark_clears(
         self, test_db_session, orders_started

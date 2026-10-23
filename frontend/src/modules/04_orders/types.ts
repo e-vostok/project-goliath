@@ -34,6 +34,10 @@ export interface OrderRulesDTO {
 export interface NationMarkDTO {
   name: string;
   color: string;
+  /** Submission-time short-name snapshot (INV-O6). */
+  short_name: string;
+  /** Catalog flag URL or null when the nation had no flag at submission. */
+  flag_url: string | null;
 }
 
 export interface VerdictDTO {

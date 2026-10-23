@@ -82,16 +82,18 @@ class OwnershipChange:
     One province's owner change, announced to all listeners.
 
     ``prev_nation_id`` is the previous owner's id (None when the
-    province was free). ``new_nation_id``/``new_name``/``new_color``
-    describe the new owner at the moment of the event — all three None
-    for a release. ``turn`` is ``game_clock.current_turn`` of the
-    transaction performing the change.
+    province was free). ``new_nation_id``/``new_name``/
+    ``new_short_name``/``new_color`` describe the new owner at the
+    moment of the event — all four None for a release. ``turn`` is
+    ``game_clock.current_turn`` of the transaction performing the
+    change.
     """
 
     province_id: int
     prev_nation_id: str | None
     new_nation_id: str | None
     new_name: str | None
+    new_short_name: str | None
     new_color: str | None
     turn: int
 

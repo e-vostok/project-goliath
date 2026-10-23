@@ -106,7 +106,7 @@ class TestAlembicEndToEnd:
                 ).scalar_one()
         finally:
             engine.dispose()
-        assert version == "0012"
+        assert version == "0014"
 
         # One masked target line was printed, with no password and no
         # silent SQLite fallback.

@@ -36,7 +36,7 @@ const land: MapNodeDTO = {
 };
 const sea: MapNodeDTO = { ...land, id: 2, key: 'sea_x', kind: 'SEA' };
 
-const NATION = { id: 'n1', name: 'Тестия', color_hex: '#e64545' };
+const NATION = { id: 'n1', name: 'Тестия', short_name: 'Тестия', color_hex: '#e64545' };
 
 describe('nodeFill', () => {
   it('paints an owned province in the owner colour', () => {
@@ -56,7 +56,7 @@ describe('buildOwnerMap', () => {
     geometry_version: 'v1',
     borders_version: 'b1',
     turn: 3,
-    nations: [NATION, { id: 'n2', name: 'Другия', color_hex: '#00ff00' }],
+    nations: [NATION, { id: 'n2', name: 'Другия', short_name: 'Другия', color_hex: '#00ff00' }],
     owners: [
       [1, 0],
       [5, 1],
