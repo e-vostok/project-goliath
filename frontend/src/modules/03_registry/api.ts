@@ -5,7 +5,11 @@
  */
 
 import { apiFetch } from '../../shared/api-client';
-import type { RegistryRowsDTO, RegistryTablesDTO } from './types';
+import type {
+  RegistryPlayerDTO,
+  RegistryRowsDTO,
+  RegistryTablesDTO,
+} from './types';
 
 export const registryApi = {
   /** GET /registry/tables — layout + description of every table. */
@@ -17,6 +21,17 @@ export const registryApi = {
   getRows(token: string, tableId: string, signal?: AbortSignal) {
     return apiFetch<RegistryRowsDTO>(
       `/registry/tables/${encodeURIComponent(tableId)}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * GET /registry/players/{number} — the public card of one player
+   * (Spec 5.6); 404 REGISTRY_PLAYER_NOT_FOUND beyond the list.
+   */
+  getPlayer(token: string, number: number, signal?: AbortSignal) {
+    return apiFetch<RegistryPlayerDTO>(
+      `/registry/players/${encodeURIComponent(number)}`,
       { token, signal },
     );
   },

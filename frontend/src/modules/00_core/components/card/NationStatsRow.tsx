@@ -1,11 +1,11 @@
 /**
- * NationStatsRow — the row of four stat tiles under the header
- * (UI Spec 9.1, mockup «Main»): «Провинции» (count), «Уровень» and
- * «Судейский рейтинг» (the owner's numbers — they ride the nation
- * itself since 0.9.0), «Неразрешённые приказы» («N» plus a muted
- * «из M» — the counter and the limit come from GET /orders/rules,
- * the same source the order composer reads; the client never
- * hard-codes the limit).
+ * NationStatsRow — the row of stat tiles under the header (UI Spec
+ * 9.1, mockup «Main»): «Провинции» (count) and «Неразрешённые
+ * приказы» («N» plus a muted «из M» — the counter and the limit come
+ * from GET /orders/rules, the same source the order composer reads;
+ * the client never hard-codes the limit). «Уровень» and «Судейский
+ * рейтинг» are the PLAYER's numbers — they left the nation card in
+ * 0.10.0 (unit 8b) and now live on the «Игрок» subscreen.
  */
 
 import type { NationDTO } from '../../../../shared/types';
@@ -28,17 +28,11 @@ export function NationStatsRow({ nation }: { nation: NationDTO }) {
       data-testid="nation-stats-row"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
         gap: SPACING['space-3'],
       }}
     >
       <StatTile label="Провинции" value={nation.province_ids.length} />
-      <StatTile label="Уровень" value={nation.level} />
-      <StatTile
-        label="Судейский рейтинг"
-        value={nation.judge_rating}
-        accent
-      />
       <StatTile
         label="Неразрешённые приказы"
         value={

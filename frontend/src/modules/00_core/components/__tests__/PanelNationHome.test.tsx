@@ -4,8 +4,8 @@
  *
  * Card covers: header (flag/stub, the short name as the small label
  * line above the display
- * name, motto, colour), the four stat tiles («N из M» from
- * /orders/rules, level/rating — the nation's own fields since 0.9.0),
+ * name, motto, colour), the stat tiles («Провинции», «N из M» from
+ * /orders/rules — level/rating left the card in 0.10.0, unit 8b),
  * leader block (no captions, title hidden when empty),
  * territory chips BY NAME with the capital first («★ Столица
  * (Провинция)»), the description/history block rules, the removed
@@ -147,22 +147,20 @@ describe('PanelNationHome — the card', () => {
       within(header).getByRole('button', { name: 'Изменить' }),
     ).toBeInTheDocument();
 
-    // The four tiles — level/rating are the nation's own fields.
+    // Two tiles (0.10.0 unit 8b): level and rating — the player's
+    // numbers — left the nation card for the «Игрок» subscreen.
     const tiles = await screen.findByTestId('nation-stats-row');
     const tileOf = (label: string) =>
       within(tiles).getByText(label).parentElement as HTMLElement;
     expect(tileOf('Провинции').textContent).toContain('2');
     await waitFor(() =>
-      expect(tileOf('Уровень').textContent).toContain('5'),
-    );
-    await waitFor(() =>
-      expect(tileOf('Судейский рейтинг').textContent).toContain('21'),
-    );
-    await waitFor(() =>
       expect(tileOf('Неразрешённые приказы').textContent).toContain(
         '2 из 7',
       ),
     );
+    expect(tiles.children).toHaveLength(2);
+    expect(within(tiles).queryByText('Уровень')).toBeNull();
+    expect(within(tiles).queryByText('Судейский рейтинг')).toBeNull();
 
     // Leader — portrait image, name, uppercase title, bio; no captions.
     const leader = screen.getByTestId('nation-leader-block');

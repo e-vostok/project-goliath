@@ -154,10 +154,11 @@ export function NationTip({
 }
 
 /**
- * The link look every nation-opening cell shares (unit 14c): plain
+ * The link look every subscreen-opening cell shares (unit 14c — the
+ * nation subscreen; 0.10.0 unit 8b — the player subscreen): plain
  * cell content on a transparent `action`-coloured button that
  * underlines on hover/focus and ellipsizes like a text cell. No
- * `title` — the «Подсказка» (unit 11) already names the nation.
+ * `title` — the «Подсказка» (unit 11) already names the subject.
  */
 export function NationOpenLink({
   onOpen,

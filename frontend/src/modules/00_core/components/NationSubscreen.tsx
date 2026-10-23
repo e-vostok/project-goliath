@@ -6,8 +6,9 @@
  * itself stays mounted behind it (hidden, state kept). One request —
  * `api.getNation` (the public card) — and the same building blocks as
  * the «Штаб» card (unit 8b): `NationCardHeader` with «Показать на
- * карте» in place of «Изменить», THREE `StatTile`s («Провинции»,
- * «Уровень», «Судейский рейтинг» — the «Приказы» tile is absent), the
+ * карте» in place of «Изменить», the «Провинции» `StatTile` (level
+ * and rating are the PLAYER's numbers — they left the nation screens
+ * in 0.10.0, unit 8b, and live on the «Игрок» subscreen), the
  * «Глава государства» + «Территория» row (province chips by name,
  * capital first) and «Описание» with the history link. The public
  * DTO carries no gender / succession / anthem — nothing here shows
@@ -166,17 +167,11 @@ export function NationSubscreen({
             data-testid="nation-subscreen-stats"
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
               gap: SPACING['space-3'],
             }}
           >
             <StatTile label="Провинции" value={nation.province_ids.length} />
-            <StatTile label="Уровень" value={nation.level} />
-            <StatTile
-              label="Судейский рейтинг"
-              value={nation.judge_rating}
-              accent
-            />
           </div>
           <div
             style={{

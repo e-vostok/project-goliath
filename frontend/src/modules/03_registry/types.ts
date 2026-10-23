@@ -173,3 +173,27 @@ export interface RegistryRowsDTO {
   generated_at: string;
   rows: RegistryRowDTO[];
 }
+
+/**
+ * The players-table row key carries the player's public Registry
+ * number: `p<N>`, N = 1–9 digits (Spec 5.6). A `person` cell opens the
+ * player subscreen only when its row key matches — any other key
+ * (the `o<N>` of the orders table, …) gives no number to open.
+ */
+export const PLAYER_ROW_KEY_RE = /^p([0-9]{1,9})$/;
+
+/**
+ * `GET /registry/players/{number}` (Spec 5.6, version 0.10.0 unit 8b)
+ * — the public card of one player: exactly the cells of the players
+ * table's row `p<N>` and nothing more (INV-R2: no `player_id`, no
+ * `vk_user_id`). `person`, `joined` and `nation` are the very Spec 3.6
+ * cell shapes above.
+ */
+export interface RegistryPlayerDTO {
+  number: number;
+  person: RegistryPersonCell;
+  joined: RegistryDateCell;
+  level: number;
+  judge_rating: number;
+  nation: RegistryNationCell | null;
+}

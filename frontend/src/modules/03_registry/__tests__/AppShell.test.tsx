@@ -605,3 +605,158 @@ describe('AppShell — nation subscreen', () => {
     );
   });
 });
+
+/* -------------------------------------------------- player subscreen */
+
+const PLAYER_DTO = {
+  number: 1,
+  person: {
+    name: 'Борис Иванов',
+    avatar_url: null,
+    is_fallback: false,
+  },
+  joined: { text: '1 сентября 2026', key: 20697 },
+  level: 2,
+  judge_rating: 12,
+  nation: {
+    id: NATION_ID,
+    name: 'НВГ',
+    color: '#C0392B',
+    flag_url: null,
+  },
+};
+
+function registerPlayerSubscreen() {
+  server.use(
+    http.get('*/api/v1/registry/players/1', () =>
+      HttpResponse.json(PLAYER_DTO),
+    ),
+  );
+}
+
+describe('normalizeEntryHash — player subscreen links (#registry/player-N)', () => {
+  it('rewrites a bare #registry/player-<N> hash to the subscreen route', () => {
+    window.location.hash = '#registry/player-12';
+    normalizeEntryHash();
+    expect(window.location.hash).toBe('#/registry/player-12');
+  });
+
+  it('rewrites a malformed player number to the plain Registry — no error', () => {
+    for (const bad of [
+      '#registry/player-',
+      '#registry/player-1a',
+      '#registry/player-1234567890', // ten digits — over the limit
+    ]) {
+      window.location.hash = bad;
+      normalizeEntryHash();
+      expect(window.location.hash).toBe('#/registry');
+    }
+    // Not a player suffix at all — left untouched.
+    window.location.hash = '#registry/other-thing';
+    normalizeEntryHash();
+    expect(window.location.hash).toBe('#registry/other-thing');
+  });
+});
+
+describe('AppShell — player subscreen', () => {
+  it('a direct link «#/registry/player-<N>» shows the subscreen; «Реестр» stays the active tab and «← Реестр» returns to #/registry', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/registry/player-1';
+    renderApp(registerPlayerSubscreen);
+
+    await screen.findByTestId('player-subscreen');
+    expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
+      'aria-label',
+      'Реестр / Игроки / Борис Иванов',
+    );
+    expect(tab('Реестр')).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByTestId('subscreen-back'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+    expect(await screen.findByText('Борис Иванов')).toBeInTheDocument();
+  });
+
+  it.each(['player-', 'player-1a', 'player-1234567890'])(
+    'an invalid segment %s shows the plain Registry, no error',
+    async (sub) => {
+      window.location.hash = `#/registry/${sub}`;
+      renderApp();
+      expect(
+        await screen.findByText('Борис Иванов'),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('subscreen')).toBeNull();
+    },
+  );
+
+  it('a person cell click in «Игроки» opens the subscreen with chain «Реестр / Игроки / Борис Иванов»', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/registry';
+    renderApp(registerPlayerSubscreen);
+
+    const playerButton = await screen.findByRole('button', {
+      name: 'Борис Иванов',
+    });
+    await user.click(playerButton);
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/registry/player-1'),
+    );
+    await screen.findByTestId('player-subscreen');
+    expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
+      'aria-label',
+      'Реестр / Игроки / Борис Иванов',
+    );
+  });
+
+  it('«Назад» returns to the same Registry instance — search text and rows are kept', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/registry';
+    renderApp(registerPlayerSubscreen);
+
+    await screen.findByText('Борис Иванов');
+    const search = await screen.findByLabelText('Поиск…');
+    await user.type(search, 'Борис');
+    // The search filtered the table down to Борис only.
+    await waitFor(() =>
+      expect(screen.queryByText('Анна Смирнова')).not.toBeInTheDocument(),
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Борис Иванов' }),
+    );
+    await screen.findByTestId('player-subscreen');
+    // The Registry content is hidden but mounted — still in the DOM.
+    expect(screen.getByTestId('panel-registry')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('subscreen-back'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+
+    // Same DOM input (no remount), same text, same rows.
+    expect(screen.getByLabelText('Поиск…')).toBe(search);
+    expect(search).toHaveValue('Борис');
+    expect(
+      screen.getByRole('button', { name: 'Борис Иванов' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Анна Смирнова')).not.toBeInTheDocument();
+  });
+
+  it('the nation line inside the player subscreen opens the nation subscreen', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/registry/player-1';
+    renderApp(() => {
+      registerPlayerSubscreen();
+      registerNationSubscreen();
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'НВГ' }),
+    );
+    await waitFor(() =>
+      expect(window.location.hash).toBe(`#/registry/nation-${NATION_ID}`),
+    );
+    await screen.findByTestId('nation-subscreen');
+    expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
+      'aria-label',
+      'Реестр / Игроки / НВГ',
+    );
+  });
+});

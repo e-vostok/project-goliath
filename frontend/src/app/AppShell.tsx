@@ -37,6 +37,7 @@ import { NationSubscreen } from '../modules/00_core/components/NationSubscreen';
 import { PanelMap } from '../modules/01_map/components/PanelMap';
 import { setMapEntryRequest } from '../modules/01_map/lib/mapEntryRequest';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
+import { PlayerSubscreen } from '../modules/03_registry/components/PlayerSubscreen';
 import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
 import { errorText } from '../shared/errorTexts';
 import {
@@ -75,6 +76,17 @@ export const NATION_SUB_RE = /^nation-[0-9a-fA-F-]{8,64}$/;
 const NATION_BARE_HASH_RE = /^#registry\/(nation-[0-9a-fA-F-]{8,64})$/;
 
 /**
+ * The player subscreen address `#/registry/player-<N>` (UI Spec 9.7,
+ * 0.10.0 unit 8b): `<N>` is the player's public Registry number — the
+ * players-table row key `p<N>` — 1–9 digits. Anything else in the
+ * `:sub` segment is not a player address.
+ */
+export const PLAYER_SUB_RE = /^player-[0-9]{1,9}$/;
+
+/** `#registry/player-<N>` — the bare form of the address. */
+const PLAYER_BARE_HASH_RE = /^#registry\/(player-[0-9]{1,9})$/;
+
+/**
  * The community-menu deep link `https://vk.com/app<APP_ID>#map` arrives
  * as the bare hash `#map`; the hash router expects a path. Call once,
  * before the router is created (main.tsx). Module 02_bot adds the
@@ -96,6 +108,17 @@ export function normalizeEntryHash(): void {
   // malformed id falls back to the plain Registry, no error shown.
   if (window.location.hash.startsWith('#registry/nation-')) {
     const match = NATION_BARE_HASH_RE.exec(window.location.hash);
+    window.history.replaceState(
+      null,
+      '',
+      match ? `#/registry/${match[1]}` : '#/registry',
+    );
+    return;
+  }
+  // `#registry/player-<N>` (UI Spec 9.7): the player subscreen. A
+  // malformed number falls back to the plain Registry, no error shown.
+  if (window.location.hash.startsWith('#registry/player-')) {
+    const match = PLAYER_BARE_HASH_RE.exec(window.location.hash);
     window.history.replaceState(
       null,
       '',
@@ -171,14 +194,19 @@ function AuthedArea() {
   // renders get null (takeRegistryEntryRequest clears the store).
   const registryRequest = useRef(takeRegistryEntryRequest()).current;
 
-  // The nation subscreen (unit 14c): the `/registry/:sub` route's
-  // `nation-<id>` segment → the nation id; any other segment shows the
-  // plain Registry. `fromTab` rides router state (a row click pushes
+  // The nation subscreen (unit 14c) and the player subscreen (0.10.0
+  // unit 8b): the `/registry/:sub` route's segment → the nation id or
+  // the player number; any other segment shows the plain Registry.
+  // `fromTab` rides router state (a row click pushes
   // {fromTab: <tab title>}); a bare link has none.
   const subSegment = params?.sub;
   const nationSubId =
     typeof subSegment === 'string' && NATION_SUB_RE.test(subSegment)
       ? subSegment.slice('nation-'.length)
+      : null;
+  const playerSubNumber =
+    typeof subSegment === 'string' && PLAYER_SUB_RE.test(subSegment)
+      ? Number(subSegment.slice('player-'.length))
       : null;
   const fromTab = (() => {
     const state = location.state as { fromTab?: unknown } | null;
@@ -275,14 +303,17 @@ function AuthedArea() {
                     <PanelMap active={activePanel === PANEL_MAP} />
                   </Panel>
                   <Panel id={PANEL_REGISTRY}>
-                    {/* The nation subscreen replaces the Registry's
-                        content IN THE SAME panel — the Registry stays
-                        mounted (display:none) and keeps `active=true`,
-                        so its tab/search/sort/filters/scroll survive
-                        the round trip (Bible 2.7, UI Spec 9.3). */}
+                    {/* The nation and player subscreens replace the
+                        Registry's content IN THE SAME panel — the
+                        Registry stays mounted (display:none) and keeps
+                        `active=true`, so its tab/search/sort/filters/
+                        scroll survive the round trip (Bible 2.7, UI
+                        Spec 9.3 / 9.7). */}
                     <div
                       style={
-                        nationSubId === null ? undefined : { display: 'none' }
+                        nationSubId === null && playerSubNumber === null
+                          ? undefined
+                          : { display: 'none' }
                       }
                     >
                       <PanelRegistry
@@ -292,6 +323,12 @@ function AuthedArea() {
                           void navigator.push(`/registry/nation-${nationId}`, {
                             state: { fromTab: fromTabTitle },
                           })
+                        }
+                        onOpenPlayer={(playerNumber, fromTabTitle) =>
+                          void navigator.push(
+                            `/registry/player-${playerNumber}`,
+                            { state: { fromTab: fromTabTitle } },
+                          )
                         }
                       />
                     </div>
@@ -308,6 +345,18 @@ function AuthedArea() {
                           }
                           void navigator.push('/map');
                         }}
+                      />
+                    )}
+                    {playerSubNumber !== null && (
+                      <PlayerSubscreen
+                        number={playerSubNumber}
+                        fromTab={fromTab}
+                        onBack={() => void navigator.push('/registry')}
+                        onOpenNation={(nationId) =>
+                          void navigator.push(`/registry/nation-${nationId}`, {
+                            state: { fromTab: fromTab ?? 'Игроки' },
+                          })
+                        }
                       />
                     )}
                   </Panel>
