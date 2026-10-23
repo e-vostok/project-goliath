@@ -26,24 +26,34 @@ class OwnerAtTurn:
     """
     Owner of a province at turn T (formula 3.5).
 
-    ``name``/``color`` are the values stored on the ownership EVENT —
-    later renames of the nation do not rewrite history.
+    ``name``/``short_name``/``color`` are the values stored on the
+    ownership EVENT — later renames of the nation do not rewrite
+    history.
     """
 
     nation_id: str
     name: str
     color: str
+    short_name: str
 
 
 def _validate_consistency(change: OwnershipChange) -> None:
-    """Mirror ck_log_new_nation_consistent before hitting the database."""
+    """Mirror ck_log_new_nation_consistent before hitting the database.
+
+    The DB CHECK covers the ``new_nation_id``/``new_nation_name``/
+    ``new_nation_color`` triple; the short name pairs with the nation
+    id by the same claim/release rule but is enforced only here (the
+    column is outside the CHECK by design, Spec Part 1).
+    """
     is_release = change.new_nation_id is None
-    if (change.new_name is None) != is_release or (
-        change.new_color is None
-    ) != is_release:
+    if (
+        (change.new_name is None) != is_release
+        or (change.new_color is None) != is_release
+        or (change.new_short_name is None) != is_release
+    ):
         raise ValueError(
-            "OwnershipChange new_nation_id/new_name/new_color must be "
-            "all set (claim) or all None (release): "
+            "OwnershipChange new_nation_id/new_name/new_short_name/"
+            "new_color must be all set (claim) or all None (release): "
             f"province {change.province_id}"
         )
 
@@ -66,6 +76,7 @@ async def record_changes(
                 prev_nation_id=change.prev_nation_id,
                 new_nation_id=change.new_nation_id,
                 new_nation_name=change.new_name,
+                new_nation_short_name=change.new_short_name,
                 new_nation_color=change.new_color,
                 created_at=now,
             )
@@ -132,6 +143,7 @@ async def owners_at_turn(session: AsyncSession, turn: int) -> dict[int, OwnerAtT
             MapOwnershipLog.province_id,
             MapOwnershipLog.new_nation_id,
             MapOwnershipLog.new_nation_name,
+            MapOwnershipLog.new_nation_short_name,
             MapOwnershipLog.new_nation_color,
             rn,
         )
@@ -143,6 +155,7 @@ async def owners_at_turn(session: AsyncSession, turn: int) -> dict[int, OwnerAtT
             latest.c.province_id,
             latest.c.new_nation_id,
             latest.c.new_nation_name,
+            latest.c.new_nation_short_name,
             latest.c.new_nation_color,
         )
         .where(latest.c.rn == 1)
@@ -153,6 +166,7 @@ async def owners_at_turn(session: AsyncSession, turn: int) -> dict[int, OwnerAtT
             nation_id=row.new_nation_id,
             name=row.new_nation_name,
             color=row.new_nation_color,
+            short_name=row.new_nation_short_name,
         )
         for row in result.all()
     }

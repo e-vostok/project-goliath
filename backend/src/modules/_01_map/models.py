@@ -40,10 +40,17 @@ class MapOwnershipLog(Base):
     )
     turn_number: Mapped[int] = mapped_column(BigInteger, nullable=False)
     # Logical references only — no FK to nations: a nation row may be
-    # deleted while the journal keeps its id/name/color at event time.
+    # deleted while the journal keeps its id/name/short_name/color at
+    # event time. ``new_nation_short_name`` pairs with ``new_nation_id``
+    # (set on a claim, NULL on a release) — the named CHECK still
+    # covers only the original triple; the short-name pairing is
+    # enforced by ownership_service._validate_consistency.
     prev_nation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     new_nation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     new_nation_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    new_nation_short_name: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
     new_nation_color: Mapped[str | None] = mapped_column(String(7), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

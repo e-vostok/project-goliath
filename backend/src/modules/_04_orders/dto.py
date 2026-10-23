@@ -61,6 +61,8 @@ class NationMarkDTO(_Strict):
 
     name: str
     color: str
+    short_name: str
+    flag_url: str | None
 
 
 class VerdictDTO(_Strict):

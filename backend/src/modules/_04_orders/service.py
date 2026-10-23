@@ -91,6 +91,8 @@ class OrderDetailView:
     number: int
     nation_name: str
     nation_color: str
+    nation_short_name: str
+    nation_flag_id: str | None
     title: str
     summary: str
     article_url: str
@@ -126,6 +128,8 @@ class RegistryOrderView:
     number: int
     nation_name: str
     nation_color: str
+    nation_short_name: str
+    nation_flag_id: str | None
     title: str
     submitted_at: datetime
     distributed_at: datetime | None
@@ -152,6 +156,8 @@ class AssignedOrderView:
     number: int
     nation_name: str
     nation_color: str
+    nation_short_name: str
+    nation_flag_id: str | None
     title: str
     summary: str
     article_url: str
@@ -196,6 +202,8 @@ def _detail_view(
         number=order.number,
         nation_name=order.nation_name,
         nation_color=order.nation_color,
+        nation_short_name=order.nation_short_name,
+        nation_flag_id=order.nation_flag_id,
         title=order.title,
         summary=order.summary,
         article_url=order.article_url,
@@ -367,6 +375,8 @@ class OrderService:
                         nation_id=nation.nation_id,
                         nation_name=nation.name,
                         nation_color=nation.color_hex,
+                        nation_short_name=nation.short_name,
+                        nation_flag_id=nation.flag_id,
                         title=title,
                         summary=summary,
                         article_url=article_url,
@@ -415,6 +425,8 @@ class OrderService:
                 Order.number,
                 Order.nation_name,
                 Order.nation_color,
+                Order.nation_short_name,
+                Order.nation_flag_id,
                 Order.title,
                 Order.submitted_at,
                 Order.distributed_at,
@@ -427,11 +439,13 @@ class OrderService:
                 number=row[0],
                 nation_name=row[1],
                 nation_color=row[2],
-                title=row[3],
-                submitted_at=row[4],
-                distributed_at=row[5],
-                deadline_at=row[6],
-                verdict_at=row[7],
+                nation_short_name=row[3],
+                nation_flag_id=row[4],
+                title=row[5],
+                submitted_at=row[6],
+                distributed_at=row[7],
+                deadline_at=row[8],
+                verdict_at=row[9],
             )
             for row in result.all()
         ]
@@ -770,6 +784,8 @@ class OrderService:
                 number=order.number,
                 nation_name=order.nation_name,
                 nation_color=order.nation_color,
+                nation_short_name=order.nation_short_name,
+                nation_flag_id=order.nation_flag_id,
                 title=order.title,
                 summary=order.summary,
                 article_url=order.article_url,

@@ -176,6 +176,8 @@ async def make_order(
     nation_id: str | None = None,
     nation_name: str | None = None,
     nation_color: str | None = None,
+    nation_short_name: str | None = None,
+    nation_flag_id: str | None = None,
     title: str = "Тестовый приказ",
     summary: str = "Краткая суть тестового приказа.",
     article_url: str = "https://vk.com/@test/order-article",
@@ -224,6 +226,13 @@ async def make_order(
         nation_id=nation_id or (nation.id if nation else str(uuid.uuid4())),
         nation_name=nation_name or (nation.name if nation else "Test Nation"),
         nation_color=nation_color or (nation.color_hex if nation else "#FF0000"),
+        nation_short_name=nation_short_name
+        or (nation.short_name if nation else "TestNation"),
+        nation_flag_id=(
+            nation_flag_id
+            if nation_flag_id is not None
+            else (nation.flag_id if nation else None)
+        ),
         title=title,
         summary=summary,
         article_url=article_url,

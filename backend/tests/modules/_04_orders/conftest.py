@@ -153,6 +153,10 @@ async def seed_author(
         owner=player,
         name=nation_name,
         color_hex=nation_color,
+        # A catalog flag id — deterministic (the factory's random
+        # optional would sometimes yield None or an unknown id) so the
+        # flag_url snapshot path is exercised.
+        flag_id="flag_placeholder_1",
         provinces=[],
         scheduled_actions=[],
     )

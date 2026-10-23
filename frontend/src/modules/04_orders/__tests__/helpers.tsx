@@ -62,7 +62,12 @@ export const RULES: OrderRulesDTO = {
 
 export const ORDER: OrderDetailDTO = {
   number: 7,
-  nation: { name: 'Автория', color: '#336699' },
+  nation: {
+    name: 'Автория',
+    color: '#336699',
+    short_name: 'Авт',
+    flag_url: '/assets/nations/flags/flag_placeholder_1.png',
+  },
   title: 'Приказ о перебазировании',
   summary: 'Перевести вторую армию к северной границе.',
   article_url: 'https://vk.com/@order-seven',
@@ -77,7 +82,12 @@ export const ASSIGNED: AssignedOrdersDTO = {
   items: [
     {
       number: 7,
-      nation: { name: 'Автория', color: '#336699' },
+      nation: {
+        name: 'Автория',
+        color: '#336699',
+        short_name: 'Авт',
+        flag_url: '/assets/nations/flags/flag_placeholder_1.png',
+      },
       title: 'Приказ о перебазировании',
       summary: 'Перевести вторую армию к северной границе.',
       article_url: 'https://vk.com/@order-seven',
@@ -86,7 +96,12 @@ export const ASSIGNED: AssignedOrdersDTO = {
     },
     {
       number: 3,
-      nation: { name: 'Северия', color: '#993366' },
+      nation: {
+        name: 'Северия',
+        color: '#993366',
+        short_name: 'Сев',
+        flag_url: null,
+      },
       title: 'Очень длинное название приказа, которое не влезает в строку',
       summary: 'Сводить гарнизоны.',
       article_url: 'https://vk.com/@order-three',

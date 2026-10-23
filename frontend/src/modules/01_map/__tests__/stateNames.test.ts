@@ -187,8 +187,8 @@ describe('placeStateNames — groups and caching', () => {
     borders_version: 'minib01',
     turn: 3,
     nations: [
-      { id: 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d', name: 'Альфа-Тест', color_hex: '#e64545' },
-      { id: 'b2c3d4e5-0000-4b7e-9a1c-2e5f7a9b0c1d', name: 'Бета', color_hex: '#2b6cb0' },
+      { id: 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d', name: 'Альфа-Тест', short_name: 'Альфа-Тест', color_hex: '#e64545' },
+      { id: 'b2c3d4e5-0000-4b7e-9a1c-2e5f7a9b0c1d', name: 'Бета', short_name: 'Бета', color_hex: '#2b6cb0' },
     ],
     owners: [
       [1001, 0],

@@ -71,10 +71,13 @@ class TestSubmitService:
         row = (await test_db_session.execute(select(Order))).scalar_one()
         assert row.number == 1
         assert row.author_player_id == player.id
-        # INV-O6: the snapshot columns carry the nation's identity.
+        # INV-O6: the snapshot columns carry the nation's identity —
+        # full name, colour, short name and flag id at submission.
         assert row.nation_id == nation.id
         assert row.nation_name == "Северная Лига"
         assert row.nation_color == nation.color_hex
+        assert row.nation_short_name == nation.short_name
+        assert row.nation_flag_id == nation.flag_id
         assert row.submitted_at is not None
         assert row.judge_player_id is None
 
@@ -84,6 +87,7 @@ class TestSubmitService:
         player, nation = await seed_author(
             test_db_session, 770002, nation_name="Старое Имя"
         )
+        old_short_name = nation.short_name
         await OrderService.submit(
             test_db_session,
             player_id=player.id,
@@ -93,12 +97,13 @@ class TestSubmitService:
             article_url=VALID_URL,
         )
 
-        # Rename and recolour through the real update path.
+        # Rename, recolour and re-short-name through the real update path.
         await NationService.update(
             test_db_session,
             nation.id,
             name="Новое Имя",
             color_hex="#0000FF",
+            short_name="НовИмя",
             config=CORE_CONFIG,
         )
         await test_db_session.flush()
@@ -108,6 +113,9 @@ class TestSubmitService:
         )
         assert view.nation_name == "Старое Имя"
         assert view.nation_color == "#336699"
+        # The frozen short name and flag id survive the rename too.
+        assert view.nation_short_name == old_short_name
+        assert view.nation_flag_id == "flag_placeholder_1"
 
     async def test_submit_without_nation_refused(self, test_db_session, orders_started):
         player = PlayerFactory.build(vk_user_id=770003, nations=[])
@@ -206,6 +214,8 @@ class TestSubmitHttp:
             "nation": {
                 "name": nation.name,
                 "color": nation.color_hex,
+                "short_name": nation.short_name,
+                "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
             },
             "title": VALID_TITLE,
             "summary": VALID_SUMMARY,

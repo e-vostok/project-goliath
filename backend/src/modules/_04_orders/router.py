@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_session
 from core.security.dependencies import get_current_player
+from modules._00_core.catalog import flag_url
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Player
 from modules._04_orders.dto import (
@@ -44,11 +45,24 @@ from modules._04_orders.worker import request_orders_wake
 router = APIRouter(prefix="/api/v1/orders")
 
 
+def _nation_mark(view) -> NationMarkDTO:
+    """The nation snapshot of a service view as the wire mark.
+
+    ``flag_url`` is built only through ``catalog.flag_url`` (INV-16).
+    """
+    return NationMarkDTO(
+        name=view.nation_name,
+        color=view.nation_color,
+        short_name=view.nation_short_name,
+        flag_url=flag_url(view.nation_flag_id),
+    )
+
+
 def _detail_dto(view: OrderDetailView) -> OrderDetailDTO:
     """Service view -> wire DTO (the nation snapshot as NationMarkDTO)."""
     return OrderDetailDTO(
         number=view.number,
-        nation=NationMarkDTO(name=view.nation_name, color=view.nation_color),
+        nation=_nation_mark(view),
         title=view.title,
         summary=view.summary,
         article_url=view.article_url,
@@ -81,7 +95,7 @@ def _assigned_dto(view: AssignedOrderView) -> AssignedOrderDTO:
     """Service view -> wire DTO (the nation snapshot as NationMarkDTO)."""
     return AssignedOrderDTO(
         number=view.number,
-        nation=NationMarkDTO(name=view.nation_name, color=view.nation_color),
+        nation=_nation_mark(view),
         title=view.title,
         summary=view.summary,
         article_url=view.article_url,

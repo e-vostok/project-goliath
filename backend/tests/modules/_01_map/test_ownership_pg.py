@@ -60,6 +60,7 @@ class TestOwnersAtTurnPg:
                         prev_nation_id=None,
                         new_nation_id="nation-a",
                         new_name="Old A Name",
+                        new_short_name="OldA",
                         new_color="#111111",
                         turn=1,
                     ),
@@ -68,6 +69,7 @@ class TestOwnersAtTurnPg:
                         prev_nation_id="nation-a",
                         new_nation_id=None,
                         new_name=None,
+                        new_short_name=None,
                         new_color=None,
                         turn=3,
                     ),
@@ -76,6 +78,7 @@ class TestOwnersAtTurnPg:
                         prev_nation_id=None,
                         new_nation_id="nation-b",
                         new_name="B Renamed",
+                        new_short_name="B",
                         new_color="#222222",
                         turn=5,
                     ),
@@ -84,6 +87,7 @@ class TestOwnersAtTurnPg:
                         prev_nation_id=None,
                         new_nation_id="nation-c",
                         new_name="C Realm",
+                        new_short_name="C",
                         new_color="#333333",
                         turn=2,
                     ),
@@ -94,22 +98,22 @@ class TestOwnersAtTurnPg:
         async with pg_db() as session:
             assert await owners_at_turn(session, 0) == {}
             assert await owners_at_turn(session, 1) == {
-                1001: OwnerAtTurn("nation-a", "Old A Name", "#111111")
+                1001: OwnerAtTurn("nation-a", "Old A Name", "#111111", "OldA")
             }
             assert await owners_at_turn(session, 2) == {
-                1001: OwnerAtTurn("nation-a", "Old A Name", "#111111"),
-                1002: OwnerAtTurn("nation-c", "C Realm", "#333333"),
+                1001: OwnerAtTurn("nation-a", "Old A Name", "#111111", "OldA"),
+                1002: OwnerAtTurn("nation-c", "C Realm", "#333333", "C"),
             }
             assert await owners_at_turn(session, 3) == {
-                1002: OwnerAtTurn("nation-c", "C Realm", "#333333")
+                1002: OwnerAtTurn("nation-c", "C Realm", "#333333", "C")
             }
             assert await owners_at_turn(session, 4) == {
-                1002: OwnerAtTurn("nation-c", "C Realm", "#333333")
+                1002: OwnerAtTurn("nation-c", "C Realm", "#333333", "C")
             }
             for turn in (5, 9):
                 assert await owners_at_turn(session, turn) == {
-                    1001: OwnerAtTurn("nation-b", "B Renamed", "#222222"),
-                    1002: OwnerAtTurn("nation-c", "C Realm", "#333333"),
+                    1001: OwnerAtTurn("nation-b", "B Renamed", "#222222", "B"),
+                    1002: OwnerAtTurn("nation-c", "C Realm", "#333333", "C"),
                 }
             with pytest.raises(ValueError):
                 await owners_at_turn(session, -1)
@@ -121,8 +125,8 @@ class TestOwnersAtTurnPg:
             await record_changes(
                 session,
                 [
-                    OwnershipChange(1001, None, "n1", "N", "#111111", 1),
-                    OwnershipChange(1001, "n1", None, None, None, 2),
+                    OwnershipChange(1001, None, "n1", "N", "NS", "#111111", 1),
+                    OwnershipChange(1001, "n1", None, None, None, None, 2),
                 ],
             )
             await session.commit()
@@ -175,6 +179,7 @@ class TestListenerOnPg:
                 r.prev_nation_id is None
                 and r.new_nation_id == nation.id
                 and r.new_nation_name == "PG Realm"
+                and r.new_nation_short_name == "Testland"
                 and r.turn_number == 2
                 for r in rows
             )
@@ -200,6 +205,7 @@ class TestListenerOnPg:
                 r.prev_nation_id == nation.id
                 and r.new_nation_id is None
                 and r.new_nation_name is None
+                and r.new_nation_short_name is None
                 and r.turn_number == 6
                 for r in releases
             )
@@ -236,6 +242,7 @@ class TestRemoveRetiredPg:
                         prev_nation_id=None,
                         new_nation_id="n-old",
                         new_name="Old Realm",
+                        new_short_name="OldR",
                         new_color="#123456",
                         turn=1,
                     ),

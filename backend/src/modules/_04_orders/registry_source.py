@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core.catalog import flag_url
 from modules._03_registry.cells import (
     cell_action_text,
     cell_datetime,
@@ -53,10 +54,16 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
             key=f"o{row.number}",
             cells={
                 "number": row.number,
-                # An order stores only the name/colour snapshot — no
-                # nation id, so the cell shows but does not link.
+                # The order's identity snapshot carries no nation id,
+                # so the cell shows but does not link. The cell name
+                # is the SHORT name snapshot (Spec 3.7: it matches the
+                # nations table's name cells used for the
+                # select_or_contains options).
                 "nation": cell_nation(
-                    row.nation_name, row.nation_color, nation_id=None
+                    row.nation_short_name,
+                    row.nation_color,
+                    flag_url(row.nation_flag_id),
+                    nation_id=None,
                 ),
                 "title": cell_action_text(text=row.title, action=f"order:{row.number}"),
                 "submitted": cell_datetime(row.submitted_at, tz),
