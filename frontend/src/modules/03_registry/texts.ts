@@ -31,6 +31,12 @@ export const REGISTRY_TEXTS = {
   filterSelectLabel: 'Список',
   filterSelectAll: 'Все',
 
+  /* Table filter extensions (Spec 5.5) — the «Все / Да» control a
+     module registers for a table («Назначены мне»). */
+  extFilterAll: 'Все',
+  extFilterYes: 'Да',
+  extFilterLoading: 'Загрузка…',
+
   sortAriaLabel: (columnTitle: string) =>
     `Сортировка по «${columnTitle}»`,
 

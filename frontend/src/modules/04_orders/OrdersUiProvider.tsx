@@ -35,6 +35,7 @@ import { useNotice } from '../../shared/ui';
 import { ConfirmSubmitModal } from './ConfirmSubmitModal';
 import { OrderComposer } from './OrderComposer';
 import { OrderDetailModal } from './OrderDetailModal';
+import { registerOrdersTableFilters } from './registryFilters';
 import { ConfirmVerdictModal, VerdictComposer } from './VerdictComposer';
 
 /** formDraft keys — one per form, verdicts additionally per order. */
@@ -142,10 +143,13 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
     setOrderWindow({ view: 'detail', number });
   }, []);
 
-  // The Registry's `order:<number>` action — one registration for the
-  // session; re-registering replaces (cellActions semantics).
+  // The Registry's `order:<number>` action and the «Назначены мне»
+  // table filter — one registration each for the session;
+  // re-registering replaces (cellActions / tableFilterExtensions
+  // semantics).
   useEffect(() => {
     registerCellAction('order', (arg) => openOrder(Number(arg)));
+    registerOrdersTableFilters();
   }, [openOrder]);
 
   const toConfirm = useCallback((draft: OrderDraft) => {

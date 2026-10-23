@@ -9,12 +9,20 @@
  * by `filter_label`), presence («Все / Есть / Нет») and
  * select_or_contains — a dropdown of the nations the Registry knows
  * (`nationOptions`) plus the same free-text «содержит…» input; the
- * two can be used independently.
+ * two can be used independently. After the column groups come the
+ * registered filter extensions of the table (Spec 5.5): one labelled
+ * «Все / Да» control each, with the «Да» set's loading and error
+ * states inside the group.
  */
 
 import { Input, NativeSelect, SegmentedControl } from '@vkontakte/vkui';
 
-import type { ColumnFilterValue } from '../lib/tableView';
+import { errorText } from '../../../shared/errorTexts';
+import type {
+  ExtensionSetState,
+  TableFilterExtension,
+} from '../lib/tableFilterExtensions';
+import type { ColumnFilterValue, ExtensionFilterValue } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
 import type { RegistryTableDTO } from '../types';
 
@@ -90,15 +98,29 @@ export function FilterPanel({
   filters,
   onFiltersChange,
   nationOptions = [],
+  extensions = [],
+  extensionValues = {},
+  extensionStates = {},
+  onExtensionChange,
 }: {
   table: RegistryTableDTO;
   filters: Record<string, ColumnFilterValue[]>;
   onFiltersChange: (columnId: string, filters: ColumnFilterValue[]) => void;
   /** Dropdown options of `select_or_contains` columns (Spec 3.7). */
   nationOptions?: string[];
+  /**
+   * Filter extensions the table registered (Spec 5.5) — one labelled
+   * «Все / Да» control per extension after the column groups; the
+   * «Да» number set loads on demand and its status is shown inside
+   * the same group.
+   */
+  extensions?: readonly TableFilterExtension[];
+  extensionValues?: Record<string, ExtensionFilterValue>;
+  extensionStates?: Record<string, ExtensionSetState>;
+  onExtensionChange?: (extId: string, value: ExtensionFilterValue) => void;
 }) {
   const filterable = table.columns.filter((col) => col.filters.length > 0);
-  if (filterable.length === 0) {
+  if (filterable.length === 0 && extensions.length === 0) {
     return null;
   }
   return (
@@ -220,6 +242,50 @@ export function FilterPanel({
                 />
               )}
             </div>
+          </div>
+        );
+      })}
+      {extensions.map((ext) => {
+        const state = extensionStates[ext.id];
+        return (
+          <div key={ext.id} data-testid={`filter-ext-${ext.id}`}>
+            <span style={GROUP_LABEL_STYLE}>{ext.label}</span>
+            <SegmentedControl
+              size="m"
+              aria-label={ext.label}
+              value={extensionValues[ext.id] ?? 'any'}
+              onChange={(value) =>
+                onExtensionChange?.(ext.id, value === 'yes' ? 'yes' : 'any')
+              }
+              options={[
+                { label: REGISTRY_TEXTS.extFilterAll, value: 'any' },
+                { label: REGISTRY_TEXTS.extFilterYes, value: 'yes' },
+              ]}
+            />
+            {state?.status === 'loading' && (
+              <span
+                style={{
+                  ...GROUP_LABEL_STYLE,
+                  marginTop: 4,
+                  fontWeight: 400,
+                }}
+              >
+                {REGISTRY_TEXTS.extFilterLoading}
+              </span>
+            )}
+            {state?.status === 'error' && (
+              <span
+                data-testid={`filter-ext-error-${ext.id}`}
+                style={{
+                  ...GROUP_LABEL_STYLE,
+                  marginTop: 4,
+                  fontWeight: 400,
+                  color: 'var(--vkui--color_text_negative)',
+                }}
+              >
+                {errorText(state.error)}
+              </span>
+            )}
           </div>
         );
       })}

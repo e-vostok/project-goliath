@@ -64,4 +64,7 @@ export const ORDERS_TEXTS = {
   verdictArticleLink: 'Статья вердикта',
   overdueMark: 'Срок вердикта вышел',
   writeVerdict: 'Написать вердикт',
+
+  /* Registry table filter extension (Spec 5.6) */
+  assignedToMeFilter: 'Назначены мне',
 } as const;
