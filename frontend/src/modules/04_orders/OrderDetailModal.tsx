@@ -82,10 +82,7 @@ export function OrderDetailModal() {
               textTransform: 'none',
             }}
           >
-            <NationMark
-              name={order.nation.name}
-              color={order.nation.color}
-            />
+            <NationMark nation={order.nation} />
           </span>
         ) : undefined
       }

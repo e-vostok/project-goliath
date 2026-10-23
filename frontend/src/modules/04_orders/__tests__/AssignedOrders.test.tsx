@@ -38,9 +38,8 @@ describe('OrdersBlock — «Ожидают вердикт»', () => {
     expect(
       within(row7).getByText('Приказ о перебазировании'),
     ).toBeInTheDocument();
-    expect(
-      within(row7).getByText('Автория · до 18.10.2026 21:21'),
-    ).toBeInTheDocument();
+    // Unit 6a: the nation mark is the submission-time SHORT name.
+    expect(row7).toHaveTextContent('Авт · до 18.10.2026 21:21');
     expect(
       within(row7).queryByTestId('assigned-overdue-mark'),
     ).not.toBeInTheDocument();
@@ -49,7 +48,7 @@ describe('OrdersBlock — «Ожидают вердикт»', () => {
     const mark = within(row3).getByTestId('assigned-overdue-mark');
     expect(mark).toHaveTextContent('срок вышел 14.10.2026 09:00');
     expect(mark.parentElement).toHaveTextContent(
-      'Северия · срок вышел 14.10.2026 09:00',
+      'Сев · срок вышел 14.10.2026 09:00',
     );
 
     // The separate «Открыть приказ» link is gone — the row opens it.

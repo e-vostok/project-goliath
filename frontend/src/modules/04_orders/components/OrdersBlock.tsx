@@ -34,6 +34,7 @@ import {
   tokenVar,
 } from '../../../shared/ui';
 import { useAssignedOrders } from '../hooks/useAssignedOrders';
+import { NationMark } from './NationMark';
 import { ORDERS_TEXTS } from '../texts';
 import type { AssignedOrderDTO } from '../types';
 import { useOrdersUi } from '../OrdersUiProvider';
@@ -213,7 +214,8 @@ function AssignedRow({
         >
           {item.overdue ? (
             <>
-              {`${item.nation.name} · `}
+              <NationMark nation={item.nation} />
+              {' · '}
               <span
                 data-testid="assigned-overdue-mark"
                 style={{ color: tokenVar('danger') }}
@@ -222,9 +224,10 @@ function AssignedRow({
               </span>
             </>
           ) : (
-            `${item.nation.name} · ${ORDERS_TEXTS.assignedDeadline(
-              item.deadline_text,
-            )}`
+            <>
+              <NationMark nation={item.nation} />
+              {` · ${ORDERS_TEXTS.assignedDeadline(item.deadline_text)}`}
+            </>
           )}
         </div>
       </div>
