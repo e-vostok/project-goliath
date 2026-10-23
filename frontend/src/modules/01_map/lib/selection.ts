@@ -266,5 +266,5 @@ export function selectTooltipStatus(
   if (node.kind === 'SEA') {
     return 'морская зона, выбрать нельзя';
   }
-  return owner ? `занята: ${owner.name}` : 'свободна';
+  return owner ? `занята: ${owner.short_name}` : 'свободна';
 }

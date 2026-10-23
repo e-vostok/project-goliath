@@ -456,7 +456,7 @@ describe('AppShell — nation subscreen', () => {
     // «Реестр / Государство · Новгород» — a bare link carries no tab.
     expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
       'aria-label',
-      'Реестр / Государство · Новгород',
+      'Реестр / Государство · НВГ',
     );
     expect(tab('Реестр')).toHaveAttribute('aria-selected', 'true');
 
@@ -508,7 +508,7 @@ describe('AppShell — nation subscreen', () => {
     await screen.findByTestId('nation-subscreen');
     expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
       'aria-label',
-      'Реестр / Игроки / Новгород',
+      'Реестр / Игроки / НВГ',
     );
   });
 
@@ -543,7 +543,7 @@ describe('AppShell — nation subscreen', () => {
     await screen.findByTestId('nation-subscreen');
     expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
       'aria-label',
-      'Реестр / Государства / Новгород',
+      'Реестр / Государства / НВГ',
     );
   });
 

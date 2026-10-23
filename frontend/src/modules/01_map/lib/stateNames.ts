@@ -1044,8 +1044,8 @@ export function placeStateNames(
 
   for (const spec of specs) {
     const text = deps.rules.uppercase
-      ? spec.nation.name.toUpperCase()
-      : spec.nation.name;
+      ? spec.nation.short_name.toUpperCase()
+      : spec.nation.short_name;
     const ids = spec.ids.slice().sort((a, b) => a - b);
     const sig = `${fingerprint}|${spec.nation.name}|${spec.nation.color_hex}|${ids.join(',')}`;
     const hit = deps.cache.get(spec.key);

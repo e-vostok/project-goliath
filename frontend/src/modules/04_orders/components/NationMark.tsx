@@ -1,28 +1,20 @@
 /**
- * NationMark — the author-nation snapshot: colour dot + name (INV-O6).
- * Shared by the order detail window and the «Ожидают вердикт» rows.
+ * NationMark — the author-nation snapshot (INV-O6): the shared
+ * `NationLabel` with the submission-time SHORT name and flag (unit
+ * 6a). Shared by the order detail window and the «Ожидают вердикт»
+ * rows while they still exist.
  */
-export function NationMark({ name, color }: { name: string; color: string }) {
+
+import { NationLabel } from '../../../shared/ui';
+import type { NationMarkDTO } from '../types';
+
+export function NationMark({ nation }: { nation: NationMarkDTO }) {
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 8,
-        minWidth: 0,
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: '50%',
-          flexShrink: 0,
-          background: color,
-        }}
-      />
-      <span>{name}</span>
-    </span>
+    <NationLabel
+      name={nation.short_name}
+      flagUrl={nation.flag_url}
+      color={nation.color}
+      size="cell"
+    />
   );
 }

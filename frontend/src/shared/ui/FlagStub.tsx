@@ -1,7 +1,7 @@
 /**
  * Flag placeholder (UI Spec 6, элемент 8): `surface-inset` block in
  * `radius-sm` until real flag images arrive — 96×64 on the nation card,
- * 32×22 in a table row.
+ * 32×22 in a tooltip (`tip`), 24×16 in a table cell.
  */
 
 import { RADII, tokenVar } from './tokens';
@@ -9,6 +9,7 @@ import { RADII, tokenVar } from './tokens';
 const VARIANTS = {
   card: { width: 96, height: 64 },
   row: { width: 32, height: 22 },
+  cell: { width: 24, height: 16 },
 } as const;
 
 export function FlagStub({ variant = 'card' }: { variant?: keyof typeof VARIANTS }) {
