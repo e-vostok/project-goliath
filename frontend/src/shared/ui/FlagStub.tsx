@@ -8,8 +8,9 @@ import { RADII, tokenVar } from './tokens';
 
 const VARIANTS = {
   card: { width: 96, height: 64 },
-  row: { width: 32, height: 22 },
-  cell: { width: 24, height: 16 },
+  sub: { width: 48, height: 32 },
+  row: { width: 28, height: 19 },
+  cell: { width: 22, height: 14 },
 } as const;
 
 export function FlagStub({ variant = 'card' }: { variant?: keyof typeof VARIANTS }) {

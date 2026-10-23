@@ -146,7 +146,7 @@ describe('PanelNationHome — the card', () => {
     expect(within(header).queryByText(/Кратко:/))
       .not.toBeInTheDocument();
     expect(within(header).getByText('Testia')).toBeInTheDocument();
-    expect(within(header).getByText('Север помнит всё'))
+    expect(within(header).getByText(/Север помнит всё/))
       .toBeInTheDocument();
     expect(within(header).getByText('#e64545')).toBeInTheDocument();
     expect(
@@ -685,10 +685,10 @@ describe('PanelNationHome — edit form', () => {
     const user = userEvent.setup();
     renderHome(FULL_NATION);
     const save = await openEdit(user);
-    // Wait until the rules-driven «N из M» counter rendered — the
+    // Wait until the rules-driven «N / M» counter rendered — the
     // gating must use the same numbers.
     await within(screen.getByTestId('form-item-name')).findByText(
-      `${'Testia'.length} из ${RULES.name_max_length}`,
+      `${'Testia'.length} / ${RULES.name_max_length}`,
     );
 
     const nameInput = screen.getByLabelText('Полное название');

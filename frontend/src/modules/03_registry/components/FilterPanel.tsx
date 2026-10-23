@@ -18,6 +18,7 @@
 import { Input, NativeSelect, SegmentedControl } from '@vkontakte/vkui';
 
 import { errorText } from '../../../shared/errorTexts';
+import { RADII, SPACING, tokenVar } from '../../../shared/ui';
 import type {
   ExtensionSetState,
   TableFilterExtension,
@@ -48,11 +49,12 @@ function fieldOf<K extends ColumnFilterValue['kind']>(
   );
 }
 
+/** PNG 10 — the filter group's caption: 12/16 `ink-muted`. */
 const GROUP_LABEL_STYLE: React.CSSProperties = {
   display: 'block',
   fontSize: 12,
-  fontWeight: 600,
-  color: 'var(--vkui--color_text_secondary)',
+  lineHeight: '16px',
+  color: tokenVar('ink-muted'),
   marginBottom: 4,
 };
 
@@ -127,13 +129,13 @@ export function FilterPanel({
     <div
       data-testid="registry-filter-panel"
       style={{
-        margin: '0 12px 8px',
-        padding: 12,
-        borderRadius: 8,
-        background: 'var(--vkui--color_background_content)',
+        margin: `0 0 ${SPACING['space-3']}px`,
+        padding: SPACING['space-4'],
+        borderRadius: RADII['radius-lg'],
+        background: tokenVar('surface'),
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-        gap: 12,
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: '12px 16px',
       }}
     >
       {filterable.map((col) => {

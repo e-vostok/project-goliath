@@ -4,6 +4,7 @@
  * registry (Spec 5.6). No handler registered — the click does nothing.
  */
 
+import { tokenVar } from '../../../../shared/ui';
 import { isActionTextCell, type RegistryCell } from '../../types';
 import { runCellAction } from '../../lib/cellActions';
 import { REGISTRY_TEXTS } from '../../texts';
@@ -32,7 +33,7 @@ export function ActionTextCell({ value }: { value: RegistryCell }) {
         font: 'inherit',
         textAlign: 'left',
         cursor: 'pointer',
-        color: 'var(--vkui--color_text_accent)',
+        color: tokenVar('action'),
       }}
     >
       {cell.text}

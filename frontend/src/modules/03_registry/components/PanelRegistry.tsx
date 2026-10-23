@@ -35,7 +35,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, FormStatus, Spinner } from '@vkontakte/vkui';
 
 import { errorText } from '../../../shared/errorTexts';
-import { BlockTitle, RADII, SPACING, tokenVar } from '../../../shared/ui';
+import {
+  BlockIcon,
+  RADII,
+  SPACING,
+  TEXT_STYLES,
+  tokenVar,
+} from '../../../shared/ui';
 
 import { useSession } from '../../00_core/hooks/useAuth';
 import { useNationOptions, NATIONS_TABLE_ID } from '../hooks/useNationOptions';
@@ -486,21 +492,41 @@ export function PanelRegistry({
         background: tokenVar('ground'),
       }}
     >
-      <BlockTitle
-        icon="list"
-        title={REGISTRY_TEXTS.panelTitle}
-        line={tabsPosition !== 'top' || tables.length === 0}
-        trailing={
-          tabsPosition === 'top' && tables.length > 0 ? (
-            <TabStrip
-              tables={tables}
-              activeId={activeTableId}
-              orientation="horizontal"
-              onSelect={setSelectedTab}
-            />
-          ) : null
-        }
-      />
+      {/* PNG 09–10b — the screen title row: «РЕЕСТР» in Fira 24/28
+          uppercase with the list icon, the segmented tabs right after
+          it (layout.tabs_position = top). */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: SPACING['space-4'],
+          marginBottom: SPACING['space-3'],
+        }}
+      >
+        <h1
+          style={{
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            ...TEXT_STYLES['title-uppercase'],
+            fontSize: 24,
+            lineHeight: '28px',
+            color: tokenVar('ink'),
+          }}
+        >
+          <BlockIcon name="list" />
+          {REGISTRY_TEXTS.panelTitle}
+        </h1>
+        {tabsPosition === 'top' && tables.length > 0 && (
+          <TabStrip
+            tables={tables}
+            activeId={activeTableId}
+            orientation="horizontal"
+            onSelect={setSelectedTab}
+          />
+        )}
+      </div>
 
       {activeTable && (
         <TableToolbar

@@ -9,9 +9,12 @@ export const ORDERS_TEXTS = {
   cancel: 'Отмена',
   closeButton: 'Закрыть',
 
-  /* «Штаб» badges (0.10.0 unit 7b) */
+  /* «Штаб» order cards (0.10.0 unit 7b; card look — unit 13, PNG 08) */
   badgeMine: 'Мои приказы',
+  badgeMineHint: 'Ждут вердикта',
   badgeOthers: 'Приказы других игроков',
+  badgeOthersHint: 'Нужно написать вердикт',
+  badgeAttention: (count: number) => `Требуют внимания: ${count}`,
 
   /* OrderComposer */
   composerTitle: 'Подать приказ',
@@ -21,7 +24,7 @@ export const ORDERS_TEXTS = {
   sendButton: 'Отправить приказ',
   unresolvedCounter: (unresolved: number, max: number) =>
     `Неразрешённых приказов: ${unresolved} из ${max}`,
-  lengthCounter: (length: number, max: number) => `${length} из ${max}`,
+  lengthCounter: (length: number, max: number) => `${length} / ${max}`,
   limitReached:
     'Достигнут предел: дождитесь вердикта по одному из ваших приказов',
   rulesLoadError: 'Не удалось загрузить правила',

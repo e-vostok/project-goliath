@@ -15,8 +15,9 @@ import { FlagStub } from './FlagStub';
 import { TEXT_STYLES, tokenVar } from './tokens';
 
 const SIZES = {
-  cell: { width: 24, height: 16, stub: 'cell' },
-  tip: { width: 32, height: 22, stub: 'row' },
+  cell: { width: 22, height: 14, stub: 'cell' },
+  tip: { width: 28, height: 19, stub: 'row' },
+  sub: { width: 48, height: 32, stub: 'sub' },
 } as const;
 
 export function NationLabel({
@@ -33,6 +34,7 @@ export function NationLabel({
   // The failed URL, not a boolean — a new flag gets a fresh try.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const { width, height, stub } = SIZES[size];
+  const markRadius = size === 'sub' ? 4 : 2;
 
   const mark =
     flagUrl && failedUrl !== flagUrl ? (
@@ -42,7 +44,7 @@ export function NationLabel({
         width={width}
         height={height}
         style={{
-          borderRadius: 2,
+          borderRadius: markRadius,
           objectFit: 'cover',
           flexShrink: 0,
           display: 'block',
@@ -55,7 +57,7 @@ export function NationLabel({
         style={{
           width,
           height,
-          borderRadius: 2,
+          borderRadius: markRadius,
           flexShrink: 0,
           display: 'block',
           background: color,
@@ -83,6 +85,13 @@ export function NationLabel({
           whiteSpace: 'nowrap',
           ...(size === 'tip'
             ? { ...TEXT_STYLES['heading'], color: tokenVar('ink') }
+            : {}),
+          ...(size === 'sub'
+            ? {
+                ...TEXT_STYLES['heading'],
+                fontSize: 20,
+                lineHeight: '24px',
+              }
             : {}),
         }}
       >

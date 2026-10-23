@@ -5,7 +5,7 @@
  * `FieldLabel` is the row above a field: the name in `label` style
  * (uppercase, `ink-muted`), a «*» after the name for required fields
  * (the ONLY required mark — the word «необязательно» is never written)
- * and the length counter «N из M» at the right end of the row. The
+ * and the length counter «N / M» at the right end of the row. The
  * star sits OUTSIDE the <label> element so the accessible name stays
  * the plain field name.
  *
@@ -32,7 +32,7 @@ export interface FieldLabelProps {
   required?: boolean;
   /** `htmlFor` of the label element — skip it for non-input groups. */
   htmlFor?: string;
-  /** Right end of the row — the «N из M» counter when given. */
+  /** Right end of the row — the «N / M» counter when given. */
   counter?: { current: number; max: number };
   testId?: string;
 }
@@ -85,7 +85,7 @@ export function FieldLabel({
             whiteSpace: 'nowrap',
           }}
         >
-          {counter.current} из {counter.max}
+          {counter.current} / {counter.max}
         </span>
       )}
     </div>
@@ -174,7 +174,7 @@ export interface TextFieldProps {
   label: string;
   value: string;
   required?: boolean;
-  /** The «N из M» counter shows while a limit is known. */
+  /** The «N / M» counter shows while a limit is known. */
   maxLength?: number;
   error?: string;
   hint?: string;

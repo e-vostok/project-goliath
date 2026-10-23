@@ -27,7 +27,12 @@ import {
   type RegistryRowDTO,
   type RegistryTableDTO,
 } from '../types';
-import { Tooltip } from '../../../shared/ui';
+import {
+  FONTS,
+  TEXT_STYLES,
+  Tooltip,
+  tokenVar,
+} from '../../../shared/ui';
 import { ActionTextCell } from './cells/ActionTextCell';
 import { DateCell } from './cells/DateCell';
 import { DatetimeCell } from './cells/DatetimeCell';
@@ -54,6 +59,9 @@ const HEADER_TITLE_STYLE: React.CSSProperties = {
 };
 
 const NUMERIC_TYPES = new Set(['index', 'integer', 'gauge']);
+
+/** PNG 09/10 — figures (incl. the date columns) are JetBrains Mono. */
+const MONO_TYPES = new Set(['index', 'integer', 'gauge', 'date', 'datetime']);
 
 const SORT_ICON_PROPS = { width: 14, height: 14 } as const;
 
@@ -202,6 +210,7 @@ export function RegistryTable({
   return (
     <table
       data-testid="registry-table"
+      className="registry-table"
       style={{
         borderCollapse: 'collapse',
         tableLayout: 'fixed',
@@ -231,16 +240,15 @@ export function RegistryTable({
                   position: 'sticky',
                   top: 0,
                   zIndex: 5,
-                  height: 40,
-                  fontSize: 12,
-                  fontWeight: 600,
+                  height: 36,
+                  ...TEXT_STYLES['label'],
+                  color: tokenVar('ink-muted'),
                   textAlign: 'left',
                   padding: '0 8px',
                   verticalAlign: 'middle',
                   overflow: 'hidden',
-                  background: 'var(--vkui--color_background_content)',
-                  borderBottom:
-                    '1px solid var(--vkui--color_separator_primary)',
+                  background: tokenVar('surface'),
+                  borderBottom: `1px solid ${tokenVar('line')}`,
                 }}
               >
                 <span
@@ -314,12 +322,14 @@ export function RegistryTable({
               <td
                 key={col.id}
                 style={{
-                  height: 34,
+                  height: 36,
                   padding: '0 8px',
-                  borderBottom:
-                    '1px solid var(--vkui--color_separator_primary)',
+                  borderBottom: `1px solid ${tokenVar('line')}`,
                   verticalAlign: 'middle',
                   overflow: 'hidden',
+                  fontFamily: MONO_TYPES.has(col.type)
+                    ? FONTS.mono
+                    : undefined,
                   fontVariantNumeric: NUMERIC_TYPES.has(col.type)
                     ? 'tabular-nums'
                     : undefined,

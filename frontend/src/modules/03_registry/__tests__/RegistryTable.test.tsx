@@ -90,6 +90,70 @@ describe('RegistryTable — action_text cells', () => {
   });
 });
 
+describe('RegistryTable — nation cells of the orders table (unit 13)', () => {
+  const NATION_COL = {
+    id: 'nation', title: 'Государство', type: 'nation', width_px: 168,
+    sortable: true, filters: ['select_or_contains'], filter_label: null,
+    header_icon: null, searchable: true, stub: false,
+    scale_min: null, scale_max: null,
+  } as const;
+
+  const table: RegistryTableDTO = {
+    ...ORDERS_TABLE,
+    columns: [ORDERS_TABLE.columns[0], NATION_COL],
+  };
+
+  it('a live nation id renders a link that opens the nation subscreen; a null id stays plain text', async () => {
+    const user = userEvent.setup();
+    const onOpenNation = vi.fn();
+    render(
+      <RegistryTable
+        table={table}
+        rows={[
+          {
+            key: 'o1',
+            cells: {
+              number: 1,
+              nation: {
+                id: 'n-7',
+                name: 'Северная Лига',
+                color: '#336699',
+                flag_url: null,
+              },
+            },
+          },
+          {
+            key: 'o2',
+            cells: {
+              number: 2,
+              nation: {
+                id: null,
+                name: 'Удалённое княжество',
+                color: '#123456',
+                flag_url: null,
+              },
+            },
+          },
+        ]}
+        view={EMPTY_VIEW}
+        onSortClick={() => {}}
+        onOpenNation={onOpenNation}
+      />,
+    );
+
+    const link = screen.getByRole('button', { name: 'Северная Лига' });
+    await user.click(link);
+    expect(onOpenNation).toHaveBeenCalledTimes(1);
+    expect(onOpenNation).toHaveBeenCalledWith('n-7');
+
+    // Deleted nation: snapshot name stays, but there is no link.
+    expect(
+      screen.queryByRole('button', { name: 'Удалённое княжество' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Удалённое княжество')).toBeInTheDocument();
+  });
+});
+
 describe('RegistryTable — header icon', () => {
   it('shows the icon with the column title as tooltip and accessible label', () => {
     renderTable();

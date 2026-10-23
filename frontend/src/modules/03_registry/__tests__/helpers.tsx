@@ -129,7 +129,7 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
       cells: {
         number: 1,
         player: { name: 'Борис Иванов', avatar_url: null, is_fallback: false },
-        joined: { text: '1 сентября 2026', key: 20697 },
+        joined: { text: '01.09.2026', key: 20697 },
         level: 1,
         nation: {
           id: 'n1',
@@ -148,7 +148,7 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
           avatar_url: 'https://pp.vk.me/avatar.png',
           is_fallback: false,
         },
-        joined: { text: '5 сентября 2026', key: 20701 },
+        joined: { text: '05.09.2026', key: 20701 },
         level: 2,
         nation: null,
       },
@@ -158,7 +158,7 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
       cells: {
         number: 3,
         player: { name: 'Игрок №3', avatar_url: null, is_fallback: true },
-        joined: { text: '10 сентября 2026', key: 20706 },
+        joined: { text: '10.09.2026', key: 20706 },
         level: 1,
         nation: {
           id: 'n2',

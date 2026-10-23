@@ -19,7 +19,7 @@ import {
   Icon28UsersOutline,
 } from '@vkontakte/icons';
 
-import { TEXT_STYLES, tokenVar } from '../../../shared/ui';
+import { RADII, TEXT_STYLES, tokenVar } from '../../../shared/ui';
 
 import type { RegistryTableDTO } from '../types';
 
@@ -52,22 +52,23 @@ export function TabStrip({
 }) {
   const vertical = orientation === 'vertical';
 
-  // The horizontal strip lives inside the <h2> of the screen title, so
-  // its root is a span (phrasing content) and every label resets the
-  // inherited `title-uppercase` letterforms to plain `body` text.
+  // The horizontal strip sits in the title row right after «РЕЕСТР» —
+  // PNG 09–10b: a `surface` segmented control, 2 px padding, the active
+  // tab an `surface-inset` pill, the rest plain `ink-muted` text.
   if (!vertical) {
     return (
-      <span
+      <div
         data-testid="registry-tabstrip"
         data-orientation={orientation}
         role="tablist"
         aria-orientation={orientation}
         style={{
-          display: 'inline-flex',
-          flexWrap: 'wrap',
+          display: 'flex',
           alignItems: 'center',
           gap: 4,
-          marginLeft: 8,
+          padding: 2,
+          background: tokenVar('surface'),
+          borderRadius: RADII['radius-md'],
         }}
       >
         {tables.map((table) => {
@@ -81,24 +82,27 @@ export function TabStrip({
               aria-label={table.title}
               onClick={() => onSelect(table.id)}
               style={{
-                padding: '4px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                height: 32,
+                boxSizing: 'border-box',
+                padding: '0 16px',
                 border: 'none',
-                borderBottom: `2px solid ${
-                  active ? tokenVar('action') : 'transparent'
-                }`,
-                background: 'none',
+                borderRadius: 6,
+                background: active
+                  ? tokenVar('surface-inset')
+                  : 'transparent',
                 color: tokenVar(active ? 'ink' : 'ink-muted'),
                 cursor: 'pointer',
                 ...TEXT_STYLES.body,
-                textTransform: 'none',
-                letterSpacing: 'normal',
+                whiteSpace: 'nowrap',
               }}
             >
               {table.title}
             </button>
           );
         })}
-      </span>
+      </div>
     );
   }
 

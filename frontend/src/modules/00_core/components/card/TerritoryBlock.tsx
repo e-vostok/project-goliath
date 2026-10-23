@@ -15,6 +15,7 @@
 import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   BlockTitle,
+  FONTS,
   ProvinceChip,
   RADII,
   TEXT_STYLES,
@@ -65,7 +66,24 @@ export function TerritoryBlock({
 
   return (
     <CardBlock testId="nation-territory-block">
-      <BlockTitle icon="map" title="Территория" />
+      <BlockTitle
+        icon="map"
+        title="Территория"
+        trailing={
+          ordered.length > 0 ? (
+            /* PNG 08 — the province count right after the title line. */
+            <span
+              style={{
+                fontFamily: FONTS.mono,
+                fontSize: 13,
+                color: tokenVar('ink-muted'),
+              }}
+            >
+              {ordered.length}
+            </span>
+          ) : undefined
+        }
+      />
       <div
         style={{
           display: 'flex',

@@ -84,8 +84,8 @@ describe('NationCell — unit 6a look', () => {
 
     const img = container.querySelector('img')!;
     expect(img).toHaveAttribute('src', '/assets/nations/flags/f1.png');
-    expect(img).toHaveAttribute('width', '24');
-    expect(img).toHaveAttribute('height', '16');
+    expect(img).toHaveAttribute('width', '22');
+    expect(img).toHaveAttribute('height', '14');
     expect(screen.getByText('НВГ')).toBeInTheDocument();
   });
 });

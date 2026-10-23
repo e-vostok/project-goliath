@@ -394,11 +394,15 @@ describe('PanelRegistry — screen frame (UI Spec 9.2)', () => {
     // The shared screen title carries the signed tabs right after
     // «РЕЕСТР» — no separate tab row underneath (mockup «Registry»).
     const title = document.querySelector(
-      '[data-testid="panel-registry"] h2',
+      '[data-testid="panel-registry"] h1',
     ) as HTMLElement;
     expect(title).not.toBeNull();
     expect(title).toHaveTextContent('Реестр');
-    const strip = within(title).getByTestId('registry-tabstrip');
+    // PNG 09 — the segmented tabs sit in the same row as the title.
+    const strip = title.parentElement!.querySelector(
+      '[data-testid="registry-tabstrip"]',
+    ) as HTMLElement;
+    expect(strip).not.toBeNull();
     expect(
       within(strip).getAllByRole('tab').map((t) => t.textContent),
     ).toEqual(['Игроки', 'Государства', 'Приказы']);

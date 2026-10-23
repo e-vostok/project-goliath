@@ -184,7 +184,7 @@ Rules: follow `docs/devin_rules.md`. Branch `[prefix]/[n]-[slug]`. [Explicit ove
 ALLOWLIST: [files and folders that may change]
 DENYLIST: [what must not change]
 Spec: `docs/02_SYSTEM_SPECS/[module_slug].md` (list the passages to touch, do not edit it, unless this task is the Spec task). Config and schema: `configs/[module_slug].yaml`, `backend/src/modules/[module_slug]/config_schema.py`.
-UI (only if the task builds or changes a window): approved mockup, window type per `docs/02_SYSTEM_SPECS/00_core_ui.md`, shared components from `frontend/src/shared/ui/`.
+UI (only if the task builds or changes a window): approved mockup, window type per `docs/02_SYSTEM_SPECS/00_core_ui.md`, shared components from `frontend/src/shared/ui/`. Any task that changes how a window looks is built against the PNG files in `docs/06_DESIGN/<version>/`. The report contains a table «экран → совпадает / расхождения» with the PNG name. If the PNG and the text of the task disagree, the PNG wins; report the difference.
 
 ## Tests
 New test (one): [what it proves, path]. Suites to run: per the rules, for the touched areas.

@@ -86,17 +86,15 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
     // segment carries it too (unit 6a) as «Государство · НВГ».
     expect(screen.getByText('НВГ')).toBeInTheDocument();
     expect(screen.getByText('Государство · НВГ')).toBeInTheDocument();
-    expect(screen.getByText('Слово и дело')).toBeInTheDocument();
+    expect(screen.getByText(/Слово и дело/)).toBeInTheDocument();
 
-    // One tile — «Провинции»; «Уровень» and «Судейский рейтинг» left
-    // for the «Игрок» subscreen in 0.10.0 (unit 8b). No «Приказы»
-    // tile, no «Изменить» button; the header action is «Показать на
-    // карте».
-    const stats = screen.getByTestId('nation-subscreen-stats');
-    expect(stats.children).toHaveLength(1);
-    expect(stats).toHaveTextContent('Провинции');
-    expect(stats).not.toHaveTextContent('Уровень');
-    expect(stats).not.toHaveTextContent('Судейский рейтинг');
+    // Board 11 — NO stat tiles at all; the province count sits on the
+    // «Территория» title. «Уровень» and «Судейский рейтинг» live on
+    // the «Игрок» subscreen (0.10.0 unit 8b). No «Приказы» tile, no
+    // «Изменить» button; the header action is «Показать на карте».
+    expect(screen.queryByTestId('nation-subscreen-stats')).toBeNull();
+    expect(screen.queryByText('Уровень')).toBeNull();
+    expect(screen.queryByText('Судейский рейтинг')).toBeNull();
     expect(screen.queryByText('Неразрешённые приказы')).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Изменить' }),
@@ -105,7 +103,10 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
       screen.getByRole('button', { name: 'Показать на карте' }),
     ).toBeInTheDocument();
 
-    // «Глава государства» and «Описание» with the history link.
+    // «Глава государства» and «Описание» with the history link; the
+    // «Территория» title carries the province count (PNG 11).
+    const territoryTitle = screen.getByText('Территория').closest('h2')!;
+    expect(territoryTitle).toHaveTextContent('2');
     expect(screen.getByText('Глава государства')).toBeInTheDocument();
     expect(screen.getByText('Борис Первый')).toBeInTheDocument();
     expect(screen.getByText('Вольный город на севере.')).toBeInTheDocument();

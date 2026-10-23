@@ -121,11 +121,14 @@ class RegistryOrderView:
     """
     One orders-table row for the Registry source (Spec Appendix A):
     the public number, the nation snapshot, the title and the three
-    stage timestamps. ``deadline_at`` rides along for the overdue mark —
-    no judge field, ever (INV-O5).
+    stage timestamps. ``nation_id`` is the snapshot id — the Registry
+    source links the cell only after checking the nation still exists;
+    ``deadline_at`` rides along for the overdue mark — no judge field,
+    ever (INV-O5).
     """
 
     number: int
+    nation_id: str
     nation_name: str
     nation_color: str
     nation_short_name: str
@@ -423,6 +426,7 @@ class OrderService:
         result = await session.execute(
             select(
                 Order.number,
+                Order.nation_id,
                 Order.nation_name,
                 Order.nation_color,
                 Order.nation_short_name,
@@ -437,15 +441,16 @@ class OrderService:
         return [
             RegistryOrderView(
                 number=row[0],
-                nation_name=row[1],
-                nation_color=row[2],
-                nation_short_name=row[3],
-                nation_flag_id=row[4],
-                title=row[5],
-                submitted_at=row[6],
-                distributed_at=row[7],
-                deadline_at=row[8],
-                verdict_at=row[9],
+                nation_id=row[1],
+                nation_name=row[2],
+                nation_color=row[3],
+                nation_short_name=row[4],
+                nation_flag_id=row[5],
+                title=row[6],
+                submitted_at=row[7],
+                distributed_at=row[8],
+                deadline_at=row[9],
+                verdict_at=row[10],
             )
             for row in result.all()
         ]

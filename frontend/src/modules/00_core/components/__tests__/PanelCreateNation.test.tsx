@@ -230,14 +230,14 @@ describe('PanelCreateNation — four-tab shell', () => {
 });
 
 describe('PanelCreateNation — field grammar', () => {
-  it('«N из M» counters, star only on required fields, no «необязательно»', async () => {
+  it('«N / M» counters, star only on required fields, no «необязательно»', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
-    // The counter sits in the label row: «N из M» with the rules limit.
+    // The counter sits in the label row: «N / M» with the rules limit.
     const nameItem = await screen.findByTestId('form-item-name');
     expect(
-      within(nameItem).getByText(`0 из ${RULES.name_max_length}`),
+      within(nameItem).getByText(`0 / ${RULES.name_max_length}`),
     ).toBeInTheDocument();
     // maxlength comes from the same rules body.
     expect(screen.getByLabelText('Полное название')).toHaveAttribute(
@@ -347,12 +347,12 @@ describe('PanelCreateNation — rules hints', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
 
     expect(screen.queryByText(/символов/)).not.toBeInTheDocument();
-    // No «N из M» counter inside the form block («Шаг 4 из 4» of the
+    // No «N / M» counter inside the form block («Шаг 4 из 4» of the
     // title row is outside it and does not count).
     await goToTab(user, 1);
     expect(
       within(screen.getByTestId('create-nation-form')).queryByText(
-        /\d+ из \d+/,
+        /\d+ \/ \d+/,
       ),
     ).not.toBeInTheDocument();
     await goToTab(user, 3);

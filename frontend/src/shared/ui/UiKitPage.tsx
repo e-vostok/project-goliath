@@ -329,7 +329,7 @@ export function UiKitPage() {
                       color: tokenVar('ink-muted'),
                     }}
                   >
-                    из 5
+                    / 5
                   </span>
                 </>
               }

@@ -14,9 +14,11 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import event
 
 import modules._03_registry.registry as registry_module
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.service import NationService
 from modules._03_registry.errors import RegistryConfigError
 from modules._03_registry.service import build_table
 from modules._03_registry.startup import startup_registry
@@ -66,11 +68,11 @@ class TestOrdersSource:
             "verdict",
         }
         assert row.cells["number"] == 1
-        # The order stores an identity snapshot — `id` is None: the
-        # cell shows the short name and flag but cannot open the
-        # nation subscreen.
+        # Name and flag stay the SNAPSHOT (INV-O6); `id` is the live
+        # nation id — the nation exists, so the cell opens its
+        # subscreen.
         assert row.cells["nation"] == {
-            "id": None,
+            "id": nation.id,
             "name": nation.short_name,
             "color": "#336699",
             "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
@@ -159,6 +161,60 @@ class TestOrdersSource:
         assert cell["key"] is not None
         assert cell["day"] is not None
         assert cell["mark"] is None
+
+    async def test_deleted_nation_cell_has_null_id(
+        self, test_db_session, orders_started
+    ):
+        """A deleted nation must not become a dead link: the cell keeps
+        the snapshot name and flag, plain, with ``id = null`` (INV-O6)."""
+        register_orders_extensions()
+        startup_registry()
+        nation = await _submit_one(test_db_session)
+        await NationService.delete(test_db_session, nation_id=nation.id)
+
+        built = await build_table(test_db_session, "orders")
+
+        assert built.total == 1
+        assert built.rows[0].cells["nation"] == {
+            "id": None,
+            "name": nation.short_name,
+            "color": "#336699",
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+        }
+
+    async def test_build_query_count_is_constant(
+        self, test_db_session, test_db_engine, orders_started
+    ):
+        """The existence check is one batched SELECT for the whole
+        table: orders SELECT + nations SELECT, independent of N."""
+        register_orders_extensions()
+        startup_registry()
+        for i in range(5):
+            player, nation = await seed_author(
+                test_db_session,
+                770400 + i,
+                nation_name=f"Ряд {i}",
+                nation_color=f"#33{i:04d}",
+            )
+            await make_order(test_db_session, player, nation=nation)
+        await test_db_session.flush()
+
+        statements: list[str] = []
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(test_db_engine.sync_engine, "before_cursor_execute", _count)
+        try:
+            built = await build_table(test_db_session, "orders")
+        finally:
+            event.remove(
+                test_db_engine.sync_engine,
+                "before_cursor_execute",
+                _count,
+            )
+        assert built.total == 5
+        assert len(statements) == 2
 
 
 class TestCoreConfigInjection:

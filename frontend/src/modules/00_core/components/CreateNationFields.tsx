@@ -5,7 +5,7 @@
  *
  * - `nationRulesHints` builds the one rules-driven hint (the history
  *   link's allowed domains) so a config change rewrites the UI copy.
- *   Length hints are gone: the «N из M» counter in the label row says
+ *   Length hints are gone: the «N / M» counter in the label row says
  *   the limit — a second «до N символов» under a field is forbidden.
  * - `CreateNationTextField` / `CreateNationTextArea` keep the form's
  *   plumbing (label, `required` star, limits from `rules`, the field
@@ -68,7 +68,7 @@ export interface CreateNationTextFieldProps {
   placeholder?: string;
   /** Required fields carry the «*» after the label name. */
   required?: boolean;
-  /** The label row shows the «N из M» counter while a limit is known. */
+  /** The label row shows the «N / M» counter while a limit is known. */
   maxLength?: number;
   error?: string;
   hint?: string;

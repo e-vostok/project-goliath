@@ -54,7 +54,10 @@ class TestTablesEndpoint:
         }
         order_columns = {c["id"]: c for c in orders["columns"]}
         assert order_columns["title"]["type"] == "action_text"
-        assert order_columns["submitted"]["header_icon"] == "stage_submitted"
+        # 0.10.0 unit 13: approved mockups show the stage titles as
+        # text — no header icons in the shipped config.
+        assert order_columns["submitted"]["header_icon"] is None
+        assert order_columns["submitted"]["title"] == "Подача"
         assert order_columns["verdict"]["filters"] == [
             "date_range",
             "presence",

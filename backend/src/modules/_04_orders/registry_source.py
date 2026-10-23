@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.catalog import flag_url
+from modules._00_core.service import NationService
 from modules._03_registry.cells import (
     cell_action_text,
     cell_datetime,
@@ -49,21 +50,27 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
     tz = get_core_config().tick.tick_timezone
     now = datetime.now(UTC)
     rows = await OrderService.list_for_registry(session)
+    # The cell links to the nation subscreen only when the snapshot's
+    # nation still exists — one batched existence check for the whole
+    # table (INV-O7: nations are read only through the 00_core service).
+    existing = await NationService.existing_ids(
+        session, [row.nation_id for row in rows]
+    )
     return [
         RegistryRow(
             key=f"o{row.number}",
             cells={
                 "number": row.number,
-                # The order's identity snapshot carries no nation id,
-                # so the cell shows but does not link. The cell name
-                # is the SHORT name snapshot (Spec 3.7: it matches the
-                # nations table's name cells used for the
-                # select_or_contains options).
+                # The cell name and flag stay the SNAPSHOT (INV-O6);
+                # only the link (and the tip) are live — a deleted
+                # nation keeps its snapshot, plain, with id = null.
                 "nation": cell_nation(
                     row.nation_short_name,
                     row.nation_color,
                     flag_url(row.nation_flag_id),
-                    nation_id=None,
+                    nation_id=(
+                        row.nation_id if row.nation_id in existing else None
+                    ),
                 ),
                 "title": cell_action_text(text=row.title, action=f"order:{row.number}"),
                 "submitted": cell_datetime(row.submitted_at, tz),

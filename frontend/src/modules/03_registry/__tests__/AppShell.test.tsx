@@ -8,7 +8,7 @@
  * routes (unit 4a — the floating entry buttons are gone).
  */
 
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -42,9 +42,12 @@ vi.mock('@vkontakte/vk-bridge', () => ({
 
 import { server } from '../../../../vitest.setup';
 import { ThemeProvider } from '../../../shared/ui';
-import type { NationPublicDTO } from '../../../shared/types';
+import type { NationDTO, NationPublicDTO } from '../../../shared/types';
 import type { RegistryRowsDTO } from '../types';
 import { RULES } from '../../00_core/components/__tests__/helpers';
+import { ORDERS_TABLE } from '../../04_orders/__tests__/helpers';
+import { setRegistryEntryRequest } from '../lib/entryRequest';
+import { clearTableFilterExtensions } from '../lib/tableFilterExtensions';
 import {
   AppShell,
   normalizeEntryHash,
@@ -384,7 +387,7 @@ const PLAYERS_NATION_ROWS: RegistryRowsDTO = {
       cells: {
         number: 1,
         player: { name: 'Борис Иванов', avatar_url: null, is_fallback: false },
-        joined: { text: '1 сентября 2026', key: 20697 },
+        joined: { text: '01.09.2026', key: 20697 },
         level: 1,
         nation: {
           id: NATION_ID,
@@ -399,7 +402,7 @@ const PLAYERS_NATION_ROWS: RegistryRowsDTO = {
       cells: {
         number: 2,
         player: { name: 'Анна Смирнова', avatar_url: null, is_fallback: false },
-        joined: { text: '5 сентября 2026', key: 20701 },
+        joined: { text: '05.09.2026', key: 20701 },
         level: 2,
         nation: {
           id: null,
@@ -615,7 +618,7 @@ const PLAYER_DTO = {
     avatar_url: null,
     is_fallback: false,
   },
-  joined: { text: '1 сентября 2026', key: 20697 },
+  joined: { text: '01.09.2026', key: 20697 },
   level: 2,
   judge_rating: 12,
   nation: {
@@ -758,5 +761,301 @@ describe('AppShell — player subscreen', () => {
       'aria-label',
       'Реестр / Игроки / НВГ',
     );
+  });
+});
+
+
+/* ------------------------------------- Штаб order badges → Registry */
+
+/**
+ * Unit 13 (owner defect): a click on «Мои приказы» / «Приказы других
+ * игроков» must open the Registry ON the «Приказы» tab with the preset
+ * filter visible — the request travels `setRegistryEntryRequest` →
+ * `navigator.push('/registry')` → PanelRegistry taking the stored
+ * request on activation. The in-app path must work on the first visit
+ * and when the Registry was already used.
+ */
+
+const OWN_NATION: NationDTO = {
+  id: 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d',
+  owner_player_id: SESSION.player.id,
+  created_at: '2026-09-27T00:00:00Z',
+  name: 'Синдикат',
+  short_name: 'Синдикат',
+  color_hex: '#2b2db0',
+  motto: null,
+  description: null,
+  flag_id: null,
+  flag_url: null,
+  province_ids: [],
+  capital_province_id: null,
+  capital_name: null,
+  leader_name: 'Бьорн Свенско',
+  gender: 'male',
+  leader_title: 'Председатель',
+  leader_bio: null,
+  portrait_id: null,
+  portrait_url: null,
+  succession_type: null,
+  history_url: null,
+  anthem_url: null,
+  level: 5,
+  judge_rating: 21,
+};
+
+/** Two orders: one by my nation («Синдикат»), one by «Автория». */
+const HOME_ORDERS_ROWS: RegistryRowsDTO = {
+  table_id: 'orders',
+  total: 2,
+  truncated: false,
+  generated_at: '2026-10-20T10:00:00Z',
+  rows: [
+    {
+      key: 'o5',
+      cells: {
+        number: 5,
+        nation: {
+          id: 'n1',
+          name: 'Синдикат',
+          color: '#2b2db0',
+          flag_url: null,
+        },
+        title: { text: 'О железной дороге', action: 'order:5' },
+        submitted: {
+          date: '16.10.2026',
+          time: '12:00',
+          key: 1760616000,
+          day: 20751,
+          mark: null,
+        },
+        distributed: {
+          date: null,
+          time: null,
+          key: null,
+          day: null,
+          mark: null,
+        },
+        verdict: {
+          date: null,
+          time: null,
+          key: null,
+          day: null,
+          mark: null,
+        },
+      },
+    },
+    {
+      key: 'o3',
+      cells: {
+        number: 3,
+        nation: { id: 'n2', name: 'Автория', color: '#336699', flag_url: null },
+        title: { text: 'О гарнизонах', action: 'order:3' },
+        submitted: {
+          date: '14.10.2026',
+          time: '09:00',
+          key: 1760432400,
+          day: 20749,
+          mark: null,
+        },
+        distributed: {
+          date: '15.10.2026',
+          time: '08:00',
+          key: 1760515200,
+          day: 20750,
+          mark: null,
+        },
+        verdict: {
+          date: null,
+          time: null,
+          key: null,
+          day: null,
+          mark: null,
+        },
+      },
+    },
+  ],
+};
+
+/** The nations dropdown knows both short names. */
+const HOME_NATIONS_ROWS: RegistryRowsDTO = {
+  table_id: 'nations',
+  total: 2,
+  truncated: false,
+  generated_at: '2026-10-20T10:00:00Z',
+  rows: [
+    { key: 'n1', cells: { number: 1, name: 'Синдикат' } },
+    { key: 'n2', cells: { number: 2, name: 'Автория' } },
+  ],
+};
+
+function registerNationAndOrders() {
+  server.use(
+    http.get('*/api/v1/nations/me', () => HttpResponse.json(OWN_NATION)),
+    http.get('*/api/v1/orders/rules', () =>
+      HttpResponse.json({
+        title_min_length: 3,
+        title_max_length: 100,
+        summary_min_length: 10,
+        summary_max_length: 500,
+        url_max_length: 200,
+        max_unresolved_orders: 5,
+        unresolved_orders: 2,
+      }),
+    ),
+    // Order №3 alone sits in the caller's judge queue.
+    http.get('*/api/v1/orders/assigned', () =>
+      HttpResponse.json({
+        items: [
+          {
+            number: 3,
+            nation: {
+              name: 'Автория',
+              color: '#336699',
+              short_name: 'Автория',
+              flag_url: null,
+            },
+            title: 'О гарнизонах',
+            summary: 'Сводить гарнизоны.',
+            article_url: 'https://vk.com/@order-three',
+            deadline_text: '18.10.2026 21:21',
+            overdue: false,
+          },
+        ],
+      }),
+    ),
+    http.get('*/api/v1/map/province-names', () =>
+      HttpResponse.json({ map_version: 'test', names: {} }),
+    ),
+    http.get('*/api/v1/registry/tables', () =>
+      HttpResponse.json({
+        layout: { tabs_position: 'top' },
+        tables: [...TABLES.tables, ORDERS_TABLE],
+      }),
+    ),
+    http.get('*/api/v1/registry/tables/orders', () =>
+      HttpResponse.json(HOME_ORDERS_ROWS),
+    ),
+    http.get('*/api/v1/registry/tables/nations', () =>
+      HttpResponse.json(HOME_NATIONS_ROWS),
+    ),
+  );
+}
+
+const orderRowKeys = () =>
+  [...document.querySelectorAll('[data-row-key]')].map((el) =>
+    el.getAttribute('data-row-key'),
+  );
+
+describe('AppShell — «Штаб» order badges open the filtered «Приказы» tab', () => {
+  afterEach(() => {
+    clearTableFilterExtensions();
+    takeRegistryEntryRequest();
+  });
+
+  it('«Мои приказы» opens «Приказы» with the «Государство: Синдикат» preset and only my orders', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/';
+    renderApp(registerNationAndOrders);
+
+    await user.click(await screen.findByTestId('orders-badge-mine'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+
+    await waitFor(() =>
+      expect(tab('Приказы')).toHaveAttribute('aria-selected', 'true'),
+    );
+    // Only my nation's order stays — the preset filtered the list.
+    await waitFor(() => expect(orderRowKeys()).toEqual(['o5']));
+    expect(screen.queryByText('О гарнизонах')).not.toBeInTheDocument();
+
+    // The preset is a real visible filter in the «Фильтры» panel.
+    await user.click(screen.getByTestId('filters-toggle'));
+    const item = await screen.findByTestId('filter-item-nation');
+    await waitFor(() =>
+      expect(
+        within(item).getByLabelText('Государство: Список'),
+      ).toHaveValue('Синдикат'),
+    );
+    expect(screen.getByTestId('filters-count')).toHaveTextContent('1');
+  });
+
+  it('«Приказы других игроков» opens «Приказы» with «Назначены мне: Да» and only the judge queue', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/';
+    renderApp(registerNationAndOrders);
+
+    await user.click(await screen.findByTestId('orders-badge-assigned'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+
+    await waitFor(() =>
+      expect(tab('Приказы')).toHaveAttribute('aria-selected', 'true'),
+    );
+    // Only the assigned order stays — №3 is in my judge queue.
+    await waitFor(() => expect(orderRowKeys()).toEqual(['o3']));
+
+    await user.click(screen.getByTestId('filters-toggle'));
+    const ext = await screen.findByTestId('filter-ext-assigned_to_me');
+    expect(within(ext).getByRole('radio', { name: 'Да' })).toBeChecked();
+  });
+
+  it('a second visit still lands on «Приказы» — the player opened the Registry earlier on another tab', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/';
+    renderApp(registerNationAndOrders);
+
+    // First visit: the Registry on «Государства», then back to «Штаб».
+    await screen.findByTestId('orders-badge-mine');
+    await user.click(tab('Реестр'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+    await user.click(
+      await screen.findByRole('tab', { name: 'Государства' }),
+    );
+    await screen.findByText('Синдикат');
+    await user.click(tab('Штаб'));
+    await waitFor(() => expect(window.location.hash).toBe('#/'));
+
+    // Second visit through the badge — the request must arrive again.
+    await user.click(await screen.findByTestId('orders-badge-mine'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+    await waitFor(() =>
+      expect(tab('Приказы')).toHaveAttribute('aria-selected', 'true'),
+    );
+    await waitFor(() => expect(orderRowKeys()).toEqual(['o5']));
+  });
+
+  it('a preset arriving while the Registry is open never overrides a hand-picked filter', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/';
+    renderApp(registerNationAndOrders);
+
+    await screen.findByTestId('orders-badge-mine');
+    await user.click(tab('Реестр'));
+    await waitFor(() => expect(window.location.hash).toBe('#/registry'));
+
+    // The player picked «Автория» in the nation dropdown themselves.
+    await user.click(await screen.findByRole('tab', { name: 'Приказы' }));
+    await screen.findByText('О железной дороге');
+    await user.click(screen.getByTestId('filters-toggle'));
+    const item = await screen.findByTestId('filter-item-nation');
+    await user.selectOptions(
+      within(item).getByLabelText('Государство: Список'),
+      'Автория',
+    );
+    await waitFor(() => expect(orderRowKeys()).toEqual(['o3']));
+
+    // An entry request arrives while the panel is mounted and active.
+    setRegistryEntryRequest({
+      tab: 'orders',
+      preset: { nation: 'Синдикат' },
+    });
+    await waitFor(() =>
+      expect(tab('Приказы')).toHaveAttribute('aria-selected', 'true'),
+    );
+    // The hand-picked value survives — still «Автория», still o3.
+    await waitFor(() =>
+      expect(
+        within(item).getByLabelText('Государство: Список'),
+      ).toHaveValue('Автория'),
+    );
+    expect(orderRowKeys()).toEqual(['o3']);
   });
 });

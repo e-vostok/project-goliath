@@ -8,13 +8,13 @@
  * The window keeps «Реестр» as the active top-bar tab; the Registry
  * itself stays mounted behind it (hidden, state kept). One request —
  * `registryApi.getPlayer` — and the card shows exactly what the
- * players table's row carries: the avatar (VK photo or the neutral
- * circle when `avatar_url` is null / `is_fallback`), the name (the
- * fallback name when `is_fallback`), «Дата регистрации», «Уровень»,
- * «Судейский рейтинг» as the table's gauge (zero-centred bar, −100…
- * +100) and «Государство» (small flag + short name — a link to the
- * nation subscreen when the cell id is set; «Государства нет» for a
- * nation-less player).
+ * players table's row carries: the 96 px avatar (VK photo or the
+ * neutral silhouette when `avatar_url` is null / `is_fallback`), the
+ * «ИГРОК» caption, the name (the fallback name when `is_fallback`),
+ * then three tiles — «РЕГИСТРАЦИЯ», «УРОВЕНЬ», «РЕЙТИНГ» (the rating
+ * number in `signal-ink`, no gauge) — then the «ГОСУДАРСТВО» card:
+ * the flag and the short name as a link row with a chevron when the
+ * cell id is set, «Государства нет» for a nation-less player (12b).
  *
  * The path chain is «Реестр / Игроки / <имя>» — a person cell exists
  * only in the players table, so the middle segment is its tab (the
@@ -23,17 +23,18 @@
  * failures get the shared ErrorState + «Повторить».
  */
 
-import type { ReactNode } from 'react';
 import { Button } from '@vkontakte/vkui';
 import { Icon16ArrowLeftOutline } from '@vkontakte/icons';
 
 import { errorText } from '../../../shared/errorTexts';
 import {
+  BlockTitle,
   EmptyState,
   ErrorState,
   LoadingState,
   NationLabel,
   SPACING,
+  StatTile,
   Subscreen,
   TEXT_STYLES,
   tokenVar,
@@ -41,59 +42,21 @@ import {
 import { CardBlock } from '../../00_core/components/card/CardBlock';
 import { usePlayerProfile } from '../hooks/usePlayerProfile';
 import type { RegistryPlayerDTO } from '../types';
-import { GaugeCell } from './cells/GaugeCell';
 import { NationOpenLink } from './cells/NationCell';
 import { PlayerAvatar } from './PlayerAvatar';
 
 const PLAYER_TEXTS = {
   defaultTab: 'Игроки',
   notFound: 'Игрок не найден',
-  joined: 'Дата регистрации',
+  caption: 'Игрок',
+  joined: 'Регистрация',
   level: 'Уровень',
-  judgeRating: 'Судейский рейтинг',
+  judgeRating: 'Рейтинг',
   nation: 'Государство',
   noNation: 'Государства нет',
 };
 
-/** A «label : value» line of the card — `div`s, so the gauge fits. */
-function PlayerRow({
-  label,
-  value,
-  valueWidth,
-}: {
-  label: string;
-  value: ReactNode;
-  /** Fixed width of the value side — the gauge bar needs room. */
-  valueWidth?: number;
-}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: SPACING['space-3'],
-      }}
-    >
-      <div style={{ color: tokenVar('ink-muted'), flexShrink: 0 }}>
-        {label}
-      </div>
-      <div
-        style={{
-          ...TEXT_STYLES['body'],
-          color: tokenVar('ink'),
-          textAlign: 'right',
-          minWidth: 0,
-          width: valueWidth,
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/** «Государство»: flag + short name, a link when the cell has an id. */
+/** «Государство» — the 48×32 flag and the short name as a link row. */
 function PlayerNation({
   nation,
   onOpenNation,
@@ -102,24 +65,51 @@ function PlayerNation({
   onOpenNation: (nationId: string) => void;
 }) {
   if (nation === null) {
-    return <>{PLAYER_TEXTS.noNation}</>;
+    return (
+      <div style={{ color: tokenVar('ink-muted') }}>
+        {PLAYER_TEXTS.noNation}
+      </div>
+    );
   }
   const label = (
     <NationLabel
       name={nation.name}
       flagUrl={nation.flag_url}
       color={nation.color}
-      size="cell"
+      size="sub"
     />
   );
-  // An `id: null` snapshot stays plain text — nothing to open.
-  const nationId = nation.id;
-  if (nationId === null) {
+  // An `id: null` snapshot stays a plain row — nothing to open.
+  if (nation.id === null) {
     return label;
   }
+  const nationId = nation.id;
   return (
     <NationOpenLink onOpen={() => onOpenNation(nationId)}>
-      {label}
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: SPACING['space-3'],
+        }}
+      >
+        {label}
+        <span style={{ flexGrow: 1 }} />
+        <svg
+          width={16}
+          height={16}
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke={tokenVar('ink-faint')}
+          strokeWidth={1.75}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ flexShrink: 0 }}
+        >
+          <path d="M6 3l5 5-5 5" />
+        </svg>
+      </span>
     </NationOpenLink>
   );
 }
@@ -181,64 +171,71 @@ export function PlayerSubscreen({
       )}
 
       {player !== null && (
-        <CardBlock testId="player-subscreen">
-          <div
-            data-testid="player-subscreen-header"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: SPACING['space-4'],
-            }}
-          >
-            <PlayerAvatar person={player.person} size={64} />
+        <>
+          <CardBlock testId="player-subscreen">
             <div
+              data-testid="player-subscreen-header"
               style={{
-                ...TEXT_STYLES['display-lg'],
-                color: tokenVar('ink'),
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                display: 'flex',
+                alignItems: 'center',
+                gap: SPACING['space-4'],
               }}
             >
-              {player.person.name}
+              <PlayerAvatar person={player.person} size={96} />
+              <div style={{ flexGrow: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    ...TEXT_STYLES['label'],
+                    color: tokenVar('ink-muted'),
+                  }}
+                >
+                  {PLAYER_TEXTS.caption}
+                </div>
+                <h1
+                  style={{
+                    margin: '2px 0 0',
+                    ...TEXT_STYLES['display-lg'],
+                    color: tokenVar('ink'),
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {player.person.name}
+                </h1>
+              </div>
             </div>
-          </div>
+          </CardBlock>
+
           <div
-            data-testid="player-subscreen-rows"
+            data-testid="player-subscreen-stats"
             style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: SPACING['space-2'],
-              marginTop: SPACING['space-4'],
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: SPACING['space-3'],
             }}
           >
-            <PlayerRow
+            <StatTile
               label={PLAYER_TEXTS.joined}
-              value={player.joined.text}
+              value={
+                <span style={{ fontSize: 20 }}>{player.joined.text}</span>
+              }
             />
-            <PlayerRow label={PLAYER_TEXTS.level} value={player.level} />
-            <PlayerRow
+            <StatTile label={PLAYER_TEXTS.level} value={player.level} />
+            <StatTile
               label={PLAYER_TEXTS.judgeRating}
-              valueWidth={200}
-              value={
-                <GaugeCell
-                  value={player.judge_rating}
-                  scaleMin={null}
-                  scaleMax={null}
-                />
-              }
-            />
-            <PlayerRow
-              label={PLAYER_TEXTS.nation}
-              value={
-                <PlayerNation
-                  nation={player.nation}
-                  onOpenNation={onOpenNation}
-                />
-              }
+              accent
+              value={player.judge_rating}
             />
           </div>
-        </CardBlock>
+
+          <CardBlock testId="player-subscreen-nation">
+            <BlockTitle icon="flag" title={PLAYER_TEXTS.nation} />
+            <PlayerNation
+              nation={player.nation}
+              onOpenNation={onOpenNation}
+            />
+          </CardBlock>
+        </>
       )}
     </Subscreen>
   );

@@ -1,14 +1,20 @@
 /**
  * OrdersBlock — the «Приказы» block of the headquarters card
  * (PanelNationHome, Spec 5.4 / D12 — never in PanelCreateNation;
- * UI Spec 9.1, mockup «Main», boards 10/10b, version 0.10.0 unit 7b).
+ * UI Spec 9.1, mockup board 08, version 0.10.0 units 7b + 13).
  *
  * A surface block with the shared BlockTitle («Приказы», document
  * icon) whose trailing slot carries the «Подать приказ» button.
- * Below it sit the two order badges — «Мои приказы» and «Приказы
+ * Below it sit the two order cards — «Мои приказы» and «Приказы
  * других игроков» — that replaced the stat tiles and the «Ожидают
  * вердикт» list in 0.10.0: the judge path now runs through the
- * Registry (badge → orders tab → row → order window).
+ * Registry (card → orders tab → row → order window).
+ *
+ * The card look is PNG 08: a `surface-raised` card with a `line`
+ * frame, a 44 px `surface-inset` icon tile on the left carrying a
+ * brass count circle on its top-right corner, the title in
+ * `heading`, a `caption` subtitle in `ink-muted` («Ждут вердикта» /
+ * «Нужно написать вердикт») and an `ink-faint` chevron on the right.
  *
  * «Мои приказы» counts the player's own submitted orders without a
  * verdict (`unresolved_orders` from GET /orders/rules — the same
@@ -16,12 +22,12 @@
  * orders assigned to the player for judging (the GET /orders/assigned
  * list length — the endpoint is unpaginated and returns the whole
  * queue). A zero count gets no circle, counts of 100+ show «99+»;
- * a failed or in-flight fetch leaves the badge numberless — never
+ * a failed or in-flight fetch leaves the card numberless — never
  * «0», never an error popup. Both counts load on mount and refetch
  * when `ordersRefreshKey` bumps (an order submitted, a verdict
  * written or rejected).
  *
- * A badge click hands the host an entry request for the Registry's
+ * A card click hands the host an entry request for the Registry's
  * orders tab with the preset filter («Мои приказы» — the nation
  * dropdown set to my short name, «Приказы других игроков» — the
  * «Назначены мне» extension on «Да»); navigation itself lives in
@@ -33,6 +39,7 @@ import { Button } from '@vkontakte/vkui';
 
 import {
   BlockTitle,
+  FONTS,
   RADII,
   SPACING,
   TEXT_STYLES,
@@ -45,8 +52,70 @@ import { ORDERS_TABLE_ID } from '../registryFilters';
 import { ORDERS_TEXTS } from '../texts';
 import { useOrdersUi } from '../OrdersUiProvider';
 
-/** A count of 100 or more collapses to «99+» (board 10b). */
+/** A count of 100 or more collapses to «99+» (PNG 08). */
 const countText = (count: number) => (count >= 100 ? '99+' : String(count));
+
+/** PNG 08 — the «Мои приказы» tile icon: a document with an up arrow. */
+function MineIcon() {
+  return (
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke={tokenVar('signal-ink')}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.8 1.8h5.7l3 3.1v9.3H3.8z" />
+      <path d="M9.5 1.8v3.1h3" />
+      <path d="M8.1 11.6V7.2M6.2 9l1.9-1.9L10 9" />
+    </svg>
+  );
+}
+
+/** PNG 08 — the «Приказы других игроков» tile icon: a checked document. */
+function OthersIcon() {
+  return (
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke={tokenVar('signal-ink')}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.8 1.8h5.7l3 3.1v9.3H3.8z" />
+      <path d="M9.5 1.8v3.1h3" />
+      <path d="M5.9 9.4l1.5 1.5 3-3.2" />
+    </svg>
+  );
+}
+
+/** PNG 08 — the `ink-faint` chevron on the card's right edge. */
+function CardChevron() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke={tokenVar('ink-faint')}
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M6 3l5 5-5 5" />
+    </svg>
+  );
+}
 
 export function OrdersBlock({
   nationShortName,
@@ -55,7 +124,7 @@ export function OrdersBlock({
   /** My nation's short name — the «Мои приказы» preset's dropdown value
    * (the Registry's nation options list short names, Spec 03_registry 3.3). */
   nationShortName: string;
-  /** Hands the badge's entry request to the host (AppShell stores it
+  /** Hands the card's entry request to the host (AppShell stores it
    * and navigates to the Registry). */
   onOpenRegistry: (request: RegistryEntryRequest) => void;
 }) {
@@ -81,7 +150,7 @@ export function OrdersBlock({
         icon="document"
         title={ORDERS_TEXTS.blockTitle}
         trailing={
-          <Button size="s" mode="secondary" onClick={openComposer}>
+          <Button size="m" mode="primary" onClick={openComposer}>
             {ORDERS_TEXTS.submitButton}
           </Button>
         }
@@ -90,12 +159,14 @@ export function OrdersBlock({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          gap: SPACING['space-2'],
+          gap: SPACING['space-4'],
         }}
       >
-        <OrderBadge
+        <OrderCard
           testId="orders-badge-mine"
+          icon={<MineIcon />}
           label={ORDERS_TEXTS.badgeMine}
+          hint={ORDERS_TEXTS.badgeMineHint}
           count={mineCount}
           onClick={() =>
             onOpenRegistry({
@@ -104,9 +175,11 @@ export function OrdersBlock({
             })
           }
         />
-        <OrderBadge
+        <OrderCard
           testId="orders-badge-assigned"
+          icon={<OthersIcon />}
           label={ORDERS_TEXTS.badgeOthers}
+          hint={ORDERS_TEXTS.badgeOthersHint}
           count={assignedCount}
           onClick={() =>
             onOpenRegistry({
@@ -120,14 +193,18 @@ export function OrdersBlock({
   );
 }
 
-function OrderBadge({
+function OrderCard({
   testId,
+  icon,
   label,
+  hint,
   count,
   onClick,
 }: {
   testId: string;
+  icon: React.ReactNode;
   label: string;
+  hint: string;
   /** null — the count is not loaded (in-flight or failed): no circle. */
   count: number | null;
   onClick: () => void;
@@ -147,54 +224,84 @@ function OrderBadge({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={{
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
+        gap: SPACING['space-3'],
         minWidth: 0,
-        padding: '10px 12px',
-        background: tokenVar(hot ? 'surface-raised' : 'surface-inset'),
-        border: 'none',
-        borderRadius: RADII['radius-md'],
+        minHeight: 72,
+        padding: '12px 16px',
+        boxSizing: 'border-box',
+        background: tokenVar('surface-raised'),
+        border: `1px solid ${tokenVar(hot ? 'ink-faint' : 'line')}`,
+        borderRadius: RADII['radius-lg'],
         cursor: 'pointer',
+        textAlign: 'left',
+        color: tokenVar('ink'),
         outline: focused ? `2px solid ${tokenVar('action')}` : 'none',
         outlineOffset: 2,
       }}
     >
       <span
         style={{
-          ...TEXT_STYLES['body'],
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          color: tokenVar('ink'),
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 44,
+          height: 44,
+          flexShrink: 0,
+          borderRadius: RADII['radius-md'],
+          background: tokenVar('surface-inset'),
         }}
       >
-        {label}
+        {icon}
+        {count !== null && count > 0 && (
+          <span
+            data-testid={`${testId}-count`}
+            aria-label={ORDERS_TEXTS.badgeAttention(count)}
+            style={{
+              position: 'absolute',
+              top: -8,
+              right: -8,
+              minWidth: 20,
+              height: 20,
+              padding: '0 5px',
+              boxSizing: 'border-box',
+              borderRadius: RADII['radius-pill'],
+              background: tokenVar('signal'),
+              color: tokenVar('on-signal'),
+              fontFamily: FONTS.mono,
+              fontSize: 12,
+              lineHeight: '20px',
+              textAlign: 'center',
+            }}
+          >
+            {countText(count)}
+          </span>
+        )}
       </span>
-      {count !== null && count > 0 && (
+      <span style={{ flexGrow: 1, minWidth: 0 }}>
         <span
-          data-testid={`${testId}-count`}
           style={{
-            ...TEXT_STYLES['figure'],
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minWidth: 22,
-            height: 22,
-            padding: '0 6px',
-            boxSizing: 'border-box',
-            flexShrink: 0,
-            fontSize: 12,
-            lineHeight: '16px',
-            background: tokenVar('signal'),
-            color: tokenVar('on-signal'),
-            borderRadius: RADII['radius-pill'],
+            display: 'block',
+            ...TEXT_STYLES['heading'],
+            color: tokenVar('ink'),
           }}
         >
-          {countText(count)}
+          {label}
         </span>
-      )}
+        <span
+          style={{
+            display: 'block',
+            ...TEXT_STYLES['caption'],
+            color: tokenVar('ink-muted'),
+          }}
+        >
+          {hint}
+        </span>
+      </span>
+      <CardChevron />
     </button>
   );
 }
