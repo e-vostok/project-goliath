@@ -83,6 +83,12 @@ async function renderAsAdmin(onWorldChanged: () => void = () => {}) {
 }
 
 describe('AdminBlock — visibility', () => {
+  beforeEach(() => {
+    // The probe caches its answer in sessionStorage (unit 10) —
+    // every test starts cold.
+    window.sessionStorage.clear();
+  });
+
   it('stays hidden when /admin/me returns 403', async () => {
     let probed = 0;
     server.use(
