@@ -61,7 +61,7 @@ describe('ConfirmSubmitModal — abandoned send', () => {
       }),
     );
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
 
     // First pass: fill, reach the confirm window, send and abandon it.
     await user.click(

@@ -62,7 +62,7 @@ function renderHome() {
   renderWithBot(
     // PanelNationHome hosts the orders block — the provider must exist.
     <OrdersUiProvider>
-      <PanelNationHome nation={NATION} onChanged={vi.fn()} />
+      <PanelNationHome nation={NATION} onChanged={vi.fn()} onOpenRegistry={() => {}} />
     </OrdersUiProvider>,
   );
 }

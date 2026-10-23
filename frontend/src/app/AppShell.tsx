@@ -295,6 +295,13 @@ function AuthedArea() {
                         key={worldVersion}
                         nation={nation}
                         onChanged={refresh}
+                        onOpenRegistry={(request) => {
+                          // The «Штаб» order badges' in-app entry
+                          // (Spec 03_registry 5.5): store the request,
+                          // the Registry takes it on activation.
+                          setRegistryEntryRequest(request);
+                          void navigator.push('/registry');
+                        }}
                       />
                     )}
                     <AdminBlock onWorldChanged={handleWorldChanged} />

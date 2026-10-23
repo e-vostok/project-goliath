@@ -59,6 +59,22 @@ const submitButton = () =>
 beforeEach(registerDefaultHandlers);
 
 describe('PanelCreateNation — four-tab shell', () => {
+  it('a player without a nation sees no orders block — the badges are nation-gated (unit 7b)', async () => {
+    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    await screen.findByText('Создание государства');
+
+    expect(screen.queryByTestId('orders-block')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Мои приказы' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Приказы других игроков' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Подать приказ' }),
+    ).toBeNull();
+  });
+
   it('the key path: empty start, a full tab tour, then a server error lands on the right tab', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(

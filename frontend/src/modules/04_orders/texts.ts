@@ -9,13 +9,9 @@ export const ORDERS_TEXTS = {
   cancel: 'Отмена',
   closeButton: 'Закрыть',
 
-  /* «Ожидают вердикт» list */
-  assignedTitle: 'Ожидают вердикт',
-  assignedEmpty: 'Приказов на рассмотрении нет',
-  assignedLoadError: 'Не удалось загрузить',
-  assignedDeadline: (deadlineText: string) => `до ${deadlineText}`,
-  assignedOverdue: (deadlineText: string) => `срок вышел ${deadlineText}`,
-  refreshButton: 'Обновить',
+  /* «Штаб» badges (0.10.0 unit 7b) */
+  badgeMine: 'Мои приказы',
+  badgeOthers: 'Приказы других игроков',
 
   /* OrderComposer */
   composerTitle: 'Подать приказ',

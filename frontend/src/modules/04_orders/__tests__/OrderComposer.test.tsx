@@ -62,7 +62,7 @@ describe('OrderComposer — author limit', () => {
       unresolved_orders: RULES.max_unresolved_orders,
     });
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
     await openComposer(user);
 
     await screen.findByText('Неразрешённых приказов: 5 из 5');
@@ -80,7 +80,7 @@ describe('OrderComposer — author limit', () => {
 describe('OrderComposer → ConfirmSubmitModal', () => {
   it('shows every entered value in full in the confirmation window', async () => {
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
     await openComposer(user);
     await fillComposer(user);
     await user.click(
@@ -112,7 +112,7 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
 
   it('lies over the still-mounted composer, which keeps its input on the way back', async () => {
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
     await openComposer(user);
     await fillComposer(user);
     await user.click(
@@ -147,7 +147,7 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
 
   it('Enter in a single-line field does nothing; in the textarea it inserts a line break', async () => {
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
     await openComposer(user);
 
     await user.type(screen.getByLabelText('Название'), 'Тест{Enter}');
@@ -183,7 +183,7 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
       }),
     );
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
     await openComposer(user);
     await fillComposer(user);
     await user.click(
@@ -218,7 +218,7 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
       ),
     );
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
     await openComposer(user);
     await fillComposer(user);
     await user.click(
@@ -257,7 +257,7 @@ describe('OrderComposer → ConfirmSubmitModal', () => {
       ),
     );
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
     await openComposer(user);
     await fillComposer(user);
     await user.click(
