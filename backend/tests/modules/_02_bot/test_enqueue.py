@@ -54,6 +54,7 @@ async def _member(session: AsyncSession, *, consent: str | None = "ALLOWED") -> 
             id=str(uuid.uuid4()),
             owner_player_id=player.id,
             name=f"N-{player.id[:8]}",
+            short_name=f"SN-{player.id[:8]}",
             color_hex="#" + uuid.uuid4().hex[:6].upper(),
             leader_name=VALID_PROFILE["leader_name"],
             leader_title=VALID_PROFILE["leader_title"],

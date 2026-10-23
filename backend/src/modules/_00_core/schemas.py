@@ -63,7 +63,8 @@ class AuthResponseDTO(BaseModel):
 class NationDTO(BaseModel):
     """
     Nation representation (Spec Part 5). None on mandatory fields only
-    for nations created before the profile/0.8.0 migrations; None on
+    for nations created before the profile/0.8.0 migrations — except
+    ``short_name``, which is mandatory since migration 0012; None on
     optional fields means "not set". ``flag_url``/``portrait_url`` are
     derived through ``catalog.py`` (INV-16).
     """
@@ -72,7 +73,7 @@ class NationDTO(BaseModel):
     owner_player_id: uuid.UUID
     created_at: datetime
     name: str
-    short_name: str | None
+    short_name: str
     color_hex: str
     motto: str | None
     description: str | None
@@ -109,7 +110,7 @@ class NationPublicDTO(BaseModel):
     id: uuid.UUID
     created_at: datetime
     name: str
-    short_name: str | None
+    short_name: str
     color_hex: str
     motto: str | None
     description: str | None

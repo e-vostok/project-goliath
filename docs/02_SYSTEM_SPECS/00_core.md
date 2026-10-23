@@ -37,8 +37,8 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 | `leader_name`         | VARCHAR(100)  | NULLABLE (NULL только у государств, созданных до миграции профиля)           |
 | `leader_title`        | VARCHAR(100)  | NULLABLE (то же)                                                             |
 | `history_url`         | VARCHAR(2000) | NULLABLE (то же)                                                             |
-| `short_name`          | VARCHAR(100)  | **UNIQUE**, NULLABLE (NULL только у государств, созданных до 0.8.0)          |
-| `gender`              | VARCHAR(10)   | NULLABLE; значения `male` / `female` (NULL — как у `short_name`)             |
+| `short_name`          | VARCHAR(100)  | **UNIQUE**, **NOT NULL** (обязательное; NOT NULL с миграции 0012)            |
+| `gender`              | VARCHAR(10)   | NULLABLE; значения `male` / `female` (NULL — у государств, созданных до 0.8.0) |
 | `succession_type`     | VARCHAR(20)   | NULLABLE; значения `elections` / `appointment` / `criteria` / `inheritance`  |
 | `motto`               | VARCHAR(100)  | NULLABLE (необязательное; пустое значение хранится как NULL)                 |
 | `description`         | VARCHAR(200)  | NULLABLE (необязательное)                                                    |
@@ -62,6 +62,8 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 - `gender` и `succession_type` — набор значений фиксирован кодом (не баланс), в конфиг не выносится.
 
 **Миграция** (следующая после head `0010`, имя `0011_00_core_registration_2.py`) добавляет одиннадцать колонок (в SQLite — через `batch_alter_table`), уникальный индекс на `short_name` и внешний ключ `capital_province_id`; существующие данные не меняет. Между `nations` и `provinces` возникает циклическая ссылка (`provinces.nation_id` → `nations.id` и `nations.capital_province_id` → `provinces.id`): внешнему ключу столицы задаётся имя и `use_alter=True`; обе стороны NULLABLE. Порядок удаления государства не меняется: провинции освобождаются (INV-6), затем строка государства удаляется.
+
+**Миграция 0012** (версия 0.10.0, единица 4a) делает `short_name` NOT NULL: перед ALTER пустые значения заполняются полным названием (`UPDATE nations SET short_name = name WHERE short_name IS NULL`), и если это нарушает уникальность, миграция падает. Пустых кратких названий в игре больше не существует.
 
 ### `provinces`
 
@@ -139,7 +141,7 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 - **INV-8:** При изменении `null` или отсутствие поля означает «не менять»; пустая строка (после нормализации) у **обязательного** поля — ошибка, а не очистка. Очистить можно только необязательные поля (INV-12).
 - **INV-9:** Проверки профильных полей выполняются в `service.py` (единый источник; коды ошибок — Часть 5). DTO только типизирует поля.
 - **INV-10:** На описательные сведения (кроме `short_name`) не накладывается уникальность; они не участвуют в расчётах Tick.
-- **INV-11:** `nations.short_name` уникален глобально, когда не NULL (UNIQUE-констрейнт БД; в PostgreSQL и SQLite допустимо несколько NULL). Сравнение — точное, после нормализации; различие регистра пока считается различием (бэклог). При создании краткое название обязательно.
+- **INV-11:** `nations.short_name` уникален глобально (UNIQUE-констрейнт БД) и не может быть NULL (NOT NULL с миграции 0012). Сравнение — точное, после нормализации; различие регистра пока считается различием (бэклог). При создании краткое название обязательно.
 - **INV-12:** При создании обязательны: `short_name`, `gender`, `succession_type`, `capital_province_id`, `capital_name` — вместе с полями INV-7; с 0.9.0 также `flag_id` и `portrait_id` (пустое значение → `FLAG_INVALID`/`PORTRAIT_INVALID`; NULL у государств, созданных до 0.9.0, — осознанное исключение, PATCH его сохраняет). Необязательные поля (`motto`, `description`, `leader_bio`, `flag_id`, `portrait_id`, `anthem_url`) пустыми не хранятся: пустое значение после нормализации записывается как NULL.
 - **INV-13 (различимость цветов):** Цвет государства при создании и при смене проходит проверку Части 3 (расстояние OKLab до цветов других государств и до цветов карты) под транзакционной блокировкой, так что два одновременных похожих цвета не проходят оба. Цвет нормализуется к верхнему регистру до всех проверок. Государства, существовавшие до 0.8.0, задним числом не проверяются.
 - **INV-14 (столица):** `capital_province_id` при создании — одна из провинций, закрепляемых за этим государством; если не передан, равен первому элементу `province_ids` в том порядке, в котором список передан. Через PATCH не меняется; `capital_name` меняется. Состав провинций через PATCH не меняется. Модули, которые в будущем меняют владельца провинции, обязаны сами решить судьбу столицы (бэклог).
@@ -166,7 +168,7 @@ stateDiagram-v2
     ActiveIncomplete --> NoNation: delete_nation()
 ```
 
-`ActiveIncomplete` — производное состояние (хотя бы одно из полей `leader_name`, `leader_title`, `history_url`, `short_name`, `gender`, `succession_type` равно NULL), оно не хранится. Оно возможно только у строк, созданных до миграции; `create_nation()` ведёт сразу в `ActiveComplete`. Столица в определение не входит: у государства, созданного до 0.8.0, столицы нет и появиться она через редактирование не может (INV-14). Изменение сведений государства не является механическим деятельным актом: оно применяется немедленно и в `scheduled_actions` не попадает.
+`ActiveIncomplete` — производное состояние (хотя бы одно из полей `leader_name`, `leader_title`, `history_url`, `gender`, `succession_type` равно NULL), оно не хранится. Оно возможно только у строк, созданных до миграции; `create_nation()` ведёт сразу в `ActiveComplete`. Столица в определение не входит: у государства, созданного до 0.8.0, столицы нет и появиться она через редактирование не может (INV-14). Изменение сведений государства не является механическим деятельным актом: оно применяется немедленно и в `scheduled_actions` не попадает.
 
 ### FSM: жизненный цикл механического деятельного акта
 
@@ -443,7 +445,7 @@ $$
 AuthResponseDTO   = { access_token: str, token_type: "bearer", expires_in: int, player: PlayerDTO }
 PlayerDTO         = { id: UUID, vk_user_id: int, created_at: datetime }
 NationDTO         = { id: UUID, owner_player_id: UUID, created_at: datetime,
-                      name: str, short_name: str | None, color_hex: str,
+                      name: str, short_name: str, color_hex: str,
                       motto: str | None, description: str | None,
                       flag_id: str | None, flag_url: str | None,
                       province_ids: list[int],
@@ -456,7 +458,7 @@ NationDTO         = { id: UUID, owner_player_id: UUID, created_at: datetime,
                       # None у обязательных полей — только у государств, созданных до миграции 0.8.0 (или до миграции профиля);
                       # None у необязательных — «не задано»
 NationPublicDTO   = { id: UUID, created_at: datetime,
-                      name: str, short_name: str | None, color_hex: str,
+                      name: str, short_name: str, color_hex: str,
                       motto: str | None, description: str | None,
                       flag_id: str | None, flag_url: str | None,
                       province_ids: list[int],
@@ -571,7 +573,7 @@ ErrorResponse      = { detail: str, code: str }
 
 ## ПРИЛОЖЕНИЕ A: Изменения за пределами `00_core`
 
-- **A1. `03_registry`.** `NationRegistryRow` (результат `NationService.list_for_registry`) получает поля `short_name: str | None` и `flag_id: str | None`. Источники `players` и `nations` строят ячейку `nation` как `cell_nation(name=short_name или name, color, flag_url=catalog.flag_url(flag_id))`. Spec `03_registry` (описание ячейки `nation`, строка про `flag_url = null`) обновляется Lead AI в Issue 16 отдельным файлом.
+- **A1. `03_registry`.** `NationRegistryRow` (результат `NationService.list_for_registry`) получает поля `short_name: str` (NOT NULL с миграции 0012) и `flag_id: str | None`. Источники `players` и `nations` строят ячейку `nation` как `cell_nation(name=short_name, color, flag_url=catalog.flag_url(flag_id))`. Spec `03_registry` (описание ячейки `nation`, строка про `flag_url = null`) обновляется Lead AI в Issue 16 отдельным файлом.
 - **A2. `01_map`.** `ProvincePicker` принимает и возвращает упорядоченный список (порядок выбора важен для столицы по умолчанию), поддерживает отметку столицы правой кнопкой и видимой кнопкой; исправляется дёрганье карты в окне выбора (бэклог `01_map`) — Issue 15.
 - **A3. Статические файлы.** Каталог `frontend/public/assets/nations/flags/` и `.../portraits/` (PNG), отдаются Caddy из `/srv` вместе с остальной статикой; до поступления картинок от Project Owner используется набор-заглушка (Issue 11).
 - **A4. Тесты и фабрики.** Фабрика государства создаёт ровно `max_provinces_per_nation` (5) провинций и заполняет новые обязательные поля; тесты, предполагавшие меньшее число провинций, обновляются; добавляются тесты порядка проверок, гонки цветов (две одновременные регистрации близких цветов — принята одна), миграции вверх/вниз на SQLite и PostgreSQL, сверки конфига с `01_map.yaml`, существования файлов каталога, векторов OKLab из Части 3.

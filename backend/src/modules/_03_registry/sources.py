@@ -114,7 +114,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
                     "judge_rating": row.judge_rating,
                     "nation": (
                         cell_nation(
-                            row.nation_short_name or row.nation_name,
+                            row.nation_short_name,
                             row.nation_color,
                             flag_url(row.nation_flag_id),
                             nation_id=row.nation_id,
@@ -136,8 +136,8 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
     id) order of ``NationService.list_for_registry`` — a nation's place
     among the existing ones (D2). ``formed`` is the game-calendar date of
     ``created_turn``; the row key is the nation id. ``name`` shows the
-    display name (``short_name`` or, for pre-0.8.0 nations, the full
-    ``name``) so the ``select_or_contains`` options match the ``nation``
+    short name (mandatory since migration 0012 — no full-name fallback)
+    so the ``select_or_contains`` options match the ``nation``
     cells of the players table exactly (Spec 3.7); ``flag`` carries the
     catalog flag image — the path is built only by
     ``catalog.flag_url`` (INV-16).
@@ -155,7 +155,7 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
                 key=row.nation_id,
                 cells={
                     "number": number,
-                    "name": row.short_name or row.name,
+                    "name": row.short_name,
                     "flag": cell_flag(row.color_hex, flag_url(row.flag_id)),
                     "formed": cell_date(
                         format_game_date(

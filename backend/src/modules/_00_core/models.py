@@ -120,8 +120,10 @@ class Nation(Base):
     # Registration 2.0 fields (Spec 1.3, migration 0011). NULL only for
     # nations created before 0.8.0 — NationService.create writes every
     # mandatory field (INV-12) and stores emptied optional fields as NULL.
-    short_name: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, unique=True
+    # short_name is the exception: NOT NULL and UNIQUE since migration
+    # 0012 (0.10.0 unit 4a) — every nation has a short name.
+    short_name: Mapped[str] = mapped_column(
+        String(100), nullable=False, unique=True
     )
     gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
     succession_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
