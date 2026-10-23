@@ -223,7 +223,16 @@ class TestNationsTable:
             "text": "Март 2040",
             "key": 2,
         }
-        assert rows[n1.id]["flag"] == {"color": "#AA0001", "image_url": None}
+        # The «name» column carries a nation cell — the same shape the
+        # players table shows for the owner nation (Spec 3.3): id,
+        # short name, colour, flag_url.
+        assert rows[n1.id]["name"] == {
+            "id": n1.id,
+            "name": n1.short_name,
+            "color": "#AA0001",
+            "flag_url": None,
+        }
+        assert "flag" not in rows[n1.id]
 
         # Deleting a nation shifts the numbers after it (Spec 3.3, D2).
         await NationService.delete(test_db_session, n1.id)

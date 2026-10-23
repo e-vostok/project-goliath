@@ -149,11 +149,13 @@ class TestScenarioA:
         n1, n2 = body["rows"]
         assert n1["key"] == nation1_id
         assert n1["cells"]["number"] == 1
-        assert n1["cells"]["name"] == "Северная Марка"
-        assert n1["cells"]["flag"] == {
+        assert n1["cells"]["name"] == {
+            "id": nation1_id,
+            "name": "Северная Марка",
             "color": "#AA1111",
-            "image_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
+        assert "flag" not in n1["cells"]
         assert n1["cells"]["formed"] == {
             "text": format_game_date(
                 compute_game_date(0, CORE_CONFIG), CORE_CONFIG
@@ -163,7 +165,12 @@ class TestScenarioA:
         assert n1["cells"]["provinces"] == 5
         assert n2["key"] == nation2_id
         assert n2["cells"]["number"] == 2
-        assert n2["cells"]["name"] == "Ладожский Союз"
+        assert n2["cells"]["name"] == {
+            "id": nation2_id,
+            "name": "Ладожский Союз",
+            "color": "#22BB33",
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+        }
         assert n2["cells"]["formed"] == {
             "text": format_game_date(
                 compute_game_date(1, CORE_CONFIG), CORE_CONFIG
@@ -219,7 +226,7 @@ class TestScenarioA:
         (n2,) = body["rows"]
         assert n2["key"] == nation2_id
         assert n2["cells"]["number"] == 1
-        assert n2["cells"]["name"] == "Ладожский Союз"
+        assert n2["cells"]["name"]["name"] == "Ладожский Союз"
         assert n2["cells"]["formed"]["key"] == 1
         assert n2["cells"]["provinces"] == 5
         _assert_no_identifiers(resp.text, players)

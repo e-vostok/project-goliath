@@ -55,7 +55,7 @@ tables:
         searchable: true
         stub: false
       - id: joined
-        title: "Дата регистрации"
+        title: "Регистрация"
         type: date
         source: joined
         width_px: 136
@@ -73,7 +73,7 @@ tables:
         searchable: false
         stub: true               # механики уровня нет: у всех игроков 1
       - id: judge_rating
-        title: "Судейский рейтинг"
+        title: "Рейтинг"
         type: gauge
         source: judge_rating
         width_px: 112
@@ -111,22 +111,13 @@ tables:
         stub: false
       - id: name
         title: "Название"
-        type: text
-        source: name
-        width_px: 430
+        type: nation
+        source: nation
+        width_px: 494
         sortable: true
-        filters: [text]
+        filters: [select_or_contains]
         searchable: true
         stub: false
-      - id: flag
-        title: "Флаг"
-        type: flag
-        source: flag
-        width_px: 64
-        sortable: false
-        filters: []
-        searchable: false
-        stub: true               # загрузки флагов нет: квадрат цвета государства
       - id: formed
         title: "Дата формирования"
         type: date
