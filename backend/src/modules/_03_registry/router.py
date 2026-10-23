@@ -1,9 +1,10 @@
 """
-HTTP routes of module 03_registry (Spec 5.1, 5.2).
+HTTP routes of module 03_registry (Spec 5.1, 5.2, 5.6).
 
-Two endpoints under ``/api/v1/registry`` behind the shared Bearer JWT
+Endpoints under ``/api/v1/registry`` behind the shared Bearer JWT
 dependency: the table descriptions (``Cache-Control: no-cache`` — the
-client revalidates the catalog) and the rows of one table
+client revalidates the catalog), the rows of one table and the public
+card of one player by his Registry row number
 (``Cache-Control: no-store`` — player data is never cached). Every
 logged-in player sees the same contents (INV-R10); the responses carry
 no ``vk_user_id`` and no player uuid (INV-R2).
@@ -11,7 +12,9 @@ no ``vk_user_id`` and no player uuid (INV-R2).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Path, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_session
@@ -21,12 +24,17 @@ from modules._03_registry.schemas import (
     RegistryColumnDTO,
     RegistryDefaultSortDTO,
     RegistryLayoutDTO,
+    RegistryPlayerDTO,
+    RegistryPlayerJoinedDTO,
+    RegistryPlayerNationDTO,
+    RegistryPlayerPersonDTO,
     RegistryRowDTO,
     RegistryRowsDTO,
     RegistryTableDTO,
     RegistryTablesDTO,
 )
 from modules._03_registry.service import build_table
+from modules._03_registry.sources import load_player
 from modules._03_registry.startup import get_registry_config
 
 router = APIRouter(prefix="/api/v1/registry")
@@ -93,4 +101,34 @@ async def get_registry_table(
             "+00:00", "Z"
         ),
         rows=[RegistryRowDTO(key=row.key, cells=row.cells) for row in built.rows],
+    )
+
+
+@router.get("/players/{number}", response_model=RegistryPlayerDTO)
+async def get_registry_player(
+    number: Annotated[int, Path(ge=1)],
+    response: Response,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> RegistryPlayerDTO:
+    """
+    Spec 5.6 — the public card of one player, addressed by his Registry
+    row number (``p<N>`` in the players table). The cells come from the
+    same ``_player_row`` the table source builds, so the answer and the
+    table row can never disagree; a well-formed ``number`` beyond the
+    list is ``404 REGISTRY_PLAYER_NOT_FOUND``.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    row = await load_player(session, number)
+    return RegistryPlayerDTO(
+        number=number,
+        person=RegistryPlayerPersonDTO.model_validate(row.cells["player"]),
+        joined=RegistryPlayerJoinedDTO.model_validate(row.cells["joined"]),
+        level=int(row.cells["level"]),
+        judge_rating=int(row.cells["judge_rating"]),
+        nation=(
+            RegistryPlayerNationDTO.model_validate(row.cells["nation"])
+            if row.cells["nation"] is not None
+            else None
+        ),
     )
