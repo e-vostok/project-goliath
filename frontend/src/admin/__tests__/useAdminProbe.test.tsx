@@ -1,10 +1,12 @@
 /**
- * useAdminProbe — the sessionStorage cache (load-speed unit 10).
+ * useAdminProbe — the sessionStorage cache (load-speed units 10/11).
  *
  * A stored «not an admin» skips GET /admin/me on re-entry within the
- * browser session; a stored «admin» still revalidates silently; a
- * definitive 403/401 writes the cache, a network failure does not;
- * storage that throws changes nothing about today's behavior.
+ * browser session; a stored «admin» still revalidates silently; only a
+ * definitive 403 writes the cache — a 401, a 5xx or a network failure
+ * caches nothing so a real admin is never locked out by one bad
+ * answer; entries under the unit-10 prefix are ignored; storage that
+ * throws changes nothing about today's behavior.
  */
 
 import type { ReactElement, ReactNode } from 'react';
@@ -45,18 +47,34 @@ function wrapperFor(token: string) {
 
 function probeCounter() {
   const calls = { n: 0 };
+  const answer = (status: number) =>
+    server.use(
+      http.get('*/api/v1/admin/me', () => {
+        calls.n += 1;
+        return HttpResponse.json(
+          { detail: `HTTP ${status}`, code: 'ERR' },
+          { status },
+        );
+      }),
+    );
   return {
     calls,
-    deny() {
+    allow() {
       server.use(
         http.get('*/api/v1/admin/me', () => {
           calls.n += 1;
-          return HttpResponse.json(
-            { detail: 'Admin privileges required', code: 'ADMIN_REQUIRED' },
-            { status: 403 },
-          );
+          return HttpResponse.json({ is_admin: true });
         }),
       );
+    },
+    deny() {
+      answer(403);
+    },
+    unauthorized() {
+      answer(401);
+    },
+    serverError() {
+      answer(500);
     },
     fail() {
       server.use(
@@ -69,7 +87,8 @@ function probeCounter() {
   };
 }
 
-const KEY_PREFIX = 'pax.admin.';
+const KEY_PREFIX = 'pax.admin.v2.';
+const OLD_KEY_PREFIX = 'pax.admin.';
 
 describe('useAdminProbe — session cache', () => {
   beforeEach(() => {
@@ -103,6 +122,66 @@ describe('useAdminProbe — session cache', () => {
     // Give a misbehaving probe time to fire — it must not.
     await new Promise((r) => setTimeout(r, 50));
     expect(counter.calls.n).toBe(1);
+  });
+
+  it('a 200 writes «admin» — and still revalidates on the next mount', async () => {
+    const counter = probeCounter();
+    counter.allow();
+    const token = tokenFor('player-admin');
+
+    const first = renderHook(() => useAdminProbe(), {
+      wrapper: wrapperFor(token),
+    });
+    await waitFor(() => expect(counter.calls.n).toBe(1));
+    await waitFor(() => expect(first.result.current).toBe(true));
+    first.unmount();
+
+    expect(
+      window.sessionStorage.getItem(
+        Object.keys(window.sessionStorage).find((k) =>
+          k.startsWith(KEY_PREFIX),
+        ) ?? '',
+      ),
+    ).toBe('1');
+
+    renderHook(() => useAdminProbe(), { wrapper: wrapperFor(token) });
+    await waitFor(() => expect(counter.calls.n).toBe(2));
+  });
+
+  it.each([401, 500])(
+    'a %i answer caches nothing — the next mount probes again',
+    async (status) => {
+      const counter = probeCounter();
+      if (status === 401) {
+        counter.unauthorized();
+      } else {
+        counter.serverError();
+      }
+      const token = tokenFor(`player-status-${status}`);
+
+      renderHook(() => useAdminProbe(), { wrapper: wrapperFor(token) });
+      await waitFor(() => expect(counter.calls.n).toBe(1));
+      expect(
+        Object.keys(window.sessionStorage).filter((k) =>
+          k.startsWith(KEY_PREFIX),
+        ),
+      ).toHaveLength(0);
+
+      renderHook(() => useAdminProbe(), { wrapper: wrapperFor(token) });
+      await waitFor(() => expect(counter.calls.n).toBe(2));
+    },
+  );
+
+  it('a stored «not an admin» under the old prefix is ignored', async () => {
+    const counter = probeCounter();
+    counter.deny();
+    const token = tokenFor('player-legacy-cache');
+    // Unit 10 cached even 401s under `pax.admin.` — such entries must
+    // not silence the probe after the fix.
+    window.sessionStorage.setItem(`${OLD_KEY_PREFIX}anything`, '0');
+
+    renderHook(() => useAdminProbe(), { wrapper: wrapperFor(token) });
+    await waitFor(() => expect(counter.calls.n).toBe(1));
   });
 
   it('a stored «admin» still revalidates silently', async () => {
