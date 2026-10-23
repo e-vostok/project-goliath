@@ -174,8 +174,10 @@ class PlayerRegistryRow:
     nation_id: str | None
     nation_name: str | None
     nation_color: str | None
-    # NULL for nations created before 0.8.0; flag_id is a catalog id.
-    nation_short_name: str | None = None
+    # A nation's short_name is never NULL (migration 0012); None here
+    # only means "the player owns no nation", like the other nation_*
+    # fields. flag_id is a catalog id (NULL for pre-0.9.0 nations).
+    nation_short_name: str
     nation_flag_id: str | None = None
 
 
@@ -183,8 +185,9 @@ class PlayerRegistryRow:
 class NationRegistryRow:
     """
     One nations-table row for module 03_registry (Spec 03_registry 1.4,
-    Spec 00_core Appendix A1). ``short_name`` and ``flag_id`` are None
-    for nations created before 0.8.0.
+    Spec 00_core Appendix A1). ``short_name`` is never NULL (NOT NULL
+    since migration 0012); ``flag_id`` is None for nations created
+    before 0.9.0.
     """
 
     nation_id: str
@@ -193,7 +196,7 @@ class NationRegistryRow:
     created_turn: int
     created_at: datetime
     province_count: int
-    short_name: str | None = None
+    short_name: str
     flag_id: str | None = None
 
 
