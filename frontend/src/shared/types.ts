@@ -284,6 +284,53 @@ export interface AdminPlayersDTO {
   total: number;
 }
 
+/** One admin_audit_log row (GET /admin/audit-log) — the «Журнал» table. */
+export interface AdminAuditItemDTO {
+  id: number;
+  /** 'YYYY-MM-DD HH:MM:SS' in the tick timezone, like every admin answer. */
+  created_at: string;
+  actor_vk_user_id: number;
+  /** Display name while the actor is still a player; null afterwards. */
+  actor_name: string | null;
+  action: string;
+  /** The module-registered Russian label; the raw code when unknown. */
+  action_label: string;
+  target_type: string | null;
+  target_id: string | null;
+  summary: string;
+}
+
+/**
+ * GET /admin/audit-log — one journal page. `next_before_id` is the
+ * cursor for «Показать ещё»; null on the last page.
+ */
+export interface AdminAuditLogDTO {
+  items: AdminAuditItemDTO[];
+  next_before_id: number | null;
+}
+
+/** GET /admin/audit-log/filters — the two dropdowns' values. */
+export interface AdminAuditFiltersDTO {
+  actors: { vk_user_id: number; display_name: string | null }[];
+  actions: { action: string; action_label: string }[];
+}
+
+/**
+ * One row of GET /admin/admins: `source` 'env' comes from the server
+ * settings (never revocable through the panel), 'grant' was issued in
+ * the panel. `is_self` marks the caller's own row.
+ */
+export interface AdminEntryDTO {
+  vk_user_id: number;
+  display_name: string | null;
+  source: 'env' | 'grant';
+  granted_by_vk_user_id: number | null;
+  granted_by_name: string | null;
+  /** 'YYYY-MM-DD HH:MM:SS' in the tick timezone; null for env rows. */
+  granted_at: string | null;
+  is_self: boolean;
+}
+
 /** Error codes emitted by 00_core (Spec Part 5 + router-internal codes). */
 export const ErrorCodes = {
   NAME_TAKEN: 'NAME_TAKEN',

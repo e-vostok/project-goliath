@@ -8,6 +8,9 @@
  */
 
 import type {
+  AdminAuditFiltersDTO,
+  AdminAuditLogDTO,
+  AdminEntryDTO,
   AdminMeDTO,
   AdminOverviewTileDTO,
   AdminPanelLinkDTO,
@@ -428,6 +431,80 @@ export const api = {
         token,
         signal,
       },
+    );
+  },
+
+  /**
+   * GET /admin/audit-log — one journal page {items, next_before_id}.
+   * `before_id` is the «Показать ещё» cursor; dates are 'YYYY-MM-DD'
+   * in the tick timezone.
+   */
+  adminAuditLog(
+    token: string,
+    query: {
+      actor_vk_user_id?: number;
+      action?: string;
+      date_from?: string;
+      date_to?: string;
+      limit?: number;
+      before_id?: number;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.actor_vk_user_id !== undefined) {
+      params.set('actor_vk_user_id', String(query.actor_vk_user_id));
+    }
+    if (query.action) {
+      params.set('action', query.action);
+    }
+    if (query.date_from) {
+      params.set('date_from', query.date_from);
+    }
+    if (query.date_to) {
+      params.set('date_to', query.date_to);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.before_id !== undefined) {
+      params.set('before_id', String(query.before_id));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminAuditLogDTO>(
+      `/admin/audit-log${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /** GET /admin/audit-log/filters — the journal filters' dropdowns. */
+  adminAuditLogFilters(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminAuditFiltersDTO>('/admin/audit-log/filters', {
+      token,
+      signal,
+    });
+  },
+
+  /** GET /admin/admins — env admins first, then the granted ones. */
+  adminAdmins(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminEntryDTO[]>('/admin/admins', { token, signal });
+  },
+
+  /** POST /admin/admins — grant admin rights to an existing player. */
+  adminGrantAdmin(token: string, vkUserId: number, signal?: AbortSignal) {
+    return apiFetch<{ granted: number }>('/admin/admins', {
+      method: 'POST',
+      body: { vk_user_id: vkUserId },
+      token,
+      signal,
+    });
+  },
+
+  /** POST /admin/admins/{vk_user_id}/revoke — revoke admin rights. */
+  adminRevokeAdmin(token: string, vkUserId: number, signal?: AbortSignal) {
+    return apiFetch<{ revoked: number }>(
+      `/admin/admins/${encodeURIComponent(String(vkUserId))}/revoke`,
+      { method: 'POST', token, signal },
     );
   },
 };
