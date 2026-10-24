@@ -11,6 +11,7 @@ Tests: scope by what you touched
 - Run, once at the end, only the suites that the diff touches:
   - `backend/**`: the backend suite on SQLite; the PostgreSQL run only if models, migrations, queries or the startup sync were touched.
   - `frontend/**`: `npm test` and `npm run build`.
+- Before reporting a frontend change as done, run `npm run typecheck && npm test && npm run build` from `frontend/` as the last command after the last edit and paste the result.
   - `tools/map_pipeline/**` or `data/map/**`: the map_pipeline tests and the pipeline `--check` (INV-M1…M10).
   - `configs/**`: `pytest tests/test_configs_validity.py`.
   - `deploy/**`, `docker*`, `Dockerfile*`, dependency or lock files: a local `docker compose build`.
