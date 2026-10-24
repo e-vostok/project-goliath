@@ -4,9 +4,10 @@
  * has no working `flag_url`, plus the cell's SHORT name; a dash when
  * the cell is null (Spec 5.5 / 1.2).
  *
- * Since unit 14c a cell with a non-null `id` is a button — same look
- * as the plain cell, `action` text colour, underline on hover/focus —
- * that opens the nation subscreen. A null `id` (the orders table's
+ * Since unit 14c a cell with a non-null `id` is a button that opens
+ * the nation subscreen — since unit 13b it keeps the plain `ink` text
+ * colour (PNG 09/10/12: only the order title link stays `action`),
+ * underlining on hover/focus. A null `id` (the orders table's
  * snapshot, a nation-less player) stays plain text and gets NO
  * tooltip.
  *
@@ -156,18 +157,22 @@ export function NationTip({
 /**
  * The link look every subscreen-opening cell shares (unit 14c — the
  * nation subscreen; 0.10.0 unit 8b — the player subscreen): plain
- * cell content on a transparent `action`-coloured button that
- * underlines on hover/focus and ellipsizes like a text cell. No
- * `title` — the «Подсказка» (unit 11) already names the subject.
+ * cell content on a transparent `ink`-coloured button that underlines
+ * on hover/focus and ellipsizes like a text cell. Since unit 13b ALL
+ * names are `ink` — nation names are no longer `action` (Owner's
+ * decision of 24.10.2026; the order title link is the only coloured
+ * one). No `title` — the «Подсказка» (unit 11) already names the
+ * subject.
  */
 export function NationOpenLink({
   onOpen,
-  tone = 'action',
+  tone = 'ink',
   children,
 }: {
   onOpen?: () => void;
-  /** PNG 09: nation links are `action`; person links are `ink`. */
-  tone?: 'action' | 'ink';
+  /** Kept for the person cell's `tone="ink"` — `ink` is the only
+      look now; `action` was removed in unit 13b. */
+  tone?: 'ink';
   children: ReactNode;
 }) {
   const [hot, setHot] = useState(false);
@@ -189,7 +194,7 @@ export function NationOpenLink({
         font: 'inherit',
         textAlign: 'left',
         cursor: 'pointer',
-        color: tokenVar(tone === 'action' ? 'action' : 'ink'),
+        color: tokenVar(tone),
         textDecoration: hot ? 'underline' : 'none',
         overflow: 'hidden',
         whiteSpace: 'nowrap',

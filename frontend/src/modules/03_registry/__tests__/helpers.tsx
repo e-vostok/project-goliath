@@ -79,6 +79,12 @@ export const TABLES: RegistryTablesDTO = {
           searchable: false, stub: true, scale_min: null, scale_max: null,
         },
         {
+          id: 'judge_rating', title: 'Рейтинг', type: 'gauge',
+          width_px: 112, sortable: true, filters: ['number_range'],
+          filter_label: null, header_icon: null,
+          searchable: false, stub: true, scale_min: -100, scale_max: 100,
+        },
+        {
           id: 'nation', title: 'Государство', type: 'nation', width_px: 292,
           sortable: true,
           filters: ['select_or_contains', 'presence'], filter_label: null,
@@ -113,6 +119,12 @@ export const TABLES: RegistryTablesDTO = {
           header_icon: null,
           searchable: false, stub: false, scale_min: null, scale_max: null,
         },
+        {
+          id: 'provinces', title: 'Провинции', type: 'integer',
+          width_px: 112, sortable: true, filters: ['number_range'],
+          filter_label: null, header_icon: null,
+          searchable: false, stub: false, scale_min: null, scale_max: null,
+        },
       ],
     },
   ],
@@ -131,6 +143,7 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
         player: { name: 'Борис Иванов', avatar_url: null, is_fallback: false },
         joined: { text: '01.09.2026', key: 20697 },
         level: 1,
+        judge_rating: 5,
         nation: {
           id: 'n1',
           name: 'Новгород',
@@ -150,6 +163,7 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
         },
         joined: { text: '05.09.2026', key: 20701 },
         level: 2,
+        judge_rating: 0,
         nation: null,
       },
     },
@@ -160,6 +174,7 @@ export const PLAYERS_ROWS: RegistryRowsDTO = {
         player: { name: 'Игрок №3', avatar_url: null, is_fallback: true },
         joined: { text: '10.09.2026', key: 20706 },
         level: 1,
+        judge_rating: -20,
         nation: {
           id: 'n2',
           name: 'Рязань',
@@ -183,6 +198,7 @@ export const NATIONS_ROWS: RegistryRowsDTO = {
         number: 1,
         name: 'Новгород',
         formed: { text: 'Январь 2041', key: 12 },
+        provinces: 5,
       },
     },
     {
@@ -191,6 +207,7 @@ export const NATIONS_ROWS: RegistryRowsDTO = {
         number: 2,
         name: 'Рязань',
         formed: { text: 'Май 2043', key: 40 },
+        provinces: 3,
       },
     },
   ],
