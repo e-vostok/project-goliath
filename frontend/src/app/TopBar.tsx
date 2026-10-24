@@ -12,6 +12,7 @@
 
 import { useRouteNavigator } from '@vkontakte/vk-mini-apps-router';
 
+import { AdminPanelButton } from '../admin/AdminPanelButton';
 import type { GameClockDTO } from '../shared/types';
 import {
   BrandMark,
@@ -108,6 +109,7 @@ export function TopBar({
             ХОД {clock.current_turn} · {clock.game_date_text.toUpperCase()}
           </TurnBadge>
         )}
+        <AdminPanelButton />
         <ThemeToggle />
       </div>
     </header>
