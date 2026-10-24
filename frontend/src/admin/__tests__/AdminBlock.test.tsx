@@ -7,6 +7,8 @@
  */
 
 import type { ReactElement } from 'react';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   render,
   screen,
@@ -519,27 +521,16 @@ function mockWindowSize(width: number, height: number) {
   };
 }
 
-describe('AdminBlock — проба входа в новую вкладку', () => {
-  it('renders for an admin and «Открыть сразу» calls window.open with _blank', async () => {
-    const openSpy = vi
-      .spyOn(window, 'open')
-      .mockImplementation(() => null);
-    try {
-      const user = await renderAsAdmin();
+describe('AdminBlock — проба входа в новую вкладку удалена', () => {
+  it('renders no entry-probe section and the static page is gone', async () => {
+    await renderAsAdmin();
 
-      expect(screen.getByTestId('admin-entry-probe')).toBeInTheDocument();
-
-      await user.click(
-        screen.getByRole('button', { name: 'Открыть сразу' }),
-      );
-
-      expect(openSpy).toHaveBeenCalledWith(
-        '/admin-probe.html#t=probe',
-        '_blank',
-      );
-    } finally {
-      openSpy.mockRestore();
-    }
+    expect(
+      screen.queryByTestId('admin-entry-probe'),
+    ).not.toBeInTheDocument();
+    expect(
+      existsSync(resolve(process.cwd(), 'public/admin-probe.html')),
+    ).toBe(false);
   });
 });
 

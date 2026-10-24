@@ -9,6 +9,7 @@
 
 import type {
   AdminMeDTO,
+  AdminPanelLinkDTO,
   AdminPlayerDeleteResultDTO,
   AdminResetResultDTO,
   AdminSessionDTO,
@@ -296,6 +297,18 @@ export const api = {
   /** GET /admin/me — 200 {is_admin: true} for admins, 403 otherwise. */
   adminMe(token: string, signal?: AbortSignal) {
     return apiFetch<AdminMeDTO>('/admin/me', { token, signal });
+  },
+
+  /**
+   * POST /admin/panel-link — issue the one-time link token that opens
+   * the panel page (`/admin.html#t=<token>`) in a new tab.
+   */
+  adminPanelLink(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminPanelLinkDTO>('/admin/panel-link', {
+      method: 'POST',
+      token,
+      signal,
+    });
   },
 
   /**
