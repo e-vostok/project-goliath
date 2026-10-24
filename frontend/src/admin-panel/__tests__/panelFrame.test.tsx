@@ -45,6 +45,12 @@ function allowExchange(expiresInSeconds = 3600) {
       }),
     ),
     http.get('*/api/v1/game-clock', () => HttpResponse.json(CLOCK_DTO)),
+    // The default #/turn section loads its data on mount.
+    http.get('*/api/v1/admin/me', () =>
+      HttpResponse.json({ is_admin: true, reset_allowed: false }),
+    ),
+    http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
   );
 }
 
@@ -142,6 +148,11 @@ it('a later 401 from the API ends the session the same way', async () => {
         { status: 401 },
       ),
     ),
+    http.get('*/api/v1/admin/me', () =>
+      HttpResponse.json({ is_admin: true, reset_allowed: false }),
+    ),
+    http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
   );
   renderPanel();
 

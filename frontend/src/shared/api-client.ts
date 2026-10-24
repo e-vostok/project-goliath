@@ -9,6 +9,7 @@
 
 import type {
   AdminMeDTO,
+  AdminOverviewTileDTO,
   AdminPanelLinkDTO,
   AdminPlayerDeleteResultDTO,
   AdminResetResultDTO,
@@ -330,6 +331,17 @@ export const api = {
   /** GET /admin/state — aggregated per-module state views. */
   adminState(token: string, signal?: AbortSignal) {
     return apiFetch<AdminStateDTO>('/admin/state', { token, signal });
+  },
+
+  /**
+   * GET /admin/overview — the «Состояние мира» tiles merged from every
+   * module's overview hook, sorted by `sort`.
+   */
+  adminOverview(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminOverviewTileDTO[]>('/admin/overview', {
+      token,
+      signal,
+    });
   },
 
   /** GET /admin/tick-log — newest tick_log rows first (default limit 20). */
