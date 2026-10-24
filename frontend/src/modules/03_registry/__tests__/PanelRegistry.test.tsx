@@ -37,6 +37,10 @@ import {
   clearCellActions,
   registerCellAction,
 } from '../lib/cellActions';
+import {
+  clearTableFilterExtensions,
+  registerTableFilterExtension,
+} from '../lib/tableFilterExtensions';
 import type {
   RegistryRowsDTO,
   RegistryTableDTO,
@@ -257,7 +261,7 @@ describe('PanelRegistry — filter panel', () => {
         within(select)
           .getAllByRole('option')
           .map((o) => o.textContent),
-      ).toEqual(['Все', 'Новгород', 'Рязань', 'Северия']),
+      ).toEqual(['Все государства', 'Новгород', 'Рязань', 'Северия']),
     );
 
     // Dropdown: exact nation match — only p3 (Рязань).
@@ -274,6 +278,213 @@ describe('PanelRegistry — filter panel', () => {
     await waitFor(() => expect(rowKeys()).toEqual(['p1']));
   });
 });
+
+/**
+ * Unit 13b (Owner acceptance 24.10.2026): the panel is a strict
+ * three-column grid — ONE GROUP = ONE CELL = a 12/16 label plus
+ * exactly ONE row of 36 px controls; a `presence` filter never shares
+ * the column's cell but sits in its own cell right after it; the
+ * `select_or_contains` dropdown's first option reads «Все
+ * государства»; a scaled `number_range` writes the bounds into the
+ * placeholders («от −100» / «до +100»); the `gauge` cell carries the
+ * scale in its `title`; nation names are plain `ink` buttons.
+ */
+describe('PanelRegistry — filter panel grid (unit 13b)', () => {
+  afterEach(clearTableFilterExtensions);
+
+  const cellIds = () =>
+    [...screen.getByTestId('registry-filter-panel').children].map(
+      (el) => (el as HTMLElement).dataset.testid,
+    );
+
+  it('players: cells in column order, one control row each, presence in its own cell right after «Государство»', async () => {
+    const user = userEvent.setup();
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+    await user.click(screen.getByTestId('filters-toggle'));
+
+    expect(cellIds()).toEqual([
+      'filter-item-player',
+      'filter-item-joined',
+      'filter-item-level',
+      'filter-item-judge_rating',
+      'filter-item-nation',
+      'filter-item-nation-presence',
+    ]);
+
+    // Every cell is a label + exactly one control row — no cell stacks
+    // two rows of controls (that is what bent the old grid).
+    for (const cell of screen.getByTestId('registry-filter-panel')
+      .children) {
+      const controlRows = [...cell.children].filter(
+        (el) => (el as HTMLElement).style.display === 'flex',
+      );
+      expect(controlRows.length).toBeLessThanOrEqual(1);
+    }
+
+    // «Государство»: the select and «содержит…» share the column's one
+    // row; the segmented control moved out into the next cell.
+    const nationCell = screen.getByTestId('filter-item-nation');
+    within(nationCell).getByLabelText('Государство: Список');
+    within(nationCell).getByPlaceholderText('содержит…');
+    expect(within(nationCell).queryAllByRole('radio')).toHaveLength(0);
+
+    const presenceCell = screen.getByTestId('filter-item-nation-presence');
+    expect(nationCell.nextElementSibling).toBe(presenceCell);
+    expect(presenceCell).toHaveTextContent('Государство: наличие');
+    for (const name of ['Все', 'Есть', 'Нет']) {
+      expect(
+        within(presenceCell).getByRole('radio', { name }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('nations: cells «Название · Ход · Провинции» in one row; orders: presence cells and the extension after their columns', async () => {
+    const ORDERS_TABLE: RegistryTableDTO = {
+      id: 'orders',
+      title: 'Приказы',
+      icon: 'orders',
+      empty_text: 'Приказов пока нет',
+      default_sort: { column: 'number', direction: 'desc' },
+      columns: [
+        {
+          id: 'number', title: '№', type: 'index', width_px: 56,
+          sortable: true, filters: [], filter_label: null,
+          header_icon: null, searchable: false, stub: false,
+          scale_min: null, scale_max: null,
+        },
+        {
+          id: 'nation', title: 'Государство', type: 'nation',
+          width_px: 168, sortable: true, filters: ['select_or_contains'],
+          filter_label: null, header_icon: null, searchable: true,
+          stub: false, scale_min: null, scale_max: null,
+        },
+        {
+          id: 'title', title: 'Название', type: 'action_text',
+          width_px: 236, sortable: true, filters: ['text'],
+          filter_label: null, header_icon: null, searchable: true,
+          stub: false, scale_min: null, scale_max: null,
+        },
+        {
+          id: 'submitted', title: 'Подача', type: 'datetime',
+          width_px: 136, sortable: true, filters: ['date_range'],
+          filter_label: null, header_icon: 'stage_submitted',
+          searchable: false, stub: false, scale_min: null, scale_max: null,
+        },
+        {
+          id: 'distributed', title: 'Распределение', type: 'datetime',
+          width_px: 136, sortable: true,
+          filters: ['date_range', 'presence'], filter_label: null,
+          header_icon: 'stage_distributed', searchable: false,
+          stub: false, scale_min: null, scale_max: null,
+        },
+        {
+          id: 'verdict', title: 'Вердикт', type: 'datetime',
+          width_px: 136, sortable: true,
+          filters: ['date_range', 'presence'], filter_label: null,
+          header_icon: 'stage_verdict', searchable: false,
+          stub: false, scale_min: null, scale_max: null,
+        },
+      ],
+    };
+    const ORDERS_ROWS: RegistryRowsDTO = {
+      table_id: 'orders',
+      total: 1,
+      truncated: false,
+      generated_at: '2026-10-24T10:00:00Z',
+      rows: [
+        {
+          key: 'o5',
+          cells: {
+            number: 5,
+            nation: {
+              id: 'n1', name: 'Новгород', color: '#C0392B',
+              flag_url: null,
+            },
+            title: { text: 'О гарнизонах', action: 'order:5' },
+          },
+        },
+      ],
+    };
+    server.use(
+      http.get('*/api/v1/registry/tables', () =>
+        HttpResponse.json({
+          ...TABLES,
+          tables: [...TABLES.tables, ORDERS_TABLE],
+        }),
+      ),
+      http.get('*/api/v1/registry/tables/orders', () =>
+        HttpResponse.json(ORDERS_ROWS),
+      ),
+    );
+    registerTableFilterExtension('orders', {
+      id: 'assigned_to_me',
+      label: 'Назначены мне',
+      load: () => Promise.resolve(new Set<number>()),
+    });
+
+    const user = userEvent.setup();
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+
+    await user.click(screen.getByRole('tab', { name: 'Государства' }));
+    await screen.findByText('Новгород');
+    await user.click(screen.getByTestId('filters-toggle'));
+    expect(cellIds()).toEqual([
+      'filter-item-name',
+      'filter-item-formed',
+      'filter-item-provinces',
+    ]);
+
+    await user.click(screen.getByRole('tab', { name: 'Приказы' }));
+    await screen.findByText('О гарнизонах');
+    await user.click(screen.getByTestId('filters-toggle'));
+    expect(cellIds()).toEqual([
+      'filter-item-nation',
+      'filter-item-title',
+      'filter-item-submitted',
+      'filter-item-distributed',
+      'filter-item-distributed-presence',
+      'filter-item-verdict',
+      'filter-item-verdict-presence',
+      'filter-ext-assigned_to_me',
+    ]);
+    expect(
+      screen.getByTestId('filter-item-distributed-presence'),
+    ).toHaveTextContent('Распределение: наличие');
+  });
+
+  it('the scaled «Рейтинг» range writes the bounds into the placeholders', async () => {
+    const user = userEvent.setup();
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+    await user.click(screen.getByTestId('filters-toggle'));
+
+    const cell = await screen.findByTestId('filter-item-judge_rating');
+    within(cell).getByPlaceholderText('от −100');
+    within(cell).getByPlaceholderText('до +100');
+    // A plain «от»/«до» pair stays on unscaled ranges.
+    const level = screen.getByTestId('filter-item-level');
+    within(level).getByPlaceholderText('от');
+    within(level).getByPlaceholderText('до');
+  });
+
+  it('the «Рейтинг» figure carries the scale in its title', async () => {
+    renderRegistry();
+    await screen.findByText('Борис Иванов');
+
+    expect(screen.getByText('+5')).toHaveAttribute(
+      'title',
+      '+5 · шкала −100…+100',
+    );
+    expect(screen.getByText('-20')).toHaveAttribute(
+      'title',
+      '-20 · шкала −100…+100',
+    );
+  });
+});
+
+
 
 describe('PanelRegistry — load states', () => {
   it('a failed tables load shows the dictionary text, never the English detail', async () => {
@@ -394,11 +605,15 @@ describe('PanelRegistry — screen frame (UI Spec 9.2)', () => {
     // The shared screen title carries the signed tabs right after
     // «РЕЕСТР» — no separate tab row underneath (mockup «Registry»).
     const title = document.querySelector(
-      '[data-testid="panel-registry"] h2',
+      '[data-testid="panel-registry"] h1',
     ) as HTMLElement;
     expect(title).not.toBeNull();
     expect(title).toHaveTextContent('Реестр');
-    const strip = within(title).getByTestId('registry-tabstrip');
+    // PNG 09 — the segmented tabs sit in the same row as the title.
+    const strip = title.parentElement!.querySelector(
+      '[data-testid="registry-tabstrip"]',
+    ) as HTMLElement;
+    expect(strip).not.toBeNull();
     expect(
       within(strip).getAllByRole('tab').map((t) => t.textContent),
     ).toEqual(['Игроки', 'Государства', 'Приказы']);

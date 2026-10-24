@@ -19,13 +19,20 @@ import {
 import { NATIONS_TABLE_ID } from '../hooks/useNationOptions';
 import { isFilterActive, type TableView } from '../lib/tableView';
 import { REGISTRY_TEXTS } from '../texts';
-import type {
-  RegistryCell,
-  RegistryColumnDTO,
-  RegistryRowDTO,
-  RegistryTableDTO,
+import {
+  isNationCell,
+  PLAYER_ROW_KEY_RE,
+  type RegistryCell,
+  type RegistryColumnDTO,
+  type RegistryRowDTO,
+  type RegistryTableDTO,
 } from '../types';
-import { Tooltip } from '../../../shared/ui';
+import {
+  FONTS,
+  TEXT_STYLES,
+  Tooltip,
+  tokenVar,
+} from '../../../shared/ui';
 import { ActionTextCell } from './cells/ActionTextCell';
 import { DateCell } from './cells/DateCell';
 import { DatetimeCell } from './cells/DatetimeCell';
@@ -52,6 +59,9 @@ const HEADER_TITLE_STYLE: React.CSSProperties = {
 };
 
 const NUMERIC_TYPES = new Set(['index', 'integer', 'gauge']);
+
+/** PNG 09/10 — figures (incl. the date columns) are JetBrains Mono. */
+const MONO_TYPES = new Set(['index', 'integer', 'gauge', 'date', 'datetime']);
 
 const SORT_ICON_PROPS = { width: 14, height: 14 } as const;
 
@@ -90,12 +100,14 @@ function Cell({
   row,
   value,
   onOpenNation,
+  onOpenPlayer,
 }: {
   table: RegistryTableDTO;
   column: RegistryColumnDTO;
   row: RegistryRowDTO;
   value: RegistryCell;
   onOpenNation?: (nationId: string) => void;
+  onOpenPlayer?: (playerNumber: number) => void;
 }) {
   switch (column.type) {
     case 'index':
@@ -116,14 +128,36 @@ function Cell({
       return <DatetimeCell value={value} />;
     case 'action_text':
       return <ActionTextCell value={value} />;
-    case 'person':
-      // The whole row's cells feed the player tip (unit 11).
-      return <PersonCell value={value} cells={row.cells} />;
+    case 'person': {
+      // The whole row's cells feed the player tip (unit 11). The cell
+      // opens the «Игрок» subscreen only when the row key resolves to
+      // a players-table number `p<N>` (0.10.0 unit 8b) — any other
+      // key (orders' `o<N>`, …) stays a plain cell, no guessing.
+      const playerKey = PLAYER_ROW_KEY_RE.exec(row.key)?.[1];
+      return (
+        <PersonCell
+          value={value}
+          cells={row.cells}
+          onOpen={
+            playerKey !== undefined && onOpenPlayer !== undefined
+              ? () => onOpenPlayer(Number(playerKey))
+              : undefined
+          }
+        />
+      );
+    }
     case 'nation':
       return <NationCell value={value} onOpen={onOpenNation} />;
     case 'flag':
       return <FlagCell value={value} />;
     default:
+      // Unit 6a/6b: the nations table's «name» may arrive as a
+      // `nation` cell instead of a plain string — the cell itself
+      // links and carries the tip, so the string special case below
+      // does NOT apply to it. The same holds under any column type.
+      if (isNationCell(value)) {
+        return <NationCell value={value} onOpen={onOpenNation} />;
+      }
       // The nations table's «name» is a plain text cell; its row key
       // IS the nation id (sources.py) — the name opens the subscreen
       // by that key (unit 14c) and carries the same «Подсказка»
@@ -155,6 +189,7 @@ export function RegistryTable({
   view,
   onSortClick,
   onOpenNation,
+  onOpenPlayer,
 }: {
   table: RegistryTableDTO;
   rows: RegistryRowDTO[];
@@ -165,11 +200,17 @@ export function RegistryTable({
    * non-null id and the nations table's «name» cell (by row key).
    */
   onOpenNation?: (nationId: string) => void;
+  /**
+   * Opens the player subscreen (0.10.0 unit 8b): `person` cells
+   * whose row key is a players-table `p<N>` — the N is passed.
+   */
+  onOpenPlayer?: (playerNumber: number) => void;
 }) {
   const totalWidth = table.columns.reduce((sum, col) => sum + col.width_px, 0);
   return (
     <table
       data-testid="registry-table"
+      className="registry-table"
       style={{
         borderCollapse: 'collapse',
         tableLayout: 'fixed',
@@ -199,16 +240,15 @@ export function RegistryTable({
                   position: 'sticky',
                   top: 0,
                   zIndex: 5,
-                  height: 40,
-                  fontSize: 12,
-                  fontWeight: 600,
+                  height: 36,
+                  ...TEXT_STYLES['label'],
+                  color: tokenVar('ink-muted'),
                   textAlign: 'left',
                   padding: '0 8px',
                   verticalAlign: 'middle',
                   overflow: 'hidden',
-                  background: 'var(--vkui--color_background_content)',
-                  borderBottom:
-                    '1px solid var(--vkui--color_separator_primary)',
+                  background: tokenVar('surface'),
+                  borderBottom: `1px solid ${tokenVar('line')}`,
                 }}
               >
                 <span
@@ -282,12 +322,14 @@ export function RegistryTable({
               <td
                 key={col.id}
                 style={{
-                  height: 34,
+                  height: 36,
                   padding: '0 8px',
-                  borderBottom:
-                    '1px solid var(--vkui--color_separator_primary)',
+                  borderBottom: `1px solid ${tokenVar('line')}`,
                   verticalAlign: 'middle',
                   overflow: 'hidden',
+                  fontFamily: MONO_TYPES.has(col.type)
+                    ? FONTS.mono
+                    : undefined,
                   fontVariantNumeric: NUMERIC_TYPES.has(col.type)
                     ? 'tabular-nums'
                     : undefined,
@@ -299,6 +341,7 @@ export function RegistryTable({
                   row={row}
                   value={row.cells[col.id] ?? null}
                   onOpenNation={onOpenNation}
+                  onOpenPlayer={onOpenPlayer}
                 />
               </td>
             ))}

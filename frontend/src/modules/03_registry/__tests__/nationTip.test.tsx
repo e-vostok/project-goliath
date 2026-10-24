@@ -73,7 +73,7 @@ const NATION_CELL: RegistryCell = {
 
 const PLAYER_CELLS: Record<string, RegistryCell> = {
   player: { name: 'Борис Иванов', avatar_url: null, is_fallback: false },
-  joined: { text: '1 сентября 2026', key: 20697 },
+  joined: { text: '01.09.2026', key: 20697 },
   level: 2,
   judge_rating: 12,
   nation: NATION_CELL,
@@ -185,10 +185,12 @@ describe('NationCell — nation «Подсказка»', () => {
     expect(within(box).getByText('Провинций')).toBeInTheDocument();
     expect(within(box).getByText('3')).toBeInTheDocument();
     expect(within(box).getByText('Новгород-град')).toBeInTheDocument();
-    // The FULL name from the public card, not the cell's short one.
+    // Unit 6a: the heading is the SHORT name — the loaded card's full
+    // «Новгородская республика» never replaces it.
+    expect(within(box).getByText('НВГ')).toBeInTheDocument();
     expect(
-      within(box).getByText('Новгородская республика'),
-    ).toBeInTheDocument();
+      within(box).queryByText('Новгородская республика'),
+    ).not.toBeInTheDocument();
     expect(
       within(box).getByText('Нажмите на название, чтобы открыть государство'),
     ).toBeInTheDocument();
@@ -268,7 +270,11 @@ describe('NationCell — nation «Подсказка»', () => {
     const cell = screen.getByRole('button', { name: 'Новгород' });
 
     openTip(cell);
-    expect(tip()).toBeInTheDocument();
+    vi.useRealTimers();
+    // The card request must finish before the test ends — a fetch left
+    // in flight writes the module cache AFTER the next test's
+    // clearNationTipCache() and serves it a poisoned hit (0 requests).
+    await within(tip()!).findByText('Борис Первый');
     fireEvent.pointerDown(cell);
     expect(tip()).toBeNull();
     fireEvent.click(cell);
@@ -311,14 +317,14 @@ describe('PersonCell — player «Подсказка»', () => {
     const box = tip()!;
     expect(within(box).getByText('Борис Иванов')).toBeInTheDocument();
     expect(within(box).getByText('Дата регистрации')).toBeInTheDocument();
-    expect(within(box).getByText('1 сентября 2026')).toBeInTheDocument();
+    expect(within(box).getByText('01.09.2026')).toBeInTheDocument();
     expect(within(box).getByText('Уровень')).toBeInTheDocument();
     expect(within(box).getByText('2')).toBeInTheDocument();
     expect(within(box).getByText('Судейский рейтинг')).toBeInTheDocument();
     expect(within(box).getByText('12')).toBeInTheDocument();
     expect(within(box).getByText('Государство')).toBeInTheDocument();
     expect(within(box).getByText('Новгород')).toBeInTheDocument();
-    // No «click to open» line — a player cannot be opened yet.
+    // No «click to open» line — the cell was given no number to open.
     expect(
       within(box).queryByText(/Нажмите/),
     ).not.toBeInTheDocument();
@@ -340,5 +346,29 @@ describe('PersonCell — player «Подсказка»', () => {
     expect(
       await within(tip()!).findByText('нет государства'),
     ).toBeInTheDocument();
+  });
+
+  it('an openable cell is a button, shows the «Нажмите на имя…» line and the tip does not block the click (0.10.0 unit 8b)', async () => {
+    vi.useFakeTimers();
+    const onOpen = vi.fn();
+    renderInRoot(
+      <PersonCell
+        value={PLAYER_CELLS.player}
+        cells={PLAYER_CELLS}
+        onOpen={onOpen}
+      />,
+    );
+
+    const cell = screen.getByRole('button', { name: 'Борис Иванов' });
+    openTip(cell);
+    vi.useRealTimers();
+    expect(
+      within(tip()!).getByText('Нажмите на имя, чтобы открыть игрока'),
+    ).toBeInTheDocument();
+
+    fireEvent.pointerDown(cell);
+    expect(tip()).toBeNull();
+    fireEvent.click(cell);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });

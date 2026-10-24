@@ -151,19 +151,22 @@ async def seed_nation(
 ) -> Nation:
     """One nation row; provinces are assigned by the caller.
 
-    ``short_name``/``flag_id`` default to NULL — the pre-0.8.0 state —
-    so a cell assertion never depends on a factory-generated value.
+    ``short_name`` is NOT NULL (migration 0012) — it defaults to a
+    fresh unique value from the factory; ``flag_id`` defaults to NULL —
+    the pre-0.9.0 state — so a flag-cell assertion never depends on a
+    catalog pick.
     """
+    build_kwargs: dict = {"provinces": [], "scheduled_actions": []}
+    if short_name is not None:
+        build_kwargs["short_name"] = short_name
     nation = NationFactory.build(
         owner=owner,
         name=name,
         color_hex=color_hex,
         created_turn=created_turn,
         created_at=created_at or datetime.now(UTC),
-        short_name=short_name,
         flag_id=flag_id,
-        provinces=[],
-        scheduled_actions=[],
+        **build_kwargs,
     )
     session.add(nation)
     await session.flush()

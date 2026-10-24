@@ -54,7 +54,10 @@ class TestTablesEndpoint:
         }
         order_columns = {c["id"]: c for c in orders["columns"]}
         assert order_columns["title"]["type"] == "action_text"
-        assert order_columns["submitted"]["header_icon"] == "stage_submitted"
+        # 0.10.0 unit 13: approved mockups show the stage titles as
+        # text — no header icons in the shipped config.
+        assert order_columns["submitted"]["header_icon"] is None
+        assert order_columns["submitted"]["title"] == "Подача"
         assert order_columns["verdict"]["filters"] == [
             "date_range",
             "presence",
@@ -82,6 +85,18 @@ class TestTablesEndpoint:
         }
         assert columns["judge_rating"]["scale_min"] == -100
         assert columns["judge_rating"]["scale_max"] == 100
+        # Shortened titles (0.10.0 unit 6b).
+        assert columns["judge_rating"]["title"] == "Рейтинг"
+        assert columns["joined"]["title"] == "Регистрация"
+        # Nations: no separate «flag» column; «name» is a nation cell
+        # with the select_or_contains filter (Spec 3.3, 3.7).
+        nations = body["tables"][1]
+        n_columns = {c["id"]: c for c in nations["columns"]}
+        assert "flag" not in n_columns
+        assert n_columns["name"]["type"] == "nation"
+        assert n_columns["name"]["filters"] == ["select_or_contains"]
+        assert n_columns["name"]["searchable"] is True
+        assert n_columns["name"]["sortable"] is True
         # Spec 5.1: source fields are never sent to the client.
         _walk_no_source_key(body)
 
@@ -176,16 +191,17 @@ class TestRowsEndpoint:
                 assert forbidden not in text
 
 
-class TestNationDisplayNameAndFlag:
-    """Spec 1.4 (3.2, 3.3, 3.7): short name + real catalog flag in both
-    tables; pre-0.8.0 nations (both fields NULL) keep the full name and
-    the colour mark."""
+class TestNationCellsAcrossTables:
+    """Spec 1.4/1.6 (3.2, 3.3, 3.7): the nations-table «name» column
+    carries the same ``nation`` cell the players table gives the owner
+    nation — short name + catalog flag + the nation id that opens the
+    subscreen; a nation without a flag keeps ``flag_url = None``."""
 
-    async def test_short_name_and_flag_in_both_tables(
+    async def test_nation_cells_in_nations_and_players_tables(
         self, client, test_db_session, registry_started
     ):
         owner_modern = await seed_player(test_db_session, 506001)
-        owner_legacy = await seed_player(test_db_session, 506002)
+        owner_flagless = await seed_player(test_db_session, 506002)
         viewer = await seed_player(test_db_session, 506003)
         modern = await seed_nation(
             test_db_session,
@@ -196,13 +212,13 @@ class TestNationDisplayNameAndFlag:
             short_name="СКВГ",
             flag_id="flag_placeholder_1",
         )
-        legacy = await seed_nation(
+        flagless = await seed_nation(
             test_db_session,
-            owner_legacy,
+            owner_flagless,
             "Древнее Княжество Полное",
             "#AA2202",
             created_turn=1,
-            short_name=None,
+            short_name="ДКП",
             flag_id=None,
         )
         headers = bearer_headers(viewer.id)
@@ -212,16 +228,21 @@ class TestNationDisplayNameAndFlag:
         n_rows = resp.json()["rows"]
         nations_by_key = {row["key"]: row["cells"] for row in n_rows}
         flag_png = "/assets/nations/flags/flag_placeholder_1.png"
-        assert nations_by_key[modern.id]["name"] == "СКВГ"
-        assert nations_by_key[modern.id]["flag"] == {
+        assert nations_by_key[modern.id]["name"] == {
+            "id": modern.id,
+            "name": "СКВГ",
             "color": "#AA2201",
-            "image_url": flag_png,
+            "flag_url": flag_png,
         }
-        assert nations_by_key[legacy.id]["name"] == "Древнее Княжество Полное"
-        assert nations_by_key[legacy.id]["flag"] == {
+        assert nations_by_key[flagless.id]["name"] == {
+            "id": flagless.id,
+            "name": "ДКП",
             "color": "#AA2202",
-            "image_url": None,
+            "flag_url": None,
         }
+        # No flag cells remain in the row (Spec 1.6: no «flag» column).
+        assert "flag" not in nations_by_key[modern.id]
+        assert "flag" not in nations_by_key[flagless.id]
 
         resp = await client.get(f"{TABLES_URL}/players", headers=headers)
         assert resp.status_code == 200
@@ -233,17 +254,18 @@ class TestNationDisplayNameAndFlag:
             "flag_url": flag_png,
         }
         assert p_rows["p2"]["nation"] == {
-            "id": legacy.id,
-            "name": "Древнее Княжество Полное",
+            "id": flagless.id,
+            "name": "ДКП",
             "color": "#AA2202",
             "flag_url": None,
         }
         assert p_rows["p3"]["nation"] is None
 
         # Spec 3.7: the ``select_or_contains`` dropdown is built from the
-        # nations-table ``name`` cells — they must equal the ``nation``
-        # cell names the players table shows.
-        option_names = [row["cells"]["name"] for row in n_rows]
+        # nations-table ``nation`` cells of the ``name`` column — their
+        # names must equal the ``nation`` cell names the players table
+        # shows.
+        option_names = [row["cells"]["name"]["name"] for row in n_rows]
         assert option_names == [
             p_rows["p1"]["nation"]["name"],
             p_rows["p2"]["nation"]["name"],

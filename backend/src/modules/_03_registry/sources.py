@@ -10,6 +10,10 @@ Built-in table sources of module 03_registry (Spec 3.2, 3.3, Appendix A).
 Both ``load`` functions are two flat queries at most — the player list
 plus one ``registry_vk_profiles`` fetch — so the query count does not
 grow with the number of players.
+
+``load_player`` (Spec 5.6) returns the single ``players`` row addressed
+by the Registry number — the very cells ``_player_row`` builds for the
+table, so the player route and the table can never disagree.
 """
 
 from __future__ import annotations
@@ -21,17 +25,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.catalog import flag_url
+from modules._00_core.config_schema import CoreConfig
 from modules._00_core.service import (
     NationService,
+    PlayerRegistryRow,
     PlayerService,
 )
 from modules._03_registry.cells import (
     cell_date,
-    cell_flag,
     cell_nation,
     cell_person,
 )
+from modules._03_registry.config_schema import RegistryConfig
 from modules._03_registry.dates import real_date_parts
+from modules._03_registry.errors import RegistryPlayerNotFoundError
 from modules._03_registry.models import RegistryVkProfile
 from modules._03_registry.profile_worker import aware_utc, request_wake
 from modules._03_registry.registry import RegistryRow, register_table_source
@@ -41,7 +48,7 @@ from modules._03_registry.registry import RegistryRow, register_table_source
 PLAYERS_PROVIDES = frozenset(
     {"number", "player", "joined", "level", "judge_rating", "nation"}
 )
-NATIONS_PROVIDES = frozenset({"number", "name", "flag", "formed", "provinces"})
+NATIONS_PROVIDES = frozenset({"number", "nation", "formed", "provinces"})
 
 
 async def load_players(session: AsyncSession) -> list[RegistryRow]:
@@ -88,44 +95,96 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     ):
         request_wake()
 
-    out: list[RegistryRow] = []
-    for number, row in enumerate(rows, start=1):
-        profile = profiles.get(row.player_id)
-        name = ""
-        avatar_url: str | None = None
-        if profile is not None:
-            name = f"{profile.first_name or ''} {profile.last_name or ''}".strip()
-            if profile.status == "OK":
-                avatar_url = profile.photo_url
-        is_fallback = name == ""
-        if is_fallback:
-            name = registry_config.profiles.fallback_name_template.format(number=number)
-        joined_text, joined_key = real_date_parts(
-            row.created_at, core_config.tick.tick_timezone
+    return [
+        _player_row(
+            row, profiles.get(row.player_id), number, registry_config, core_config
         )
-        out.append(
-            RegistryRow(
-                key=f"p{number}",
-                cells={
-                    "number": number,
-                    "player": cell_person(name, avatar_url, is_fallback),
-                    "joined": cell_date(joined_text, joined_key),
-                    "level": row.level,
-                    "judge_rating": row.judge_rating,
-                    "nation": (
-                        cell_nation(
-                            row.nation_short_name or row.nation_name,
-                            row.nation_color,
-                            flag_url(row.nation_flag_id),
-                            nation_id=row.nation_id,
-                        )
-                        if row.nation_id is not None
-                        else None
-                    ),
-                },
-            )
-        )
-    return out
+        for number, row in enumerate(rows, start=1)
+    ]
+
+
+def _player_row(
+    row: PlayerRegistryRow,
+    profile: RegistryVkProfile | None,
+    number: int,
+    registry_config: RegistryConfig,
+    core_config: CoreConfig,
+) -> RegistryRow:
+    """
+    One ``players``-table row (Spec 3.2) — the cells shared by
+    ``load_players`` and ``load_player`` so the table and the player
+    route can never disagree. ``number`` is the 1-based position; the
+    key ``p<number>`` carries no ``vk_user_id`` and no uuid (INV-R2).
+    """
+    name = ""
+    avatar_url: str | None = None
+    if profile is not None:
+        name = f"{profile.first_name or ''} {profile.last_name or ''}".strip()
+        if profile.status == "OK":
+            avatar_url = profile.photo_url
+    is_fallback = name == ""
+    if is_fallback:
+        name = registry_config.profiles.fallback_name_template.format(number=number)
+    joined_text, joined_key = real_date_parts(
+        row.created_at, core_config.tick.tick_timezone
+    )
+    return RegistryRow(
+        key=f"p{number}",
+        cells={
+            "number": number,
+            "player": cell_person(name, avatar_url, is_fallback),
+            "joined": cell_date(joined_text, joined_key),
+            "level": row.level,
+            "judge_rating": row.judge_rating,
+            "nation": (
+                cell_nation(
+                    row.nation_short_name,
+                    row.nation_color,
+                    flag_url(row.nation_flag_id),
+                    nation_id=row.nation_id,
+                )
+                if row.nation_id is not None
+                else None
+            ),
+        },
+    )
+
+
+async def load_player(session: AsyncSession, number: int) -> RegistryRow:
+    """
+    The single ``players`` row addressed by the Registry number
+    (Spec 5.6) — the very ``_player_row`` the table shows for
+    ``p<number>``.
+
+    Reads the whole ``PlayerService.list_for_registry`` list and picks
+    element ``number`` (players are few — no separate core method);
+    a ``number`` outside ``1..len(rows)`` raises
+    ``RegistryPlayerNotFoundError``. The wake-up rule is the table's
+    Spec 2.4 one, narrowed to this one player: no profile row or a due
+    retry rings the worker's bell.
+    """
+    # Local imports, same cycle guard as in load_players.
+    from modules._03_registry.startup import (
+        get_core_config,
+        get_registry_config,
+    )
+
+    rows = await PlayerService.list_for_registry(session)
+    if number < 1 or number > len(rows):
+        raise RegistryPlayerNotFoundError(number)
+    row = rows[number - 1]
+
+    result = await session.execute(
+        select(RegistryVkProfile).where(RegistryVkProfile.player_id == row.player_id)
+    )
+    profile = result.scalar_one_or_none()
+
+    if profile is None or aware_utc(profile.next_attempt_at) <= datetime.now(UTC):
+        request_wake()
+
+    return _player_row(
+        row, profile, number, get_registry_config(), get_core_config()
+    )
 
 
 async def load_nations(session: AsyncSession) -> list[RegistryRow]:
@@ -135,12 +194,13 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
     ``number`` is the 1-based position in the (created_turn, created_at,
     id) order of ``NationService.list_for_registry`` — a nation's place
     among the existing ones (D2). ``formed`` is the game-calendar date of
-    ``created_turn``; the row key is the nation id. ``name`` shows the
-    display name (``short_name`` or, for pre-0.8.0 nations, the full
-    ``name``) so the ``select_or_contains`` options match the ``nation``
-    cells of the players table exactly (Spec 3.7); ``flag`` carries the
-    catalog flag image — the path is built only by
-    ``catalog.flag_url`` (INV-16).
+    ``created_turn``; the row key is the nation id. ``nation`` is the
+    very cell the players table gives for the owner nation — short name
+    (mandatory since migration 0012 — no full-name fallback), colour
+    and the catalog flag image whose path is built only by
+    ``catalog.flag_url`` (INV-16) — so the ``select_or_contains``
+    options match the ``nation`` cells of the players and orders
+    tables exactly (Spec 3.7).
     """
     # Local import, same cycle guard as in load_players.
     from modules._03_registry.startup import get_core_config
@@ -155,8 +215,12 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
                 key=row.nation_id,
                 cells={
                     "number": number,
-                    "name": row.short_name or row.name,
-                    "flag": cell_flag(row.color_hex, flag_url(row.flag_id)),
+                    "nation": cell_nation(
+                        row.short_name,
+                        row.color_hex,
+                        flag_url(row.flag_id),
+                        nation_id=row.nation_id,
+                    ),
                     "formed": cell_date(
                         format_game_date(
                             compute_game_date(row.created_turn, core_config),

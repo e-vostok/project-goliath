@@ -43,8 +43,15 @@ export function LeaderBlock({
           <PortraitStub variant="block" />
         )}
         <div style={{ minWidth: 0 }}>
+          {/* PNG 08 — leader name 20/24, title small caps in signal-ink,
+              bio right under the title inside the same column. */}
           <div
-            style={{ ...TEXT_STYLES['heading'], color: tokenVar('ink') }}
+            style={{
+              ...TEXT_STYLES['heading'],
+              fontSize: 20,
+              lineHeight: '24px',
+              color: tokenVar('ink'),
+            }}
           >
             {nation.leader_name || 'не указано'}
           </div>
@@ -52,27 +59,30 @@ export function LeaderBlock({
             <div
               style={{
                 ...TEXT_STYLES['label'],
+                fontSize: 12,
+                lineHeight: '16px',
+                letterSpacing: '.08em',
                 color: tokenVar('signal-ink'),
-                marginTop: 4,
+                margin: '2px 0 6px',
               }}
             >
               {nation.leader_title}
             </div>
           )}
+          {nation.leader_bio && (
+            <p
+              style={{
+                margin: 0,
+                ...TEXT_STYLES['body'],
+                color: tokenVar('ink'),
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {nation.leader_bio}
+            </p>
+          )}
         </div>
       </div>
-      {nation.leader_bio && (
-        <div
-          style={{
-            ...TEXT_STYLES['body'],
-            color: tokenVar('ink'),
-            whiteSpace: 'pre-wrap',
-            marginTop: SPACING['space-3'],
-          }}
-        >
-          {nation.leader_bio}
-        </div>
-      )}
     </CardBlock>
   );
 }

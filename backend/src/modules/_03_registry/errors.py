@@ -1,5 +1,5 @@
 """
-Domain errors of module 03_registry (Spec 5.1–5.2, 2.5).
+Domain errors of module 03_registry (Spec 5.1–5.2, 5.6, 2.5).
 
 They derive from the core base class like every other domain error —
 ``main.py`` maps their ``code`` to an HTTP status. ``RegistryConfigError``
@@ -25,6 +25,24 @@ class RegistryTableNotFoundError(RegistryDomainError):
             f"Таблица «{table_id}» не найдена",
             self.code,
             details={"table_id": table_id},
+        )
+
+
+class RegistryPlayerNotFoundError(RegistryDomainError):
+    """
+    Out-of-range ``number`` in the player endpoint — HTTP 404
+    (Spec 5.6). The ``int``/``ge=1`` path typing already turns
+    non-integers, zero and negatives into the usual 422; this error is
+    for a well-formed number beyond the player list.
+    """
+
+    code = "REGISTRY_PLAYER_NOT_FOUND"
+
+    def __init__(self, number: int):
+        super().__init__(
+            f"Игрок №{number} не найден",
+            self.code,
+            details={"number": number},
         )
 
 

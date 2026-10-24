@@ -124,7 +124,12 @@ class TestMapApiOnPostgres:
         body = past.json()
         assert body["owners"] == [[pid, 0] for pid in STARTING_GROUP]
         assert body["nations"] == [
-            {"id": None, "name": "PG Beta", "color_hex": "#3311CC"}
+            {
+                "id": None,
+                "name": "PG Beta",
+                "short_name": "Testland",
+                "color_hex": "#3311CC",
+            }
         ]
 
         out_of_range = await pg_live_client.get(

@@ -15,8 +15,9 @@
  * and sends the «Приказ №N подан» / «Вердикт … записан» messages to the
  * shared Notice bar.
  * The verdict flow always lands back on the order's detail window —
- * it reloads on re-entry — and bumps `assignedRefreshKey` so the
- * «Ожидают вердикт» list refetches (Spec 5.4).
+ * it reloads on re-entry — and bumps `ordersRefreshKey` so the
+ * «Штаб» badge counts refetch; a submitted order bumps it too
+ * (Spec 5.4, version 0.10.0 unit 7b).
  */
 
 import {
@@ -35,6 +36,7 @@ import { useNotice } from '../../shared/ui';
 import { ConfirmSubmitModal } from './ConfirmSubmitModal';
 import { OrderComposer } from './OrderComposer';
 import { OrderDetailModal } from './OrderDetailModal';
+import { registerOrdersTableFilters } from './registryFilters';
 import { ConfirmVerdictModal, VerdictComposer } from './VerdictComposer';
 
 /** formDraft keys — one per form, verdicts additionally per order. */
@@ -91,10 +93,11 @@ interface OrdersUiContextValue {
   /** Successful submit — close and show «Приказ №N подан». */
   notifySubmitted: (number: number) => void;
   /**
-   * Bumped when the judge's queue may have changed — the «Ожидают
-   * вердикт» list refetches on it.
+   * Bumped when the player's order counters may have changed — an
+   * order submitted, a verdict written or rejected. The «Штаб»
+   * badges refetch on it (unit 7b).
    */
-  assignedRefreshKey: number;
+  ordersRefreshKey: number;
   /** «Написать вердикт» (list row or detail window) — opens the verdict composer. */
   openVerdictComposer: (number: number) => void;
   /** Verdict composer → confirmation, carrying the entered values. */
@@ -124,7 +127,7 @@ export function useOrdersUi(): OrdersUiContextValue {
 export function OrdersUiProvider({ children }: { children: ReactNode }) {
   const [orderWindow, setOrderWindow] = useState<OrdersWindow | null>(null);
   const notify = useNotice();
-  const [assignedRefreshKey, setAssignedRefreshKey] = useState(0);
+  const [ordersRefreshKey, setOrdersRefreshKey] = useState(0);
 
   const openComposer = useCallback(() => {
     setOrderWindow({
@@ -142,10 +145,13 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
     setOrderWindow({ view: 'detail', number });
   }, []);
 
-  // The Registry's `order:<number>` action — one registration for the
-  // session; re-registering replaces (cellActions semantics).
+  // The Registry's `order:<number>` action and the «Назначены мне»
+  // table filter — one registration each for the session;
+  // re-registering replaces (cellActions / tableFilterExtensions
+  // semantics).
   useEffect(() => {
     registerCellAction('order', (arg) => openOrder(Number(arg)));
+    registerOrdersTableFilters();
   }, [openOrder]);
 
   const toConfirm = useCallback((draft: OrderDraft) => {
@@ -175,9 +181,11 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
 
   const notifySubmitted = useCallback(
     (number: number) => {
-      // The send succeeded — the composer's stored draft is spent.
+      // The send succeeded — the composer's stored draft is spent,
+      // and the «Мои приказы» count moved: badges refetch.
       clearFormDraft(ORDER_DRAFT_KEY);
       setOrderWindow(null);
+      setOrdersRefreshKey((k) => k + 1);
       notify(SUCCESS_RU.orderSubmitted(number));
     },
     [notify],
@@ -221,11 +229,11 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
 
   // Both verdict endings land back on the order's detail window:
   // leaving the verdict views and re-entering `detail` remounts its
-  // loader, and the assigned list refetches via `assignedRefreshKey`.
+  // loader, and the badge counts refetch via `ordersRefreshKey`.
   const finishVerdict = useCallback(
     (number: number, message: string) => {
       setOrderWindow({ view: 'detail', number });
-      setAssignedRefreshKey((k) => k + 1);
+      setOrdersRefreshKey((k) => k + 1);
       notify(message);
     },
     [notify],
@@ -255,7 +263,7 @@ export function OrdersUiProvider({ children }: { children: ReactNode }) {
         backToComposer,
         closeWindow,
         notifySubmitted,
-        assignedRefreshKey,
+        ordersRefreshKey,
         openVerdictComposer,
         toVerdictConfirm,
         backToVerdictComposer,

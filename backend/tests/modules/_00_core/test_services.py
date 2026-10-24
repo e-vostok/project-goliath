@@ -802,6 +802,9 @@ class TestNationProfile:
         legacy = Nation(
             owner_player_id=player.id,
             name="Legacy Nation",
+            # NOT NULL since migration 0012 — even a legacy row carries
+            # a short name; the other profile fields stay NULL.
+            short_name="Legacy",
             color_hex="#123456",
             created_at=datetime.now(UTC),
             created_turn=0,

@@ -68,28 +68,33 @@ function renderSubscreen(props: {
 }
 
 describe('NationSubscreen — content (direct link, no router state)', () => {
-  it('loads the public card: header, THREE tiles, leader, territory, description', async () => {
+  it('loads the public card: header, ONE tile, leader, territory, description', async () => {
     registerDefaultHandlers();
     registerNation();
     renderSubscreen({});
 
     // The card arrives (getNation) — the header shows the label, name
-    // and motto; the chain becomes «Реестр / Государство · Новгород».
+    // and motto; the chain becomes «Реестр / Государство · НВГ» — the
+    // SHORT name (unit 6a), the card body keeps the full one.
     await screen.findByText('Новгород');
     expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
       'aria-label',
-      'Реестр / Государство · Новгород',
+      'Реестр / Государство · НВГ',
     );
-    expect(screen.getByText('Кратко: НВГ')).toBeInTheDocument();
-    expect(screen.getByText('Слово и дело')).toBeInTheDocument();
+    // The short name is the small label line above the name — no
+    // «Кратко:» words since 0.9.2 (0.10.0 unit 4a); the trail's last
+    // segment carries it too (unit 6a) as «Государство · НВГ».
+    expect(screen.getByText('НВГ')).toBeInTheDocument();
+    expect(screen.getByText('Государство · НВГ')).toBeInTheDocument();
+    expect(screen.getByText(/Слово и дело/)).toBeInTheDocument();
 
-    // Exactly three tiles — no «Приказы» tile, no «Изменить» button;
-    // the header action is «Показать на карте».
-    const stats = screen.getByTestId('nation-subscreen-stats');
-    expect(stats.children).toHaveLength(3);
-    expect(stats).toHaveTextContent('Провинции');
-    expect(stats).toHaveTextContent('Уровень');
-    expect(stats).toHaveTextContent('Судейский рейтинг');
+    // Board 11 — NO stat tiles at all; the province count sits on the
+    // «Территория» title. «Уровень» and «Судейский рейтинг» live on
+    // the «Игрок» subscreen (0.10.0 unit 8b). No «Приказы» tile, no
+    // «Изменить» button; the header action is «Показать на карте».
+    expect(screen.queryByTestId('nation-subscreen-stats')).toBeNull();
+    expect(screen.queryByText('Уровень')).toBeNull();
+    expect(screen.queryByText('Судейский рейтинг')).toBeNull();
     expect(screen.queryByText('Неразрешённые приказы')).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Изменить' }),
@@ -98,7 +103,10 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
       screen.getByRole('button', { name: 'Показать на карте' }),
     ).toBeInTheDocument();
 
-    // «Глава государства» and «Описание» with the history link.
+    // «Глава государства» and «Описание» with the history link; the
+    // «Территория» title carries the province count (PNG 11).
+    const territoryTitle = screen.getByText('Территория').closest('h2')!;
+    expect(territoryTitle).toHaveTextContent('2');
     expect(screen.getByText('Глава государства')).toBeInTheDocument();
     expect(screen.getByText('Борис Первый')).toBeInTheDocument();
     expect(screen.getByText('Вольный город на севере.')).toBeInTheDocument();
@@ -165,11 +173,11 @@ describe('NationSubscreen — chain from a table row', () => {
     registerNation();
     renderSubscreen({ fromTab: 'Игроки' });
 
-    // «Новгород» sits in the chain AND the header — wait on the card.
+    // «НВГ» sits in the chain, «Новгород» in the header — wait on the card.
     await screen.findByTestId('nation-subscreen');
     expect(screen.getByTestId('subscreen-trail')).toHaveAttribute(
       'aria-label',
-      'Реестр / Игроки / Новгород',
+      'Реестр / Игроки / НВГ',
     );
   });
 });

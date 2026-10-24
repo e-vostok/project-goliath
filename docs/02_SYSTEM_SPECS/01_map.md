@@ -35,10 +35,11 @@ bible_ref: docs/01_GAME_BIBLE/01_map.md
 | `prev_nation_id`   | UUID (String(36)) | NULLABLE, **без FK** (логическая ссылка; государство может быть удалено) |
 | `new_nation_id`    | UUID (String(36)) | NULLABLE, без FK; `NULL` = провинция стала свободной               |
 | `new_nation_name`  | VARCHAR(100)  | NULLABLE — название государства на момент события                      |
+| `new_nation_short_name` | VARCHAR(100) | NULLABLE — краткое название на момент события (миграция 0014)     |
 | `new_nation_color` | CHAR(7)       | NULLABLE — цвет государства на момент события                          |
 | `created_at`       | TIMESTAMPTZ   | NOT NULL                                                               |
 
-Ограничение `ck_log_new_nation_consistent`: три поля `new_nation_*` одновременно NULL или одновременно NOT NULL. Индексы: `(province_id, turn_number, id)`, `(turn_number)`. Таблица append-only: сервис не выполняет UPDATE и DELETE (исключение — хук сброса мира, Часть 2). Первичный ключ обязателен и проверяется защитным тестом расхождения моделей и миграций.
+Ограничение `ck_log_new_nation_consistent`: три поля `new_nation_id`/`new_nation_name`/`new_nation_color` одновременно NULL или одновременно NOT NULL. Четвёртое снимочное поле следует тому же правилу — у записи с `new_nation_id` краткое название заполнено, у записи освобождения оно NULL — но ограничение намеренно не расширяется: парность `new_nation_short_name` проверяет валидатор сервиса (`_validate_consistency`). Индексы: `(province_id, turn_number, id)`, `(turn_number)`. Таблица append-only: сервис не выполняет UPDATE и DELETE (исключение — хук сброса мира, Часть 2). Первичный ключ обязателен и проверяется защитным тестом расхождения моделей и миграций.
 
 ### Файловые данные карты (`data/map/`)
 
@@ -182,7 +183,7 @@ sea_link_gap: 0.6              # водоём не больше lake_max_area н
 
 ### Изменения `00_core` (Приложение B), используемые модулем
 
-- **Реестр слушателей смены владельца.** `NationService` при создании государства (закрепление провинций) и при его удалении (освобождение) вызывает слушателей в той же транзакции, передавая список `OwnershipChange(province_id, prev_nation_id, new_nation_id, new_name, new_color, turn)`. `01_map` регистрирует слушателя, пишущего журнал.
+- **Реестр слушателей смены владельца.** `NationService` при создании государства (закрепление провинций) и при его удалении (освобождение) вызывает слушателей в той же транзакции, передавая список `OwnershipChange(province_id, prev_nation_id, new_nation_id, new_name, new_short_name, new_color, turn)`. `01_map` регистрирует слушателя, пишущего журнал.
 - **Реестр проверок регистрации.** `NationService.create` после проверки существования и свободы провинций вызывает зарегистрированные проверки; `01_map` регистрирует проверку «только суша» и «связная группа». Так ядро не зависит от сателлита.
 - **Хук сброса мира.** Админский сброс мира очищает `map_ownership_log` через зарегистрированный хук (по образцу `admin_hooks.py`).
 
@@ -232,7 +233,7 @@ $$E_S=\{(u,v)\in E:\ u,v\in S,\ \mathrm{type}(u,v)\in\{\text{land},\text{strait}
 
 $$owner(p,T)=\begin{cases} new(r^\*), & r^\*=\operatorname*{arg\,max}_{r\in R_p,\ t_r\le T}(t_r,\ id_r)\\ \text{свободна}, & \text{если } \{r\in R_p: t_r\le T\}=\varnothing\end{cases}$$
 
-Для текущего хода владелец и данные государства берутся из живых таблиц `provinces` и `nations`; для прошлых ходов — из журнала (название и цвет на момент события).
+Для текущего хода владелец и данные государства берутся из живых таблиц `provinces` и `nations`; для прошлых ходов — из журнала (название, краткое название и цвет на момент события).
 
 ### 3.6 Версии геометрии и границ
 
@@ -384,12 +385,13 @@ $$mult(\text{strait})=\begin{cases}\text{multiplier}, & \text{если зада�
 | Метод | Путь | Request | Response | Код |
 | --- | --- | --- | --- | --- |
 | GET | `/map/manifest` | — | `MapManifestDTO` | 200 / 304 |
+| GET | `/map/province-names` | — | `MapProvinceNamesDTO` | 200 / 304 |
 | GET | `/map/geometry/{version}` | — | `MapGeometryDTO` | 200 / 404 |
 | GET | `/map/borders/{version}` | — | `MapBordersDTO` | 200 / 404 |
 | GET | `/map/state` | `?turn=` | `MapStateDTO` | 200 / 422 |
 | POST | `/map/starting-group/check` | `StartingGroupCheckRequest` | `StartingGroupCheckResponse` | 200 / 404 |
 
-`GET /map/manifest` отдаёт содержимое `manifest.json` плюс правила интерфейса; поддерживает `ETag` (значение — хэш от `geometry_version`, хэша `manifest.json` и канонического JSON блока `rules`, поэтому правка конфига меняет `ETag`) и условный запрос `If-None-Match` (слабое сравнение RFC 9110); заголовок `Cache-Control: no-cache`. `GET /map/geometry/{version}` и `GET /map/borders/{version}` отдают геометрию и границы с заголовком `Cache-Control: public, max-age=31536000, immutable` и `ETag`, равным версии; версия, отличная от текущей, даёт 404 `MAP_VERSION_UNKNOWN` (клиент перезапрашивает manifest). Тела manifest, геометрии и границ собираются один раз при старте и отдаются готовыми байтами. `GET /map/state` без `turn` — текущий ход; с `turn` — прошлый ход по журналу; вне диапазона `0…current_turn` — 422 `TURN_OUT_OF_RANGE`. Выведенные из игры узлы в ответе `state` не появляются.
+`GET /map/manifest` отдаёт содержимое `manifest.json` плюс правила интерфейса; поддерживает `ETag` (значение — хэш от `geometry_version`, хэша `manifest.json` и канонического JSON блока `rules`, поэтому правка конфига меняет `ETag`) и условный запрос `If-None-Match` (слабое сравнение RFC 9110); заголовок `Cache-Control: no-cache`. `GET /map/province-names` (версия 0.10.0, единица 11) отдаёт только пары `id узла → показываемое название` для экранов без карты (карточка государства, регистрация, подэкраны): `map_version` — та же строка `geometry_version`, что в манифесте; название разрешается на сервере правилом `name_ru` → `name` → `key`; ни геометрии, ни координат, ни связей в ответе нет. Собственный `ETag` — хэш от `geometry_version` и хэша `manifest.json` (без `rules`: правка конфига не инвалидирует названия); условный запрос и `Cache-Control: no-cache` — как у манифеста. `GET /map/geometry/{version}` и `GET /map/borders/{version}` отдают геометрию и границы с заголовком `Cache-Control: public, max-age=31536000, immutable` и `ETag`, равным версии; версия, отличная от текущей, даёт 404 `MAP_VERSION_UNKNOWN` (клиент перезапрашивает manifest). Тела manifest, province-names, геометрии и границ собираются один раз при старте и отдаются готовыми байтами. `GET /map/state` без `turn` — текущий ход; с `turn` — прошлый ход по журналу; вне диапазона `0…current_turn` — 422 `TURN_OUT_OF_RANGE`. Выведенные из игры узлы в ответе `state` не появляются.
 
 ### DTO
 
@@ -404,11 +406,12 @@ MapNodeLabelDTO  = { x: float, y: float, w: float, h: float,
                      len: float, thick: float }
 MapEdgeDTO       = { a: int, b: int, type: "land" | "coast" | "sea" | "strait",
                      name: str | None, multiplier: float | None }    # multiplier — итоговое значение с учётом конфига; len не отдаётся
+MapProvinceNamesDTO = { map_version: str, names: dict[int, str] }   # map_version = geometry_version манифеста; names — id узла → показываемое название (name_ru → name → key)
 MapBordersDTO    = { version: str, pairs: dict[str, str], coasts: dict[str, str] }   # ключи "a-b" и id узла → SVG path d
 MapGeometryDTO   = { version: str, paths: dict[int, str], outside: str, sea_water: str }
 MapStateDTO      = { geometry_version: str, borders_version: str, turn: int, nations: list[MapNationDTO],
                      owners: list[list[int]] }                        # [province_id, индекс в nations]; свободные провинции не перечисляются
-MapNationDTO     = { id: UUID | None, name: str, color_hex: str }     # id = None для государств, которых больше нет (прошлые ходы)
+MapNationDTO     = { id: UUID | None, name: str, short_name: str, color_hex: str }   # id = None для государств, которых больше нет (прошлые ходы); флагов на карте нет — только краткое название
 StartingGroupCheckRequest  = { province_ids: list[int] }
 StartingGroupCheckResponse = { connected: bool, component_count: int }
 

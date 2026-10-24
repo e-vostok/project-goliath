@@ -1,51 +1,141 @@
 /**
  * OrdersBlock — the «Приказы» block of the headquarters card
  * (PanelNationHome, Spec 5.4 / D12 — never in PanelCreateNation;
- * UI Spec 9.1, mockup «Main», version 0.9.0 unit 12d).
+ * UI Spec 9.1, mockup board 08, version 0.10.0 units 7b + 13).
  *
  * A surface block with the shared BlockTitle («Приказы», document
  * icon) whose trailing slot carries the «Подать приказ» button.
- * Below sits «Ожидают вердикт · N» (the count appears once the
- * queue is loaded and non-empty): the orders assigned to the
- * player for judging. The list loads when the block mounts and on
- * «Обновить» — no polling; after a written or rejected verdict the
- * provider bumps `assignedRefreshKey` and the list refetches. A row
- * is a calm two-line card: the order title (one line with
- * ellipsis, the full text as a tooltip) over the nation and the
- * deadline — «до DD.MM.YYYY HH:MM», or the inline danger mark
- * «срок вышел …» when overdue — with the single «Написать
- * вердикт» action on the right; a click or Enter/Space on the row
- * itself opens the order's detail window. A failed refresh keeps
- * the shown list under «Не удалось загрузить» and «Повторить».
+ * Below it sit the two order cards — «Мои приказы» and «Приказы
+ * других игроков» — that replaced the stat tiles and the «Ожидают
+ * вердикт» list in 0.10.0: the judge path now runs through the
+ * Registry (card → orders tab → row → order window).
+ *
+ * The card look is PNG 08: a `surface-raised` card with a `line`
+ * frame, a 44 px `surface-inset` icon tile on the left carrying a
+ * brass count circle on its top-right corner, the title in
+ * `heading`, a `caption` subtitle in `ink-muted` («Ждут вердикта» /
+ * «Нужно написать вердикт») and an `ink-faint` chevron on the right.
+ *
+ * «Мои приказы» counts the player's own submitted orders without a
+ * verdict (`unresolved_orders` from GET /orders/rules — the same
+ * route the composer reads); «Приказы других игроков» counts the
+ * orders assigned to the player for judging (the GET /orders/assigned
+ * list length — the endpoint is unpaginated and returns the whole
+ * queue). A zero count gets no circle, counts of 100+ show «99+»;
+ * a failed or in-flight fetch leaves the card numberless — never
+ * «0», never an error popup. Both counts load on mount and refetch
+ * when `ordersRefreshKey` bumps (an order submitted, a verdict
+ * written or rejected).
+ *
+ * A card click hands the host an entry request for the Registry's
+ * orders tab with the preset filter («Мои приказы» — the nation
+ * dropdown set to my short name, «Приказы других игроков» — the
+ * «Назначены мне» extension on «Да»); navigation itself lives in
+ * AppShell, which stores the request and pushes '/registry'.
  */
 
 import { useState } from 'react';
-import { Icon16Replay } from '@vkontakte/icons';
-import { Button, FormStatus } from '@vkontakte/vkui';
+import { Button } from '@vkontakte/vkui';
 
-import { errorText } from '../../../shared/errorTexts';
 import {
   BlockTitle,
-  EmptyState,
-  LoadingState,
+  FONTS,
   RADII,
   SPACING,
   TEXT_STYLES,
   tokenVar,
 } from '../../../shared/ui';
+import type { RegistryEntryRequest } from '../../03_registry/lib/entryRequest';
 import { useAssignedOrders } from '../hooks/useAssignedOrders';
+import { useOrderRules } from '../hooks/useOrderRules';
+import { ORDERS_TABLE_ID } from '../registryFilters';
 import { ORDERS_TEXTS } from '../texts';
-import type { AssignedOrderDTO } from '../types';
 import { useOrdersUi } from '../OrdersUiProvider';
 
-export function OrdersBlock() {
-  const {
-    openComposer,
-    openOrder,
-    openVerdictComposer,
-    assignedRefreshKey,
-  } = useOrdersUi();
-  const assigned = useAssignedOrders(assignedRefreshKey);
+/** A count of 100 or more collapses to «99+» (PNG 08). */
+const countText = (count: number) => (count >= 100 ? '99+' : String(count));
+
+/** PNG 08 — the «Мои приказы» tile icon: a document with an up arrow. */
+function MineIcon() {
+  return (
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke={tokenVar('signal-ink')}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.8 1.8h5.7l3 3.1v9.3H3.8z" />
+      <path d="M9.5 1.8v3.1h3" />
+      <path d="M8.1 11.6V7.2M6.2 9l1.9-1.9L10 9" />
+    </svg>
+  );
+}
+
+/** PNG 08 — the «Приказы других игроков» tile icon: a checked document. */
+function OthersIcon() {
+  return (
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke={tokenVar('signal-ink')}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.8 1.8h5.7l3 3.1v9.3H3.8z" />
+      <path d="M9.5 1.8v3.1h3" />
+      <path d="M5.9 9.4l1.5 1.5 3-3.2" />
+    </svg>
+  );
+}
+
+/** PNG 08 — the `ink-faint` chevron on the card's right edge. */
+function CardChevron() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke={tokenVar('ink-faint')}
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M6 3l5 5-5 5" />
+    </svg>
+  );
+}
+
+export function OrdersBlock({
+  nationShortName,
+  onOpenRegistry,
+}: {
+  /** My nation's short name — the «Мои приказы» preset's dropdown value
+   * (the Registry's nation options list short names, Spec 03_registry 3.3). */
+  nationShortName: string;
+  /** Hands the card's entry request to the host (AppShell stores it
+   * and navigates to the Registry). */
+  onOpenRegistry: (request: RegistryEntryRequest) => void;
+}) {
+  const { openComposer, ordersRefreshKey } = useOrdersUi();
+  const rulesState = useOrderRules(ordersRefreshKey);
+  const assigned = useAssignedOrders(ordersRefreshKey);
+
+  const mineCount =
+    rulesState.status === 'ready' ? rulesState.rules.unresolved_orders : null;
+  const assignedCount =
+    assigned.status === 'ready' ? assigned.items.length : null;
 
   return (
     <section
@@ -60,185 +150,158 @@ export function OrdersBlock() {
         icon="document"
         title={ORDERS_TEXTS.blockTitle}
         trailing={
-          <Button size="s" mode="secondary" onClick={openComposer}>
+          <Button size="m" mode="primary" onClick={openComposer}>
             {ORDERS_TEXTS.submitButton}
           </Button>
         }
       />
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          marginBottom: SPACING['space-2'],
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: SPACING['space-4'],
         }}
       >
-        <span
-          style={{
-            ...TEXT_STYLES['label'],
-            color: tokenVar('ink-muted'),
-          }}
-        >
-          {ORDERS_TEXTS.assignedTitle}
-          {assigned.status === 'ready' && assigned.items.length > 0
-            ? ` · ${assigned.items.length}`
-            : ''}
-        </span>
-        <Button
-          size="s"
-          mode="tertiary"
-          before={<Icon16Replay />}
-          loading={assigned.status === 'loading'}
-          onClick={assigned.refresh}
-        >
-          {ORDERS_TEXTS.refreshButton}
-        </Button>
+        <OrderCard
+          testId="orders-badge-mine"
+          icon={<MineIcon />}
+          label={ORDERS_TEXTS.badgeMine}
+          hint={ORDERS_TEXTS.badgeMineHint}
+          count={mineCount}
+          onClick={() =>
+            onOpenRegistry({
+              tab: ORDERS_TABLE_ID,
+              preset: { nation: nationShortName },
+            })
+          }
+        />
+        <OrderCard
+          testId="orders-badge-assigned"
+          icon={<OthersIcon />}
+          label={ORDERS_TEXTS.badgeOthers}
+          hint={ORDERS_TEXTS.badgeOthersHint}
+          count={assignedCount}
+          onClick={() =>
+            onOpenRegistry({
+              tab: ORDERS_TABLE_ID,
+              preset: { assignedToMe: true },
+            })
+          }
+        />
       </div>
-
-      {assigned.status === 'error' && (
-        <>
-          <FormStatus mode="error" title={ORDERS_TEXTS.assignedLoadError}>
-            {errorText(assigned.error)}
-          </FormStatus>
-          <Button size="s" onClick={assigned.refresh}>
-            {ORDERS_TEXTS.retry}
-          </Button>
-        </>
-      )}
-
-      {assigned.items.length === 0 && assigned.status === 'loading' ? (
-        <LoadingState height={36} />
-      ) : assigned.items.length === 0 && assigned.status === 'ready' ? (
-        <EmptyState text={ORDERS_TEXTS.assignedEmpty} />
-      ) : (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}
-        >
-          {assigned.items.map((item) => (
-            <AssignedRow
-              key={item.number}
-              item={item}
-              onVerdict={openVerdictComposer}
-              onOpen={openOrder}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
 
-function AssignedRow({
-  item,
-  onVerdict,
-  onOpen,
+function OrderCard({
+  testId,
+  icon,
+  label,
+  hint,
+  count,
+  onClick,
 }: {
-  item: AssignedOrderDTO;
-  onVerdict: (number: number) => void;
-  onOpen: (number: number) => void;
+  testId: string;
+  icon: React.ReactNode;
+  label: string;
+  hint: string;
+  /** null — the count is not loaded (in-flight or failed): no circle. */
+  count: number | null;
+  onClick: () => void;
 }) {
   // `hot` paints the hover state, `focused` the keyboard focus ring.
   const [hot, setHot] = useState(false);
   const [focused, setFocused] = useState(false);
   return (
-    <div
-      data-testid={`assigned-order-${item.number}`}
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(item.number)}
-      onKeyDown={(e) => {
-        // Keys bubbled from the inner «Написать вердикт» button are
-        // its own — the row activates only on its own focus.
-        if (e.target !== e.currentTarget) {
-          return;
-        }
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen(item.number);
-        }
-      }}
+    <button
+      type="button"
+      // The count circle must not leak into the accessible name.
+      aria-label={label}
+      data-testid={testId}
+      onClick={onClick}
       onMouseEnter={() => setHot(true)}
       onMouseLeave={() => setHot(false)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={{
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        gap: SPACING['space-3'],
         minWidth: 0,
-        padding: '10px 12px',
-        background: tokenVar(hot ? 'surface-raised' : 'surface-inset'),
-        borderRadius: RADII['radius-md'],
+        minHeight: 72,
+        padding: '12px 16px',
+        boxSizing: 'border-box',
+        background: tokenVar('surface-raised'),
+        border: `1px solid ${tokenVar(hot ? 'ink-faint' : 'line')}`,
+        borderRadius: RADII['radius-lg'],
         cursor: 'pointer',
+        textAlign: 'left',
+        color: tokenVar('ink'),
         outline: focused ? `2px solid ${tokenVar('action')}` : 'none',
         outlineOffset: 2,
       }}
     >
       <span
         style={{
-          width: 36,
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 44,
+          height: 44,
           flexShrink: 0,
-          whiteSpace: 'nowrap',
-          ...TEXT_STYLES['figure'],
-          color: tokenVar('ink-muted'),
+          borderRadius: RADII['radius-md'],
+          background: tokenVar('surface-inset'),
         }}
       >
-        №{item.number}
+        {icon}
+        {count !== null && count > 0 && (
+          <span
+            data-testid={`${testId}-count`}
+            aria-label={ORDERS_TEXTS.badgeAttention(count)}
+            style={{
+              position: 'absolute',
+              top: -8,
+              right: -8,
+              minWidth: 20,
+              height: 20,
+              padding: '0 5px',
+              boxSizing: 'border-box',
+              borderRadius: RADII['radius-pill'],
+              background: tokenVar('signal'),
+              color: tokenVar('on-signal'),
+              fontFamily: FONTS.mono,
+              fontSize: 12,
+              lineHeight: '20px',
+              textAlign: 'center',
+            }}
+          >
+            {countText(count)}
+          </span>
+        )}
       </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          title={item.title}
+      <span style={{ flexGrow: 1, minWidth: 0 }}>
+        <span
           style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: 'block',
+            ...TEXT_STYLES['heading'],
             color: tokenVar('ink'),
           }}
         >
-          {item.title}
-        </div>
-        <div
+          {label}
+        </span>
+        <span
           style={{
+            display: 'block',
             ...TEXT_STYLES['caption'],
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
             color: tokenVar('ink-muted'),
           }}
         >
-          {item.overdue ? (
-            <>
-              {`${item.nation.name} · `}
-              <span
-                data-testid="assigned-overdue-mark"
-                style={{ color: tokenVar('danger') }}
-              >
-                {ORDERS_TEXTS.assignedOverdue(item.deadline_text)}
-              </span>
-            </>
-          ) : (
-            `${item.nation.name} · ${ORDERS_TEXTS.assignedDeadline(
-              item.deadline_text,
-            )}`
-          )}
-        </div>
-      </div>
-      <Button
-        size="s"
-        mode="secondary"
-        style={{ flexShrink: 0 }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onVerdict(item.number);
-        }}
-      >
-        {ORDERS_TEXTS.writeVerdict}
-      </Button>
-    </div>
+          {hint}
+        </span>
+      </span>
+      <CardChevron />
+    </button>
   );
 }

@@ -13,7 +13,7 @@
 > - Ответы ошибок при наличии уточнений несут поле `details` (5.3); порядок проверок вердикта дополнен шагом модульной блокировки и фиксацией условного `UPDATE` (5.1).
 > Артефакты шага: этот файл, `configs/04_orders.yaml`, `backend/src/modules/_04_orders/config_schema.py`.
 > Зависимости: `00_core`, `02_bot`, `03_registry`. `01_map` не требуется.
-> Релиз модуля: MINOR; предложение — 0.7.0 вместе с отложенным Реестром (номер уточняет Roadmap).
+> Релиз модуля: 0.7.0 (вместе с Реестром); Spec действует в версии 0.10.0.
 
 ---
 
@@ -72,6 +72,8 @@
 | `nation_id` | String(36) | NOT NULL; **без FK**: снимок на момент подачи |
 | `nation_name` | String(100) | NOT NULL; снимок |
 | `nation_color` | CHAR(7) | NOT NULL; снимок, формат `#RRGGBB` |
+| `nation_short_name` | String(100) | NOT NULL; снимок краткого названия (миграция 0013) |
+| `nation_flag_id` | String(50) | NULL; снимок идентификатора флага из каталога (миграция 0013) |
 | `title` | String(200) | NOT NULL |
 | `summary` | String(2000) | NOT NULL |
 | `article_url` | String(2000) | NOT NULL |
@@ -123,7 +125,7 @@
 - **INV-O3. Судья не равен автору.** `CHECK` плюс исключение автора из кандидатов.
 - **INV-O4. Предел нагрузки.** Число приказов судьи без вердикта не превышает `judge.max_pending_verdicts` в момент назначения. Выбор судьи и запись назначения выполняются под модульной блокировкой с пересчётом нагрузки внутри неё (3.3). Понижение предела в конфиге не отзывает назначенное.
 - **INV-O5. Анонимность судьи.** Ни один эндпоинт игрока не возвращает идентификатор или профиль судьи. На запись вердикта не-судьёй сервер отвечает одним и тем же `ORDER_VERDICT_FORBIDDEN` независимо от того, есть ли у приказа судья и кто он.
-- **INV-O6. Снимок государства.** Название и цвет государства-автора в приказе фиксируются при подаче и не обновляются при переименовании, смене цвета или удалении государства.
+- **INV-O6. Снимок государства.** Полное и краткое название, цвет и флаг государства-автора в приказе фиксируются при подаче и не обновляются при переименовании, смене краткого названия, цвета, флага или удалении государства. Снимок заполняется из публичного представления `NationService.player_nation_summary` модуля `00_core` — модуль не читает таблицу `nations` напрямую (INV-O7).
 - **INV-O7. Суверенность данных.** Внешние ключи — только на `players`. Игроки, рейтинг, государство, согласие бота — только через публичные функции модулей-владельцев. Чужие таблицы не изменяются. Уведомления — только `BotService.enqueue` в той же транзакции, результат не влияет на исход операции, исключений не бросает.
 - **INV-O8. Изоляция сбоев.** Распределение каждого приказа выполняется под собственным `SAVEPOINT`: сбой распределения или постановки уведомления не отменяет подачу приказа и вердикта. Проход фоновой задачи по одному приказу не прерывает проход по остальным. Задача не умирает от исключения (цикл «шаг → при ошибке пауза 5 → 15 → 60 с → дальше», как в боте).
 - **INV-O9. Идемпотентность подачи.** `UNIQUE (author_player_id, client_request_id)`: повтор с тем же идентификатором возвращает существующий приказ и ничего не создаёт.
@@ -196,6 +198,8 @@ class OrderDetailView:
     number: int
     nation_name: str
     nation_color: str
+    nation_short_name: str
+    nation_flag_id: str | None
     title: str
     summary: str
     article_url: str
@@ -216,6 +220,8 @@ class AssignedOrderView:            # очередь судьи; deadline_at н�
     number: int
     nation_name: str
     nation_color: str
+    nation_short_name: str
+    nation_flag_id: str | None
     title: str
     summary: str
     article_url: str
@@ -227,6 +233,8 @@ class RegistryOrderView:            # строка источника Реест
     number: int
     nation_name: str
     nation_color: str
+    nation_short_name: str
+    nation_flag_id: str | None
     title: str
     submitted_at: datetime
     distributed_at: datetime | None
@@ -398,7 +406,7 @@ OrderRulesDTO = { title_min_length: int, title_max_length: int,
                   max_unresolved_orders: int,      # author.max_unresolved_orders
                   unresolved_orders: int }         # сколько приказов без вердикта у текущего игрока сейчас
 
-NationMarkDTO = { name: str, color: str }          # снимок государства-автора
+NationMarkDTO = { name: str, color: str, short_name: str, flag_url: str | None }   # снимок государства-автора; flag_url строится только через catalog.flag_url (INV-16)
 VerdictDTO    = { title: str, summary: str, article_url: str }
 
 OrderDetailDTO = {
@@ -440,11 +448,11 @@ AssignedOrdersDTO = { items: list[AssignedOrderDTO] }    # все приказы
 
 ### 5.4. Клиент (VKUI, только desktop)
 
-**Файлы** (`frontend/src/modules/04_orders/`): `api.ts`, `types.ts`, `texts.ts`, `hooks/useAssignedOrders.ts`, `hooks/useOrderDetail.ts`, `hooks/useOrderRules.ts`, `OrdersUiProvider.tsx` (контекст и хост окон), `OrderComposer.tsx`, `ConfirmSubmitModal.tsx`, `OrderDetailModal.tsx`, `VerdictComposer.tsx`, `components/OrdersBlock.tsx`, `components/NationMark.tsx` (цветная метка и название государства-автора). Все окна не шире 910 px, без горизонтальной прокрутки; текст не ломается посреди слова.
+**Файлы** (`frontend/src/modules/04_orders/`): `api.ts`, `types.ts`, `texts.ts`, `hooks/useAssignedOrders.ts`, `hooks/useOrderDetail.ts`, `hooks/useOrderRules.ts`, `OrdersUiProvider.tsx` (контекст и хост окон), `registryFilters.ts` (регистрация фильтра «Назначены мне» в таблице Реестра — 5.6), `OrderComposer.tsx`, `ConfirmSubmitModal.tsx`, `OrderDetailModal.tsx`, `VerdictComposer.tsx`, `components/OrdersBlock.tsx`, `components/NationMark.tsx` (цветная метка и название государства-автора). Все окна не шире 910 px, без горизонтальной прокрутки; текст не ломается посреди слова.
 
 **Интеграция.** `OrdersUiProvider` монтируется один раз в `AppShell` и хостит модальные окна модуля; он же регистрирует в Реестре обработчик действия `order` (5.6). `OrdersBlock` вставляется в `PanelNationHome`; в `PanelCreateNation` блока нет (D12).
 
-**Мини-блок «Приказы» (штаб).** Заголовок «Приказы». Кнопка «Подать приказ» открывает конструктор. Ниже список «Ожидают вердикт · N»: строка из двух линий (название; государство и срок), одна кнопка «Написать вердикт», щелчок по строке открывает приказ. Список загружается при показе блока и по кнопке «Обновить»; опроса нет. Пустой список — строка «Приказов на рассмотрении нет». Загрузка — спиннер; ошибка — «Не удалось загрузить» и «Повторить» (показанное ранее остаётся).
+**Мини-блок «Приказы» (штаб).** Заголовок «Приказы». Кнопка «Подать приказ» открывает конструктор. Ниже два значка-кнопки (версия 0.10.0, единица 7b): «Мои приказы» — число поданных игроком приказов без вердикта (`unresolved_orders` из `GET /orders/rules` — тот же маршрут, что читает конструктор) и «Приказы других игроков» — число приказов, назначенных игроку на суд (`GET /orders/assigned`; маршрут без разбивки на страницы, отдаёт всю очередь — число есть длина списка). Ноль — без кружка; 100 и больше — «99+»; неудачная загрузка — значок без числа, без окна ошибки. Щелчок по значку открывает вкладку «Приказы» Реестра с предустановкой фильтра (Spec `03_registry`, вход с предустановкой): «Мои приказы» — список «Государство» = краткое название государства игрока, «Приказы других игроков» — «Назначены мне» = «Да». Числа обновляются при показе блока и после подачи приказа или записи/отказа вердикта (общий сигнал обновления `OrdersUiProvider`); опроса нет. Списка «Ожидают вердикт» в «Штабе» нет: путь судьи к вердикту — значок → вкладка «Приказы» → строка → окно приказа → «Написать вердикт».
 
 **Конструктор приказа (`OrderComposer`).** Три поля: название, краткая суть (многострочное), ссылка на статью ВК; пределы длины клиент получает из `GET /orders/rules` и показывает счётчиком у каждого поля; источник истины — сервер. Кнопка «Отправить приказ» ведёт в `ConfirmSubmitModal`: предупреждение «Уверены ли вы, всё ли проверили: изменить приказ после подачи нельзя», введённые значения целиком, кнопка «Открыть ссылку» (обычная ссылка `target="_blank" rel="noopener noreferrer"`), кнопки «Вернуться к правке» и «Да, отправить». `client_request_id` создаётся при открытии конструктора и сохраняется до успешной отправки или закрытия окна: повторное нажатие создаёт не более одного приказа. Над полями строка «Неразрешённых приказов: N из M» (из `GET /orders/rules`); при `N ≥ M` кнопка «Отправить приказ» неактивна, а рядом пояснение «Достигнут предел: дождитесь вердикта по одному из ваших приказов». Ошибки полей показываются у поля; `ORDER_NATION_REQUIRED` и `ORDER_AUTHOR_LIMIT_REACHED` — сообщением в окне (при втором клиент обновляет счётчик). После успеха окно закрывается, показывается уведомление «Приказ №N подан». Несохранённые данные при закрытии теряются.
 
@@ -458,7 +466,9 @@ AssignedOrdersDTO = { items: list[AssignedOrderDTO] }    # все приказы
 
 ### 5.6. Расширения Реестра (клиент и сервер)
 
-Подробный контракт — Приложение A, список правок — Приложение B (B3). Кратко: столбец может иметь иконку вместо текста заголовка (`header_icon`, текст `title` остаётся подсказкой и подписью для доступности); новые типы ячеек `datetime` (дата и время в две строки) и `action_text` (кликабельный текст, действие `<обработчик>:<ссылка>`); у ячейки `nation` необязательный `flag_url` (сегодня `null`: показывается цветная метка государства, как заглушка флага); клиентская точка `registerCellAction(handler, fn)`, которой пользуется `OrdersUiProvider`.
+Подробный контракт — Приложение A, список правок — Приложение B (B3). Кратко: столбец может иметь иконку вместо текста заголовка (`header_icon`, текст `title` остаётся подсказкой и подписью для доступности); новые типы ячеек `datetime` (дата и время в две строки) и `action_text` (кликабельный текст, действие `<обработчик>:<ссылка>`); у ячейки `nation` необязательный `flag_url` (в таблице приказов — снимок флага автора; при его отсутствии `null` и показывается цветная метка государства); клиентская точка `registerCellAction(handler, fn)`, которой пользуется `OrdersUiProvider`.
+
+**Фильтр «Назначены мне» (версия 0.10.0).** `OrdersUiProvider` регистрирует в таблице `orders` фильтр расширения Реестра `registerTableFilterExtension('orders', {id: 'assigned_to_me', label: 'Назначены мне', load})` (механизм — Spec 03_registry 5.5 «Фильтры расширений»): `load` читает `GET /orders/assigned` — очередь вердиктов самого вызывающего — и возвращает номера её приказов. Позиция «Да» оставляет строки `o<N>`, чьи номера входят в множество. Запрос строк таблицы не меняется и одинаков для всех игроков (INV-R10); судья никуда не передаётся и не раскрывается — фильтр целиком вычисляется в браузере из данных, которые вызывающий уже имеет (INV-O5). Этот же фильтр открывается предустановкой входа `preset: {assignedToMe: true}` (Spec 03_registry 5.5 «Вход с предустановкой»).
 
 ### 5.7. Админ-панель (`AdminRegistry`)
 
@@ -483,7 +493,7 @@ register_table_source(
 Ключ строки — `o<number>`. Ячейки (формы — Spec Реестра 3.6 после расширения):
 
 - `number` — целое.
-- `nation` — `cell_nation(name, color)` по снимку; `flag_url = null`; `id = null`.
+- `nation` — `cell_nation(name=nation_short_name, color=nation_color, flag_url=catalog.flag_url(nation_flag_id), nation_id=…)` по снимку: ячейка показывает краткое название и флаг на момент подачи (INV-O6); `id` — `nation_id` из снимка, но только когда государство ещё существует: наличие проверяется одним запросом `NationService.existing_ids(…)` на всю таблицу (единый публичный сервис `00_core`, версия 0.10.0 единица 13); у удалённого государства `id = null` — снимок остаётся текстом без ссылки и подсказки; опции `select_or_contains` совпадают с ячейками (Spec 3.7).
 - `title` — `cell_action_text(text=title, action=f"order:{number}")`.
 - `submitted` — `cell_datetime(submitted_at)`.
 - `distributed` — `cell_datetime(distributed_at)` либо пустая ячейка.
@@ -603,11 +613,11 @@ types:
     default_sort: {column: number, direction: desc}   # новые приказы сверху
     columns:
       - {id: number, title: "№", type: index, source: number, width_px: 56, sortable: true, filters: [], searchable: false, stub: false}
-      - {id: nation, title: "Государство", type: nation, source: nation, width_px: 168, sortable: true, filters: [text], searchable: true, stub: false}
+      - {id: nation, title: "Государство", type: nation, source: nation, width_px: 168, sortable: true, filters: [select_or_contains], searchable: true, stub: false}
       - {id: title, title: "Название", type: action_text, source: title, width_px: 236, sortable: true, filters: [text], searchable: true, stub: false}
-      - {id: submitted, title: "Подача", header_icon: stage_submitted, type: datetime, source: submitted, width_px: 136, sortable: true, filters: [date_range], searchable: false, stub: false}
-      - {id: distributed, title: "Распределение", header_icon: stage_distributed, type: datetime, source: distributed, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
-      - {id: verdict, title: "Вердикт", header_icon: stage_verdict, type: datetime, source: verdict, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
+      - {id: submitted, title: "Подача", type: datetime, source: submitted, width_px: 136, sortable: true, filters: [date_range], searchable: false, stub: false}
+      - {id: distributed, title: "Распределение", type: datetime, source: distributed, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
+      - {id: verdict, title: "Вердикт", type: datetime, source: verdict, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
 ```
 
 ---
@@ -651,6 +661,6 @@ types:
 
 **Админ.** Хук состояния показывает счётчики, просроченные приказы с судьёй (только в админ-ответе); хук сброса удаляет приказы, игроки и рейтинг сохраняются, номер после сброса снова 1.
 
-**Клиент.** Мини-блок: список и пустое состояние; подача: ошибки у полей, окно предупреждения со значениями, повтор отправки не создаёт второй приказ; окно сведений: кнопка «Написать вердикт» только при `can_write_verdict`; хэш `#registry/order-N` открывает вкладку и окно; Реестр: заголовок-иконка с подсказкой, ячейка «дата и время» в две строки, клик по названию вызывает зарегистрированное действие; окна не шире 910 px.
+**Клиент.** Мини-блок «Штаба»: значки «Мои приказы»/«Приказы других игроков» со счётчиками и переходом в Реестр с предустановкой фильтра; подача: ошибки у полей, окно предупреждения со значениями, повтор отправки не создаёт второй приказ; окно сведений: кнопка «Написать вердикт» только при `can_write_verdict`; хэш `#registry/order-N` открывает вкладку и окно; Реестр: заголовок-иконка с подсказкой, ячейка «дата и время» в две строки, клик по названию вызывает зарегистрированное действие; окна не шире 910 px.
 
 **Сквозной тест.** Подача → распределение → уведомления в очереди бота → вердикт → уведомление автору → строка Реестра заполнена по трём стадиям; сброс мира очищает приказы.

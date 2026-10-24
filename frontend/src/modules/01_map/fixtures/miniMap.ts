@@ -9,6 +9,7 @@ import type {
   MapBordersDTO,
   MapGeometryDTO,
   MapManifestDTO,
+  MapProvinceNamesDTO,
   MapStateDTO,
   MapViewRulesDTO,
 } from '../types';
@@ -138,6 +139,17 @@ export const MINI_MANIFEST: MapManifestDTO = {
   attribution: 'Mini fixture, no attribution',
 };
 
+/**
+ * GET /map/province-names answer (load-speed unit 11): the same
+ * display-name rule the server applies (`name_ru` over `name`).
+ */
+export const MINI_NAMES: MapProvinceNamesDTO = {
+  map_version: MINI_MANIFEST.geometry_version,
+  names: Object.fromEntries(
+    MINI_MANIFEST.nodes.map((node) => [node.id, node.name_ru ?? node.name]),
+  ),
+};
+
 export const MINI_GEOMETRY: MapGeometryDTO = {
   version: 'mini01',
   outside: 'M 0 0 L 100 0 L 100 80 L 0 80 Z',
@@ -184,6 +196,7 @@ export const MINI_STATE: MapStateDTO = {
     {
       id: 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d',
       name: 'Тестия',
+      short_name: 'Тестия',
       color_hex: '#e64545',
     },
   ],

@@ -13,6 +13,7 @@ import type {
   MapBordersDTO,
   MapGeometryDTO,
   MapManifestDTO,
+  MapProvinceNamesDTO,
   MapStateDTO,
   StartingGroupCheckDTO,
 } from './types';
@@ -25,6 +26,23 @@ export const mapApi = {
     signal?: AbortSignal,
   ): Promise<ConditionalResult<MapManifestDTO>> {
     return apiFetchConditional<MapManifestDTO>('/map/manifest', {
+      token,
+      signal,
+      ifNoneMatch: etag ?? undefined,
+    });
+  },
+
+  /**
+   * GET /map/province-names — the light names-only payload
+   * (load-speed unit 11); conditional when `etag` is given (304
+   * reuse), same ETag/no-cache rules as the manifest.
+   */
+  getProvinceNames(
+    token: string,
+    etag?: string | null,
+    signal?: AbortSignal,
+  ): Promise<ConditionalResult<MapProvinceNamesDTO>> {
+    return apiFetchConditional<MapProvinceNamesDTO>('/map/province-names', {
       token,
       signal,
       ifNoneMatch: etag ?? undefined,

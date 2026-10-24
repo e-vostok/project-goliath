@@ -269,6 +269,7 @@ async def _full_scenario(client: AsyncClient) -> None:
             assert rows[0].prev_nation_id is None
             assert rows[0].new_nation_id == nation_id
             assert rows[0].new_nation_name == "Alpine League"
+            assert rows[0].new_nation_short_name == "Testland"
         owners0 = await owners_at_turn(session, 0)
     assert sorted(owners0) == sorted(CONNECTED_FIVE)
 
@@ -314,7 +315,12 @@ async def _full_scenario(client: AsyncClient) -> None:
     past_body = past_after_delete.json()
     assert sorted(p for p, _ in past_body["owners"]) == sorted(CONNECTED_FIVE)
     assert past_body["nations"] == [
-        {"id": None, "name": "Alpine League", "color_hex": "#4A90D9"}
+        {
+            "id": None,
+            "name": "Alpine League",
+            "short_name": "Testland",
+            "color_hex": "#4A90D9",
+        }
     ]
 
 

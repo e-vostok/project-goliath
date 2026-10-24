@@ -189,7 +189,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.9.0",
+    version="0.10.0",
     lifespan=lifespan,
 )
 
@@ -249,6 +249,7 @@ _ERROR_CODE_STATUS = {
     "TURN_OUT_OF_RANGE": 422,
     "MAP_VERSION_UNKNOWN": 404,
     "REGISTRY_TABLE_NOT_FOUND": 404,
+    "REGISTRY_PLAYER_NOT_FOUND": 404,
     "REGISTRY_PROVIDER_FAILED": 500,
     "ORDER_NATION_REQUIRED": 403,
     "ORDER_AUTHOR_LIMIT_REACHED": 409,

@@ -1,11 +1,13 @@
 /**
- * NationCell — `nation` column: the nation's flag image when the cell
- * carries `flag_url`, otherwise the colour dot as before; plus the
- * name, or a dash when the cell is null (Spec 5.5 / 1.2).
+ * NationCell — `nation` column: the shared `NationLabel` (version
+ * 0.10.0, unit 6a) — the small flag, or a colour block when the cell
+ * has no working `flag_url`, plus the cell's SHORT name; a dash when
+ * the cell is null (Spec 5.5 / 1.2).
  *
- * Since unit 14c a cell with a non-null `id` is a button — same look
- * as the plain cell, `action` text colour, underline on hover/focus —
- * that opens the nation subscreen. A null `id` (the orders table's
+ * Since unit 14c a cell with a non-null `id` is a button that opens
+ * the nation subscreen — since unit 13b it keeps the plain `ink` text
+ * colour (PNG 09/10/12: only the order title link stays `action`),
+ * underlining on hover/focus. A null `id` (the orders table's
  * snapshot, a nation-less player) stays plain text and gets NO
  * tooltip.
  *
@@ -19,7 +21,7 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import {
-  RADII,
+  NationLabel,
   SPACING,
   TEXT_STYLES,
   Tooltip,
@@ -43,13 +45,15 @@ const NATION_TIP_TEXTS = {
 
 /**
  * NationTip — the «Подсказка» content of a nation cell and of the
- * nations table's «name» cell (unit 11): the small flag (or colour
- * dot) and the FULL name in `heading`, the «Лидер / Провинций /
- * Столица» rows (empty legacy fields show «—»), a separator and the
- * «Нажмите на название…» hint. The cell's name/colour/flag show while
- * the public card loads («Загрузка…»); a failed request shows
- * «Не удалось загрузить» — no error screen, no notice — and is not
- * cached, so the next hover retries.
+ * nations table's «name» cell (unit 11): the shared `NationLabel`
+ * (`tip` size — small flag or colour block) and the SHORT name in
+ * `heading` (unit 6a — the loaded card never substitutes its long
+ * `name`), the «Лидер / Провинций / Столица» rows (empty legacy
+ * fields show «—»), a separator and the «Нажмите на название…» hint.
+ * The cell's name/colour/flag show while the public card loads
+ * («Загрузка…»); a failed request shows «Не удалось загрузить» — no
+ * error screen, no notice — and is not cached, so the next hover
+ * retries.
  */
 export function NationTip({
   nationId,
@@ -67,7 +71,6 @@ export function NationTip({
   const { token } = useSession();
   const [nation, setNation] = useState<NationPublicDTO | null>(null);
   const [failed, setFailed] = useState(false);
-  const [flagBroken, setFlagBroken] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -89,8 +92,10 @@ export function NationTip({
   }, [token, nationId]);
 
   const shownFlag = nation?.flag_url ?? flagUrl ?? null;
-  const shownColor = nation?.color_hex ?? color ?? null;
-  const shownName = nation?.name ?? name;
+  const shownColor = nation?.color_hex ?? color ?? undefined;
+  // Unit 6a: the heading is always the SHORT name — the loaded card
+  // only refreshes flag and colour, never replaces it with `name`.
+  const shownName = nation?.short_name ?? name;
 
   return (
     <div
@@ -100,42 +105,12 @@ export function NationTip({
         gap: SPACING['space-2'],
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: SPACING['space-2'],
-        }}
-      >
-        {shownFlag !== null && !flagBroken ? (
-          <img
-            src={shownFlag}
-            alt=""
-            width={18}
-            height={12}
-            style={{
-              borderRadius: RADII['radius-sm'],
-              flexShrink: 0,
-              display: 'block',
-            }}
-            onError={() => setFlagBroken(true)}
-          />
-        ) : shownColor !== null ? (
-          <span
-            aria-hidden
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              flexShrink: 0,
-              background: shownColor,
-            }}
-          />
-        ) : null}
-        <span style={{ ...TEXT_STYLES['heading'], color: tokenVar('ink') }}>
-          {shownName}
-        </span>
-      </div>
+      <NationLabel
+        name={shownName}
+        flagUrl={shownFlag}
+        color={shownColor}
+        size="tip"
+      />
 
       {nation === null && !failed && (
         <div style={{ color: tokenVar('ink-muted') }}>
@@ -180,16 +155,24 @@ export function NationTip({
 }
 
 /**
- * The link look every nation-opening cell shares (unit 14c): plain
- * cell content on a transparent `action`-coloured button that
- * underlines on hover/focus and ellipsizes like a text cell. No
- * `title` — the «Подсказка» (unit 11) already names the nation.
+ * The link look every subscreen-opening cell shares (unit 14c — the
+ * nation subscreen; 0.10.0 unit 8b — the player subscreen): plain
+ * cell content on a transparent `ink`-coloured button that underlines
+ * on hover/focus and ellipsizes like a text cell. Since unit 13b ALL
+ * names are `ink` — nation names are no longer `action` (Owner's
+ * decision of 24.10.2026; the order title link is the only coloured
+ * one). No `title` — the «Подсказка» (unit 11) already names the
+ * subject.
  */
 export function NationOpenLink({
   onOpen,
+  tone = 'ink',
   children,
 }: {
   onOpen?: () => void;
+  /** Kept for the person cell's `tone="ink"` — `ink` is the only
+      look now; `action` was removed in unit 13b. */
+  tone?: 'ink';
   children: ReactNode;
 }) {
   const [hot, setHot] = useState(false);
@@ -211,7 +194,7 @@ export function NationOpenLink({
         font: 'inherit',
         textAlign: 'left',
         cursor: 'pointer',
-        color: tokenVar('action'),
+        color: tokenVar(tone),
         textDecoration: hot ? 'underline' : 'none',
         overflow: 'hidden',
         whiteSpace: 'nowrap',
@@ -231,9 +214,6 @@ export function NationCell({
   /** Opens the nation subscreen (unit 14c); called with the cell id. */
   onOpen?: (nationId: string) => void;
 }) {
-  // The failed URL, not a flag — a different row landing here after a
-  // re-sort must get a fresh try.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const nation = isNationCell(value) ? value : null;
 
   if (!nation) {
@@ -241,46 +221,12 @@ export function NationCell({
   }
 
   const face = (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 8,
-        minWidth: 0,
-        maxWidth: '100%',
-      }}
-    >
-      {nation.flag_url && failedUrl !== nation.flag_url ? (
-        <img
-          src={nation.flag_url}
-          alt=""
-          width={18}
-          height={12}
-          style={{ borderRadius: 2, flexShrink: 0, display: 'block' }}
-          onError={() => setFailedUrl(nation.flag_url)}
-        />
-      ) : (
-        <span
-          aria-hidden
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            flexShrink: 0,
-            background: nation.color,
-          }}
-        />
-      )}
-      <span
-        style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {nation.name}
-      </span>
-    </span>
+    <NationLabel
+      name={nation.name}
+      flagUrl={nation.flag_url}
+      color={nation.color}
+      size="cell"
+    />
   );
 
   const nationId = nation.id;

@@ -3,7 +3,7 @@
  * version 0.9.0 unit 8c, mockup_Reg4): the line «Выбрано N из M» and
  * the «Выбрать на карте» button that opens the 01_map ProvincePicker
  * popup; under them the chosen provinces as rows with their real NAMES
- * (`useProvinceNames` from unit 8b resolves the manifest ids). The
+ * (`useProvinceNames` resolves the ids via GET /map/province-names). The
  * capital is the first row and carries «★» in `signal-ink`; every
  * other row offers the link-button «Сделать столицей» and «×» to
  * remove the province. Below, the «Название столицы *» field with the

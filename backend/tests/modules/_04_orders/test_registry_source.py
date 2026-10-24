@@ -14,9 +14,11 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import event
 
 import modules._03_registry.registry as registry_module
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.service import NationService
 from modules._03_registry.errors import RegistryConfigError
 from modules._03_registry.service import build_table
 from modules._03_registry.startup import startup_registry
@@ -30,8 +32,8 @@ VALID_SUMMARY = "Удержать переправу до подхода рез�
 VALID_URL = "https://vk.com/@defence-order"
 
 
-async def _submit_one(session, vk_user_id: int = 770301) -> None:
-    player, _ = await seed_author(session, vk_user_id, nation_name="Северная Лига")
+async def _submit_one(session, vk_user_id: int = 770301):
+    player, nation = await seed_author(session, vk_user_id, nation_name="Северная Лига")
     await OrderService.submit(
         session,
         player_id=player.id,
@@ -40,6 +42,7 @@ async def _submit_one(session, vk_user_id: int = 770301) -> None:
         summary=VALID_SUMMARY,
         article_url=VALID_URL,
     )
+    return nation
 
 
 class TestOrdersSource:
@@ -48,7 +51,7 @@ class TestOrdersSource:
     async def test_row_shape_has_no_judge_fields(self, test_db_session, orders_started):
         register_orders_extensions()
         startup_registry()
-        await _submit_one(test_db_session)
+        nation = await _submit_one(test_db_session)
 
         built = await build_table(test_db_session, "orders")
 
@@ -65,13 +68,14 @@ class TestOrdersSource:
             "verdict",
         }
         assert row.cells["number"] == 1
-        # The order stores only a name/colour snapshot — `id` is None:
-        # the cell shows but cannot open the nation subscreen.
+        # Name and flag stay the SNAPSHOT (INV-O6); `id` is the live
+        # nation id — the nation exists, so the cell opens its
+        # subscreen.
         assert row.cells["nation"] == {
-            "id": None,
-            "name": "Северная Лига",
+            "id": nation.id,
+            "name": nation.short_name,
             "color": "#336699",
-            "flag_url": None,
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
         }
         assert row.cells["title"] == {
             "text": VALID_TITLE,
@@ -91,6 +95,26 @@ class TestOrdersSource:
         text = json.dumps(row.cells, ensure_ascii=False)
         for needle in ("judge", "vk_user", "player_id"):
             assert needle not in text
+
+    async def test_nation_cell_matches_select_options(
+        self, test_db_session, orders_started
+    ):
+        """Spec 3.7: the orders ``select_or_contains`` dropdown is built
+        from the nations-table ``nation`` cells — the short name the
+        orders ``nation`` cell shows must appear among them."""
+        register_orders_extensions()
+        startup_registry()
+        nation = await _submit_one(test_db_session)
+
+        orders_table = await build_table(test_db_session, "orders")
+        nations_table = await build_table(test_db_session, "nations")
+
+        option_names = [
+            row.cells["name"]["name"] for row in nations_table.rows
+        ]
+        cell = orders_table.rows[0].cells["nation"]
+        assert cell["name"] == nation.short_name
+        assert cell["name"] in option_names
 
     async def test_verdict_cell_fills_and_overdue_mark_clears(
         self, test_db_session, orders_started
@@ -137,6 +161,60 @@ class TestOrdersSource:
         assert cell["key"] is not None
         assert cell["day"] is not None
         assert cell["mark"] is None
+
+    async def test_deleted_nation_cell_has_null_id(
+        self, test_db_session, orders_started
+    ):
+        """A deleted nation must not become a dead link: the cell keeps
+        the snapshot name and flag, plain, with ``id = null`` (INV-O6)."""
+        register_orders_extensions()
+        startup_registry()
+        nation = await _submit_one(test_db_session)
+        await NationService.delete(test_db_session, nation_id=nation.id)
+
+        built = await build_table(test_db_session, "orders")
+
+        assert built.total == 1
+        assert built.rows[0].cells["nation"] == {
+            "id": None,
+            "name": nation.short_name,
+            "color": "#336699",
+            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+        }
+
+    async def test_build_query_count_is_constant(
+        self, test_db_session, test_db_engine, orders_started
+    ):
+        """The existence check is one batched SELECT for the whole
+        table: orders SELECT + nations SELECT, independent of N."""
+        register_orders_extensions()
+        startup_registry()
+        for i in range(5):
+            player, nation = await seed_author(
+                test_db_session,
+                770400 + i,
+                nation_name=f"Ряд {i}",
+                nation_color=f"#33{i:04d}",
+            )
+            await make_order(test_db_session, player, nation=nation)
+        await test_db_session.flush()
+
+        statements: list[str] = []
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(test_db_engine.sync_engine, "before_cursor_execute", _count)
+        try:
+            built = await build_table(test_db_session, "orders")
+        finally:
+            event.remove(
+                test_db_engine.sync_engine,
+                "before_cursor_execute",
+                _count,
+            )
+        assert built.total == 5
+        assert len(statements) == 2
 
 
 class TestCoreConfigInjection:

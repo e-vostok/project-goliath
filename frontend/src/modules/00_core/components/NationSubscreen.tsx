@@ -6,8 +6,8 @@
  * itself stays mounted behind it (hidden, state kept). One request —
  * `api.getNation` (the public card) — and the same building blocks as
  * the «Штаб» card (unit 8b): `NationCardHeader` with «Показать на
- * карте» in place of «Изменить», THREE `StatTile`s («Провинции»,
- * «Уровень», «Судейский рейтинг» — the «Приказы» tile is absent), the
+ * карте» in place of «Изменить», then — no stat tiles at all (board
+ * 11; the province count sits on the «Территория» title) — the
  * «Глава государства» + «Территория» row (province chips by name,
  * capital first) and «Описание» with the history link. The public
  * DTO carries no gender / succession / anthem — nothing here shows
@@ -33,7 +33,6 @@ import {
   ErrorState,
   LoadingState,
   SPACING,
-  StatTile,
   Subscreen,
 } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
@@ -102,15 +101,16 @@ export function NationSubscreen({
   const nation = state.status === 'ready' ? state.nation : null;
   // The chain: from a table row the Registry tab name is the middle
   // segment; on a bare link «Государство» takes that place, joined
-  // with the name once it is known (UI Spec 9.3).
+  // with the SHORT name once it is known (UI Spec 9.3, unit 6a — the
+  // card body keeps the full name).
   const trail =
     nation === null
       ? fromTab !== null
         ? [fromTab]
         : ['Государство']
       : fromTab !== null
-        ? [fromTab, nation.name]
-        : [`Государство · ${nation.name}`];
+        ? [fromTab, nation.short_name]
+        : [`Государство · ${nation.short_name}`];
 
   return (
     <Subscreen parentLabel="Реестр" trail={trail} onBack={onBack}>
@@ -161,22 +161,6 @@ export function NationSubscreen({
               </Button>
             }
           />
-          <div
-            data-testid="nation-subscreen-stats"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-              gap: SPACING['space-3'],
-            }}
-          >
-            <StatTile label="Провинции" value={nation.province_ids.length} />
-            <StatTile label="Уровень" value={nation.level} />
-            <StatTile
-              label="Судейский рейтинг"
-              value={nation.judge_rating}
-              accent
-            />
-          </div>
           <div
             style={{
               display: 'grid',

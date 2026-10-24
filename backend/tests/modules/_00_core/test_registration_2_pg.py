@@ -9,8 +9,8 @@ Registration 2.0 tests on real PostgreSQL (Spec 1.3, Issue 10).
 - ``test_migration_0011_up_down_up_postgres`` — the same
   upgrade/seed/upgrade/downgrade/upgrade rehearsal as the SQLite
   variant, against the dedicated *_test database: named UNIQUE,
-  named FK with ON DELETE SET NULL, all eleven columns NULLABLE,
-  existing rows untouched.
+  named FK with ON DELETE SET NULL, short_name tightened to NOT NULL
+  by 0012 with the full-name backfill, existing rows untouched.
 
 Requires DATABASE_URL_TEST (pg_url fixture); skipped locally without it.
 """
@@ -129,10 +129,10 @@ def _downgrade(url: str, target: str, monkeypatch) -> None:
 
 
 def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
-    """Clean upgrade and downgrade of 0011 on real PostgreSQL: columns
-    NULLABLE, ``uq_nations_short_name`` and the named capital FK
-    present at head, existing rows untouched, downgrade drops only the
-    eleven columns."""
+    """Clean upgrade and downgrade of 0011+0012 on real PostgreSQL:
+    ``uq_nations_short_name`` and the named capital FK present at head,
+    short_name NOT NULL with the full-name backfill, existing rows
+    untouched, downgrade drops only the eleven columns."""
     url = wiped_pg
     _upgrade(url, "0010", monkeypatch)
 
@@ -169,7 +169,11 @@ def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
             columns = {c["name"]: c for c in insp.get_columns("nations")}
             assert set(_NEW_COLUMNS) <= set(columns)
             for name in _NEW_COLUMNS:
-                assert columns[name]["nullable"] is True
+                if name == "short_name":
+                    # NOT NULL since migration 0012 (0.10.0 unit 4a).
+                    assert columns[name]["nullable"] is False
+                else:
+                    assert columns[name]["nullable"] is True
 
             uniques = {u["name"] for u in insp.get_unique_constraints("nations")}
             assert "uq_nations_short_name" in uniques
@@ -196,7 +200,8 @@ def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
             assert row["name"] == "Old Realm"
             assert row["color_hex"] == "#0C7CF4"
             assert row["created_turn"] == 3
-            assert row["short_name"] is None
+            # Backfilled from the full name by migration 0012.
+            assert row["short_name"] == "Old Realm"
             assert row["capital_province_id"] is None
     finally:
         engine.dispose()

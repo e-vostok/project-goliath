@@ -38,7 +38,12 @@ class TestPlayersTable:
         await seed_player(test_db_session, 501001, created_at=T0)
         p2 = await seed_player(test_db_session, 501002, created_at=T0.replace(hour=13))
         n2 = await seed_nation(
-            test_db_session, p2, "Второе", "#112233", created_turn=0
+            test_db_session,
+            p2,
+            "Второе",
+            "#112233",
+            created_turn=0,
+            short_name="В2",
         )
 
         built = await build_table(test_db_session, "players")
@@ -58,11 +63,12 @@ class TestPlayersTable:
             "is_fallback": True,
         }
         # The nationless player's nation cell is null; the owner's
-        # carries {id, name, color, flag_url} (Spec 3.6).
+        # carries {id, name, color, flag_url} — the name is the
+        # mandatory short name (Spec 3.6, migration 0012).
         assert first["nation"] is None
         assert second["nation"] == {
             "id": n2.id,
-            "name": "Второе",
+            "name": "В2",
             "color": "#112233",
             "flag_url": None,
         }
@@ -124,7 +130,7 @@ class TestPlayersTable:
         rows = _rows_by_key(await build_table(test_db_session, "players"))
 
         assert rows["p1"]["joined"] == {
-            "text": "14 октября 2026",
+            "text": "14.10.2026",
             "key": (date(2026, 10, 14) - date(1970, 1, 1)).days,
         }
 
@@ -217,7 +223,16 @@ class TestNationsTable:
             "text": "Март 2040",
             "key": 2,
         }
-        assert rows[n1.id]["flag"] == {"color": "#AA0001", "image_url": None}
+        # The «name» column carries a nation cell — the same shape the
+        # players table shows for the owner nation (Spec 3.3): id,
+        # short name, colour, flag_url.
+        assert rows[n1.id]["name"] == {
+            "id": n1.id,
+            "name": n1.short_name,
+            "color": "#AA0001",
+            "flag_url": None,
+        }
+        assert "flag" not in rows[n1.id]
 
         # Deleting a nation shifts the numbers after it (Spec 3.3, D2).
         await NationService.delete(test_db_session, n1.id)

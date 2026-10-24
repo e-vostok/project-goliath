@@ -471,6 +471,8 @@ class TestJudgeAnonymity:
             "nation": {
                 "name": "Северная Лига",
                 "color": "#336699",
+                "short_name": nation.short_name,
+                "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
             },
             "title": "Тестовый приказ",
             "summary": "Краткая суть тестового приказа.",

@@ -44,6 +44,7 @@ from modules._01_map.schemas import (
     MapBordersDTO,
     MapGeometryDTO,
     MapManifestDTO,
+    MapProvinceNamesDTO,
     MapStateDTO,
     StartingGroupCheckResponse,
 )
@@ -82,6 +83,7 @@ REAL_MAP_DIR = REPO_ROOT / "data" / "map"
 ADMIN_VK_ID = 515151
 
 MANIFEST_URL = "/api/v1/map/manifest"
+NAMES_URL = "/api/v1/map/province-names"
 GEOMETRY_URL = "/api/v1/map/geometry/{version}"
 STATE_URL = "/api/v1/map/state"
 CHECK_URL = "/api/v1/map/starting-group/check"
@@ -381,6 +383,90 @@ class TestManifest:
         assert int(zipped.headers["content-length"]) < len(plain.content)
 
 
+class TestProvinceNames:
+    """GET /api/v1/map/province-names — light names payload (unit 11)."""
+
+    async def test_shape_and_names(self, client, map_db_session, map_installed):
+        player = await seed_player(map_db_session)
+        resp = await client.get(NAMES_URL, headers=bearer_headers(player.id))
+
+        assert resp.status_code == 200
+        body = resp.json()
+        dto = MapProvinceNamesDTO.model_validate(body)
+
+        # Exactly the two documented fields — no coordinates, no edges.
+        assert set(body) == {"map_version", "names"}
+        assert dto.map_version == map_installed.geometry_version
+        assert all(isinstance(name, str) for name in dto.names.values())
+
+        # Every manifest node id is present; the display-name rule is
+        # name_ru over name over key — the same rule the client applied
+        # to MapNodeDTO before.
+        manifest = load_manifest(FIXTURE_DIR)
+        assert set(dto.names) == {n["id"] for n in manifest["nodes"]}
+        for node in manifest["nodes"]:
+            expected = node.get("name_ru") or node.get("name") or node["key"]
+            assert dto.names[node["id"]] == expected
+        # The mini sea nodes carry a name_ru — it must win over name.
+        sea = next(n for n in manifest["nodes"] if n["id"] == 2001)
+        assert dto.names[2001] == sea["name_ru"]
+
+        assert resp.headers["cache-control"] == "no-cache"
+        assert resp.headers["etag"] == api_service.get_api_payloads().names_etag
+
+    async def test_requires_auth(self, client):
+        resp = await client.get(NAMES_URL)
+        assert resp.status_code == 401
+
+    async def test_etag_304_cycle(self, client, map_db_session):
+        player = await seed_player(map_db_session)
+        headers = bearer_headers(player.id)
+        first = await client.get(NAMES_URL, headers=headers)
+        etag = first.headers["etag"]
+        assert etag.startswith('"') and etag.endswith('"')
+
+        second = await client.get(
+            NAMES_URL, headers={**headers, "If-None-Match": etag}
+        )
+        assert second.status_code == 304
+        assert second.content == b""
+        assert second.headers["etag"] == etag
+        assert second.headers["cache-control"] == "no-cache"
+
+        miss = await client.get(
+            NAMES_URL,
+            headers={**headers, "If-None-Match": '"0000000000000000"'},
+        )
+        assert miss.status_code == 200
+
+    async def test_etag_ignores_rules_changes(
+        self, client, map_db_session, flat_map_service, config
+    ):
+        """A config-only edit moves the manifest tag but not this one —
+        names carry no rules, so a config save must not force ~5 KB."""
+        player = await seed_player(map_db_session)
+        etag = (
+            await client.get(NAMES_URL, headers=bearer_headers(player.id))
+        ).headers["etag"]
+        changed = config.model_copy(
+            update={"colors": config.colors.model_copy(update={"hover": "#EEEEEE"})}
+        )
+        other = api_service.build_api_payloads(
+            MapService(flat_map_service.map_data, changed)
+        )
+        assert other.names_etag == etag
+        assert other.manifest_etag != etag
+
+    async def test_names_body_is_prepared_once(
+        self, client, map_db_session, map_installed
+    ):
+        """The served bytes are the prebuilt payload — no per-request
+        reassembly (same serving model as the manifest)."""
+        player = await seed_player(map_db_session)
+        resp = await client.get(NAMES_URL, headers=bearer_headers(player.id))
+        assert resp.content == api_service.get_api_payloads().names_body
+
+
 def test_names_ru_reach_node_dto(mini_dir, config):
     """map2_3: ``name_ru`` written by import_names into the manifest is
     loaded and exposed in ``MapNodeDTO.name_ru`` (the search/picker read
@@ -522,8 +608,10 @@ class TestState:
         assert dto.owners == [[1001, 0], [1002, 0], [1003, 1]]
         assert [str(n.id) for n in dto.nations] == [nation_a.id, nation_b.id]
         assert dto.nations[0].name == "Alpha"
+        assert dto.nations[0].short_name == nation_a.short_name
         assert dto.nations[0].color_hex == "#AA1100"
         assert dto.nations[1].name == "Bravo"
+        assert dto.nations[1].short_name == nation_b.short_name
         # SEA nodes are never listed.
         assert all(pid < 2001 for pid, _ in dto.owners)
 
@@ -542,6 +630,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id="nation-gone",
                     new_name="Gone Realm",
+                    new_short_name="Gone",
                     new_color="#101010",
                     turn=0,
                 ),
@@ -550,6 +639,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id="nation-b",
                     new_name="B Realm",
+                    new_short_name="B",
                     new_color="#202020",
                     turn=1,
                 ),
@@ -558,6 +648,7 @@ class TestState:
                     prev_nation_id="nation-gone",
                     new_nation_id=None,
                     new_name=None,
+                    new_short_name=None,
                     new_color=None,
                     turn=2,
                 ),
@@ -569,13 +660,21 @@ class TestState:
         at_0 = (await client.get(STATE_URL, params={"turn": 0}, headers=headers)).json()
         assert at_0["turn"] == 0
         assert at_0["owners"] == [[1001, 0]]
+        # A vanished nation's journal snapshot keeps name, short name
+        # and colour; its live id resolves to null.
         assert at_0["nations"] == [
-            {"id": None, "name": "Gone Realm", "color_hex": "#101010"}
+            {
+                "id": None,
+                "name": "Gone Realm",
+                "short_name": "Gone",
+                "color_hex": "#101010",
+            }
         ]
 
         at_1 = (await client.get(STATE_URL, params={"turn": 1}, headers=headers)).json()
         assert at_1["owners"] == [[1001, 0], [1002, 1]]
         assert at_1["nations"][1]["name"] == "B Realm"
+        assert at_1["nations"][1]["short_name"] == "B"
         # Two distinct journal ids stay two entries even though both
         # resolve to id=null (unique by (id, name, color)).
         assert [n["id"] for n in at_1["nations"]] == [None, None]
@@ -583,7 +682,12 @@ class TestState:
         at_2 = (await client.get(STATE_URL, params={"turn": 2}, headers=headers)).json()
         assert at_2["owners"] == [[1002, 0]]
         assert at_2["nations"] == [
-            {"id": None, "name": "B Realm", "color_hex": "#202020"}
+            {
+                "id": None,
+                "name": "B Realm",
+                "short_name": "B",
+                "color_hex": "#202020",
+            }
         ]
 
     async def test_turn_equals_current_matches_default(self, client, map_db_session):
@@ -625,6 +729,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id="nation-old",
                     new_name="Old Realm",
+                    new_short_name="Old",
                     new_color="#303030",
                     turn=0,
                 ),
@@ -633,6 +738,7 @@ class TestState:
                     prev_nation_id=None,
                     new_nation_id=nation.id,
                     new_name="Alpha",
+                    new_short_name=nation.short_name,
                     new_color="#AA1100",
                     turn=0,
                 ),
@@ -802,6 +908,7 @@ class TestContract:
         map_paths = {p for p in paths if p.startswith("/api/v1/map")}
         assert map_paths == {
             "/api/v1/map/manifest",
+            "/api/v1/map/province-names",
             "/api/v1/map/geometry/{version}",
             "/api/v1/map/borders/{version}",
             "/api/v1/map/state",
@@ -897,6 +1004,10 @@ class TestLiveHistory:
             *[[pid, 1] for pid in range(1009, 1014)],
         ]
         assert [n["name"] for n in now["nations"]] == ["Alpha", "Bravo"]
+        assert [n["short_name"] for n in now["nations"]] == [
+            "Testland",
+            "Bravonia",
+        ]
 
         # --- tick -> 1, then rename Alpha -> Beta ------------------
         assert await tick() == 1
@@ -909,6 +1020,7 @@ class TestLiveHistory:
 
         at_0 = await state(turn=0)
         assert at_0["nations"][0]["name"] == "Alpha"
+        assert at_0["nations"][0]["short_name"] == "Testland"
         assert at_0["nations"][0]["color_hex"] == "#AA1100"
         assert at_0["nations"][0]["id"] == nation_a["id"]
 
@@ -932,6 +1044,7 @@ class TestLiveHistory:
             {
                 "id": nation_b["id"],
                 "name": "Bravo",
+                "short_name": "Bravonia",
                 "color_hex": "#2211BB",
             }
         ]
@@ -945,6 +1058,7 @@ class TestLiveHistory:
         assert at_0["nations"][0] == {
             "id": None,
             "name": "Alpha",
+            "short_name": "Testland",
             "color_hex": "#AA1100",
         }
         assert at_0["nations"][1]["id"] == nation_b["id"]
@@ -953,6 +1067,7 @@ class TestLiveHistory:
         # The journal records ownership events only: the rename does
         # not appear in past snapshots (Spec 3.5 formula).
         assert at_1["nations"][0]["name"] == "Alpha"
+        assert at_1["nations"][0]["short_name"] == "Testland"
         assert at_1["nations"][0]["id"] is None
 
         at_current = await state(turn=2)

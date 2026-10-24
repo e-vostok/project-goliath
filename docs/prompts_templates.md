@@ -1,6 +1,7 @@
 ## 5. Универсальный инструментарий промптов (Zero-Shot Toolkit v3.0)
 
 > Версия 3.0 (17.10.2026): один чат на одну версию проекта. Промпт 0 открывает чат версии, Промпты 1–5 работают как раньше внутри рабочих единиц, Промпты 6 и 7 заменяют Мастер-чат: вход в версию и выход из неё.
+> Дополнение 23.10.2026: в каждое стартовое сообщение следующей версии (Промпт 0, в том числе «продолжение N») обязательно входит блок ДИЗАЙН — ссылки на дизайн-систему и на макеты окон; Промпт 7 следит, чтобы блок был в стартовом сообщении.
 
 ---
 
@@ -19,14 +20,19 @@
 3. docs/development_workflow.md, docs/devin_rules.md, docs/prompts_templates.md — правила работы.
 4. Roadmap, Spec и Bible модулей, которых касается эта версия (названы ниже); если версия добавляет или меняет окна — ещё docs/02_SYSTEM_SPECS/00_core_ui.md.
 5. changelog.md (верх) и фактическая версия в backend/pyproject.toml на main.
+6. Блок ДИЗАЙН (ниже): дизайн-система (README и токены) и макеты окон по ссылкам. Обязательно, в каждом чате версии, даже если версия окон не меняет: макеты нужны, чтобы сверять готовые окна и рисовать новые на той же основе.
 
 МАТЕРИАЛ ДЛЯ ВЕРСИИ (от Project Owner):
 <МАТЕРИАЛ>
 [Идеи, пожелания, решения, результаты ручных проверок, вставленные тексты. Если есть файл KICKOFF от предыдущего чата — вставьте его целиком.]
 </МАТЕРИАЛ>
 
+ДИЗАЙН (обязательный блок, ссылки берутся из docs/PROJECT_STATE.md, п. 8):
+- Дизайн-система: [ссылка на артефакт «PAX ATOMICA»]
+- Макеты окон: [ссылка на артефакт «PAX ATOMICA — макеты окон»; если версия добавила новые доски — тот же артефакт, а новый артефакт указывается отдельной строкой с перечнем досок]
+
 ЗАДАЧА:
-1. Прочитать указанное, сверить факты с main (расхождения между PROJECT_STATE.md и кодом — перечислить).
+1. Прочитать указанное, сверить факты с main (расхождения между PROJECT_STATE.md и кодом — перечислить). Открыть обе ссылки блока ДИЗАЙН; если ссылок нет, они не открываются или расходятся с PROJECT_STATE.md — сообщить об этом в рапорте и не начинать работу с окнами, пока ссылки не получены.
 2. Кратко (до 10 строк) рапортовать: текущая версия и состояние, что передано из прошлой версии, что неясно.
 3. Предложить цель версии и первичный состав рабочих единиц по Промпту 6, не начиная проектирование без моего согласия.
 ```
@@ -178,7 +184,7 @@ Rules: follow `docs/devin_rules.md`. Branch `[prefix]/[n]-[slug]`. [Explicit ove
 ALLOWLIST: [files and folders that may change]
 DENYLIST: [what must not change]
 Spec: `docs/02_SYSTEM_SPECS/[module_slug].md` (list the passages to touch, do not edit it, unless this task is the Spec task). Config and schema: `configs/[module_slug].yaml`, `backend/src/modules/[module_slug]/config_schema.py`.
-UI (only if the task builds or changes a window): approved mockup, window type per `docs/02_SYSTEM_SPECS/00_core_ui.md`, shared components from `frontend/src/shared/ui/`.
+UI (only if the task builds or changes a window): approved mockup, window type per `docs/02_SYSTEM_SPECS/00_core_ui.md`, shared components from `frontend/src/shared/ui/`. Any task that changes how a window looks is built against the PNG files in `docs/06_DESIGN/<version>/`. The report contains a table «экран → совпадает / расхождения» with the PNG name. If the PNG and the text of the task disagree, the PNG wins; report the difference.
 
 ## Tests
 New test (one): [what it proves, path]. Suites to run: per the rules, for the touched areas.
@@ -249,6 +255,6 @@ New test (one): [what it proves, path]. Suites to run: per the rules, for the to
    - обновленный docs/PROJECT_STATE.md;
    - при необходимости — изменения docs/devin_rules.md, docs/prompts_templates.md, docs/development_workflow.md с обоснованием.
 3. ТЗ агенту на коммит этих файлов (docs-only, без повышения версии).
-4. СТАРТОВОЕ СООБЩЕНИЕ для следующего чата: Промпт 0 с заполненным материалом (решения, ожидающие ручные проверки, идеи из бэклога, которые я хочу взять).
+4. СТАРТОВОЕ СООБЩЕНИЕ для следующего чата: Промпт 0 с заполненным материалом (решения, ожидающие ручные проверки, идеи из бэклога, которые я хочу взять) и ОБЯЗАТЕЛЬНЫМ блоком ДИЗАЙН: актуальные ссылки на дизайн-систему и на макеты окон, с учётом досок и правок этой версии. Перед выдачей проверить, что обе ссылки открываются и совпадают с docs/PROJECT_STATE.md, п. 8; если макеты версии лежат в новом артефакте, обновить п. 8 в том же файле передачи и перечислить новые доски.
 5. ЧЕК-ЛИСТ для меня на простом русском: что слить, что проверить, когда открывать новый чат.
 ```

@@ -31,7 +31,12 @@ const JUDGE_ORDER: OrderDetailDTO = {
 const JUDGE_ORDER_THREE: OrderDetailDTO = {
   ...JUDGE_ORDER,
   number: 3,
-  nation: { name: 'Северия', color: '#993366' },
+  nation: {
+    name: 'Северия',
+    color: '#993366',
+    short_name: 'Сев',
+    flag_url: null,
+  },
   title: 'Приказ №3',
 };
 
@@ -71,7 +76,7 @@ afterEach(() => {
 describe('OrderComposer — draft memory', () => {
   it('restores the typed values after a dismissed window reopens', async () => {
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
 
     await openComposer(user);
     await user.type(screen.getByLabelText('Название'), 'Черновик приказа');
@@ -101,7 +106,7 @@ describe('OrderComposer — draft memory', () => {
       ),
     );
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
 
     await openComposer(user);
     await user.type(screen.getByLabelText('Название'), 'Отправленный');
@@ -137,7 +142,7 @@ describe('OrderComposer — draft memory', () => {
     vi.spyOn(Storage.prototype, 'key').mockImplementation(denied);
 
     const user = userEvent.setup();
-    renderWithOrders(<OrdersBlock />);
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
 
     await openComposer(user);
     await user.type(screen.getByLabelText('Название'), 'Без хранилища');

@@ -3,14 +3,17 @@
  * 9.1, mockup «Main», version 0.9.0 unit 8b).
  *
  * The card is built only from `shared/ui` elements and tokens: the
- * header block (flag or `FlagStub`, «ГОСУДАРСТВО · краткое», name in
+ * header block (flag or `FlagStub`, the short name as the small
+ * label line above the name — no «Кратко:» words —, name in
  * `display-lg`, motto in italics, colour swatch + HEX, «Изменить»
- * with the pencil icon), a row of four `StatTile`s («Провинции»,
- * «Уровень», «Судейский рейтинг», «Неразрешённые приказы» — the limit
- * arrives in GET /orders/rules), «Глава государства» and «Территория»
+ * with the pencil icon), «Глава государства» and «Территория»
  * in a 3 : 2 row (province chips BY NAME via `useProvinceNames`, the
  * capital first with «★»), then «Описание» with the «История
- * государства ↗» link (a real <a> only for https:// values). Gender,
+ * государства ↗» link (a real <a> only for https:// values). The
+ * stat-tiles row left the card in 0.10.0 (unit 7b): its counts moved
+ * to the two badges inside «Приказы» — «Мои приказы» and «Приказы
+ * других игроков», each a button that opens the Registry's orders
+ * tab with a preset filter through `onOpenRegistry`. Gender,
  * succession, anthem and the bot-consent row are not shown on the
  * card; province numbers are shown nowhere.
  *
@@ -49,12 +52,16 @@ import {
 } from './registrationForm';
 import { BotConsentRow } from '../../02_bot/components/BotConsentRow';
 import { OrdersBlock } from '../../04_orders/components/OrdersBlock';
+import type { RegistryEntryRequest } from '../../03_registry/lib/entryRequest';
 import { CardBlock } from './card/CardBlock';
 import { NationCard } from './card/NationCard';
 
 export interface PanelNationHomeProps {
   nation: NationDTO;
   onChanged: () => void;
+  /** A badge click — AppShell stores the entry request and pushes
+   * '/registry' (Spec 03_registry 5.5, in-app path). */
+  onOpenRegistry: (request: RegistryEntryRequest) => void;
 }
 
 /** Session-draft key; v1 five-field drafts under 'nation-edit:*' die out. */
@@ -63,6 +70,7 @@ const editDraftKey = (nationId: string) => `nation-edit-v2:${nationId}`;
 export function PanelNationHome({
   nation,
   onChanged,
+  onOpenRegistry,
 }: PanelNationHomeProps) {
   const { token } = useSession();
   const notify = useNotice();
@@ -253,7 +261,10 @@ export function PanelNationHome({
       ) : (
         <NationCard nation={nation} onEdit={() => setEditing(true)} />
       )}
-      <OrdersBlock />
+      <OrdersBlock
+        nationShortName={nation.short_name}
+        onOpenRegistry={onOpenRegistry}
+      />
     </div>
   );
 }

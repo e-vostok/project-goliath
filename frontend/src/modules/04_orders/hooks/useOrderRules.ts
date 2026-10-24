@@ -4,6 +4,8 @@
  * come from the server — the client never hardcodes them). A failed
  * request never blocks the form: callers degrade to no counters and
  * no client-side gating, the server stays the validator.
+ * `refreshKey` refetches on change — the «Мои приказы» badge passes
+ * the provider's `ordersRefreshKey` so its count follows a submit.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -17,7 +19,9 @@ export type OrderRulesState =
   | { status: 'error'; rules: null; error: Error }
   | { status: 'ready'; rules: OrderRulesDTO };
 
-export function useOrderRules(): OrderRulesState & { reload: () => void } {
+export function useOrderRules(
+  refreshKey = 0,
+): OrderRulesState & { reload: () => void } {
   const { token } = useSession();
   const [state, setState] = useState<OrderRulesState>({
     status: 'loading',
@@ -50,7 +54,7 @@ export function useOrderRules(): OrderRulesState & { reload: () => void } {
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const reload = useCallback(() => {
     setState({ status: 'loading', rules: null });

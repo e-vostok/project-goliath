@@ -113,18 +113,14 @@ async def seed_nation(
         name=name,
         color_hex=color_hex,
         # legacy=True simulates a pre-migration row (NULL profile —
-        # ActiveIncomplete, Spec 1.3). short_name defaults to a unique
-        # value derived from the nation's name: the column is UNIQUE
-        # (INV-11), so seeding two nations with VALID_PROFILE's
-        # constant would collide.
-        **(
-            {}
-            if legacy
-            else {
-                **VALID_PROFILE,
-                "short_name": short_name or name[:16],
-            }
-        ),
+        # ActiveIncomplete, Spec 1.3). short_name is NOT NULL since
+        # migration 0012, so even a legacy row carries one; it defaults
+        # to a unique value derived from the nation's name: the column
+        # is UNIQUE (INV-11), so seeding two nations with
+        # VALID_PROFILE's constant would collide.
+        short_name=short_name
+        or name[: CORE_CONFIG.nation.short_name_max_length],
+        **({} if legacy else {k: v for k, v in VALID_PROFILE.items() if k != "short_name"}),
         created_at=datetime.now(UTC),
         created_turn=0,
     )
@@ -460,6 +456,51 @@ class TestNationEndpoints:
         assert resp.status_code == 201
         assert resp.json()["name"] == name
 
+    @pytest.mark.parametrize(
+        "field,limit,code",
+        [
+            ("name", 60, None),
+            ("short_name", 20, "SHORT_NAME_INVALID"),
+            ("motto", 50, "MOTTO_INVALID"),
+            ("description", 150, "DESCRIPTION_INVALID"),
+        ],
+    )
+    async def test_create_nation_field_length_boundaries(
+        self, client, test_db_session, field, limit, code
+    ):
+        """0.10.0 unit 3: the registration limits accept exactly
+        60 / 20 / 150 / 50 characters and refuse one character more.
+        An over-limit ``name`` fails in the DTO (plain 422); the other
+        fields fail in the service layer with their domain code."""
+        player = await seed_player(test_db_session)
+        province_ids = list(
+            range(1001, 1001 + CORE_CONFIG.nation.min_provinces_per_nation)
+        )
+        await seed_provinces(test_db_session, province_ids)
+        body = {
+            "name": "Boundary Realm",
+            "color_hex": "#FF0000",
+            "province_ids": province_ids,
+            **VALID_PROFILE,
+            field: "x" * limit,
+        }
+
+        over = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json={**body, field: "x" * (limit + 1)},
+        )
+        assert over.status_code == 422
+        if code is not None:
+            assert over.json()["code"] == code
+
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json=body,
+        )
+        assert resp.status_code == 201
+
     async def test_create_nation_bad_color_format(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
@@ -783,10 +824,13 @@ class TestNationProfileEndpoints:
         assert payload["detail"]
 
     async def test_get_nations_me_legacy_null_profile(self, client, test_db_session):
-        """A pre-migration nation returns null profile fields."""
+        """A pre-migration nation returns null profile fields — except
+        short_name, which is NOT NULL since migration 0012."""
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001])
-        await seed_nation(test_db_session, player, province_ids=[1001], legacy=True)
+        nation = await seed_nation(
+            test_db_session, player, province_ids=[1001], legacy=True
+        )
 
         resp = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
 
@@ -795,8 +839,10 @@ class TestNationProfileEndpoints:
         assert body["leader_name"] is None
         assert body["leader_title"] is None
         assert body["history_url"] is None
-        # Registration-2.0 fields are NULL too (ActiveIncomplete).
-        assert body["short_name"] is None
+        # short_name can never be NULL (migration 0012) — the seeded
+        # value comes back; the other Registration-2.0 fields stay NULL
+        # (ActiveIncomplete).
+        assert body["short_name"] == nation.short_name
         assert body["gender"] is None
         assert body["succession_type"] is None
         assert body["capital_province_id"] is None
@@ -806,6 +852,42 @@ class TestNationProfileEndpoints:
         assert body["flag_url"] is None
         assert body["portrait_id"] is None
         assert body["portrait_url"] is None
+
+    async def test_short_name_is_mandatory(self, client, test_db_session):
+        """0.10.0 unit 4a: creating a nation without a short name and
+        updating it to an empty string are both rejected, and
+        GET /nations/me always returns a non-empty short_name."""
+        player = await seed_player(test_db_session)
+        await seed_provinces(test_db_session, [1001])
+
+        # Create without short_name -> 422 (required DTO field).
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json={
+                "name": "Test Nation",
+                "color_hex": "#FF0000",
+                "province_ids": [1001],
+                **{k: v for k, v in VALID_PROFILE.items() if k != "short_name"},
+            },
+        )
+        assert resp.status_code == 422
+
+        nation = await seed_nation(test_db_session, player, province_ids=[1001])
+        me = await client.get(
+            "/api/v1/nations/me", headers=bearer_headers(player.id)
+        )
+        assert me.status_code == 200
+        assert me.json()["short_name"] == nation.short_name
+        assert me.json()["short_name"] != ""
+
+        resp = await client.patch(
+            "/api/v1/nations/me",
+            headers=bearer_headers(player.id),
+            json={"short_name": ""},
+        )
+        assert resp.status_code == 422
+        assert resp.json()["code"] == "SHORT_NAME_INVALID"
 
     async def test_nations_rules_returns_config_values(self, client, test_db_session):
         """GET /nations/rules mirrors the loaded CoreConfig."""

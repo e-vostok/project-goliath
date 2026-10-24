@@ -49,6 +49,7 @@ from modules._01_map.schemas import (
     MapNationDTO,
     MapNodeDTO,
     MapNodeLabelDTO,
+    MapProvinceNamesDTO,
     MapRefreshRulesDTO,
     MapReliefRulesDTO,
     MapSelectionRulesDTO,
@@ -77,6 +78,8 @@ class MapApiPayloads:
 
     manifest_etag: str
     manifest_body: bytes
+    names_etag: str
+    names_body: bytes
     geometry_version: str
     geometry_body: bytes
     borders_version: str
@@ -205,6 +208,25 @@ def _manifest_etag(
     return '"' + hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16] + '"'
 
 
+def _names_etag(geometry_version: str, manifest_sha256: str) -> str:
+    """
+    ETag of the province-names body: the geometry version and the
+    manifest file hash cover every input the names can change with
+    (a config-only edit leaves them — and the tag — untouched, unlike
+    the manifest's own tag). Same strong, quoted 16-hex form.
+    """
+    canon = json.dumps(
+        {
+            "geometry_version": geometry_version,
+            "manifest_sha256": manifest_sha256,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return '"' + hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16] + '"'
+
+
 def build_api_payloads(service: MapService) -> MapApiPayloads:
     """Build every precomputed payload from the loaded map + config."""
     data = service.map_data
@@ -277,11 +299,19 @@ def build_api_payloads(service: MapService) -> MapApiPayloads:
         },
         ensure_ascii=False,
     ).encode("utf-8")
+    names_dto = MapProvinceNamesDTO(
+        # The same version string the manifest advertises; names carry
+        # no coordinates — only the display-name rule's answer.
+        map_version=data.geometry_version,
+        names={node.id: node.display_name for node in data.nodes.values()},
+    )
     return MapApiPayloads(
         manifest_etag=_manifest_etag(
             data.geometry_version, data.manifest_sha256, rules
         ),
         manifest_body=dto.model_dump_json().encode("utf-8"),
+        names_etag=_names_etag(data.geometry_version, data.manifest_sha256),
+        names_body=names_dto.model_dump_json().encode("utf-8"),
         geometry_version=data.geometry_version,
         geometry_body=geometry_body,
         borders_version=data.borders_version,
@@ -346,14 +376,16 @@ async def build_state(
     """
     current = await GameClockService.current_turn(session)
 
-    # (province_id, journal nation id, dto nation id, name, color) —
-    # the journal id stays in the dedup key even when the nation is
-    # gone, so two vanished look-alikes never merge (Spec Part 5).
-    # Retired/absent nodes (id not in the active manifest) never appear
-    # in the answer — live rows or journal snapshot alike (Spec 1.9:
-    # ``GET /map/state`` does not return owners of withdrawn nodes).
+    # (province_id, journal nation id, dto nation id, name, short
+    # name, color) — the journal id stays in the dedup key even when
+    # the nation is gone, so two vanished look-alikes never merge
+    # (Spec Part 5); the short name rides along for the DTO but is
+    # not part of the key. Retired/absent nodes (id not in the active
+    # manifest) never appear in the answer — live rows or journal
+    # snapshot alike (Spec 1.9: ``GET /map/state`` does not return
+    # owners of withdrawn nodes).
     active_ids = service.map_data.nodes
-    entries: list[tuple[int, str, str | None, str, str]] = []
+    entries: list[tuple[int, str, str | None, str, str, str]] = []
     if turn is None or turn == current:
         described = current
         for row in await ProvinceService.list_current_owners(session):
@@ -365,6 +397,7 @@ async def build_state(
                     row.nation_id,
                     row.nation_id,
                     row.nation_name,
+                    row.nation_short_name,
                     row.nation_color,
                 )
             )
@@ -383,6 +416,7 @@ async def build_state(
                     owner.nation_id,
                     (owner.nation_id if owner.nation_id in existing else None),
                     owner.name,
+                    owner.short_name,
                     owner.color,
                 )
             )
@@ -392,13 +426,20 @@ async def build_state(
     nations: list[MapNationDTO] = []
     nation_index: dict[tuple[str, str, str], int] = {}
     owners: list[list[int]] = []
-    for province_id, log_id, dto_id, name, color in entries:
+    for province_id, log_id, dto_id, name, short_name, color in entries:
         key = (log_id, name, color)
         index = nation_index.get(key)
         if index is None:
             index = len(nations)
             nation_index[key] = index
-            nations.append(MapNationDTO(id=dto_id, name=name, color_hex=color))
+            nations.append(
+                MapNationDTO(
+                    id=dto_id,
+                    name=name,
+                    short_name=short_name,
+                    color_hex=color,
+                )
+            )
         owners.append([province_id, index])
 
     return MapStateDTO(

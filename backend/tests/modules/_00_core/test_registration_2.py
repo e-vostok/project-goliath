@@ -11,9 +11,10 @@ Covers what the pre-1.3 suites could not say:
 - PATCH semantics for the new fields (mandatory empty -> error,
   optional empty -> NULL, absent -> keep, own color excluded);
 - the color-check endpoint's three statuses and self-exclusion;
-- migration 0011 up/down on a real SQLite file: new columns appear
-  NULLABLE, the named UNIQUE and capital FK exist, existing rows are
-  untouched, downgrade removes exactly the eleven columns.
+- migration 0011 up/down on a real SQLite file: the named UNIQUE and
+  capital FK exist, existing rows are untouched (short_name is then
+  tightened to NOT NULL and backfilled by 0012), downgrade removes
+  exactly the eleven columns.
 
 The concurrent-registration color race lives in
 ``test_registration_2_pg.py`` (needs real PostgreSQL).
@@ -187,9 +188,17 @@ class TestFieldErrorCodes:
             ),
             ("short_name", "x", ShortNameInvalidError),
             ("short_name", "", ShortNameInvalidError),
-            ("motto", "m" * 61, MottoInvalidError),
+            (
+                "motto",
+                "m" * (CORE_CONFIG.nation.motto_max_length + 1),
+                MottoInvalidError,
+            ),
             ("motto", "line\nbreak", MottoInvalidError),
-            ("description", "d" * 101, DescriptionInvalidError),
+            (
+                "description",
+                "d" * (CORE_CONFIG.nation.description_max_length + 1),
+                DescriptionInvalidError,
+            ),
             ("leader_bio", "b" * 501, LeaderBioInvalidError),
             ("leader_bio", "tab\there", LeaderBioInvalidError),
             ("flag_id", "nope", FlagInvalidError),
@@ -623,9 +632,10 @@ def _downgrade(url: str, target: str, monkeypatch) -> None:
 
 
 def test_migration_0011_up_down_up(tmp_path, monkeypatch):
-    """0011 adds exactly the eleven columns (all NULLABLE — the legacy
-    row survives untouched), the named UNIQUE on short_name and the
-    named capital FK; the downgrade removes only those columns."""
+    """0011 adds exactly the eleven columns, the named UNIQUE on
+    short_name and the named capital FK; 0012 then tightens short_name
+    to NOT NULL, backfilling the legacy row from the full name; the
+    downgrade removes only those columns."""
     url = _db_url(tmp_path)
     _upgrade(url, "0010", monkeypatch)
 
@@ -662,7 +672,11 @@ def test_migration_0011_up_down_up(tmp_path, monkeypatch):
             columns = {c["name"]: c for c in insp.get_columns("nations")}
             assert set(_NEW_COLUMNS) <= set(columns)
             for name in _NEW_COLUMNS:
-                assert columns[name]["nullable"] is True
+                if name == "short_name":
+                    # NOT NULL since migration 0012 (0.10.0 unit 4a).
+                    assert columns[name]["nullable"] is False
+                else:
+                    assert columns[name]["nullable"] is True
 
             uniques = {u["name"] for u in insp.get_unique_constraints("nations")}
             assert "uq_nations_short_name" in uniques
@@ -686,11 +700,12 @@ def test_migration_0011_up_down_up(tmp_path, monkeypatch):
                 .mappings()
                 .one()
             )
-            # Existing data untouched; new fields NULL (INV-11 legacy).
+            # Existing data untouched; short_name is backfilled from
+            # the full name by 0012, the rest stays NULL.
             assert row["name"] == "Old Realm"
             assert row["color_hex"] == "#0C7CF4"
             assert row["created_turn"] == 3
-            assert row["short_name"] is None
+            assert row["short_name"] == "Old Realm"
             assert row["capital_province_id"] is None
     finally:
         engine.dispose()

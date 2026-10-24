@@ -4,6 +4,7 @@
  * no React, no DOM, no Date objects (game dates arrive as text).
  */
 
+import type { RegistryEntryPreset } from './entryRequest';
 import type {
   RegistryCell,
   RegistryColumnDTO,
@@ -63,11 +64,23 @@ export type ColumnFilterValue =
   | PresenceFilter
   | SelectOrContainsFilter;
 
-/** View state of one tab: sort, per-column filters, the shared search
- * and whether the filter panel is open. */
+/**
+ * A registered table filter extension (Spec 5.5 «Фильтры расширений»)
+ * the player or a preset touched: 'yes' = «Да» (rows are held to the
+ * loaded number set), 'any' = the player explicitly returned the
+ * control to «Все» — recorded so a later preset does not switch it
+ * back on in the same visit.
+ */
+export type ExtensionFilterValue = 'any' | 'yes';
+
+/** View state of one tab: sort, per-column filters, extension
+ * filters, the shared search and whether the filter panel is open. */
 export interface TableView {
   sort: SortState | null;
   filters: Record<string, ColumnFilterValue[]>;
+  /** Table filter extensions by extension id — only ids the table
+   * actually registered are evaluated or counted. */
+  extensions: Record<string, ExtensionFilterValue>;
   search: string;
   filtersOpen: boolean;
 }
@@ -75,6 +88,7 @@ export interface TableView {
 export const EMPTY_VIEW: TableView = {
   sort: null,
   filters: {},
+  extensions: {},
   search: '',
   filtersOpen: false,
 };
@@ -299,6 +313,37 @@ export function matchColumnFilter(
   }
 }
 
+/** Row key `o<N>` → order number N (Spec 04_orders, Приложение A);
+ * any other key shape is not an order row. */
+export function rowOrderNumber(key: string): number | null {
+  const m = /^o(\d{1,9})$/.exec(key);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Extension filters (Spec 5.5): «Да» keeps only the rows whose order
+ * number is in the extension's loaded set; while the set loads or
+ * after a failed load the row is not held back — the control shows
+ * its own loading/error state instead.
+ */
+function matchExtensionFilters(
+  row: RegistryRowDTO,
+  selections: Record<string, ExtensionFilterValue>,
+  sets: Record<string, ReadonlySet<number>> | undefined,
+): boolean {
+  return Object.keys(selections).every((id) => {
+    if (selections[id] !== 'yes') {
+      return true;
+    }
+    const set = sets?.[id];
+    if (!set) {
+      return true;
+    }
+    const number = rowOrderNumber(row.key);
+    return number !== null && set.has(number);
+  });
+}
+
 /** Shared search: OR over `searchable` columns (name for person/nation). */
 export function matchSearch(
   table: RegistryTableDTO,
@@ -353,8 +398,69 @@ export function isFilterActive(filter: ColumnFilterValue): boolean {
 export function hasActiveFilters(view: TableView): boolean {
   return (
     normalizeText(view.search) !== '' ||
-    Object.values(view.filters).some((list) => list.some(isFilterActive))
+    Object.values(view.filters).some((list) => list.some(isFilterActive)) ||
+    Object.values(view.extensions).some((value) => value === 'yes')
   );
+}
+
+/**
+ * Applies an entry-request preset to a tab's view (Spec 5.5): the
+ * `nation` name lands in the `selected` half of the first nation
+ * `select_or_contains` column — the same dropdown value the player
+ * could pick by hand — and `assignedToMe` switches the registered
+ * `assigned_to_me` extension to «Да». Nothing the player already
+ * changed in this visit is overridden: a column whose dropdown value
+ * is already picked and an extension already touched (either
+ * position) keep the player's choice.
+ */
+export function applyEntryPreset(
+  view: TableView,
+  table: RegistryTableDTO,
+  preset: RegistryEntryPreset,
+  tableExtensions: readonly { id: string }[],
+): TableView {
+  let next = view;
+  if (preset.nation !== undefined) {
+    const column = table.columns.find(
+      (c) => c.type === 'nation' && c.filters.includes('select_or_contains'),
+    );
+    if (column) {
+      const list = next.filters[column.id] ?? [];
+      const current = list.find(
+        (f): f is SelectOrContainsFilter =>
+          f.kind === 'select_or_contains',
+      );
+      if (!current || current.selected === '') {
+        next = {
+          ...next,
+          filters: {
+            ...next.filters,
+            [column.id]: [
+              ...list.filter((f) => f.kind !== 'select_or_contains'),
+              {
+                kind: 'select_or_contains',
+                selected: preset.nation,
+                contains: current?.contains ?? '',
+              },
+            ],
+          },
+        };
+      }
+    }
+  }
+  if (preset.assignedToMe === true) {
+    const extId = 'assigned_to_me';
+    if (
+      tableExtensions.some((e) => e.id === extId) &&
+      next.extensions[extId] === undefined
+    ) {
+      next = {
+        ...next,
+        extensions: { ...next.extensions, [extId]: 'yes' },
+      };
+    }
+  }
+  return next;
 }
 
 /* ---------------------------------------------------------- apply all */
@@ -371,6 +477,7 @@ export function applyView(
   table: RegistryTableDTO,
   rows: RegistryRowDTO[],
   view: TableView,
+  extensionSets?: Record<string, ReadonlySet<number>>,
 ): RegistryRowDTO[] {
   const filtered = rows.filter(
     (row) =>
@@ -380,7 +487,9 @@ export function applyView(
           return true;
         }
         return list.every((f) => matchColumnFilter(col, row.cells[col.id], f));
-      }) && matchSearch(table, row, view.search),
+      }) &&
+      matchSearch(table, row, view.search) &&
+      matchExtensionFilters(row, view.extensions, extensionSets),
   );
 
   if (!view.sort) {

@@ -154,7 +154,7 @@ check_disk() {
   local avail
   avail="$(df -Pk / 2>/dev/null | awk 'NR==2{print $4}')"
   if [ -z "$avail" ] || [ "$avail" -lt "$FREE_KB_MIN" ]; then
-    problem "на диске / мало места (свободно ${avail:-?} КБ, нужно минимум 3 ГБ). Освободите место: docker system prune, старые бэкапы."
+    problem "на диске / мало места (свободно ${avail:-?} КБ, нужно минимум 3 ГБ). Освободите место: docker builder prune -a -f --filter until=72h, старые бэкапы (диагностика: deploy/disk_report.sh, runbook раздел 14)."
   fi
 }
 
@@ -296,6 +296,23 @@ smoke_check() {
   echo "    главная страница отвечает 200"
 }
 
+prune_build_cache() {
+  # Best-effort: удаляем только кэш сборки старше 72 часов — за последние
+  # дни кэш остаётся тёплым, пересборка отката быстрая. Образы,
+  # контейнеры, тома и сети не трогаем никогда — см.
+  # docs/05_RESEARCH/disk_0.10.0.md. Любая ошибка очистки не должна
+  # ронять деплой или вызывать блок отката: команда стоит внутри
+  # `if !`, поэтому ERR-трап на неё не срабатывает.
+  local out total free
+  if ! out="$(docker builder prune -a -f --filter until=72h 2>&1)"; then
+    echo "    предупреждение: очистка кэша не удалась (деплой это не затрагивает)" >&2
+    return 0
+  fi
+  total="$(printf '%s\n' "$out" | tail -n 1)"
+  free="$(df -h / 2>/dev/null | awk 'NR==2{print $4}' || true)"
+  echo "==> очистка кэша сборки: ${total:-?}; на диске свободно ${free:-?}"
+}
+
 main() {
   parse_args "$@"
   take_lock
@@ -311,6 +328,7 @@ main() {
   checkout_ref
   rebuild_stack
   smoke_check
+  prune_build_cache
 
   echo "==> Deploy OK"
   git log -1 --format='Текущий коммит: %h — %s'

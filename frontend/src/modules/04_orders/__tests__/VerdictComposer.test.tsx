@@ -11,7 +11,12 @@
  * entry path — no headquarters block).
  */
 
-import { act, screen, within } from '@testing-library/react';
+import {
+  act,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 
@@ -192,10 +197,10 @@ describe('ConfirmVerdictModal — verdict already exists', () => {
       ),
     );
     const user = userEvent.setup();
-    // OrdersBlock is mounted with an empty queue — its refetch is
-    // what `assignedGets` counts.
-    renderWithOrders(<OrdersBlock />);
-    await screen.findByText('Приказов на рассмотрении нет');
+    // OrdersBlock is mounted — the assigned badge's refetch is what
+    // `assignedGets` counts.
+    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
+    await waitFor(() => expect(assignedGets).toBe(1));
     await openDetail();
     await user.click(
       screen.getByRole('button', { name: 'Написать вердикт' }),

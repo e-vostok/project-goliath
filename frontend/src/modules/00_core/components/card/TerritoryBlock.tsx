@@ -5,15 +5,17 @@
  * «★ Столица (Провинция)» form when its name differs from the
  * province name.
  *
- * Names come from the map manifest via `useProvinceNames` (shared
- * session cache — no second download after the map/picker). While
- * they load, same-size neutral placeholders stand in; a province
- * absent from the manifest shows «Провинция» without its number.
+ * Names come from `useProvinceNames` (the light GET
+ * /map/province-names payload — load-speed unit 11 — not the full
+ * manifest). While they load, same-size neutral placeholders stand
+ * in; a province absent from the answer shows «Провинция» without
+ * its number.
  */
 
 import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   BlockTitle,
+  FONTS,
   ProvinceChip,
   RADII,
   TEXT_STYLES,
@@ -64,7 +66,24 @@ export function TerritoryBlock({
 
   return (
     <CardBlock testId="nation-territory-block">
-      <BlockTitle icon="map" title="Территория" />
+      <BlockTitle
+        icon="map"
+        title="Территория"
+        trailing={
+          ordered.length > 0 ? (
+            /* PNG 08 — the province count right after the title line. */
+            <span
+              style={{
+                fontFamily: FONTS.mono,
+                fontSize: 13,
+                color: tokenVar('ink-muted'),
+              }}
+            >
+              {ordered.length}
+            </span>
+          ) : undefined
+        }
+      />
       <div
         style={{
           display: 'flex',

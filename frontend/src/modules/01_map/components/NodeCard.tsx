@@ -95,7 +95,7 @@ export function NodeCard({
               ) : undefined
             }
           >
-            {owner ? owner.name : 'Свободна'}
+            {owner ? owner.short_name : 'Свободна'}
           </SimpleCell>
         )}
 

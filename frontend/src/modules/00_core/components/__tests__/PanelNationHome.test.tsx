@@ -2,10 +2,11 @@
  * PanelNationHome — the nation card and the edit form (Spec 1.3 Part 5,
  * UI Spec 9.1 «Штаб», mockup «Main», version 0.9.0 unit 8b).
  *
- * Card covers: header (flag/stub, «Кратко: краткое» when it differs
- * from the full name, display
- * name, motto, colour), the four stat tiles («N из M» from
- * /orders/rules, level/rating — the nation's own fields since 0.9.0),
+ * Card covers: header (flag/stub, the short name as the small label
+ * line above the display
+ * name, motto, colour), no stat-tiles row (0.10.0 unit 7b — the two
+ * order badges inside «Приказы» carry the counts; level/rating left
+ * earlier, unit 8b), the badges' entry-request click,
  * leader block (no captions, title hidden when empty),
  * territory chips BY NAME with the capital first («★ Столица
  * (Провинция)»), the description/history block rules, the removed
@@ -68,10 +69,11 @@ const NATION: NationDTO = {
   judge_rating: 21,
 };
 
-/** All post-0.8.0 fields null, no capital — the legacy card. */
+/** All post-0.8.0 fields null except short_name (NOT NULL since
+ * migration 0012), no capital — the legacy card. */
 const LEGACY_NATION: NationDTO = {
   ...NATION,
-  short_name: null,
+  short_name: 'Легаси',
   capital_province_id: null,
   capital_name: null,
   leader_name: null,
@@ -94,10 +96,15 @@ const FULL_NATION: NationDTO = {
 
 function renderHome(nation: NationDTO = NATION) {
   const onChanged = vi.fn();
+  const onOpenRegistry = vi.fn();
   const view = renderWithProviders(
-    <PanelNationHome nation={nation} onChanged={onChanged} />,
+    <PanelNationHome
+      nation={nation}
+      onChanged={onChanged}
+      onOpenRegistry={onOpenRegistry}
+    />,
   );
-  return { onChanged, ...view };
+  return { onChanged, onOpenRegistry, ...view };
 }
 
 async function openEdit(user: ReturnType<typeof userEvent.setup>) {
@@ -120,7 +127,7 @@ function capturePatch(reply: NationDTO) {
 beforeEach(registerDefaultHandlers);
 
 describe('PanelNationHome — the card', () => {
-  it('renders the full card: header, tiles, leader, territory names, description', async () => {
+  it('renders the full card: header, order badges, leader, territory names, description', async () => {
     const nation: NationDTO = {
       ...NATION,
       motto: 'Север помнит всё',
@@ -129,38 +136,63 @@ describe('PanelNationHome — the card', () => {
       portrait_url: '/assets/nations/portraits/portrait_stub.png',
       leader_bio: 'Правил долго и грозно',
     };
-    renderHome(nation);
+    const { onOpenRegistry } = renderHome(nation);
 
-    // Header — flag image, «Кратко: краткое», display name,
-    // motto, colour swatch + HEX.
+    // Header — flag image, the short name as the small label line
+    // (no «Кратко:» words), display name, motto, colour swatch + HEX.
     expect(screen.getByAltText('Флаг Testia')).toBeInTheDocument();
     const header = screen.getByTestId('nation-card-header');
-    expect(within(header).getByText('Кратко: Тестия'))
-      .toBeInTheDocument();
+    expect(within(header).getByText('Тестия')).toBeInTheDocument();
+    expect(within(header).queryByText(/Кратко:/))
+      .not.toBeInTheDocument();
     expect(within(header).getByText('Testia')).toBeInTheDocument();
-    expect(within(header).getByText('Север помнит всё'))
+    expect(within(header).getByText(/Север помнит всё/))
       .toBeInTheDocument();
     expect(within(header).getByText('#e64545')).toBeInTheDocument();
     expect(
       within(header).getByRole('button', { name: 'Изменить' }),
     ).toBeInTheDocument();
 
-    // The four tiles — level/rating are the nation's own fields.
-    const tiles = await screen.findByTestId('nation-stats-row');
-    const tileOf = (label: string) =>
-      within(tiles).getByText(label).parentElement as HTMLElement;
-    expect(tileOf('Провинции').textContent).toContain('2');
-    await waitFor(() =>
-      expect(tileOf('Уровень').textContent).toContain('5'),
+    // No stat-tiles row anywhere (0.10.0 unit 7b) — and no trace of
+    // the old judge queue either: its counts moved to the two badges
+    // inside «Приказы» (Spec 5.4).
+    expect(screen.queryByTestId('nation-stats-row')).toBeNull();
+    expect(screen.queryByText('Уровень')).toBeNull();
+    expect(screen.queryByText('Судейский рейтинг')).toBeNull();
+    expect(screen.queryByText('Провинции')).toBeNull();
+    expect(screen.queryByText('Ожидают вердикт')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Написать вердикт' }),
+    ).toBeNull();
+
+    // «Подать приказ» stays; the badges show the live counts:
+    // «Мои приказы» — unresolved_orders from GET /orders/rules (2),
+    // «Приказы других игроков» — the assigned queue is empty, so the
+    // badge renders with no circle.
+    expect(
+      screen.getByRole('button', { name: 'Подать приказ' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByTestId('orders-badge-mine-count'))
+      .toHaveTextContent('2');
+    expect(screen.queryByTestId('orders-badge-assigned-count'))
+      .toBeNull();
+
+    // Each badge hands its 7a entry request to the host (AppShell
+    // stores it and pushes /registry).
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Мои приказы' }),
     );
-    await waitFor(() =>
-      expect(tileOf('Судейский рейтинг').textContent).toContain('21'),
+    expect(onOpenRegistry).toHaveBeenLastCalledWith({
+      tab: 'orders',
+      preset: { nation: 'Тестия' },
+    });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Приказы других игроков' }),
     );
-    await waitFor(() =>
-      expect(tileOf('Неразрешённые приказы').textContent).toContain(
-        '2 из 7',
-      ),
-    );
+    expect(onOpenRegistry).toHaveBeenLastCalledWith({
+      tab: 'orders',
+      preset: { assignedToMe: true },
+    });
 
     // Leader — portrait image, name, uppercase title, bio; no captions.
     const leader = screen.getByTestId('nation-leader-block');
@@ -198,12 +230,12 @@ describe('PanelNationHome — the card', () => {
     expect(history).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
-  it('shows no label line when the short name is missing or equals the full name', async () => {
+  it('shows the short name label line unconditionally — even when it equals the full name', async () => {
     renderHome({ ...NATION, short_name: NATION.name });
     const header = screen.getByTestId('nation-card-header');
-    // The duplicated «Testia = Тестия» line is meaningless — never shown.
+    // The label line and the display name both render 'Testia'.
+    expect(within(header).getAllByText('Testia')).toHaveLength(2);
     expect(within(header).queryByText(/Кратко:/)).not.toBeInTheDocument();
-    expect(within(header).getByText('Testia')).toBeInTheDocument();
   });
 
   it('the capital chip goes first and keeps the «★ Столица (Провинция)» form', async () => {
@@ -262,12 +294,11 @@ describe('PanelNationHome — the card', () => {
     expect(screen.getByLabelText('Заглушка флага')).toBeInTheDocument();
     expect(screen.getAllByLabelText('Заглушка портрета').length)
       .toBeGreaterThan(0);
-    // No short name → no «Кратко:» line at all.
+    // The short name still heads the card as the label line — a
+    // legacy nation always has one (NOT NULL since 0012).
     expect(
-      within(screen.getByTestId('nation-card-header')).queryByText(
-        /Кратко:/,
-      ),
-    ).not.toBeInTheDocument();
+      within(screen.getByTestId('nation-card-header')).getByText('Легаси'),
+    ).toBeInTheDocument();
     expect(
       within(screen.getByTestId('nation-leader-block')).getByText(
         'не указано',
@@ -317,13 +348,18 @@ describe('PanelNationHome — the card', () => {
   });
 
   it('shows same-size placeholders while province names load — no numbers flash', async () => {
-    let resolveManifest!: () => void;
+    let resolveNames!: () => void;
     server.use(
-      http.get('*/api/v1/map/manifest', async () => {
+      http.get('*/api/v1/map/province-names', async () => {
         await new Promise<void>((resolve) => {
-          resolveManifest = resolve;
+          resolveNames = resolve;
         });
-        return HttpResponse.json(mswMap.manifest);
+        return HttpResponse.json({
+          map_version: mswMap.manifest.geometry_version,
+          names: Object.fromEntries(
+            mswMap.manifest.nodes.map((n) => [n.id, n.name_ru ?? n.name]),
+          ),
+        });
       }),
     );
     renderHome();
@@ -332,7 +368,7 @@ describe('PanelNationHome — the card', () => {
     expect(within(territory).queryByText(/1001|1002/))
       .not.toBeInTheDocument();
 
-    resolveManifest();
+    resolveNames();
     expect(await within(territory).findByText('Бета'))
       .toBeInTheDocument();
   });
@@ -357,27 +393,32 @@ describe('PanelNationHome — the card', () => {
     expect(within(territory).queryByText(/9999/)).not.toBeInTheDocument();
   });
 
-  it('loads province names once through the shared map cache', async () => {
+  it('loads province names via the light route — never the manifest', async () => {
     let manifestCalls = 0;
-    let geometryCalls = 0;
+    let namesCalls = 0;
     server.use(
       http.get('*/api/v1/map/manifest', () => {
         manifestCalls += 1;
         return HttpResponse.json(mswMap.manifest);
       }),
-      http.get('*/api/v1/map/geometry/:version', () => {
-        geometryCalls += 1;
-        return HttpResponse.json(mswMap.geometry);
+      http.get('*/api/v1/map/province-names', () => {
+        namesCalls += 1;
+        return HttpResponse.json({
+          map_version: mswMap.manifest.geometry_version,
+          names: Object.fromEntries(
+            mswMap.manifest.nodes.map((n) => [n.id, n.name_ru ?? n.name]),
+          ),
+        });
       }),
     );
     renderHome();
 
     const territory = screen.getByTestId('nation-territory-block');
     await within(territory).findByText('Бета');
-    // One manifest request total — the names ride the shared map
-    // data, not a second download; geometry is never touched.
-    expect(manifestCalls).toBe(1);
-    expect(geometryCalls).toBe(0);
+    // One names request total (load-speed unit 11) — the ~20× heavier
+    // manifest is never touched for chips.
+    expect(namesCalls).toBe(1);
+    expect(manifestCalls).toBe(0);
   });
 });
 
@@ -568,7 +609,9 @@ describe('PanelNationHome — edit form', () => {
     ).not.toBeInTheDocument();
 
     await goToTab(user, 1);
-    await user.type(screen.getByLabelText('Краткое название'), 'Тестия');
+    const shortNameInput = screen.getByLabelText('Краткое название');
+    await user.clear(shortNameInput);
+    await user.type(shortNameInput, 'Тестия');
     await user.click(save);
     await waitFor(() =>
       expect(bodies).toEqual([
@@ -642,10 +685,10 @@ describe('PanelNationHome — edit form', () => {
     const user = userEvent.setup();
     renderHome(FULL_NATION);
     const save = await openEdit(user);
-    // Wait until the rules-driven «N из M» counter rendered — the
+    // Wait until the rules-driven «N / M» counter rendered — the
     // gating must use the same numbers.
     await within(screen.getByTestId('form-item-name')).findByText(
-      `${'Testia'.length} из ${RULES.name_max_length}`,
+      `${'Testia'.length} / ${RULES.name_max_length}`,
     );
 
     const nameInput = screen.getByLabelText('Полное название');
@@ -739,7 +782,7 @@ describe('PanelNationHome — edit form', () => {
     const user = userEvent.setup();
     renderWithProviders(
       <BotStatusProvider>
-        <PanelNationHome nation={NATION} onChanged={() => {}} />
+        <PanelNationHome nation={NATION} onChanged={() => {}} onOpenRegistry={() => {}} />
       </BotStatusProvider>,
     );
 
@@ -755,7 +798,7 @@ describe('PanelNationHome — edit draft memory', () => {
   it('restores typed values on remount and deletes them on «Отмена»', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
-      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} onOpenRegistry={() => {}} />,
     );
 
     // Type, leave (the panel unmounts like a screen switch) — the
@@ -769,7 +812,7 @@ describe('PanelNationHome — edit draft memory', () => {
     first.unmount();
 
     const second = renderWithProviders(
-      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} onOpenRegistry={() => {}} />,
     );
     await openEdit(user);
     await goToTab(user, 2);
@@ -782,7 +825,7 @@ describe('PanelNationHome — edit draft memory', () => {
     second.unmount();
 
     renderWithProviders(
-      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} />,
+      <PanelNationHome nation={FULL_NATION} onChanged={() => {}} onOpenRegistry={() => {}} />,
     );
     await openEdit(user);
     await goToTab(user, 2);

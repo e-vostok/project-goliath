@@ -7,7 +7,13 @@
  * This module holds the payloads for the page session instead:
  *
  * - the manifest as a { etag, body } pair — mount-time revalidation
- *   still runs (If-None-Match -> 304 reuses this body);
+ *   still runs (If-None-Match -> 304 reuses this body). The pair is also
+ *   mirrored to localStorage (load-speed unit 10) under a key carrying
+ *   the app version, so a cold start revalidates against the stored
+ *   ETag instead of re-downloading ~103 KB; a new build ignores — and
+ *   replaces — the old copy;
+ * - the province-names pair the same way (load-speed unit 11): the
+ *   non-map screens download ~5 KB of names instead of the manifest;
  * - geometry bodies keyed by their immutable version, plus an in-flight
  *   dedup so two consumers mounting together fire one request.
  *
@@ -15,28 +21,164 @@
  * between tests otherwise.
  */
 
+import { version as APP_VERSION } from '../../../../package.json';
+
 import type { CachedBody } from './cache';
+import { startReliefDownload } from './relief';
 import { mapApi } from '../api';
 import type {
   MapBordersDTO,
   MapGeometryDTO,
   MapManifestDTO,
+  MapProvinceNamesDTO,
 } from '../types';
 
+/**
+ * Stored payload copies use a `{ v, etag, body }` envelope under keys
+ * that carry the app version, so every build revalidates fresh instead
+ * of trusting a previous deploy's data. `v` is the envelope schema —
+ * bump it if the stored shape changes.
+ */
+const STORAGE_ENVELOPE_SCHEMA = 1;
+
+/**
+ * The stored manifest copy. The body is ~0.8 MB — anything much
+ * bigger is corrupt; ignore it.
+ */
+export const MANIFEST_STORAGE_KEY = `pax.map.manifest:${APP_VERSION}`;
+const MANIFEST_STORAGE_MAX_CHARS = 4_000_000;
+const MANIFEST_STORAGE_PREFIX = 'pax.map.manifest:';
+
+/**
+ * The stored province-names copy (load-speed unit 11): the body is
+ * ~30 KB of id → display-name pairs.
+ */
+export const NAMES_STORAGE_KEY = `pax.map.names:${APP_VERSION}`;
+const NAMES_STORAGE_MAX_CHARS = 300_000;
+const NAMES_STORAGE_PREFIX = 'pax.map.names:';
+
+function readStoredBody<T>(key: string, maxChars: number): CachedBody<T> | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null || raw.length > maxChars) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== 'object') {
+      return null;
+    }
+    const entry = parsed as { v?: unknown; etag?: unknown; body?: unknown };
+    if (
+      entry.v !== STORAGE_ENVELOPE_SCHEMA ||
+      entry.body === null ||
+      typeof entry.body !== 'object'
+    ) {
+      return null;
+    }
+    return {
+      etag: typeof entry.etag === 'string' ? entry.etag : null,
+      body: entry.body as T,
+    };
+  } catch {
+    // Corrupt JSON or unavailable storage — treated as no stored copy.
+    return null;
+  }
+}
+
+function writeStoredBody<T>(
+  key: string,
+  prefix: string,
+  value: CachedBody<T>,
+): void {
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({
+        v: STORAGE_ENVELOPE_SCHEMA,
+        etag: value.etag,
+        body: value.body,
+      }),
+    );
+    // One stored copy per app build — older builds' entries would
+    // otherwise accumulate (~0.8 MB each for the manifest).
+    for (const stored of Object.keys(window.localStorage)) {
+      if (stored.startsWith(prefix) && stored !== key) {
+        window.localStorage.removeItem(stored);
+      }
+    }
+  } catch {
+    // Quota or privacy mode — the in-memory session cache still works.
+  }
+}
+
+function readStoredManifest(): CachedBody<MapManifestDTO> | null {
+  return readStoredBody(MANIFEST_STORAGE_KEY, MANIFEST_STORAGE_MAX_CHARS);
+}
+
+function writeStoredManifest(value: CachedBody<MapManifestDTO>): void {
+  writeStoredBody(MANIFEST_STORAGE_KEY, MANIFEST_STORAGE_PREFIX, value);
+}
+
+function readStoredNames(): CachedBody<MapProvinceNamesDTO> | null {
+  return readStoredBody(NAMES_STORAGE_KEY, NAMES_STORAGE_MAX_CHARS);
+}
+
+function writeStoredNames(value: CachedBody<MapProvinceNamesDTO>): void {
+  writeStoredBody(NAMES_STORAGE_KEY, NAMES_STORAGE_PREFIX, value);
+}
+
 let manifestCache: CachedBody<MapManifestDTO> | null = null;
+let manifestSeeded = false;
+let namesCache: CachedBody<MapProvinceNamesDTO> | null = null;
+let namesSeeded = false;
 const geometryCache = new Map<string, MapGeometryDTO>();
 const geometryInflight = new Map<string, Promise<MapGeometryDTO>>();
 const bordersCache = new Map<string, MapBordersDTO>();
 const bordersInflight = new Map<string, Promise<MapBordersDTO>>();
 
 export function readManifestCache(): CachedBody<MapManifestDTO> | null {
+  if (!manifestSeeded) {
+    // First read of the page session seeds from the stored copy so the
+    // mount-time conditional request can already send its ETag.
+    manifestSeeded = true;
+    manifestCache = readStoredManifest();
+  }
   return manifestCache;
 }
 
 export function writeManifestCache(
   value: CachedBody<MapManifestDTO>,
 ): void {
+  if (value === manifestCache) {
+    // A 304 revalidation writes back the very same object — nothing new
+    // to store (and ~0.8 MB of JSON.stringify saved).
+    return;
+  }
   manifestCache = value;
+  writeStoredManifest(value);
+}
+
+/**
+ * The province-names pair, seeded from storage on first read — the
+ * same cold-start `If-None-Match` story as the manifest, for the
+ * light names payload (load-speed unit 11).
+ */
+export function readNamesCache(): CachedBody<MapProvinceNamesDTO> | null {
+  if (!namesSeeded) {
+    namesSeeded = true;
+    namesCache = readStoredNames();
+  }
+  return namesCache;
+}
+
+export function writeNamesCache(
+  value: CachedBody<MapProvinceNamesDTO>,
+): void {
+  if (value === namesCache) {
+    return;
+  }
+  namesCache = value;
+  writeStoredNames(value);
 }
 
 export function readGeometryCache(version: string): MapGeometryDTO | null {
@@ -53,6 +195,14 @@ export function loadGeometryCached(
   token: string,
   version: string,
 ): Promise<MapGeometryDTO> {
+  // A map is being assembled (viewing screen or picker): start the two
+  // relief rasters now — they used to wait for MapView's mount after
+  // the geometry arrived (load-speed unit 10). Same `rules.relief`
+  // switch useRelief reads; the download itself dedupes to one request
+  // per file.
+  if (manifestCache?.body.rules.relief?.enabled === true) {
+    void startReliefDownload();
+  }
   const hit = geometryCache.get(version);
   if (hit) {
     return Promise.resolve(hit);
@@ -115,6 +265,15 @@ export function loadBordersCached(
 /** Forget everything — called by test stubs to isolate test cases. */
 export function clearMapSessionCache(): void {
   manifestCache = null;
+  manifestSeeded = false;
+  namesCache = null;
+  namesSeeded = false;
+  try {
+    window.localStorage.removeItem(MANIFEST_STORAGE_KEY);
+    window.localStorage.removeItem(NAMES_STORAGE_KEY);
+  } catch {
+    // Storage unavailable — nothing to forget there anyway.
+  }
   geometryCache.clear();
   geometryInflight.clear();
   bordersCache.clear();

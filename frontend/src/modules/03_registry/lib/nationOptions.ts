@@ -24,8 +24,10 @@ function uniqueSorted(names: Iterable<string>): string[] {
 
 /**
  * Nation names from a table's own name column — the «nations» table.
- * Returns null when the table or a usable name column is not there;
- * the caller then falls back to `nationNamesOfRows`.
+ * The column may carry a plain string (today's shape) or a `nation`
+ * cell (the future 6b shape) — both yield the short `name`. Returns
+ * null when the table or a usable name column is not there; the
+ * caller then falls back to `nationNamesOfRows`.
  */
 export function nationNamesOfTable(
   table: RegistryTableDTO | null,
@@ -43,7 +45,14 @@ export function nationNamesOfTable(
   return uniqueSorted(
     rows.rows
       .map((row) => row.cells[column.id])
-      .filter((cell): cell is string => typeof cell === 'string'),
+      .map((cell) =>
+        typeof cell === 'string'
+          ? cell
+          : isNationCell(cell)
+            ? cell.name
+            : null,
+      )
+      .filter((name): name is string => name !== null),
   );
 }
 

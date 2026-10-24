@@ -33,3 +33,26 @@ html.vkui > body {
 .vkuiPanel__in {
   min-height: 0;
 }
+
+/*
+ * Registry table (PNG 09/09b/10/10b): rows lift to `surface-raised`
+ * on hover, the outer cells keep the mockup's 16 px inset and the
+ * last row carries no border — the block's own radius closes it.
+ */
+.registry-table tbody tr:hover {
+  background: var(--pax-surface-raised);
+}
+
+.registry-table th:first-child,
+.registry-table td:first-child {
+  padding-left: 16px;
+}
+
+.registry-table th:last-child,
+.registry-table td:last-child {
+  padding-right: 16px;
+}
+
+.registry-table tbody tr:last-child td {
+  border-bottom: none;
+}

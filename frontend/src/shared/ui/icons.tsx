@@ -17,6 +17,7 @@ export type BlockIconName =
   | 'text'
   | 'document'
   | 'list'
+  | 'flag'
   | 'scales';
 
 const BLOCK_PATHS: Record<BlockIconName, ReactNode> = {
@@ -47,6 +48,7 @@ const BLOCK_PATHS: Record<BlockIconName, ReactNode> = {
   list: (
     <path d="M2.2 4h1.4M2.2 8h1.4M2.2 12h1.4M5.8 4h8.4M5.8 8h8.4M5.8 12h8.4" />
   ),
+  flag: <path d="M3 14V2.5h8.5L10 6l1.5 3.5H3" />,
   scales: (
     <>
       <path d="M8 2v11.5M5 14h6M3 4.5h10" />

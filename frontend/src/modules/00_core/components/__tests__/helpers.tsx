@@ -101,8 +101,9 @@ export const GAME_CLOCK = {
 };
 
 /**
- * Order limits for the «Неразрешённые приказы» tile — deliberately NOT
- * the real config numbers: a hardcoded limit in the tile fails tests.
+ * Order limits for the «Мои приказы» badge and the composer's counter —
+ * deliberately NOT the real config numbers: a hardcoded limit fails
+ * tests.
  */
 export const ORDER_RULES: OrderRulesDTO = {
   title_min_length: 4,
@@ -210,6 +211,16 @@ export function registerDefaultHandlers() {
     ),
     http.get('*/api/v1/map/manifest', () =>
       HttpResponse.json(mswMap.manifest),
+    ),
+    // load-speed unit 11: province names ride their own light route,
+    // resolved the way the server resolves them (name_ru over name).
+    http.get('*/api/v1/map/province-names', () =>
+      HttpResponse.json({
+        map_version: mswMap.manifest.geometry_version,
+        names: Object.fromEntries(
+          mswMap.manifest.nodes.map((n) => [n.id, n.name_ru ?? n.name]),
+        ),
+      }),
     ),
     http.get('*/api/v1/map/geometry/:version', () =>
       HttpResponse.json(mswMap.geometry),
