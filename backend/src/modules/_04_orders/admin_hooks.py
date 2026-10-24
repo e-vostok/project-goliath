@@ -31,6 +31,9 @@ Admin hooks of module 04_orders (Spec 5.7).
 - Player preview ``"04_orders"``: returns ``{"orders_author",
   "orders_judge_undecided", "orders_judge_decided"}`` counts for the
   admin delete-preview; read-only.
+- Overview ``"04_orders"``: the two «Состояние мира» tiles «Приказы без
+  вердикта» (все приказы без вердикта) и «Ожидают распределения»
+  (очередь без судьи) — counts from the module's own service.
 
 ``register_orders_admin_hooks`` is idempotent like the other modules'
 registrars: membership check, never double-register.
@@ -49,7 +52,7 @@ from modules._00_core.hooks import register_player_delete_hook
 from modules._00_core.service import PlayerService
 from modules._00_core.tick_schedule import format_game_time
 from modules._04_orders.models import Order, OrderStage, is_overdue
-from modules._04_orders.service import ORDERS_ADVISORY_LOCK_KEY
+from modules._04_orders.service import ORDERS_ADVISORY_LOCK_KEY, OrderService
 from modules._04_orders.worker import get_last_pass_at, get_worker_mode
 
 MODULE_SLUG = "04_orders"
@@ -179,6 +182,32 @@ async def orders_state_view(session: AsyncSession) -> dict:
     }
 
 
+async def orders_overview(session: AsyncSession) -> list[dict]:
+    """
+    The 04_orders tiles of the panel's «Состояние мира» card (mockup
+    02, sorts 70–80 between the world figures and the administrators
+    tile). The counts come from the module's own service —
+    ``unresolved_counts_world``: «Приказы без вердикта» counts every
+    unresolved order (SUBMITTED + DISTRIBUTED), «Ожидают
+    распределения» the SUBMITTED queue. Read-only, never commits.
+    """
+    counts = await OrderService.unresolved_counts_world(session)
+    return [
+        {
+            "key": "orders_without_verdict",
+            "label": "Приказы без вердикта",
+            "value": str(counts["without_verdict"]),
+            "sort": 70,
+        },
+        {
+            "key": "orders_awaiting_distribution",
+            "label": "Ожидают распределения",
+            "value": str(counts["awaiting_distribution"]),
+            "sort": 80,
+        },
+    ]
+
+
 async def orders_reset(session: AsyncSession) -> None:
     """
     Wipe all orders (INV-O14). The caller owns the transaction — this
@@ -278,4 +307,6 @@ def register_orders_admin_hooks() -> None:
         AdminRegistry.register_reset(MODULE_SLUG, orders_reset)
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
         AdminRegistry.register_player_preview(MODULE_SLUG, orders_player_delete_preview)
+    if MODULE_SLUG not in AdminRegistry.get_overview_hooks():
+        AdminRegistry.register_overview(MODULE_SLUG, orders_overview)
     register_player_delete_hook(f"{MODULE_SLUG}.player_delete", orders_delete_player)
