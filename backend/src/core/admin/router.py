@@ -1,9 +1,9 @@
 """
 HTTP API router for the admin panel.
 
-Ten endpoints (prefix /api/v1/admin): GET /me, GET /state,
-GET /overview, GET /tick-log, POST /tick/run, POST /state/reset,
-GET /players/{vk_user_id}/delete-preview,
+Eleven endpoints (prefix /api/v1/admin): GET /me, GET /state,
+GET /players, GET /overview, GET /tick-log, POST /tick/run,
+POST /state/reset, GET /players/{vk_user_id}/delete-preview,
 POST /players/{vk_user_id}/delete, POST /panel-link and POST /session.
 
 All but POST /session are gated by require_admin. The panel-link /
@@ -48,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin import panel_access
 from core.admin.registry import AdminRegistry
-from core.admin.security import is_admin_user, require_admin
+from core.admin.security import _admin_vk_user_ids, is_admin_user, require_admin
 from core.db import get_session, get_session_context
 from core.security.jwt import issue_token
 from core.tick.orchestrator import TickOutcome
@@ -57,7 +57,13 @@ from modules._00_core.admin_service import AdminAuditService
 from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError, PlayerNotFoundError
-from modules._00_core.models import GameClock, Player, TickLog
+from modules._00_core.models import (
+    AdminGrant,
+    GameClock,
+    Nation,
+    Player,
+    TickLog,
+)
 from modules._00_core.router import GameClockNotFoundError
 from modules._00_core.service import PlayerService
 from modules._00_core.tick_schedule import format_game_time
@@ -257,6 +263,127 @@ async def admin_state(
             await session.rollback()
             modules[slug] = {"error": type(exc).__name__}
     return {"modules": modules}
+
+
+async def _collect_player_info(
+    session: AsyncSession, player_ids: list[str]
+) -> dict[str, dict]:
+    """
+    Merge every player-info hook's columns for one page of players.
+
+    A failing hook is logged, its session work rolled back and its
+    columns skipped — one broken module must never take the whole
+    «Игроки» table down, the same rule the state views follow.
+    """
+    info: dict[str, dict] = {}
+    for slug, (info_fn, _) in AdminRegistry.get_player_info_hooks().items():
+        try:
+            columns = await info_fn(session, player_ids)
+        except Exception:
+            logger.exception("Admin player-info hook failed for '%s'", slug)
+            await session.rollback()
+            continue
+        for player_id, fields in (columns or {}).items():
+            info.setdefault(player_id, {}).update(fields)
+    return info
+
+
+@router.get("/players")
+async def list_players(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    search: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
+    """
+    The panel's «Игроки» list (0.11.0 unit 6b): one page of players
+    ordered by registration then id — ``{"items", "total"}``. Each item
+    carries ``vk_user_id``, ``display_name`` assembled through the
+    player-info hooks (null when no module knows one),
+    ``nation_short_name`` (null for a nationless player),
+    ``created_at`` formatted in the tick timezone like every admin
+    answer, and ``is_admin`` — env allowlist or grant — computed once
+    for the page, not per row.
+
+    ``search`` is an OR over an exact VK id, a case-insensitive
+    substring of the nation short/full name and every hook's search.
+    The match runs in Python — the same way the registry's cell search
+    does — because SQLite's ``lower()`` only folds ASCII and the
+    players table is small enough for an admin tool; a failing search
+    hook is logged, rolled back and skipped.
+    """
+    text = (search or "").strip()
+    hook_player_ids: set[str] = set()
+    if text:
+        for slug, (_, search_fn) in AdminRegistry.get_player_info_hooks().items():
+            if search_fn is None:
+                continue
+            try:
+                found = await search_fn(session, text)
+            except Exception:
+                logger.exception("Admin player-search hook failed for '%s'", slug)
+                await session.rollback()
+                continue
+            hook_player_ids.update(found or set())
+
+    rows_all = (
+        await session.execute(
+            select(
+                Player.id,
+                Player.vk_user_id,
+                Player.created_at,
+                Nation.short_name,
+                Nation.name,
+            )
+            .outerjoin(Nation, Nation.owner_player_id == Player.id)
+            .order_by(Player.created_at, Player.id)
+        )
+    ).all()
+
+    if text:
+        lowered = text.lower()
+        exact_vk = int(text) if text.isdigit() else None
+        rows_all = [
+            row
+            for row in rows_all
+            if (exact_vk is not None and row.vk_user_id == exact_vk)
+            or row.id in hook_player_ids
+            or (row.short_name and lowered in row.short_name.lower())
+            or (row.name and lowered in row.name.lower())
+        ]
+    total = len(rows_all)
+    rows = rows_all[offset : offset + limit]
+
+    info = await _collect_player_info(session, [row.id for row in rows])
+
+    # The admin set is the env allowlist plus the granted players' vk
+    # ids — the same union the overview tile and AdminGrantService use.
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    granted_vk_ids = (
+        await session.execute(
+            select(Player.vk_user_id).join(
+                AdminGrant, AdminGrant.player_id == Player.id
+            )
+        )
+    ).all()
+    admin_vk_ids = {vk for (vk,) in granted_vk_ids} | _admin_vk_user_ids()
+
+    return {
+        "items": [
+            {
+                "vk_user_id": row.vk_user_id,
+                "display_name": info.get(row.id, {}).get("display_name"),
+                "nation_short_name": row.short_name,
+                "created_at": format_game_time(
+                    row.created_at, config.tick.tick_timezone
+                ),
+                "is_admin": row.vk_user_id in admin_vk_ids,
+            }
+            for row in rows
+        ],
+        "total": total,
+    }
 
 
 @router.get("/overview")

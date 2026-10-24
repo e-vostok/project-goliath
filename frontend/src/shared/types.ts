@@ -224,11 +224,6 @@ export interface AdminTickLogEntryDTO {
   error_message: string | null;
 }
 
-/** GET /admin/state — state views keyed by module slug. */
-export interface AdminStateDTO {
-  modules: Record<string, unknown>;
-}
-
 /**
  * One «Состояние мира» tile (GET /admin/overview): every module's
  * overview hook contributes its tiles; `value` arrives already
@@ -269,6 +264,24 @@ export interface AdminPlayerDeleteResultDTO {
   outbox_rows: number;
   consent_rows: number;
   vk_profile_rows: number;
+}
+
+/** One row of GET /admin/players — the panel's «Игроки» table. */
+export interface AdminPlayerDTO {
+  vk_user_id: number;
+  /** Hook-assembled display name (the VK profile cache); null when unknown. */
+  display_name: string | null;
+  /** The player's nation's short name; null for a nationless player. */
+  nation_short_name: string | null;
+  /** 'YYYY-MM-DD HH:MM:SS' in the tick timezone, like every admin answer. */
+  created_at: string;
+  is_admin: boolean;
+}
+
+/** GET /admin/players — one page plus the full matching count. */
+export interface AdminPlayersDTO {
+  items: AdminPlayerDTO[];
+  total: number;
 }
 
 /** Error codes emitted by 00_core (Spec Part 5 + router-internal codes). */

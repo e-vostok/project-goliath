@@ -41,6 +41,7 @@ def registry_isolation(monkeypatch):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
+    saved_player_infos = AdminRegistry.get_player_info_hooks()
     monkeypatch.setattr(startup_module, "_registry_config", None)
     monkeypatch.setattr(startup_module, "_core_config", None)
     # The real config now lists the ``orders`` table — its source is
@@ -67,6 +68,8 @@ def registry_isolation(monkeypatch):
     AdminRegistry._reset_hooks.update(saved_resets)
     AdminRegistry._player_preview_hooks.clear()
     AdminRegistry._player_preview_hooks.update(saved_previews)
+    AdminRegistry._player_info_hooks.clear()
+    AdminRegistry._player_info_hooks.update(saved_player_infos)
 
 
 @pytest.fixture

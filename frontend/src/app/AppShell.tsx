@@ -53,7 +53,6 @@ import {
 } from '../modules/03_registry/lib/entryRequest';
 import { BotStatusProvider } from '../modules/02_bot/hooks/useBotStatus';
 import { parseStartHash } from '../modules/02_bot/lib/startHash';
-import { AdminBlock } from '../admin/AdminBlock';
 import { TopBar } from './TopBar';
 import {
   PANEL_CREATE,
@@ -220,15 +219,7 @@ function AuthedArea() {
 
   const { status, nation, refresh } = nationState;
   const activePanel = panel ?? PANEL_HOME;
-  // Bumped by the admin block after tick/reset: remounts PanelNationHome so
-  // it refetches the game clock, while refresh() reloads the nation itself.
-  const [worldVersion, setWorldVersion] = useState(0);
-  // The top bar's turn badge follows the same refresh signal.
-  const clock = useGameClock(worldVersion);
-  const handleWorldChanged = () => {
-    refresh();
-    setWorldVersion((v) => v + 1);
-  };
+  const clock = useGameClock();
 
   // The panel is a function of nation existence — keep the route in sync.
   // The map and registry screens are open to everyone, so they are exempt
@@ -276,7 +267,6 @@ function AuthedArea() {
                         <PanelCreateNation onCreated={refresh} />
                       )
                     )}
-                    <AdminBlock onWorldChanged={handleWorldChanged} />
                   </Panel>
                   <Panel id={PANEL_HOME}>
                     {status === 'loading' && <LoadingCell />}
@@ -295,7 +285,6 @@ function AuthedArea() {
                     )}
                     {status === 'ready' && nation && (
                       <PanelNationHome
-                        key={worldVersion}
                         nation={nation}
                         onChanged={refresh}
                         onOpenRegistry={(request) => {
@@ -307,7 +296,6 @@ function AuthedArea() {
                         }}
                       />
                     )}
-                    <AdminBlock onWorldChanged={handleWorldChanged} />
                   </Panel>
                   <Panel id={PANEL_MAP}>
                     <PanelMap active={activePanel === PANEL_MAP} />
