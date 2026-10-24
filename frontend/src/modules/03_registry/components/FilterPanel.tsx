@@ -24,7 +24,12 @@
 
 import { Fragment } from 'react';
 
-import { Input, NativeSelect, SegmentedControl } from '@vkontakte/vkui';
+import {
+  AdaptivityProvider,
+  Input,
+  NativeSelect,
+  SegmentedControl,
+} from '@vkontakte/vkui';
 
 import { errorText } from '../../../shared/errorTexts';
 import { RADII, SPACING, tokenVar } from '../../../shared/ui';
@@ -171,6 +176,9 @@ export function FilterPanel({
     return null;
   }
   return (
+    // Compact density inside the panel: the VKUI regular field is 44 px
+    // tall, the mockups' control row is 36 (`size_field_height--compact`).
+    <AdaptivityProvider sizeY="compact">
     <div
       data-testid="registry-filter-panel"
       style={{
@@ -359,5 +367,6 @@ export function FilterPanel({
         );
       })}
     </div>
+    </AdaptivityProvider>
   );
 }
