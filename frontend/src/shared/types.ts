@@ -184,6 +184,20 @@ export interface AdminMeDTO {
   is_admin: boolean;
 }
 
+/** POST /admin/session request — the one-time link token from `#t=`. */
+export interface AdminSessionRequest {
+  token: string;
+}
+
+/**
+ * POST /admin/session response — the short panel Bearer session.
+ * `expires_in_seconds` counts from the exchange answer.
+ */
+export interface AdminSessionDTO {
+  access_token: string;
+  expires_in_seconds: number;
+}
+
 /** One tick_log row (GET /admin/tick-log and nested in tick/run result). */
 export interface AdminTickLogEntryDTO {
   id: number;
@@ -259,6 +273,7 @@ export const ErrorCodes = {
   UNAUTHORIZED: 'UNAUTHORIZED',
   GAME_CLOCK_NOT_FOUND: 'GAME_CLOCK_NOT_FOUND',
   FREQUENCY_CAP_EXCEEDED: 'FREQUENCY_CAP_EXCEEDED',
+  PANEL_LINK_INVALID: 'PANEL_LINK_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

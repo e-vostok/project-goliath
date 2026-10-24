@@ -12,6 +12,23 @@
 		reverse_proxy backend:8000
 	}
 
+	# The admin panel (0.11.0 unit 5a): a standalone page that must
+	# never sit inside an iframe (anti-clickjacking), never be cached
+	# and never leak its address via Referer. /admin and /admin.html
+	# both serve the built /srv/admin.html. See deploy.md §5.
+	@admin_panel path /admin /admin.html
+	handle @admin_panel {
+		root * /srv
+
+		header X-Frame-Options "DENY"
+		header Content-Security-Policy "frame-ancestors 'none'"
+		header Referrer-Policy "no-referrer"
+		header Cache-Control "no-store"
+
+		try_files {path} /admin.html
+		file_server
+	}
+
 	# Everything else is the built SPA with an index.html fallback.
 	# The header directives below live INSIDE this handle, so they never
 	# touch /api/* responses: the backend's own Cache-Control/ETag
@@ -31,7 +48,8 @@
 		file_server
 	}
 
-	# No X-Frame-Options / frame-ancestors on purpose: the app runs
-	# inside a VK iframe — a wrong value shows players a white screen.
-	# See docs/02_SYSTEM_SPECS/deploy.md §5.
+	# X-Frame-Options / frame-ancestors stay OFF the Mini App paths on
+	# purpose: the app runs inside a VK iframe — a wrong value shows
+	# players a white screen. The standalone admin page is the only
+	# exception (block above). See docs/02_SYSTEM_SPECS/deploy.md §5.
 }
