@@ -112,6 +112,14 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 
 **Правило FK:** прямые внешние ключи из `scheduled_actions`/будущих таблиц-сателлитов допустимы только на `players.id`, `nations.id`, `provinces.id`. Ссылки на `scheduled_actions.id`, `game_clock.id`, `tick_log.id` из других модулей запрещены — это внутренняя бухгалтерия ядра, а не предметные сущности. Несколько записей с одинаковым `turn_number` допустимы (повторные попытки после сбоя); актуальной считается запись с наибольшим `id`.
 
+### `admin_grants` и `admin_audit_log` (версия 0.11.0, единица 3 — основа панели администратора)
+
+`admin_grants` — выданные в базе права администратора, дополнение к `ADMIN_VK_USER_IDS`: `id` UUID PK; `player_id` UNIQUE, FK → `players.id`; `granted_by_vk_user_id` BIGINT NULL (снимок, без FK — запись переживает удаление выдавшего); `granted_at` TIMESTAMPTZ, серверный default `now()`.
+
+`admin_audit_log` — постоянный журнал действий администратора: `id` INTEGER PK; `created_at` TIMESTAMPTZ, серверный default `now()`, индекс; `actor_vk_user_id` BIGINT NOT NULL, индекс (снимок, без FK — история переживает удаление игрока); `action` VARCHAR(64) — машинный код (`tick.run`, `world.reset`, `player.delete`); `target_type`/`target_id` NULL; `summary` VARCHAR(300) — одна русская фраза для будущего просмотра; `details` JSON NULL — только идентификаторы и значения «было/стало», никогда не токены и не сырые параметры запуска.
+
+Сервисы `modules/_00_core/admin_service.py` (оба работают в транзакции вызывающего, не коммитят): `AdminAuditService.record(...)` пишет строку журнала, `list_recent(limit, before_id)` отдаёт новейшие первыми с курсором `before_id`; `AdminGrantService.is_granted/grant/revoke` — `grant` идемпотентен, `revoke` отказывает администратору из `.env` (`ROOT_ADMIN_PROTECTED`) и последнему оставшемуся администратору — `.env` плюс таблица (`LAST_ADMIN`). `require_admin` (`core/admin/security.py`) принимает `.env` ИЛИ строку гранта, проверку по базе выполняет при каждом запросе — снятый администратор теряет доступ сразу. Сброс мира обе таблицы не трогает.
+
 ### Константы кода (не баланс, в конфиг не выносятся)
 
 Файл `backend/src/modules/_00_core/nation_enums.py`:
