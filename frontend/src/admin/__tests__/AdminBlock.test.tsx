@@ -519,6 +519,30 @@ function mockWindowSize(width: number, height: number) {
   };
 }
 
+describe('AdminBlock — проба входа в новую вкладку', () => {
+  it('renders for an admin and «Открыть сразу» calls window.open with _blank', async () => {
+    const openSpy = vi
+      .spyOn(window, 'open')
+      .mockImplementation(() => null);
+    try {
+      const user = await renderAsAdmin();
+
+      expect(screen.getByTestId('admin-entry-probe')).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Открыть сразу' }),
+      );
+
+      expect(openSpy).toHaveBeenCalledWith(
+        '/admin-probe.html#t=probe',
+        '_blank',
+      );
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+});
+
 describe('AdminBlock — окно приложения', () => {
   it('renders the window size as «ширина × высота» for admins', async () => {
     const restore = mockWindowSize(1234, 567);
