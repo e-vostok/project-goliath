@@ -12,10 +12,10 @@ import type {
   AdminOverviewTileDTO,
   AdminPanelLinkDTO,
   AdminPlayerDeleteResultDTO,
+  AdminPlayersDTO,
   AdminResetResultDTO,
   AdminSessionDTO,
   AdminSessionRequest,
-  AdminStateDTO,
   AdminTickLogEntryDTO,
   AdminTickRunResultDTO,
   AuthResponseDTO,
@@ -328,9 +328,31 @@ export const api = {
     });
   },
 
-  /** GET /admin/state — aggregated per-module state views. */
-  adminState(token: string, signal?: AbortSignal) {
-    return apiFetch<AdminStateDTO>('/admin/state', { token, signal });
+  /**
+   * GET /admin/players — one page of the «Игроки» table as
+   * `{items, total}`; `search` is an exact VK id, a nation name
+   * substring or a module hook's name match.
+   */
+  adminPlayers(
+    token: string,
+    query: { search?: string; limit?: number; offset?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminPlayersDTO>(
+      `/admin/players${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
   },
 
   /**
