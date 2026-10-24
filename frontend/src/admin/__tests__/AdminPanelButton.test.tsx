@@ -218,6 +218,51 @@ describe('AdminPanelButton', () => {
     );
   });
 
+  it('spends the armed link — the next click issues a fresh token', async () => {
+    allowAdmin();
+    const calls = { n: 0 };
+    server.use(
+      http.post('*/api/v1/admin/panel-link', () => {
+        calls.n += 1;
+        return HttpResponse.json({
+          token: `tok-${calls.n}`,
+          expires_in_seconds: 60,
+        });
+      }),
+    );
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const user = userEvent.setup();
+    renderButton();
+
+    const link = await screen.findByRole('link', { name: BUTTON_NAME });
+    await user.hover(link);
+    await waitFor(() => expect(calls.n).toBe(1));
+    await waitFor(() =>
+      expect(link).toHaveAttribute(
+        'href',
+        `${window.location.origin}/admin.html#t=tok-1`,
+      ),
+    );
+
+    // First click on the ready link — plain navigation; the panel
+    // tab spends the one-time token, so the href must be dropped.
+    await user.click(link);
+    await waitFor(() => expect(link).toHaveAttribute('href', '#'));
+    expect(openSpy).not.toHaveBeenCalled();
+
+    // Second click within the token lifetime — the spent token is
+    // not reused: a new link is issued and opened instead.
+    fireEvent.click(link);
+    await waitFor(() => expect(calls.n).toBe(2));
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        `${window.location.origin}/admin.html#t=tok-2`,
+        '_blank',
+        'noopener,noreferrer',
+      ),
+    );
+  });
+
   it('shows the Notice and opens nothing when the request fails', async () => {
     allowAdmin();
     countPanelLinks(() => HttpResponse.error());

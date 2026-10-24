@@ -108,6 +108,19 @@ export function AdminPanelButton() {
     return () => window.clearTimeout(timer);
   }, [href]);
 
+  /**
+   * Forget the held link once the browser has taken it — the token
+   * is one-time and the panel tab spends it on arrival, so it must
+   * never be opened twice. Deferred by a task: the navigation still
+   * has to read the armed `href` of this very click.
+   */
+  const dropLink = () => {
+    window.setTimeout(() => {
+      linkRef.current = null;
+      setHref(EMPTY_HREF);
+    }, 0);
+  };
+
   const prefetch = () => {
     void issueLink();
   };
@@ -115,7 +128,9 @@ export function AdminPanelButton() {
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
     const cached = linkRef.current;
     if (cached !== null && Date.now() < cached.freshUntil) {
-      // Ready link — a plain navigation, never blocked.
+      // Ready link — a plain navigation, never blocked; the token
+      // is spent by the arriving panel tab.
+      dropLink();
       return;
     }
     event.preventDefault();
@@ -125,6 +140,7 @@ export function AdminPanelButton() {
         return;
       }
       window.open(url, '_blank', 'noopener,noreferrer');
+      dropLink();
     });
   };
 
