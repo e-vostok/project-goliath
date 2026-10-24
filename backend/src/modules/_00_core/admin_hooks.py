@@ -41,6 +41,18 @@ logger = logging.getLogger(__name__)
 MODULE_SLUG = "00_core"
 LIST_CAP = 200
 
+# The Russian labels of every action code 00_core writes into
+# admin_audit_log — the panel's «Журнал» renders these; a code nobody
+# registered stays raw.
+ADMIN_AUDIT_ACTION_LABELS = {
+    "tick.run": "Запуск хода",
+    "world.reset": "Сброс мира",
+    "player.delete": "Удаление игрока",
+    "panel.login": "Вход в панель",
+    "admin.grant": "Выдача прав",
+    "admin.revoke": "Снятие прав",
+}
+
 
 async def _restart_tick_log_id(session: AsyncSession) -> None:
     """
@@ -397,3 +409,5 @@ def register_admin_hooks() -> None:
         AdminRegistry.register_player_preview(MODULE_SLUG, admin_player_delete_preview)
     if MODULE_SLUG not in AdminRegistry.get_overview_hooks():
         AdminRegistry.register_overview(MODULE_SLUG, admin_overview)
+    if MODULE_SLUG not in AdminRegistry.get_audit_action_hooks():
+        AdminRegistry.register_audit_actions(MODULE_SLUG, ADMIN_AUDIT_ACTION_LABELS)

@@ -14,6 +14,9 @@ transaction and never committing:
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,18 +78,66 @@ class AdminAuditService:
 
     @staticmethod
     async def list_recent(
-        session: AsyncSession, limit: int, before_id: int | None = None
+        session: AsyncSession,
+        limit: int,
+        before_id: int | None = None,
+        actor_vk_user_id: int | None = None,
+        action: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        tz_name: str = "UTC",
     ) -> list[AdminAuditLog]:
         """
         Newest journal rows first (by id). ``before_id`` is the
         pagination cursor: only rows with id below it are returned.
-        Read-only, never commits.
+
+        Optional filters: ``actor_vk_user_id`` and ``action`` match
+        exactly; ``date_from``/``date_to`` are local CALENDAR dates in
+        ``tz_name`` (the tick timezone), inclusive on both ends — the
+        bounds are shifted 1 µs inward because SQLite stores
+        CURRENT_TIMESTAMP as a plain 'YYYY-MM-DD HH:MM:SS' string while
+        bound parameters render with microseconds and an offset, and a
+        row stamped exactly on the bound must still land inside its
+        day. Read-only, never commits.
         """
         stmt = select(AdminAuditLog).order_by(AdminAuditLog.id.desc()).limit(limit)
         if before_id is not None:
             stmt = stmt.where(AdminAuditLog.id < before_id)
+        if actor_vk_user_id is not None:
+            stmt = stmt.where(AdminAuditLog.actor_vk_user_id == actor_vk_user_id)
+        if action is not None:
+            stmt = stmt.where(AdminAuditLog.action == action)
+        epsilon = timedelta(microseconds=1)
+        if date_from is not None:
+            start = datetime.combine(
+                date_from, time.min, tzinfo=ZoneInfo(tz_name)
+            ).astimezone(UTC)
+            stmt = stmt.where(AdminAuditLog.created_at > start - epsilon)
+        if date_to is not None:
+            end = datetime.combine(
+                date_to + timedelta(days=1), time.min, tzinfo=ZoneInfo(tz_name)
+            ).astimezone(UTC)
+            stmt = stmt.where(AdminAuditLog.created_at <= end - epsilon)
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def distinct_actors(session: AsyncSession) -> list[int]:
+        """Every actor_vk_user_id present in the journal, ascending."""
+        result = await session.execute(
+            select(AdminAuditLog.actor_vk_user_id)
+            .distinct()
+            .order_by(AdminAuditLog.actor_vk_user_id)
+        )
+        return [row[0] for row in result.all()]
+
+    @staticmethod
+    async def distinct_actions(session: AsyncSession) -> list[str]:
+        """Every action code present in the journal, alphabetical."""
+        result = await session.execute(
+            select(AdminAuditLog.action).distinct().order_by(AdminAuditLog.action)
+        )
+        return [row[0] for row in result.all()]
 
 
 class AdminGrantService:

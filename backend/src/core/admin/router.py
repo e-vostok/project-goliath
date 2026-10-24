@@ -1,10 +1,12 @@
 """
 HTTP API router for the admin panel.
 
-Eleven endpoints (prefix /api/v1/admin): GET /me, GET /state,
+Sixteen endpoints (prefix /api/v1/admin): GET /me, GET /state,
 GET /players, GET /overview, GET /tick-log, POST /tick/run,
 POST /state/reset, GET /players/{vk_user_id}/delete-preview,
-POST /players/{vk_user_id}/delete, POST /panel-link and POST /session.
+POST /players/{vk_user_id}/delete, POST /panel-link, POST /session,
+GET /audit-log, GET /audit-log/filters, GET /admins, POST /admins and
+POST /admins/{vk_user_id}/revoke.
 
 All but POST /session are gated by require_admin. The panel-link /
 session pair implements the one-time-link entry of 0.11.0 unit 4: an
@@ -38,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -53,7 +56,10 @@ from core.db import get_session, get_session_context
 from core.security.jwt import issue_token
 from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
-from modules._00_core.admin_service import AdminAuditService
+from modules._00_core.admin_service import (
+    AdminAuditService,
+    AdminGrantService,
+)
 from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError, PlayerNotFoundError
@@ -170,6 +176,16 @@ class PlayerDeleteFailedError(CoreDomainError):
         )
 
 
+class CannotRevokeSelfError(CoreDomainError):
+    """An administrator may not revoke their own admin rights."""
+
+    def __init__(self):
+        super().__init__(
+            "An administrator cannot revoke their own rights",
+            "CANNOT_REVOKE_SELF",
+        )
+
+
 def _reset_allowed() -> bool:
     """
     Read ADMIN_ALLOW_RESET at REQUEST time (never import time), so the
@@ -203,6 +219,12 @@ class PlayerDeleteRequest(BaseModel):
     """
 
     confirm_vk_user_id: Any = None
+
+
+class AdminGrantRequest(BaseModel):
+    """Body for POST /admins: the VK id of the player to grant."""
+
+    vk_user_id: int
 
 
 def _tick_log_dict(row: TickLog, config: CoreConfig) -> dict:
@@ -665,6 +687,271 @@ async def admin_player_delete(
         preview,
     )
     return preview
+
+
+async def _display_names_by_vk(
+    session: AsyncSession, vk_user_ids: set[int]
+) -> dict[int, str]:
+    """
+    {vk_user_id: display_name} for the vk ids that still belong to a
+    player, resolved through the player-info hooks (unit 6b). A vk id
+    with no living player — or no module-provided name — is simply
+    absent from the answer, so callers fall back to the id itself.
+    """
+    if not vk_user_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(Player.id, Player.vk_user_id).where(
+                Player.vk_user_id.in_(vk_user_ids)
+            )
+        )
+    ).all()
+    if not rows:
+        return {}
+    info = await _collect_player_info(session, [row.id for row in rows])
+    return {
+        row.vk_user_id: info[row.id]["display_name"]
+        for row in rows
+        if info.get(row.id, {}).get("display_name") is not None
+    }
+
+
+@router.get("/audit-log")
+async def admin_audit_log(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    actor_vk_user_id: int | None = None,
+    action: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    before_id: Annotated[int | None, Query(ge=1)] = None,
+) -> dict:
+    """
+    One page of the permanent admin journal («Журнал», unit 7).
+
+    Filters: ``actor_vk_user_id`` and ``action`` match exactly;
+    ``date_from``/``date_to`` are 'YYYY-MM-DD' local calendar dates in
+    the tick timezone, inclusive. ``before_id`` is the cursor — the
+    answer's ``next_before_id`` (null at the last page) feeds it.
+
+    ``actor_name`` is the display name the player-info hooks know —
+    null when the actor is no longer a player (the journal survives
+    player deletion). ``action_label`` comes from the modules'
+    audit-action registrations; an unregistered code stays raw.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    rows = await AdminAuditService.list_recent(
+        session,
+        limit + 1,
+        before_id=before_id,
+        actor_vk_user_id=actor_vk_user_id,
+        action=action,
+        date_from=date_from,
+        date_to=date_to,
+        tz_name=config.tick.tick_timezone,
+    )
+    items = rows[:limit]
+    labels = AdminRegistry.get_audit_action_labels()
+    names = await _display_names_by_vk(
+        session, {row.actor_vk_user_id for row in items}
+    )
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "created_at": format_game_time(
+                    row.created_at, config.tick.tick_timezone
+                ),
+                "actor_vk_user_id": row.actor_vk_user_id,
+                "actor_name": names.get(row.actor_vk_user_id),
+                "action": row.action,
+                "action_label": labels.get(row.action, row.action),
+                "target_type": row.target_type,
+                "target_id": row.target_id,
+                "summary": row.summary,
+            }
+            for row in items
+        ],
+        "next_before_id": items[-1].id if len(rows) > limit else None,
+    }
+
+
+@router.get("/audit-log/filters")
+async def admin_audit_log_filters(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    The dropdown values of the journal filters: every actor vk id
+    present in the journal (with a display name when the player still
+    exists) and every action code with its registered label — unknown
+    codes arrive raw, as in the log itself.
+    """
+    actors = await AdminAuditService.distinct_actors(session)
+    actions = await AdminAuditService.distinct_actions(session)
+    labels = AdminRegistry.get_audit_action_labels()
+    names = await _display_names_by_vk(session, set(actors))
+    return {
+        "actors": [
+            {"vk_user_id": vk, "display_name": names.get(vk)} for vk in actors
+        ],
+        "actions": [
+            {"action": code, "action_label": labels.get(code, code)}
+            for code in actions
+        ],
+    }
+
+
+@router.get("/admins")
+async def admin_list_admins(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """
+    Everyone holding admin rights: the env allowlist first, then the
+    granted players (a vk id on both shows only its env row — the
+    environment wins). ``granted_by_vk_user_id`` is a plain snapshot —
+    its ``granted_by_name`` resolves only while that vk id is still a
+    player. ``is_self`` lets the panel grey out the caller's own row.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    env_ids = _admin_vk_user_ids()
+    grant_rows = (
+        await session.execute(
+            select(AdminGrant, Player)
+            .join(Player, AdminGrant.player_id == Player.id)
+            .order_by(AdminGrant.granted_at, AdminGrant.id)
+        )
+    ).all()
+
+    vk_ids = set(env_ids)
+    for grant, player in grant_rows:
+        vk_ids.add(player.vk_user_id)
+        if grant.granted_by_vk_user_id is not None:
+            vk_ids.add(grant.granted_by_vk_user_id)
+    names = await _display_names_by_vk(session, vk_ids)
+
+    items: list[dict] = [
+        {
+            "vk_user_id": vk,
+            "display_name": names.get(vk),
+            "source": "env",
+            "granted_by_vk_user_id": None,
+            "granted_by_name": None,
+            "granted_at": None,
+            "is_self": vk == admin.vk_user_id,
+        }
+        for vk in sorted(env_ids)
+    ]
+    for grant, player in grant_rows:
+        if player.vk_user_id in env_ids:
+            continue
+        items.append(
+            {
+                "vk_user_id": player.vk_user_id,
+                "display_name": names.get(player.vk_user_id),
+                "source": "grant",
+                "granted_by_vk_user_id": grant.granted_by_vk_user_id,
+                "granted_by_name": (
+                    names.get(grant.granted_by_vk_user_id)
+                    if grant.granted_by_vk_user_id is not None
+                    else None
+                ),
+                "granted_at": format_game_time(
+                    grant.granted_at, config.tick.tick_timezone
+                ),
+                "is_self": player.vk_user_id == admin.vk_user_id,
+            }
+        )
+    return items
+
+
+async def _admin_subject(
+    session: AsyncSession, player: Player
+) -> str:
+    """The audit-summary name of a player: its display name or the vk id."""
+    names = await _display_names_by_vk(session, {player.vk_user_id})
+    return names.get(player.vk_user_id, str(player.vk_user_id))
+
+
+@router.post("/admins")
+async def admin_grant_admin(
+    body: AdminGrantRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Grant admin rights to an existing player (unit 7).
+
+    404 PLAYER_NOT_FOUND for an unknown vk id; idempotent for an
+    already granted one. A grant that actually changes state writes
+    one ``admin.grant`` journal row in the request transaction.
+    """
+    player = await _load_player_by_vk_id(session, body.vk_user_id)
+    already = await AdminGrantService.is_granted(session, player.vk_user_id)
+    await AdminGrantService.grant(
+        session, player.id, by_vk_user_id=admin.vk_user_id
+    )
+    if not already:
+        await AdminAuditService.record(
+            session,
+            actor_vk_user_id=admin.vk_user_id,
+            action="admin.grant",
+            target_type="player",
+            target_id=str(body.vk_user_id),
+            summary=(
+                "Выданы права администратора игроку "
+                f"{await _admin_subject(session, player)}."
+            ),
+            details={
+                "player_id": player.id,
+                "vk_user_id": body.vk_user_id,
+            },
+        )
+    await session.commit()
+    return {"granted": body.vk_user_id}
+
+
+@router.post("/admins/{vk_user_id}/revoke")
+async def admin_revoke_admin(
+    vk_user_id: int,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Revoke a player's admin rights (unit 7).
+
+    The caller may never revoke themselves (409 CANNOT_REVOKE_SELF —
+    checked before the service); the service itself refuses env
+    admins (409 ROOT_ADMIN_PROTECTED) and the last remaining admin
+    (409 LAST_ADMIN). A revoke that removes a real grant writes one
+    ``admin.revoke`` journal row in the request transaction.
+    """
+    if vk_user_id == admin.vk_user_id:
+        raise CannotRevokeSelfError()
+    player = await _load_player_by_vk_id(session, vk_user_id)
+    was_granted = await AdminGrantService.is_granted(session, player.vk_user_id)
+    await AdminGrantService.revoke(session, player.id)
+    if was_granted:
+        await AdminAuditService.record(
+            session,
+            actor_vk_user_id=admin.vk_user_id,
+            action="admin.revoke",
+            target_type="player",
+            target_id=str(vk_user_id),
+            summary=(
+                "Сняты права администратора у игрока "
+                f"{await _admin_subject(session, player)}."
+            ),
+            details={
+                "player_id": player.id,
+                "vk_user_id": vk_user_id,
+            },
+        )
+    await session.commit()
+    return {"revoked": vk_user_id}
 
 
 def _no_store_error(status_code: int, code: str, detail: str) -> JSONResponse:
