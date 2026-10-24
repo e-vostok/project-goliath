@@ -1,19 +1,28 @@
 /**
  * FilterPanel — the in-flow filter panel under the toolbar (Spec 5.5):
- * one labelled group per filterable column in a wrapping grid
- * (`repeat(auto-fill, minmax(200px, 1fr))`). It sits in the normal
- * document flow across the full window width minus the side padding,
- * so it can never float over the table or push the window sideways.
- * Filter kinds per column come from `column.filters`: text (one input
- * «содержит…»), number_range and date_range («от»/«до» pair, labelled
- * by `filter_label`), presence («Все / Есть / Нет») and
- * select_or_contains — a dropdown of the nations the Registry knows
- * (`nationOptions`) plus the same free-text «содержит…» input; the
- * two can be used independently. After the column groups come the
- * registered filter extensions of the table (Spec 5.5): one labelled
- * «Все / Да» control each, with the «Да» set's loading and error
- * states inside the group.
+ * one labelled group per filterable column in a strict three-column
+ * grid (`repeat(3, minmax(0, 1fr))`). It sits in the normal document
+ * flow across the full window width minus the side padding, so it can
+ * never float over the table or push the window sideways.
+ *
+ * The unit-13b grid rule (PNG 09c/10/10b): ONE GROUP = ONE GRID CELL =
+ * the 12/16 `ink-muted` label plus EXACTLY ONE ROW of controls, every
+ * control 36 px high and shrinkable (`min-width: 0` on the VKUI
+ * wrapper is what stops a control from running out of its cell). What
+ * the row holds depends on the column's filter kinds (`filters`): a
+ * `text` column gets one «содержит…» input; `number_range` and
+ * `date_range` get the «от»/«до» pair side by side (50/50); a
+ * `select_or_contains` column gets the nations dropdown (3 parts) and
+ * the «содержит…» input (2 parts) in the same row — the two halves
+ * filter independently. A `presence` filter never shares the column's
+ * group: it becomes its OWN grid cell right after it, labelled
+ * «<столбец>: наличие», with the «Все / Есть / Нет» segmented control.
+ * After the column cells come the registered filter extensions of the
+ * table (Spec 5.5): one labelled «Все / Да» cell each, with the «Да»
+ * set's loading and error states inside it.
  */
+
+import { Fragment } from 'react';
 
 import { Input, NativeSelect, SegmentedControl } from '@vkontakte/vkui';
 
@@ -49,7 +58,7 @@ function fieldOf<K extends ColumnFilterValue['kind']>(
   );
 }
 
-/** PNG 10 — the filter group's caption: 12/16 `ink-muted`. */
+/** PNG 09c — the filter cell's caption: 12/16 `ink-muted`. */
 const GROUP_LABEL_STYLE: React.CSSProperties = {
   display: 'block',
   fontSize: 12,
@@ -58,25 +67,60 @@ const GROUP_LABEL_STYLE: React.CSSProperties = {
   marginBottom: 4,
 };
 
+/**
+ * Every control of the one row: 36 px high and allowed to shrink below
+ * its content size — VKUI field wrappers keep their own min-width and
+ * would otherwise run out of the cell.
+ */
+const CONTROL_STYLE: React.CSSProperties = {
+  height: 36,
+  minWidth: 0,
+};
+
+/** The cell's single control row; controls never wrap to a second one. */
+const CONTROL_ROW_STYLE: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  minWidth: 0,
+};
+
 function RangeInputs({
   kind,
   inputType,
   label,
+  scaleMin = null,
+  scaleMax = null,
   range,
   onChange,
 }: {
   kind: 'number_range' | 'date_range';
   inputType: 'number' | 'date';
   label: string;
+  /**
+   * A scaled column (the players' «Рейтинг» — `scale_min`/`scale_max`
+   * of the DTO) writes the bounds into the placeholders:
+   * «от −100» / «до +100»; other ranges keep «от»/«до».
+   */
+  scaleMin?: number | null;
+  scaleMax?: number | null;
   range: { from: string; to: string } | undefined;
   onChange: (next: ColumnFilterValue) => void;
 }) {
+  const fromPlaceholder =
+    scaleMin !== null
+      ? REGISTRY_TEXTS.filterFromWithBound(scaleMin)
+      : REGISTRY_TEXTS.filterFromLabel;
+  const toPlaceholder =
+    scaleMax !== null
+      ? REGISTRY_TEXTS.filterToWithBound(scaleMax)
+      : REGISTRY_TEXTS.filterToLabel;
   return (
-    <div style={{ display: 'flex', gap: 8 }}>
+    <>
       <Input
         type={inputType}
+        style={{ ...CONTROL_STYLE, flex: '1 1 0' }}
         aria-label={`${label}: ${REGISTRY_TEXTS.filterFromLabel}`}
-        placeholder={REGISTRY_TEXTS.filterFromLabel}
+        placeholder={fromPlaceholder}
         value={range?.from ?? ''}
         onChange={(e) =>
           onChange({ kind, from: e.target.value, to: range?.to ?? '' })
@@ -84,14 +128,15 @@ function RangeInputs({
       />
       <Input
         type={inputType}
+        style={{ ...CONTROL_STYLE, flex: '1 1 0' }}
         aria-label={`${label}: ${REGISTRY_TEXTS.filterToLabel}`}
-        placeholder={REGISTRY_TEXTS.filterToLabel}
+        placeholder={toPlaceholder}
         value={range?.to ?? ''}
         onChange={(e) =>
           onChange({ kind, from: range?.from ?? '', to: e.target.value })
         }
       />
-    </div>
+    </>
   );
 }
 
@@ -112,9 +157,9 @@ export function FilterPanel({
   nationOptions?: string[];
   /**
    * Filter extensions the table registered (Spec 5.5) — one labelled
-   * «Все / Да» control per extension after the column groups; the
-   * «Да» number set loads on demand and its status is shown inside
-   * the same group.
+   * «Все / Да» cell per extension after the column cells; the «Да»
+   * number set loads on demand and its status is shown inside the same
+   * cell.
    */
   extensions?: readonly TableFilterExtension[];
   extensionValues?: Record<string, ExtensionFilterValue>;
@@ -151,82 +196,99 @@ export function FilterPanel({
         const selectOrContains = fieldOf(list, 'select_or_contains');
 
         return (
-          <div key={col.id} data-testid={`filter-item-${col.id}`}>
-            <span style={GROUP_LABEL_STYLE}>{label}</span>
+          <Fragment key={col.id}>
             <div
-              style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+              data-testid={`filter-item-${col.id}`}
+              style={{ minWidth: 0 }}
             >
-              {col.filters.includes('text') && (
-                <Input
-                  aria-label={`${label}: ${REGISTRY_TEXTS.filterContainsLabel}`}
-                  placeholder={REGISTRY_TEXTS.filterContainsPlaceholder}
-                  value={text?.value ?? ''}
-                  onChange={(e) =>
-                    onChange(
-                      upsert(list, { kind: 'text', value: e.target.value }),
-                    )
-                  }
-                />
-              )}
-              {col.filters.includes('number_range') && (
-                <RangeInputs
-                  kind="number_range"
-                  inputType="number"
-                  label={label}
-                  range={range}
-                  onChange={(next) => onChange(upsert(list, next))}
-                />
-              )}
-              {col.filters.includes('date_range') && (
-                <RangeInputs
-                  kind="date_range"
-                  inputType="date"
-                  label={label}
-                  range={dates}
-                  onChange={(next) => onChange(upsert(list, next))}
-                />
-              )}
-              {col.filters.includes('select_or_contains') && (
-                <>
-                  <NativeSelect
-                    aria-label={`${label}: ${REGISTRY_TEXTS.filterSelectLabel}`}
-                    value={selectOrContains?.selected ?? ''}
-                    onChange={(e) =>
-                      onChange(
-                        upsert(list, {
-                          kind: 'select_or_contains',
-                          selected: e.target.value,
-                          contains: selectOrContains?.contains ?? '',
-                        }),
-                      )
-                    }
-                  >
-                    <option value="">{REGISTRY_TEXTS.filterSelectAll}</option>
-                    {nationOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </NativeSelect>
+              <span style={GROUP_LABEL_STYLE}>{label}</span>
+              <div style={CONTROL_ROW_STYLE}>
+                {col.filters.includes('text') && (
                   <Input
+                    style={{ ...CONTROL_STYLE, flex: '1 1 0' }}
                     aria-label={`${label}: ${REGISTRY_TEXTS.filterContainsLabel}`}
                     placeholder={REGISTRY_TEXTS.filterContainsPlaceholder}
-                    value={selectOrContains?.contains ?? ''}
+                    value={text?.value ?? ''}
                     onChange={(e) =>
                       onChange(
-                        upsert(list, {
-                          kind: 'select_or_contains',
-                          selected: selectOrContains?.selected ?? '',
-                          contains: e.target.value,
-                        }),
+                        upsert(list, { kind: 'text', value: e.target.value }),
                       )
                     }
                   />
-                </>
-              )}
-              {col.filters.includes('presence') && (
+                )}
+                {col.filters.includes('number_range') && (
+                  <RangeInputs
+                    kind="number_range"
+                    inputType="number"
+                    label={label}
+                    scaleMin={col.scale_min}
+                    scaleMax={col.scale_max}
+                    range={range}
+                    onChange={(next) => onChange(upsert(list, next))}
+                  />
+                )}
+                {col.filters.includes('date_range') && (
+                  <RangeInputs
+                    kind="date_range"
+                    inputType="date"
+                    label={label}
+                    range={dates}
+                    onChange={(next) => onChange(upsert(list, next))}
+                  />
+                )}
+                {col.filters.includes('select_or_contains') && (
+                  <>
+                    <NativeSelect
+                      style={{ ...CONTROL_STYLE, flex: '3 1 0' }}
+                      aria-label={`${label}: ${REGISTRY_TEXTS.filterSelectLabel}`}
+                      value={selectOrContains?.selected ?? ''}
+                      onChange={(e) =>
+                        onChange(
+                          upsert(list, {
+                            kind: 'select_or_contains',
+                            selected: e.target.value,
+                            contains: selectOrContains?.contains ?? '',
+                          }),
+                        )
+                      }
+                    >
+                      <option value="">{REGISTRY_TEXTS.filterSelectAll}</option>
+                      {nationOptions.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <Input
+                      style={{ ...CONTROL_STYLE, flex: '2 1 0' }}
+                      aria-label={`${label}: ${REGISTRY_TEXTS.filterContainsLabel}`}
+                      placeholder={REGISTRY_TEXTS.filterContainsPlaceholder}
+                      value={selectOrContains?.contains ?? ''}
+                      onChange={(e) =>
+                        onChange(
+                          upsert(list, {
+                            kind: 'select_or_contains',
+                            selected: selectOrContains?.selected ?? '',
+                            contains: e.target.value,
+                          }),
+                        )
+                      }
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+            {col.filters.includes('presence') && (
+              <div
+                data-testid={`filter-item-${col.id}-presence`}
+                style={{ minWidth: 0 }}
+              >
+                <span style={GROUP_LABEL_STYLE}>
+                  {REGISTRY_TEXTS.filterPresenceTitle(label)}
+                </span>
                 <SegmentedControl
                   size="m"
+                  style={CONTROL_STYLE}
                   aria-label={`${label}: ${REGISTRY_TEXTS.filterPresenceLabel}`}
                   value={presence?.value ?? 'any'}
                   onChange={(value) => {
@@ -242,18 +304,23 @@ export function FilterPanel({
                     { label: REGISTRY_TEXTS.presenceNone, value: 'none' },
                   ]}
                 />
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </Fragment>
         );
       })}
       {extensions.map((ext) => {
         const state = extensionStates[ext.id];
         return (
-          <div key={ext.id} data-testid={`filter-ext-${ext.id}`}>
+          <div
+            key={ext.id}
+            data-testid={`filter-ext-${ext.id}`}
+            style={{ minWidth: 0 }}
+          >
             <span style={GROUP_LABEL_STYLE}>{ext.label}</span>
             <SegmentedControl
               size="m"
+              style={CONTROL_STYLE}
               aria-label={ext.label}
               value={extensionValues[ext.id] ?? 'any'}
               onChange={(value) =>

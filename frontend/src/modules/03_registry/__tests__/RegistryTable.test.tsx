@@ -154,6 +154,134 @@ describe('RegistryTable — nation cells of the orders table (unit 13)', () => {
   });
 });
 
+/**
+ * Unit 13b (Owner decision 24.10.2026): every nation name that opens
+ * the «Государство» subscreen is a plain `ink` button — never the blue
+ * `action` — in all three tables; the order title link is the only
+ * coloured one.
+ */
+describe('RegistryTable — nation names are plain ink (unit 13b)', () => {
+  const NATIONS_TABLE: RegistryTableDTO = {
+    id: 'nations',
+    title: 'Государства',
+    icon: 'nations',
+    empty_text: 'Государств пока нет',
+    default_sort: { column: 'number', direction: 'asc' },
+    columns: [
+      {
+        id: 'name', title: 'Название', type: 'text', width_px: 430,
+        sortable: true, filters: ['text'], filter_label: null,
+        header_icon: null, searchable: true, stub: false,
+        scale_min: null, scale_max: null,
+      },
+    ],
+  };
+
+  it('players table: the `nation` cell link is `ink` and still opens the subscreen', async () => {
+    const user = userEvent.setup();
+    const onOpenNation = vi.fn();
+    render(
+      <RegistryTable
+        table={{
+          ...ORDERS_TABLE,
+          id: 'players',
+          columns: [
+            {
+              id: 'nation', title: 'Государство', type: 'nation',
+              width_px: 292, sortable: true,
+              filters: ['select_or_contains', 'presence'],
+              filter_label: null, header_icon: null, searchable: true,
+              stub: false, scale_min: null, scale_max: null,
+            },
+          ],
+        }}
+        rows={[
+          {
+            key: 'p1',
+            cells: {
+              nation: {
+                id: 'n1', name: 'Новгород', color: '#C0392B',
+                flag_url: null,
+              },
+            },
+          },
+        ]}
+        view={EMPTY_VIEW}
+        onSortClick={() => {}}
+        onOpenNation={onOpenNation}
+      />,
+    );
+
+    const link = screen.getByRole('button', { name: 'Новгород' });
+    expect(link.style.color).toBe('var(--pax-ink)');
+    await user.click(link);
+    expect(onOpenNation).toHaveBeenCalledWith('n1');
+  });
+
+  it('nations table: the «Название» name link is `ink` and opens by row key', async () => {
+    const user = userEvent.setup();
+    const onOpenNation = vi.fn();
+    render(
+      <RegistryTable
+        table={NATIONS_TABLE}
+        rows={[{ key: 'n1', cells: { name: 'Новгород' } }]}
+        view={EMPTY_VIEW}
+        onSortClick={() => {}}
+        onOpenNation={onOpenNation}
+      />,
+    );
+
+    const link = screen.getByRole('button', { name: 'Новгород' });
+    expect(link.style.color).toBe('var(--pax-ink)');
+    await user.click(link);
+    expect(onOpenNation).toHaveBeenCalledWith('n1');
+  });
+
+  it('orders table: the `nation` cell link is `ink`; the order title link stays `action`', async () => {
+    const onOpenNation = vi.fn();
+    const ordersWithNation: RegistryTableDTO = {
+      ...ORDERS_TABLE,
+      columns: [
+        {
+          id: 'nation', title: 'Государство', type: 'nation',
+          width_px: 168, sortable: true, filters: ['select_or_contains'],
+          filter_label: null, header_icon: null, searchable: true,
+          stub: false, scale_min: null, scale_max: null,
+        },
+        ORDERS_TABLE.columns[1],
+      ],
+    };
+    render(
+      <RegistryTable
+        table={ordersWithNation}
+        rows={[
+          {
+            key: 'o5',
+            cells: {
+              number: 5,
+              nation: {
+                id: 'n1', name: 'Новгород', color: '#C0392B',
+                flag_url: null,
+              },
+              title: { text: 'О гарнизонах', action: 'order:5' },
+            },
+          },
+        ]}
+        view={EMPTY_VIEW}
+        onSortClick={() => {}}
+        onOpenNation={onOpenNation}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Новгород' }).style.color,
+    ).toBe('var(--pax-ink)');
+    expect(
+      screen.getByRole('button', { name: 'О гарнизонах' }).style.color,
+    ).toBe('var(--pax-action)');
+  });
+});
+
 describe('RegistryTable — header icon', () => {
   it('shows the icon with the column title as tooltip and accessible label', () => {
     renderTable();
