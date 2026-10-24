@@ -40,6 +40,7 @@ docs/prompts_templates.md
 docs/01_GAME_BIBLE/**
 docs/02_SYSTEM_SPECS/**
 docs/03_ROADMAP/**
+docs/06_DESIGN/**
 configs/**
 backend/src/**
 backend/tests/**
