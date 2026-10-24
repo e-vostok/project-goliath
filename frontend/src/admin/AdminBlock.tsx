@@ -93,6 +93,109 @@ function readWindowMetrics(): WindowMetrics {
   };
 }
 
+const ENTRY_PROBE_URL = '/admin-probe.html#t=probe';
+const ENTRY_PROBE_MARKER_KEY = 'pax.admin-probe.marker';
+
+/**
+ * Write the iframe-side marker into both web storages; the probe tab
+ * then reports whether it can see them. Returns a short human-readable
+ * outcome (storage access can throw inside the VK iframe).
+ */
+function writeEntryProbeMarkers(): string {
+  const value = `probe-${Date.now()}`;
+  const parts: string[] = [];
+  for (const name of ['localStorage', 'sessionStorage'] as const) {
+    try {
+      window[name].setItem(ENTRY_PROBE_MARKER_KEY, value);
+      parts.push(`${name}: записано`);
+    } catch {
+      parts.push(`${name}: недоступно`);
+    }
+  }
+  return parts.join(', ');
+}
+
+/**
+ * «Проба входа в новую вкладку» — temporary probe for 0.11.0 unit 1.
+ * Three ways to open the static admin-probe page; the tab itself reports
+ * what survived the trip. Removed together with the old block in unit 5.
+ */
+function AdminEntryProbe() {
+  const { token } = useSession();
+  const [log, setLog] = useState<string[]>([]);
+
+  const append = (line: string) => setLog((prev) => [...prev, line]);
+
+  const openNow = () => {
+    const markers = writeEntryProbeMarkers();
+    const opened = window.open(ENTRY_PROBE_URL, '_blank');
+    append(
+      'а) сразу по щелчку: ' +
+        (opened === null ? 'ЗАБЛОКИРОВАНО браузером' : 'вкладка открыта') +
+        ` (${markers})`,
+    );
+  };
+
+  const openAfterFetch = async () => {
+    const markers = writeEntryProbeMarkers();
+    try {
+      await api.adminMe(token);
+    } catch {
+      append(`б) после запроса: запрос не прошёл (${markers})`);
+      return;
+    }
+    const opened = window.open(ENTRY_PROBE_URL, '_blank');
+    append(
+      'б) после запроса: ' +
+        (opened === null ? 'ЗАБЛОКИРОВАНО браузером' : 'вкладка открыта') +
+        ` (${markers})`,
+    );
+  };
+
+  const openAsLink = () => {
+    append(`в) ссылка: нажата (${writeEntryProbeMarkers()})`);
+  };
+
+  return (
+    <Div data-testid="admin-entry-probe">
+      <Header size="s" style={{ paddingLeft: 0 }}>
+        Проба входа в новую вкладку
+      </Header>
+      <Footnote style={{ display: 'block', marginBottom: 8 }}>
+        Временная проверка (версия 0.11.0). Нажмите каждую кнопку по
+        очереди и пришлите отчёт из открывшейся вкладки.
+      </Footnote>
+      <ButtonGroup stretched>
+        <Button size="m" mode="secondary" onClick={openNow}>
+          Открыть сразу
+        </Button>
+        <Button
+          size="m"
+          mode="secondary"
+          onClick={() => void openAfterFetch()}
+        >
+          Открыть после запроса
+        </Button>
+        <Button
+          size="m"
+          mode="secondary"
+          href={ENTRY_PROBE_URL}
+          target="_blank"
+          rel="noopener"
+          onClick={openAsLink}
+        >
+          Открыть как ссылка
+        </Button>
+      </ButtonGroup>
+      {log.map((line, i) => (
+        <Footnote key={i} style={{ display: 'block', marginTop: 8 }}>
+          {line}
+        </Footnote>
+      ))}
+    </Div>
+  );
+}
+
 /** «Окно приложения» — live window metrics for the 0.9.0 layout probe. */
 function WindowProbe() {
   const [metrics, setMetrics] = useState(readWindowMetrics);
@@ -302,6 +405,8 @@ export function AdminBlock({ onWorldChanged }: AdminBlockProps) {
       </Div>
 
       <WindowProbe />
+
+      <AdminEntryProbe />
 
       {confirmingReset && (
         <Div>
