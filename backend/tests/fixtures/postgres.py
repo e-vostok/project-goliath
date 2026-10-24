@@ -227,6 +227,8 @@ def pg_clean(pg_schema: str) -> None:
             conn.execute(sa.text("DELETE FROM provinces"))
             conn.execute(sa.text("DELETE FROM scheduled_actions"))
             conn.execute(sa.text("DELETE FROM nations"))
+            conn.execute(sa.text("DELETE FROM admin_audit_log"))
+            conn.execute(sa.text("DELETE FROM admin_grants"))
             conn.execute(sa.text("DELETE FROM players"))
             conn.execute(sa.text("DELETE FROM tick_log"))
             conn.execute(
