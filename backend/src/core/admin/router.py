@@ -1,10 +1,19 @@
 """
 HTTP API router for the admin panel.
 
-Seven endpoints, all gated by require_admin (prefix /api/v1/admin):
-GET /me, GET /state, GET /tick-log, POST /tick/run, POST /state/reset,
-GET /players/{vk_user_id}/delete-preview and
-POST /players/{vk_user_id}/delete.
+Nine endpoints (prefix /api/v1/admin): GET /me, GET /state,
+GET /tick-log, POST /tick/run, POST /state/reset,
+GET /players/{vk_user_id}/delete-preview,
+POST /players/{vk_user_id}/delete, POST /panel-link and POST /session.
+
+All but POST /session are gated by require_admin. The panel-link /
+session pair implements the one-time-link entry of 0.11.0 unit 4: an
+administrator inside the Mini App gets a link token, a bare browser tab
+exchanges it for a short Bearer JWT — the same kind every other admin
+endpoint accepts, with rights re-read from the database on each request.
+Both responses carry Cache-Control: no-store; a successful exchange
+writes one panel.login audit row, a failed one a WARNING log line —
+the raw token is never stored nor logged.
 
 The router owns no module tables: state views and resets are delegated to
 module-provided hooks in AdminRegistry; the only tables it touches directly
@@ -31,14 +40,17 @@ import logging
 import os
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.admin import panel_access
 from core.admin.registry import AdminRegistry
 from core.admin.security import is_admin_user, require_admin
 from core.db import get_session, get_session_context
+from core.security.jwt import issue_token
 from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.admin_service import AdminAuditService
@@ -167,6 +179,12 @@ class StateResetRequest(BaseModel):
 
     confirm: Any = None
     module_slug: str | None = None
+
+
+class PanelSessionRequest(BaseModel):
+    """Body for POST /session: the one-time link token from the tab."""
+
+    token: str
 
 
 class PlayerDeleteRequest(BaseModel):
@@ -481,3 +499,90 @@ async def admin_player_delete(
         preview,
     )
     return preview
+
+
+def _no_store_error(status_code: int, code: str, detail: str) -> JSONResponse:
+    """An ErrorResponse-shaped answer with Cache-Control: no-store."""
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": detail, "code": code},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/panel-link")
+async def admin_panel_link(
+    response: Response,
+    admin: Player = Depends(require_admin),
+) -> dict:
+    """
+    Issue a one-time entry link for the admin panel (a ticket, no audit row).
+
+    The token is random (secrets.token_urlsafe(32)); the store keeps only
+    its SHA-256 hash, the player id and the expiry — never the token
+    itself, never in logs. The client sends it to the panel tab inside
+    the URL fragment, so it reaches neither server logs nor Referer.
+    """
+    settings = CoreConfig.from_yaml(
+        CoreConfig.get_default_config_path()
+    ).admin_panel
+    token = panel_access.store.issue(
+        admin.id,
+        ttl_seconds=settings.link_ttl_seconds,
+        max_per_player=settings.max_pending_links_per_player,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {"token": token, "expires_in_seconds": settings.link_ttl_seconds}
+
+
+@router.post("/session")
+async def admin_panel_session(
+    body: PanelSessionRequest,
+    session: AsyncSession = Depends(get_session),
+) -> JSONResponse:
+    """
+    Exchange a one-time link token for a short panel session — NO Bearer.
+
+    redeem() marks the token spent before any await, so the exchange is
+    atomic and unknown/expired/used tokens all answer the same 401
+    PANEL_LINK_INVALID. The rights check is a fresh database read
+    (is_admin_user): a player whose grant was revoked between issue and
+    exchange gets 403 ADMIN_REQUIRED and the token stays spent. A
+    successful exchange commits one panel.login audit row and issues an
+    ordinary short Bearer JWT — require_admin serves it like any other.
+    Every answer carries Cache-Control: no-store; failures log a WARNING
+    without the token.
+    """
+    player_id = panel_access.store.redeem(body.token)
+    if player_id is None:
+        logger.warning("Admin panel session rejected: invalid one-time link")
+        return _no_store_error(
+            401, "PANEL_LINK_INVALID", "The panel link is invalid or expired"
+        )
+
+    player = await session.get(Player, player_id)
+    if player is None or not await is_admin_user(session, player.vk_user_id):
+        logger.warning(
+            "Admin panel session rejected: player %s no longer holds admin rights",
+            player_id,
+        )
+        return _no_store_error(403, "ADMIN_REQUIRED", "Admin privileges required")
+
+    settings = CoreConfig.from_yaml(
+        CoreConfig.get_default_config_path()
+    ).admin_panel
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=player.vk_user_id,
+        action="panel.login",
+        summary="Вход в панель администратора.",
+    )
+    access_token = issue_token(player.id, settings.session_ttl_minutes)
+    await session.commit()
+    return JSONResponse(
+        {
+            "access_token": access_token,
+            "expires_in_seconds": settings.session_ttl_minutes * 60,
+        },
+        headers={"Cache-Control": "no-store"},
+    )

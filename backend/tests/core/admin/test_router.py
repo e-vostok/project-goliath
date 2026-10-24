@@ -72,6 +72,7 @@ ADMIN_ROUTES = [
     ("GET", "/api/v1/admin/tick-log", None),
     ("POST", "/api/v1/admin/tick/run", None),
     ("POST", "/api/v1/admin/state/reset", {"confirm": True}),
+    ("POST", "/api/v1/admin/panel-link", None),
 ]
 
 
