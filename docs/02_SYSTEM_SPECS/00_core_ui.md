@@ -3,7 +3,7 @@ module: 00_core
 spec_part: ui
 spec_version: 1.1
 bible_ref: docs/01_GAME_BIBLE/00_core.md
-version: 0.9.0
+version: 0.10.0
 ---
 
 # 02_SYSTEM_SPECS / 00_core — Единый интерфейс (UI Spec)
