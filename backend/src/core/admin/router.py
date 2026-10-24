@@ -7,18 +7,22 @@ GET /players/{vk_user_id}/delete-preview and
 POST /players/{vk_user_id}/delete.
 
 The router owns no module tables: state views and resets are delegated to
-module-provided hooks in AdminRegistry; the only table it touches directly
-is the read-only tick_log audit trail. A manual tick reuses
-core.tick.scheduler.run_scheduled_tick on a FRESH session — the same code
-path the automatic scheduler takes — so no tick logic is duplicated here.
+module-provided hooks in AdminRegistry; the only tables it touches directly
+are the read-only tick_log audit trail and the admin_audit_log journal —
+every mutating endpoint (tick.run, world.reset, player.delete) writes one
+journal row inside its request transaction via AdminAuditService. A manual
+tick reuses core.tick.scheduler.run_scheduled_tick on a FRESH session — the
+same code path the automatic scheduler takes — so no tick logic is
+duplicated here.
 
 Player deletion is the exceptional test-player cleanup tool: the preview
 aggregates every module's PlayerPreviewHook into a fixed-shape "what will
 disappear" response, and the delete itself goes through
 PlayerService.delete_player — one transaction, all-or-nothing — after
 three guards: the retyped confirm_vk_user_id must match the path id, the
-target may not be the caller's own player, and may not be on the admin
-allowlist at all. A WARNING audit line is logged per deletion.
+target may not be the caller's own player, and may not be an admin at all
+(env allowlist or admin_grants row). A WARNING audit line is logged per
+deletion, alongside the journal row.
 """
 
 from __future__ import annotations
@@ -33,10 +37,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.registry import AdminRegistry
-from core.admin.security import is_admin_vk_user, require_admin
+from core.admin.security import is_admin_user, require_admin
 from core.db import get_session, get_session_context
 from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
+from modules._00_core.admin_service import AdminAuditService
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError, PlayerNotFoundError
 from modules._00_core.models import GameClock, Player, TickLog
@@ -127,11 +132,11 @@ class CannotDeleteSelfError(CoreDomainError):
 
 
 class CannotDeleteAdminError(CoreDomainError):
-    """Players whose VK id is on the admin allowlist are never deletable."""
+    """Players with admin rights (env allowlist or a grant) are never deletable."""
 
     def __init__(self):
         super().__init__(
-            "Players on the admin allowlist cannot be deleted",
+            "Players with admin rights cannot be deleted",
             "CANNOT_DELETE_ADMIN",
         )
 
@@ -261,6 +266,9 @@ async def admin_tick_run(
     TICK_IN_PROGRESS instead of running a second time.
     """
     # Release the auth read transaction; nothing was written on it.
+    # rollback() expires the admin object, so snapshot the vk id now —
+    # reading it afterwards would need a lazy refresh (no async lazy).
+    admin_vk_id = admin.vk_user_id
     await session.rollback()
     async with get_session_context() as tick_session:
         outcome = await run_scheduled_tick(tick_session)
@@ -277,6 +285,21 @@ async def admin_tick_run(
             select(TickLog).order_by(TickLog.id.desc()).limit(1)
         )
         latest_log = log_result.scalar_one_or_none()
+    # One audit row on the request session, committed separately from
+    # the tick's own transaction: the journal records the action even
+    # when the tick itself failed and was rolled back.
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin_vk_id,
+        action="tick.run",
+        summary=(
+            f"Запущен ход вручную: мир на ходе {clock.current_turn}."
+            if ok
+            else "Запущен ход вручную: тик завершился ошибкой."
+        ),
+        details={"ok": ok, "current_turn": clock.current_turn},
+    )
+    await session.commit()
     tz_name = CoreConfig.from_yaml(
         CoreConfig.get_default_config_path()
     ).tick.tick_timezone
@@ -334,6 +357,13 @@ async def admin_state_reset(
         logger.exception("Admin reset failed while running hook '%s'", failed_slug)
         raise ResetFailedError(failed_slug, exc) from exc
 
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="world.reset",
+        summary="Выполнен сброс состояния мира.",
+        details={"reset": plan},
+    )
     await session.commit()
     return {"reset": plan}
 
@@ -404,9 +434,9 @@ async def admin_player_delete(
     Delete a player and everything tied to them — irreversible.
 
     Guards, in order: the target must exist (404); it may not be the
-    caller's own player (409 CANNOT_DELETE_SELF) nor any allowlisted
-    admin (409 CANNOT_DELETE_ADMIN); the retyped confirm_vk_user_id must
-    match the path id (422 CONFIRMATION_MISMATCH).
+    caller's own player (409 CANNOT_DELETE_SELF) nor any admin — env
+    allowlist or admin_grants row (409 CANNOT_DELETE_ADMIN); the retyped
+    confirm_vk_user_id must match the path id (422 CONFIRMATION_MISMATCH).
 
     The deletion itself is PlayerService.delete_player on the request
     session — one transaction, all-or-nothing: nation deletion
@@ -419,7 +449,7 @@ async def admin_player_delete(
 
     if player.vk_user_id == admin.vk_user_id:
         raise CannotDeleteSelfError()
-    if is_admin_vk_user(player.vk_user_id):
+    if await is_admin_user(session, player.vk_user_id):
         raise CannotDeleteAdminError()
     if body.confirm_vk_user_id is None or str(body.confirm_vk_user_id).strip() != str(
         vk_user_id
@@ -434,6 +464,15 @@ async def admin_player_delete(
         logger.exception("Admin player delete failed for vk_user_id %s", vk_user_id)
         raise PlayerDeleteFailedError(exc) from exc
 
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="player.delete",
+        target_type="player",
+        target_id=str(vk_user_id),
+        summary=f"Удалён игрок {vk_user_id}.",
+        details=preview,
+    )
     await session.commit()
     logger.warning(
         "admin_player_delete admin_vk_user_id=%s target_vk_user_id=%s counts=%s",

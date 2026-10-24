@@ -129,7 +129,7 @@ class TestRequireAdmin:
         monkeypatch.setenv("ADMIN_VK_USER_IDS", "555")
         player = await seed_player(test_db_session, vk_user_id=555)
 
-        result = await require_admin(player=player)
+        result = await require_admin(player=player, session=test_db_session)
 
         assert result is player
 
@@ -142,7 +142,7 @@ class TestRequireAdmin:
         player = await seed_player(test_db_session, vk_user_id=777)
 
         with pytest.raises(AdminRequiredError) as exc_info:
-            await require_admin(player=player)
+            await require_admin(player=player, session=test_db_session)
 
         assert exc_info.value.code == "ADMIN_REQUIRED"
 
