@@ -184,6 +184,15 @@ export interface AdminMeDTO {
   is_admin: boolean;
 }
 
+/**
+ * POST /admin/panel-link — the one-time link token. It goes into the
+ * panel page's `#t=` fragment and lives `expires_in_seconds`.
+ */
+export interface AdminPanelLinkDTO {
+  token: string;
+  expires_in_seconds: number;
+}
+
 /** POST /admin/session request — the one-time link token from `#t=`. */
 export interface AdminSessionRequest {
   token: string;
