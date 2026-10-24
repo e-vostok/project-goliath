@@ -1,0 +1,77 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Пульт</title><style>:root{--i:#e1e3e6;--line:#363738;--d:#ff5c5c;--m:#939393;--si:#e3b04b}
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Regular.woff2');font-weight:400}
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Medium.woff2');font-weight:500}
+@font-face{font-family:'JetBrains Mono';src:url('../../0.10.0/fonts/JetBrainsMono-Regular.woff2');font-weight:400}
+*{box-sizing:border-box}
+body{margin:0;background:#141414;color:#e1e3e6;font-family:-apple-system,BlinkMacSystemFont,'Roboto','Helvetica Neue',arial,sans-serif;font-size:14px;line-height:20px}
+a{color:inherit;text-decoration:none}
+.page{width:1280px;background:#141414;position:relative}
+.top{height:48px;background:#222222;border-bottom:1px solid #363738;display:flex;align-items:center;padding:0 16px;gap:16px}
+.logo{display:block;width:32px;height:32px;border-radius:6px;background:#555}
+.wm{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:20px;letter-spacing:.1em}
+.sep{width:1px;height:24px;background:#363738}
+.lab{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;text-transform:uppercase;color:#939393}
+.mono{white-space:nowrap;font-family:'JetBrains Mono',ui-monospace,monospace}
+.turn{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;background:#e3b04b;color:#241a06;padding:4px 8px;border-radius:4px}
+.cap{font-size:12px;line-height:16px;color:#939393}
+.body{display:flex;align-items:stretch;min-height:700px}
+.side{width:232px;flex-shrink:0;background:#222222;border-right:1px solid #363738;padding:16px 12px;display:flex;flex-direction:column;gap:4px}
+.side a{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:8px;color:#939393}
+.side a.on{background:#333333;color:#e1e3e6}
+.side a.on svg{stroke:#e3b04b}
+.side .grp{margin:12px 12px 4px}
+.main{flex-grow:1;min-width:0;padding:24px;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;display:flex;align-items:center;gap:10px;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:24px;line-height:28px;letter-spacing:.06em;text-transform:uppercase}
+h2{margin:0;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:16px;line-height:20px}
+.crumbs{display:flex;gap:8px;color:#939393;align-items:center}
+.crumbs b{font-weight:400;color:#e1e3e6}
+.card{background:#222222;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:12px}
+.grow{flex-grow:1;min-width:0}
+.grid{display:grid;gap:12px 16px}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tile{background:#333333;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.fig{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:22px;line-height:28px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 16px;border-radius:8px;background:#333333;color:#e1e3e6;white-space:nowrap}
+.btn.p{background:#71aaeb;color:#141414}
+.btn.d{background:#ff5c5c;color:#141414}
+.btn.do{background:transparent;color:#ff5c5c;border:1px solid #ff5c5c}
+.btn.sm{height:32px;padding:0 12px}
+.btn.off{opacity:.45}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld>span.l{font-size:12px;line-height:16px;color:#939393}
+.in{display:flex;align-items:center;justify-content:space-between;gap:8px;height:36px;padding:0 12px;border-radius:8px;background:#333333;border:1px solid #828282;color:#e1e3e6;min-width:0;overflow:hidden;white-space:nowrap}
+.in.ph{color:#939393}
+.in.err{border-color:#ff5c5c}
+.in.area{height:72px;align-items:flex-start;padding:8px 12px;white-space:normal}
+.hint{font-size:12px;line-height:16px;color:#939393}
+.hint.err{color:#ff5c5c}
+.cnt{white-space:nowrap;flex-shrink:0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:#939393}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;text-transform:uppercase;color:#939393;padding:8px 12px;border-bottom:1px solid #363738}
+td{height:44px;padding:4px 12px;border-bottom:1px solid #363738;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.nat{display:flex;align-items:center;gap:8px}
+.nat svg{flex-shrink:0;border-radius:2px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;padding:2px 8px;border-radius:999px;background:#333333;color:#e1e3e6}
+.ok{color:#4bb34b}.bad{color:#ff5c5c}
+.warn{background:#473315;border-radius:8px;padding:12px;display:flex;gap:12px;color:#e1e3e6}
+.warn svg{flex-shrink:0;margin-top:2px}
+.info{background:#333333;border-radius:8px;padding:12px;color:#e1e3e6}
+.chip{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 8px 0 12px;border-radius:8px;background:#333333;border:1px solid #363738}
+.link{color:#71aaeb}
+.dim{position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.6)}
+.pop{position:absolute;left:50%;transform:translateX(-50%);background:#292929;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.5);padding:20px;display:flex;flex-direction:column;gap:14px}
+.sw{display:inline-block;width:20px;height:20px;border-radius:4px;border:1px solid rgba(128,128,128,.45)}
+.rd{display:flex;align-items:center;gap:12px;min-height:44px;padding:4px 12px;border-bottom:1px solid #363738}
+.rd:last-child{border-bottom:0}
+.rd.sel{background:#333333;border-radius:8px}
+.radio{width:16px;height:16px;border-radius:999px;border:2px solid #828282;flex-shrink:0}
+.radio.on{border-color:#71aaeb;background:radial-gradient(circle,#71aaeb 40%,transparent 45%)}
+.chk{width:18px;height:18px;border-radius:4px;border:2px solid #828282;flex-shrink:0}
+.seg{display:inline-flex;gap:4px;background:#333333;border-radius:8px;padding:2px}
+.seg span{display:flex;align-items:center;height:32px;padding:0 12px;border-radius:6px;color:#939393;white-space:nowrap}
+.seg span.on{background:#222222;color:#e1e3e6}
+.ctr{display:flex;align-items:center;justify-content:center}
+</style></head><body><div class="page" style="min-height:620px;"><header class="top"><span class="logo"></span><span class="wm">PAX ATOMICA</span><span class="sep"></span><span class="lab" style="color:var(--si)">Пульт · панель администратора</span><span class="grow"></span><span class="cap">Сеанс: ещё 24 мин</span><span class="turn">ХОД 1 · ЯНВАРЬ 2040</span><span title="Тема" style="display:flex;width:32px;height:32px;align-items:center;justify-content:center;color:var(--m)"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.6 9.8A5.4 5.4 0 0 1 6.2 3.4a5.4 5.4 0 1 0 6.4 6.4z"/></svg></span><a class="btn  sm" href="#">Выйти</a></header><div class="body" style="min-height:572px"><nav class="side"><span class="lab grp">Разделы</span><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>Ход и мир</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5.5" r="2.5"/><path d="M1.8 13c.4-2.4 2.2-3.8 4.2-3.8s3.8 1.4 4.2 3.8"/><path d="M10.5 3.4a2.4 2.4 0 0 1 0 4.2M12.5 9.6c1 .6 1.7 1.7 1.9 3.4"/></svg>Игроки</a><a href="#" class="on"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 14V2.5M3.5 3h8l-1.6 2.8L11.5 8.5h-8"/></svg>Государства</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 14.5s4.5-4.2 4.5-7.7a4.5 4.5 0 0 0-9 0c0 3.5 4.5 7.7 4.5 7.7z"/><circle cx="8" cy="6.8" r="1.6"/></svg>Провинции</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.8 1.8h5.7l3 3.1v9.3H3.8z"/><path d="M9.5 1.8v3.1h3M6 8.2h4.5M6 10.8h4.5"/></svg>Приказы</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8l5 1.8v4.2c0 3-2.2 5-5 6.4-2.8-1.4-5-3.4-5-6.4V3.6z"/><path d="M5.8 8l1.7 1.7L10.5 6.4"/></svg>Администраторы</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke-width="2.2"/></svg>Журнал</a><span class="grow"></span><span class="cap" style="padding:0 12px">Каждое действие пишется в журнал.</span></nav><main class="main"><h1><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--si)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 14V2.5M3.5 3h8l-1.6 2.8L11.5 8.5h-8"/></svg>Государства</h1><div class="row"><label class="fld" style="width:280px"><span class="l" style="position:absolute;left:-9999px">Поиск</span><span class="in ph"><span style="display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis">Поиск по названию</span></span></label><span class="grow cap" style="margin-top:20px">Показано 3 из 3</span><a class="btn p" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 14V2.5M3.5 3h8l-1.6 2.8L11.5 8.5h-8"/></svg>Создать государство</a></div><section class="card"><table><thead><tr><th>Государство</th><th>Владелец</th><th>Провинций</th><th>Столица</th><th></th></tr></thead><tbody><tr><td><span class="nat"><svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect width="24" height="8" fill="#2d6a9f"/><rect y="8" width="24" height="8" fill="#f2f2f2"/></svg><span><span style="display:block">Синдикат</span><span class="cap" style="display:block">Северный Синдикат</span></span></span></td><td>Алексей Морозов</td><td><span class=mono>6</span></td><td>Мурманск</td><td><a class="btn  sm" href="#">Править</a> <a class="btn do sm" href="#">Удалить…</a></td></tr><tr><td><span class="nat"><svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect width="24" height="8" fill="#b5483a"/><rect y="8" width="24" height="8" fill="#e8d9a8"/></svg><span><span style="display:block">Лига</span><span class="cap" style="display:block">Балтийская Лига</span></span></span></td><td>Мария Волкова</td><td><span class=mono>4</span></td><td>Рига</td><td><a class="btn  sm" href="#">Править</a> <a class="btn do sm" href="#">Удалить…</a></td></tr><tr><td><span class="nat"><svg width="24" height="16" viewBox="0 0 24 16" aria-hidden="true"><rect width="24" height="8" fill="#3f7d4e"/><rect y="8" width="24" height="8" fill="#f2f2f2"/></svg><span><span style="display:block">Союз</span><span class="cap" style="display:block">Дунайский Союз</span></span></span></td><td>Дмитрий Соколов</td><td><span class=mono>4</span></td><td>Вена</td><td><a class="btn  sm" href="#">Править</a> <a class="btn do sm" href="#">Удалить…</a></td></tr></tbody></table></section></main></div></div></body></html>
