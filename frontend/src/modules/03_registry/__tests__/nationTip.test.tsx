@@ -270,7 +270,11 @@ describe('NationCell — nation «Подсказка»', () => {
     const cell = screen.getByRole('button', { name: 'Новгород' });
 
     openTip(cell);
-    expect(tip()).toBeInTheDocument();
+    vi.useRealTimers();
+    // The card request must finish before the test ends — a fetch left
+    // in flight writes the module cache AFTER the next test's
+    // clearNationTipCache() and serves it a poisoned hit (0 requests).
+    await within(tip()!).findByText('Борис Первый');
     fireEvent.pointerDown(cell);
     expect(tip()).toBeNull();
     fireEvent.click(cell);
