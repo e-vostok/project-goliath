@@ -45,6 +45,11 @@ def _base_config() -> dict:
             "vk_ts_freshness_window_minutes": 30,
             "jwt_ttl_minutes": 60,
         },
+        "admin_panel": {
+            "link_ttl_seconds": 60,
+            "session_ttl_minutes": 60,
+            "max_pending_links_per_player": 3,
+        },
         "nation": {
             "nation_name_min_length": 2,
             "nation_name_max_length": 60,
@@ -134,6 +139,9 @@ def test_valid_config_loads():
     assert config.tick.health_max_heartbeat_age_seconds == 180
     assert config.auth.vk_ts_freshness_window_minutes == 30
     assert config.auth.jwt_ttl_minutes == 60
+    assert config.admin_panel.link_ttl_seconds == 60
+    assert config.admin_panel.session_ttl_minutes == 60
+    assert config.admin_panel.max_pending_links_per_player == 3
     assert config.nation.nation_name_min_length == 2
     assert config.nation.nation_name_max_length == 60
     assert config.nation.short_name_min_length == 2
@@ -559,6 +567,27 @@ def test_health_max_heartbeat_age_must_exceed_retry_plus_interval(tmp_path):
     # One second above the sum is the tightest valid value.
     path = _write_config(tmp_path, {"tick": {"health_max_heartbeat_age_seconds": 91}})
     assert CoreConfig.from_yaml(path).tick.health_max_heartbeat_age_seconds == 91
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("link_ttl_seconds", 9),
+        ("link_ttl_seconds", 301),
+        ("session_ttl_minutes", 4),
+        ("session_ttl_minutes", 241),
+        ("max_pending_links_per_player", 0),
+        ("max_pending_links_per_player", 11),
+    ],
+)
+def test_admin_panel_values_out_of_bounds_rejected(tmp_path, key, value):
+    """admin_panel values outside their hard schema ranges are rejected."""
+    path = _write_config(tmp_path, {"admin_panel": {key: value}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert key in str(exc_info.value)
 
 
 def test_missing_required_field(tmp_path):
