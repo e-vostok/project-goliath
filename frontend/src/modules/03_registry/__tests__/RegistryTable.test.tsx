@@ -14,7 +14,7 @@ import {
 } from '../lib/cellActions';
 import { EMPTY_VIEW } from '../lib/tableView';
 import { RegistryTable } from '../components/RegistryTable';
-import type { RegistryTableDTO } from '../types';
+import type { RegistryColumnDTO, RegistryTableDTO } from '../types';
 
 const ORDERS_TABLE: RegistryTableDTO = {
   id: 'orders',
@@ -91,12 +91,12 @@ describe('RegistryTable — action_text cells', () => {
 });
 
 describe('RegistryTable — nation cells of the orders table (unit 13)', () => {
-  const NATION_COL = {
+  const NATION_COL: RegistryColumnDTO = {
     id: 'nation', title: 'Государство', type: 'nation', width_px: 168,
     sortable: true, filters: ['select_or_contains'], filter_label: null,
     header_icon: null, searchable: true, stub: false,
     scale_min: null, scale_max: null,
-  } as const;
+  };
 
   const table: RegistryTableDTO = {
     ...ORDERS_TABLE,
