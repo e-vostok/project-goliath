@@ -57,6 +57,10 @@ class AdminRegistry:
     _player_info_hooks: dict[
         str, tuple[PlayerInfoHook, PlayerSearchHook | None]
     ] = {}
+    # slug -> {action_code: Russian label} — audit rows carry the
+    # machine code; the journal screen renders the label of the module
+    # that owns the action. A code nobody registered is shown raw.
+    _audit_action_hooks: dict[str, dict[str, str]] = {}
 
     @classmethod
     def register_reset(cls, module_slug: str, reset_fn: ResetHook) -> None:
@@ -181,6 +185,33 @@ class AdminRegistry:
         )
 
     @classmethod
+    def register_audit_actions(
+        cls, module_slug: str, actions: dict[str, str]
+    ) -> None:
+        """
+        Register the Russian labels of a module's audit action codes.
+
+        Args:
+            module_slug: The owning module's slug.
+            actions: {action_code: label} — the codes the module writes
+                     into admin_audit_log.action and how the panel's
+                     «Журнал» names them (e.g. "tick.run" ->
+                     "Запуск хода").
+
+        Raises:
+            ValueError: If audit actions are already registered for
+                        module_slug.
+        """
+        if module_slug in cls._audit_action_hooks:
+            raise ValueError(
+                f"Audit actions already registered for module '{module_slug}'"
+            )
+        cls._audit_action_hooks[module_slug] = dict(actions)
+        logger.info(
+            f"Registered admin audit actions for module '{module_slug}'"
+        )
+
+    @classmethod
     def get_reset_hooks(cls) -> dict[str, ResetHook]:
         """Return all registered reset hooks in registration order."""
         return dict(cls._reset_hooks)
@@ -208,6 +239,27 @@ class AdminRegistry:
         return dict(cls._player_info_hooks)
 
     @classmethod
+    def get_audit_action_hooks(cls) -> dict[str, dict[str, str]]:
+        """All {slug: {action_code: label}} maps in registration order."""
+        return {
+            slug: dict(actions)
+            for slug, actions in cls._audit_action_hooks.items()
+        }
+
+    @classmethod
+    def get_audit_action_labels(cls) -> dict[str, str]:
+        """The merged {action_code: label} map in registration order."""
+        labels: dict[str, str] = {}
+        for actions in cls._audit_action_hooks.values():
+            labels.update(actions)
+        return labels
+
+    @classmethod
+    def audit_action_label(cls, action: str) -> str:
+        """The registered label of an action code; the code itself when unknown."""
+        return cls.get_audit_action_labels().get(action, action)
+
+    @classmethod
     def clear_handlers(cls) -> None:
         """
         Clear all registered hooks.
@@ -219,3 +271,4 @@ class AdminRegistry:
         cls._player_preview_hooks.clear()
         cls._overview_hooks.clear()
         cls._player_info_hooks.clear()
+        cls._audit_action_hooks.clear()

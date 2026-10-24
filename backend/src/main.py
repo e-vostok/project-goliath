@@ -189,7 +189,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.10.7",
+    version="0.10.8",
     lifespan=lifespan,
 )
 
@@ -264,6 +264,9 @@ _ERROR_CODE_STATUS = {
     "CONFIRMATION_MISMATCH": 422,
     "CANNOT_DELETE_SELF": 409,
     "CANNOT_DELETE_ADMIN": 409,
+    "ROOT_ADMIN_PROTECTED": 409,
+    "LAST_ADMIN": 409,
+    "CANNOT_REVOKE_SELF": 409,
 }
 
 

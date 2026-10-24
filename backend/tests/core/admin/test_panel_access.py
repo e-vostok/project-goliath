@@ -149,6 +149,8 @@ class TestPanelEntry:
         """An admin gets a token, exchanges it once, and the issued
         Bearer opens an existing admin GET endpoint."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        # reset_allowed answers the request-time flag — pin it down.
+        monkeypatch.delenv("ADMIN_ALLOW_RESET", raising=False)
         headers = await _auth_headers(live_client, ADMIN_VK_ID)
 
         link = await live_client.post("/api/v1/admin/panel-link", headers=headers)
@@ -173,7 +175,7 @@ class TestPanelEntry:
             headers={"Authorization": f"Bearer {body['access_token']}"},
         )
         assert probe.status_code == 200
-        assert probe.json() == {"is_admin": True}
+        assert probe.json() == {"is_admin": True, "reset_allowed": False}
 
     @pytest.mark.asyncio
     async def test_second_exchange_of_same_token_refused(
