@@ -1,5 +1,11 @@
 Devin working rules (standing rules for every task)
 These rules apply to every TZ. A TZ states only the task-specific facts and may override a rule explicitly.
+Docs-only tasks: NO checks at all (Project Owner decision, 24.10.2026)
+- A task that changes only documentation files is docs-only: `docs/**` (version files, handoff and checkpoint files, Bible, Spec, Roadmap, workflow documents, design PNG/HTML in `docs/06_DESIGN/**`), `changelog.md`, `README*`; and a release PR whose only non-document change is the version strings (`backend/pyproject.toml`, `backend/src/main.py`, `frontend/package.json`, `frontend/package-lock.json`).
+- For such a task run NO checks of any kind: no test suites (backend, frontend, PostgreSQL), no typecheck, no build, no lint, no `bash -n`, no audit command, no grep proofs, no docker, do not start or wait for CI, do not re-read or re-verify the files after writing them. Commit exactly what the TZ supplies, push, open the PR. Time spent on checks here is wasted.
+- Only exception: the TZ itself says «verify» about a named statement — check that one thing and nothing else.
+- Report, at most 3 lines: PR URL and remote head; what changed (one line, say `no bump` or the version set); `no checks (docs-only)`; last line `ROUTINE: Project Owner may merge now`.
+- If the diff touches anything else (code, config, tests, deploy, Docker, migrations), it is not docs-only: the normal rules below apply.
 Git and PR (always, no exceptions)
 - One branch per task from the CURRENT `origin/main`, named `<prefix>/<n>-<slug>` (the TZ gives the prefix and name). Commit in small steps and push to `origin` after EVERY commit (`git push -u origin <branch>`).
 - At the end ALWAYS open a PR to `main` (squash merge) and put the report into the PR description. Never merge, never deploy, never touch the server or any production `.env`.
@@ -15,7 +21,7 @@ Tests: scope by what you touched
   - `tools/map_pipeline/**` or `data/map/**`: the map_pipeline tests and the pipeline `--check` (INV-M1…M10).
   - `configs/**`: `pytest tests/test_configs_validity.py`.
   - `deploy/**`, `docker*`, `Dockerfile*`, dependency or lock files: a local `docker compose build`.
-  - Docs-only: nothing.
+  - Docs-only: nothing (see «Docs-only tasks» above — not even the audit line).
 - If a suite fails, fix and re-run the failed tests, then the touched-area set once. Do not re-run suites that the diff does not touch.
 Guard rails (unchanged)
 - Foreign keys only to `00_core` tables; no direct SQL mutation of another module's tables (use its `service.py`); all balance numbers live in `configs/<slug>.yaml` and are validated by `config_schema.py`; tick calculations are registered only through `TickOrchestrator` in one of the 5 `TickPhase` values; map ids are never reused or renumbered (`ids.lock.json` is append-only in spirit).
@@ -26,7 +32,7 @@ Guard rails (unchanged)
 - Any change of a form or a filter layout is checked in a real browser at the window's width (910 px): screenshots + the measurement of overflow and control heights are part of the report; jsdom tests do not prove layout.
 - Forbidden paths unless the TZ explicitly allows them: `deploy/`, `docker*`, `Dockerfile*`, `.env*`, `*.lock`, `backend/pyproject.toml` (except the version line), `frontend/package.json` and its lock (except the version line), `.github/`.
 - Commit messages: `<type>(<slug>): <summary>`.
-Audit (one command, one line in the report) `git diff --stat origin/main...HEAD -- deploy docker* Dockerfile* '.env*' '*.lock' backend/pyproject.toml frontend/package.json frontend/package-lock.json .github` Report `audit: clean` or list the files. Version-line-only changes in the pyproject/package files are fine.
+Audit (one command, one line in the report; not for docs-only tasks) `git diff --stat origin/main...HEAD -- deploy docker* Dockerfile* '.env*' '*.lock' backend/pyproject.toml frontend/package.json frontend/package-lock.json .github` Report `audit: clean` or list the files. Version-line-only changes in the pyproject/package files are fine.
 Versions
 - Only a PR that changes shipped behaviour, config or data bumps the version; tools-only and docs-only PRs do not (say `no bump`).
 - Read the current version and the top of `changelog.md` on `main` first (the `02_bot` line also uses 0.5.x numbers). Take the next free PATCH (MINOR only if the TZ says), keep `backend/pyproject.toml`, `backend/src/main.py`, `frontend/package.json` + lock and `changelog.md` in sync, one changelog line.
@@ -35,10 +41,10 @@ Merge class (last line of every report)
 - Otherwise `NEEDS LEAD AI REVIEW: <one sentence why>`.
 Rehearsal (only for tasks that change `data/map/**`, provinces or startup sync) Start the backend on PostgreSQL from the previous manifest and quote the line `01_map started (… added, … present, … retired removed)`.
 When to STOP and ask Only if a prerequisite of the TZ is missing, a forbidden path must change, an invariant would break, or the TZ says STOP. Otherwise decide yourself and state the assumption in one line.
-Report format (at most 8 lines, English, in the PR description and in the chat) PR URL and remote head; what changed (at most 3 lines); suites run with pass/fail counts (one line); `audit: …`; version or `no bump`; production impact in one sentence (what the Project Owner will see after deploy); last line = merge class. No narration of steps, no restating the task. Show images inline in the chat when the TZ asks for them.
+Report format (at most 8 lines, English, in the PR description and in the chat; docs-only tasks use the 3-line report above) PR URL and remote head; what changed (at most 3 lines); suites run with pass/fail counts (one line); `audit: …`; version or `no bump`; production impact in one sentence (what the Project Owner will see after deploy); last line = merge class. No narration of steps, no restating the task. Show images inline in the chat when the TZ asks for them.
 
 Version files and handoff PRs (v3.0, one chat per version)
 - When a TZ names a work item of the current version (`docs/04_VERSIONS/<X.Y.0>.md`), tick that item in the same PR (like the Roadmap tick). Touch no other line of that file unless the TZ says so.
-- Handoff PRs (`docs/PROJECT_STATE.md`, `docs/04_VERSIONS/*.md`, the three workflow documents) are docs-only: commit the files exactly as the TZ supplies them (whole files, no rewording), `no bump`, no suites. When the TZ asks you to verify facts, check every statement against `main`, correct what is wrong in place, and list each correction in the report (one line each).
-- Release PR: set the version in all places named by the TZ, update `changelog.md` and the statuses the TZ lists, run the full suites once and quote the counts. Do NOT create the tag in this PR.
+- Handoff PRs (`docs/PROJECT_STATE.md`, `docs/04_VERSIONS/*.md`, the three workflow documents) are docs-only: commit the files exactly as the TZ supplies them (whole files, no rewording), `no bump`, no checks. Only when the TZ explicitly asks you to verify named facts, check those statements against `main`, correct what is wrong in place, and list each correction in the report (one line each).
+- Release PR: set the version in all places named by the TZ, update `changelog.md` and the statuses the TZ lists. It is docs-only by the rule above: no suites, no CI. Do NOT create the tag in this PR.
 - Tag: only when the Project Owner says `tag` after the release PR is merged. Then `git fetch origin`, create the annotated tag `vX.Y.Z` on the head of `origin/main`, push it, confirm with `git ls-remote --tags origin vX.Y.Z` and quote that line in the report. Never move or delete an existing tag.
