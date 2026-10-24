@@ -29,6 +29,15 @@ PlayerPreviewHook = Callable[[AsyncSession, str], Awaitable[dict]]
 # already formatted for display; `sort` defines the merged cross-module
 # order. Read-only, never commits.
 OverviewHook = Callable[[AsyncSession], Awaitable[list[dict]]]
+# A player-info hook sees (session, player_ids) — the internal ids of
+# the page being rendered — and returns {player_id: {field: value}}:
+# the display columns of the panel's «Игроки» table the module owns
+# (e.g. 03_registry's "display_name"). Read-only, never commits.
+PlayerInfoHook = Callable[[AsyncSession, list[str]], Awaitable[dict]]
+# A player-search hook sees (session, text) and returns the set of
+# player ids matching the free-text query in this module's data —
+# merged into GET /admin/players's OR-filter with the core fields.
+PlayerSearchHook = Callable[[AsyncSession, str], Awaitable[set]]
 
 
 class AdminRegistry:
@@ -44,6 +53,10 @@ class AdminRegistry:
     _state_view_hooks: dict[str, StateViewHook] = {}
     _player_preview_hooks: dict[str, PlayerPreviewHook] = {}
     _overview_hooks: dict[str, OverviewHook] = {}
+    # slug -> (info_fn, search_fn|None); the search half is optional.
+    _player_info_hooks: dict[
+        str, tuple[PlayerInfoHook, PlayerSearchHook | None]
+    ] = {}
 
     @classmethod
     def register_reset(cls, module_slug: str, reset_fn: ResetHook) -> None:
@@ -135,6 +148,39 @@ class AdminRegistry:
         logger.info(f"Registered admin overview hook for module '{module_slug}'")
 
     @classmethod
+    def register_player_info(
+        cls,
+        module_slug: str,
+        info_fn: PlayerInfoHook,
+        search_fn: PlayerSearchHook | None = None,
+    ) -> None:
+        """
+        Register a player-info hook for a module.
+
+        Args:
+            module_slug: The owning module's slug.
+            info_fn: Async function taking (session, player_ids) that
+                     returns {player_id: {field: value}} — the module's
+                     display columns for the panel's players table.
+                     Called by the GET /admin/players endpoint.
+            search_fn: Optional async function taking (session, text)
+                       that returns the set of player ids matching the
+                       free-text query inside this module's data.
+
+        Raises:
+            ValueError: If a player-info hook is already registered for
+                        module_slug.
+        """
+        if module_slug in cls._player_info_hooks:
+            raise ValueError(
+                f"Player-info hook already registered for module '{module_slug}'"
+            )
+        cls._player_info_hooks[module_slug] = (info_fn, search_fn)
+        logger.info(
+            f"Registered admin player-info hook for module '{module_slug}'"
+        )
+
+    @classmethod
     def get_reset_hooks(cls) -> dict[str, ResetHook]:
         """Return all registered reset hooks in registration order."""
         return dict(cls._reset_hooks)
@@ -155,6 +201,13 @@ class AdminRegistry:
         return dict(cls._overview_hooks)
 
     @classmethod
+    def get_player_info_hooks(
+        cls,
+    ) -> dict[str, tuple[PlayerInfoHook, PlayerSearchHook | None]]:
+        """All (info_fn, search_fn|None) pairs in registration order."""
+        return dict(cls._player_info_hooks)
+
+    @classmethod
     def clear_handlers(cls) -> None:
         """
         Clear all registered hooks.
@@ -165,3 +218,4 @@ class AdminRegistry:
         cls._state_view_hooks.clear()
         cls._player_preview_hooks.clear()
         cls._overview_hooks.clear()
+        cls._player_info_hooks.clear()

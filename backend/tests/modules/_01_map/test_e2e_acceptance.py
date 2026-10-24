@@ -82,6 +82,7 @@ def _snapshot_process_state() -> dict:
     return {
         "views": AdminRegistry.get_state_view_hooks(),
         "resets": AdminRegistry.get_reset_hooks(),
+        "player_infos": AdminRegistry.get_player_info_hooks(),
         "handlers": {
             phase: list(handlers)
             for phase, handlers in TickOrchestrator._handlers.items()
@@ -97,6 +98,8 @@ def _restore_process_state(saved: dict) -> None:
     AdminRegistry._state_view_hooks.update(saved["views"])
     AdminRegistry._reset_hooks.clear()
     AdminRegistry._reset_hooks.update(saved["resets"])
+    AdminRegistry._player_info_hooks.clear()
+    AdminRegistry._player_info_hooks.update(saved["player_infos"])
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved["handlers"])
     TickOrchestrator._finalize_callback = saved["finalize"]

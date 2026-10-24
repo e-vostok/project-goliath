@@ -123,11 +123,13 @@ def registry_guard():
     """Isolate class-level AdminRegistry state from other test modules."""
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
+    saved_player_infos = AdminRegistry.get_player_info_hooks()
     AdminRegistry.clear_handlers()
     yield
     AdminRegistry.clear_handlers()
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.update(saved_resets)
+    AdminRegistry._player_info_hooks.update(saved_player_infos)
 
 
 def _utc(dt: datetime) -> datetime:

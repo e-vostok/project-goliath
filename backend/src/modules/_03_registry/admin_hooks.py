@@ -14,6 +14,11 @@ Admin hooks of module 03_registry (Spec 5.4).
   whole deletion (no per-hook savepoint).
 - Player preview ``"03_registry"``: returns ``{"vk_profile_rows"}`` —
   0 or 1 — for the admin delete-preview; read-only.
+- Player info ``"03_registry"`` (0.11.0 unit 6b): the panel's
+  «Игроки» table column ``display_name`` — ``first_name last_name``
+  of the cached VK profile, OK status only — plus the matching
+  free-text search over those names. Both halves are thin read-only
+  delegates into ``service.py``.
 
 ``register_registry_admin_hooks`` is idempotent like the other modules'
 registrars: membership check, never double-register.
@@ -31,6 +36,10 @@ from modules._03_registry.models import RegistryVkProfile
 from modules._03_registry.profile_worker import (
     get_last_cycle_at,
     get_worker_mode,
+)
+from modules._03_registry.service import (
+    admin_display_names,
+    admin_search_player_ids,
 )
 
 MODULE_SLUG = "03_registry"
@@ -83,6 +92,21 @@ async def registry_player_delete_preview(session: AsyncSession, player_id: str) 
     return {"vk_profile_rows": rows}
 
 
+async def registry_player_info(session: AsyncSession, player_ids: list[str]) -> dict:
+    """``{player_id: {"display_name": name}}`` for the panel's players table."""
+    return {
+        player_id: {"display_name": name}
+        for player_id, name in (
+            await admin_display_names(session, player_ids)
+        ).items()
+    }
+
+
+async def registry_player_search(session: AsyncSession, text: str) -> set:
+    """Player ids whose cached OK profile name contains ``text``."""
+    return await admin_search_player_ids(session, text)
+
+
 async def registry_delete_player(session: AsyncSession, player_id: str) -> None:
     """
     Remove the cached VK profile of one player (admin player deletion).
@@ -103,5 +127,9 @@ def register_registry_admin_hooks() -> None:
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
         AdminRegistry.register_player_preview(
             MODULE_SLUG, registry_player_delete_preview
+        )
+    if MODULE_SLUG not in AdminRegistry.get_player_info_hooks():
+        AdminRegistry.register_player_info(
+            MODULE_SLUG, registry_player_info, registry_player_search
         )
     register_player_delete_hook(f"{MODULE_SLUG}.player_delete", registry_delete_player)

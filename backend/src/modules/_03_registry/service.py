@@ -17,6 +17,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._03_registry.cells import cell_matches
@@ -26,6 +27,7 @@ from modules._03_registry.errors import (
     RegistryProviderError,
     RegistryTableNotFoundError,
 )
+from modules._03_registry.models import RegistryVkProfile
 from modules._03_registry.registry import Cell, RegistryRow, get_table_source
 
 logger = logging.getLogger(__name__)
@@ -154,3 +156,63 @@ async def build_table(session: AsyncSession, table_id: str) -> BuiltTable:
             for row in rows
         ],
     )
+
+
+# ── Admin players table (0.11.0 unit 6b) ─────────────────────────────
+#
+# The panel's «Игроки» section asks this module for the display names
+# it owns — the cached VK profiles. Only status OK rows carry a usable
+# name (a PENDING/UNAVAILABLE row can hold stale halves). Both
+# functions are read-only and never commit.
+
+
+async def admin_display_names(
+    session: AsyncSession, player_ids: list[str]
+) -> dict[str, str]:
+    """
+    ``first_name last_name`` of each player's cached VK profile —
+    OK status only; a player without a usable name has no key.
+    """
+    if not player_ids:
+        return {}
+    rows = await session.execute(
+        select(
+            RegistryVkProfile.player_id,
+            RegistryVkProfile.first_name,
+            RegistryVkProfile.last_name,
+        ).where(
+            RegistryVkProfile.player_id.in_(player_ids),
+            RegistryVkProfile.status == "OK",
+        )
+    )
+    names: dict[str, str] = {}
+    for player_id, first, last in rows.all():
+        name = f"{first or ''} {last or ''}".strip()
+        if name:
+            names[player_id] = name
+    return names
+
+
+async def admin_search_player_ids(
+    session: AsyncSession, text: str
+) -> set[str]:
+    """
+    Player ids whose cached OK VK profile's ``first_name last_name``
+    contains ``text`` (case-insensitive substring) — the module's
+    half of the admin players search. Matched in Python like the
+    registry's cell search: SQLite's ``lower()`` only folds ASCII and
+    the profiles table is small enough for an admin tool.
+    """
+    rows = await session.execute(
+        select(
+            RegistryVkProfile.player_id,
+            RegistryVkProfile.first_name,
+            RegistryVkProfile.last_name,
+        ).where(RegistryVkProfile.status == "OK")
+    )
+    lowered = text.lower()
+    return {
+        player_id
+        for player_id, first, last in rows.all()
+        if lowered in f"{first or ''} {last or ''}".lower()
+    }
