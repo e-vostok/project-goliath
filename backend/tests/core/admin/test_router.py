@@ -34,6 +34,7 @@ from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator, TickPhase
 from main import app
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.hooks import (
     restore_extension_points,
@@ -69,6 +70,7 @@ MINI_NODE_COUNT = len(map_mini_linked_node_ids())
 ADMIN_ROUTES = [
     ("GET", "/api/v1/admin/me", None),
     ("GET", "/api/v1/admin/state", None),
+    ("GET", "/api/v1/admin/overview", None),
     ("GET", "/api/v1/admin/tick-log", None),
     ("POST", "/api/v1/admin/tick/run", None),
     ("POST", "/api/v1/admin/state/reset", {"confirm": True}),
@@ -158,6 +160,7 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
+    saved_overviews = AdminRegistry.get_overview_hooks()
     saved_handlers = {
         phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
@@ -176,6 +179,8 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     AdminRegistry._reset_hooks.update(saved_resets)
     AdminRegistry._player_preview_hooks.clear()
     AdminRegistry._player_preview_hooks.update(saved_previews)
+    AdminRegistry._overview_hooks.clear()
+    AdminRegistry._overview_hooks.update(saved_overviews)
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved_handlers)
     TickOrchestrator._finalize_callback = saved_finalize
@@ -311,7 +316,24 @@ class TestAdminMe:
         response = await live_client.get("/api/v1/admin/me", headers=headers)
 
         assert response.status_code == 200
-        assert response.json() == {"is_admin": True}
+        # The fixture turns the reset gate on; /me reports it for the
+        # panel's disabled-button hint.
+        assert response.json() == {"is_admin": True, "reset_allowed": True}
+
+    @pytest.mark.asyncio
+    async def test_me_reports_reset_allowed_by_env(self, live_client, monkeypatch):
+        """reset_allowed follows the request-time ADMIN_ALLOW_RESET
+        read: truthy -> true, anything else -> false."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+        # The fixture leaves ADMIN_ALLOW_RESET="true" — one flagless
+        # value is enough to see both sides of the gate.
+        monkeypatch.setenv("ADMIN_ALLOW_RESET", "off")
+
+        response = await live_client.get("/api/v1/admin/me", headers=headers)
+
+        assert response.status_code == 200
+        assert response.json()["reset_allowed"] is False
 
 
 class TestAdminState:
@@ -392,6 +414,73 @@ class TestAdminState:
         assert modules["00_core"]["counts"]["provinces_total"] == MINI_NODE_COUNT
 
 
+class TestAdminOverview:
+    """GET /api/v1/admin/overview merges every module's display tiles."""
+
+    @pytest.mark.asyncio
+    async def test_tiles_of_two_modules_merge_in_sort_order(
+        self, live_client, monkeypatch
+    ):
+        """The 00_core and 04_orders tiles arrive as one flat list
+        sorted by `sort`; the administrators tile sits last (mockup 02)."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+
+        response = await live_client.get("/api/v1/admin/overview", headers=headers)
+
+        assert response.status_code == 200
+        tiles = response.json()
+        for tile in tiles:
+            assert set(tile) == {"key", "label", "value", "sort"}
+        sorts = [t["sort"] for t in tiles]
+        assert sorts == sorted(sorts)
+        keys = [t["key"] for t in tiles]
+        for key in (
+            "turn",
+            "next_turn",
+            "tick_timezone",
+            "players",
+            "nations",
+            "provinces_occupied",
+            "admins",
+        ):
+            assert key in keys
+        assert (
+            keys.index("orders_awaiting_distribution")
+            > keys.index("orders_without_verdict")
+            > keys.index("provinces_occupied")
+        )
+        assert keys[-1] == "admins"
+        by_key = {t["key"]: t for t in tiles}
+        assert by_key["turn"]["label"] == "Ход"
+        assert by_key["turn"]["value"] == "0 · январь 2040"
+        assert by_key["tick_timezone"]["value"] == "Москва"
+        assert by_key["players"]["value"] == "1"  # the admin login
+        assert (
+            by_key["provinces_occupied"]["value"] == f"0 из {MINI_NODE_COUNT}"
+        )
+        assert by_key["admins"]["value"] == "1"  # the env allowlist entry
+
+    @pytest.mark.asyncio
+    async def test_failing_overview_hook_is_skipped(self, live_client, monkeypatch):
+        """A raising hook is logged, rolled back and skipped — it never
+        breaks the response for the other modules."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+
+        async def boom_overview(session):
+            raise ValueError("boom")
+
+        AdminRegistry.register_overview("zzz_broken", boom_overview)
+
+        response = await live_client.get("/api/v1/admin/overview", headers=headers)
+
+        assert response.status_code == 200
+        keys = [t["key"] for t in response.json()]
+        assert "turn" in keys
+        assert "orders_without_verdict" in keys
+
+
 class TestAdminTickLog:
     """GET /api/v1/admin/tick-log lists the audit trail newest-first."""
 
@@ -413,6 +502,7 @@ class TestAdminTickLog:
             assert set(row) == {
                 "id",
                 "turn_number",
+                "turn_label",
                 "started_at",
                 "finished_at",
                 "status",
@@ -420,6 +510,10 @@ class TestAdminTickLog:
             }
             assert row["status"] == "COMPLETED"
             assert ADMIN_TIME_PATTERN.match(row["finished_at"])
+            expected_date = format_game_date(
+                compute_game_date(row["turn_number"], CORE_CONFIG), CORE_CONFIG
+            )
+            assert row["turn_label"] == f"{row['turn_number']} · {expected_date.lower()}"
 
     @pytest.mark.asyncio
     async def test_rows_render_game_timezone_times(self, live_client, monkeypatch):

@@ -23,6 +23,12 @@ StateViewHook = Callable[[AsyncSession], Awaitable[dict]]
 # (counts only — e.g. {"outbox_rows": 3}); the admin endpoint merges the
 # fragments into its fixed-shape response. Read-only, never commits.
 PlayerPreviewHook = Callable[[AsyncSession, str], Awaitable[dict]]
+# An overview hook sees (session) and returns the module's tiles for the
+# panel's «Состояние мира» card — a list of
+# {"key": str, "label": str, "value": str, "sort": int} with `value`
+# already formatted for display; `sort` defines the merged cross-module
+# order. Read-only, never commits.
+OverviewHook = Callable[[AsyncSession], Awaitable[list[dict]]]
 
 
 class AdminRegistry:
@@ -37,6 +43,7 @@ class AdminRegistry:
     _reset_hooks: dict[str, ResetHook] = {}
     _state_view_hooks: dict[str, StateViewHook] = {}
     _player_preview_hooks: dict[str, PlayerPreviewHook] = {}
+    _overview_hooks: dict[str, OverviewHook] = {}
 
     @classmethod
     def register_reset(cls, module_slug: str, reset_fn: ResetHook) -> None:
@@ -105,6 +112,29 @@ class AdminRegistry:
         logger.info(f"Registered admin player-preview hook for module '{module_slug}'")
 
     @classmethod
+    def register_overview(cls, module_slug: str, overview_fn: OverviewHook) -> None:
+        """
+        Register an overview hook for a module.
+
+        Args:
+            module_slug: The owning module's slug.
+            overview_fn: Async function taking (session) that returns a
+                         list of tiles {"key", "label", "value", "sort"}
+                         for the panel's «Состояние мира» card. Called by
+                         the GET /admin/overview endpoint.
+
+        Raises:
+            ValueError: If an overview hook is already registered for
+                        module_slug.
+        """
+        if module_slug in cls._overview_hooks:
+            raise ValueError(
+                f"Overview hook already registered for module '{module_slug}'"
+            )
+        cls._overview_hooks[module_slug] = overview_fn
+        logger.info(f"Registered admin overview hook for module '{module_slug}'")
+
+    @classmethod
     def get_reset_hooks(cls) -> dict[str, ResetHook]:
         """Return all registered reset hooks in registration order."""
         return dict(cls._reset_hooks)
@@ -120,6 +150,11 @@ class AdminRegistry:
         return dict(cls._player_preview_hooks)
 
     @classmethod
+    def get_overview_hooks(cls) -> dict[str, OverviewHook]:
+        """Return all registered overview hooks in registration order."""
+        return dict(cls._overview_hooks)
+
+    @classmethod
     def clear_handlers(cls) -> None:
         """
         Clear all registered hooks.
@@ -129,3 +164,4 @@ class AdminRegistry:
         cls._reset_hooks.clear()
         cls._state_view_hooks.clear()
         cls._player_preview_hooks.clear()
+        cls._overview_hooks.clear()

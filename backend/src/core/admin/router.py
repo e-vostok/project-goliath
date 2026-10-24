@@ -1,8 +1,8 @@
 """
 HTTP API router for the admin panel.
 
-Nine endpoints (prefix /api/v1/admin): GET /me, GET /state,
-GET /tick-log, POST /tick/run, POST /state/reset,
+Ten endpoints (prefix /api/v1/admin): GET /me, GET /state,
+GET /overview, GET /tick-log, POST /tick/run, POST /state/reset,
 GET /players/{vk_user_id}/delete-preview,
 POST /players/{vk_user_id}/delete, POST /panel-link and POST /session.
 
@@ -54,6 +54,7 @@ from core.security.jwt import issue_token
 from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.admin_service import AdminAuditService
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError, PlayerNotFoundError
 from modules._00_core.models import GameClock, Player, TickLog
@@ -198,12 +199,22 @@ class PlayerDeleteRequest(BaseModel):
     confirm_vk_user_id: Any = None
 
 
-def _tick_log_dict(row: TickLog, tz_name: str) -> dict:
+def _tick_log_dict(row: TickLog, config: CoreConfig) -> dict:
+    game_date = format_game_date(
+        compute_game_date(row.turn_number, config), config
+    )
     return {
         "id": row.id,
         "turn_number": row.turn_number,
-        "started_at": format_game_time(row.started_at, tz_name),
-        "finished_at": format_game_time(row.finished_at, tz_name),
+        # «1 · январь 2040» — the same derived game date the game clock
+        # shows, in lowercase like the approved panel mockup.
+        "turn_label": f"{row.turn_number} · {game_date.lower()}",
+        "started_at": format_game_time(
+            row.started_at, config.tick.tick_timezone
+        ),
+        "finished_at": format_game_time(
+            row.finished_at, config.tick.tick_timezone
+        ),
         "status": row.status.value,
         "error_message": row.error_message,
     }
@@ -212,13 +223,16 @@ def _tick_log_dict(row: TickLog, tz_name: str) -> dict:
 @router.get("/me")
 async def admin_me(admin: Player = Depends(require_admin)) -> dict:
     """
-    Admin probe for the UI: 200 {"is_admin": true} for allowlisted users.
+    Admin probe for the UI: 200 {"is_admin": true, "reset_allowed": bool}.
 
-    Non-admins get 403 ADMIN_REQUIRED and anonymous callers 401 from
-    require_admin/get_current_player — the frontend treats any non-200 as
-    "not admin" and hides the admin block silently.
+    `reset_allowed` is the request-time ADMIN_ALLOW_RESET read — the
+    panel uses it to keep the world-reset button disabled on servers
+    where the flag is off. Non-admins get 403 ADMIN_REQUIRED and
+    anonymous callers 401 from require_admin/get_current_player — the
+    frontend treats any non-200 as "not admin" and hides the admin
+    block silently.
     """
-    return {"is_admin": True}
+    return {"is_admin": True, "reset_allowed": _reset_allowed()}
 
 
 @router.get("/state")
@@ -245,6 +259,31 @@ async def admin_state(
     return {"modules": modules}
 
 
+@router.get("/overview")
+async def admin_overview(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """
+    The «Состояние мира» tiles: every module's overview hook contributes
+    its own list of {"key", "label", "value", "sort"} — values already
+    formatted for display, never raw JSON.
+
+    The merged answer is sorted by `sort` (a stable sort keeps the
+    registration order inside equal keys). A failing hook is logged,
+    its session rolled back and its tiles skipped — it never breaks the
+    response, same rule as the state views.
+    """
+    tiles: list[dict] = []
+    for slug, overview_hook in AdminRegistry.get_overview_hooks().items():
+        try:
+            tiles.extend(await overview_hook(session))
+        except Exception:
+            logger.exception("Admin overview hook failed for '%s'", slug)
+            await session.rollback()
+    return sorted(tiles, key=lambda tile: tile["sort"])
+
+
 @router.get("/tick-log")
 async def admin_tick_log(
     admin: Player = Depends(require_admin),
@@ -256,13 +295,11 @@ async def admin_tick_log(
     Times are 'YYYY-MM-DD HH:MM:SS' display strings in
     tick.tick_timezone; storage stays UTC.
     """
-    tz_name = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).tick.tick_timezone
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     result = await session.execute(
         select(TickLog).order_by(TickLog.id.desc()).limit(limit)
     )
-    return [_tick_log_dict(row, tz_name) for row in result.scalars().all()]
+    return [_tick_log_dict(row, config) for row in result.scalars().all()]
 
 
 @router.post("/tick/run")
@@ -318,15 +355,17 @@ async def admin_tick_run(
         details={"ok": ok, "current_turn": clock.current_turn},
     )
     await session.commit()
-    tz_name = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).tick.tick_timezone
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     return {
         "ok": ok,
         "current_turn": clock.current_turn,
-        "next_tick_at": format_game_time(clock.next_tick_at, tz_name),
+        "next_tick_at": format_game_time(
+            clock.next_tick_at, config.tick.tick_timezone
+        ),
         "tick_log": (
-            _tick_log_dict(latest_log, tz_name) if latest_log is not None else None
+            _tick_log_dict(latest_log, config)
+            if latest_log is not None
+            else None
         ),
     }
 

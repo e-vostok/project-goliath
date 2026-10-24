@@ -912,3 +912,26 @@ class OrderService:
             )
         )
         return result.scalar_one()
+
+    @staticmethod
+    async def unresolved_counts_world(session: AsyncSession) -> dict[str, int]:
+        """
+        Two world-wide counters for the admin overview tiles
+        (0.11.0 unit 6a). ``without_verdict`` — every order still
+        unresolved, the spec D14 «приказов без вердикта»: the derived
+        stages SUBMITTED and DISTRIBUTED together (``verdict_at IS
+        NULL``). ``awaiting_distribution`` — orders still waiting for a
+        judge, the distribution queue: the derived stage SUBMITTED
+        (``judge_player_id IS NULL``). Read-only, never commits.
+        """
+        result = await session.execute(
+            select(
+                func.count().filter(Order.verdict_at.is_(None)),
+                func.count().filter(Order.judge_player_id.is_(None)),
+            ).select_from(Order)
+        )
+        without_verdict, awaiting_distribution = result.one()
+        return {
+            "without_verdict": without_verdict,
+            "awaiting_distribution": awaiting_distribution,
+        }

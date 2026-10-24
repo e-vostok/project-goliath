@@ -179,9 +179,14 @@ export interface ErrorResponse {
 /* Admin panel DTOs (core/admin router). State-view payloads are defined by
    each module's hook, so `modules` stays loosely typed. */
 
-/** GET /admin/me — the UI's admin probe. */
+/**
+ * GET /admin/me — the UI's admin probe. `reset_allowed` is the
+ * request-time ADMIN_ALLOW_RESET read: the panel keeps the world-reset
+ * button disabled while it is false.
+ */
 export interface AdminMeDTO {
   is_admin: boolean;
+  reset_allowed: boolean;
 }
 
 /**
@@ -211,6 +216,8 @@ export interface AdminSessionDTO {
 export interface AdminTickLogEntryDTO {
   id: number;
   turn_number: number;
+  /** «1 · январь 2040» — server-derived game date of the turn. */
+  turn_label: string;
   started_at: string | null;
   finished_at: string | null;
   status: string;
@@ -220,6 +227,18 @@ export interface AdminTickLogEntryDTO {
 /** GET /admin/state — state views keyed by module slug. */
 export interface AdminStateDTO {
   modules: Record<string, unknown>;
+}
+
+/**
+ * One «Состояние мира» tile (GET /admin/overview): every module's
+ * overview hook contributes its tiles; `value` arrives already
+ * formatted for display, `sort` is the merged cross-module order.
+ */
+export interface AdminOverviewTileDTO {
+  key: string;
+  label: string;
+  value: string;
+  sort: number;
 }
 
 /** POST /admin/tick/run result. tick_log is null when no row exists. */

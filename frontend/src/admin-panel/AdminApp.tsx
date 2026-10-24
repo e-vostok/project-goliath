@@ -17,9 +17,11 @@
  * logged.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { api, ApiError } from '../shared/api-client';
+import { NoticeHost } from '../shared/ui/Notice';
+import { PopupHost } from '../shared/ui/Popup';
 import { TEXT_STYLES } from '../shared/ui/tokens';
 import { takeEntryToken } from './entryToken';
 import type { GateCardKind } from './PanelGate';
@@ -97,24 +99,34 @@ export function AdminApp() {
     setState({ kind: 'gate', card });
   };
 
+  // The page's own root is the popup/notice container: the panel owns
+  // the viewport, so the shared Popup pins itself to its top.
+  const rootRef = useRef<HTMLDivElement>(null);
+
   return (
     <div
+      ref={rootRef}
       style={{
+        position: 'relative',
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
         ...TEXT_STYLES['body'],
       }}
     >
-      {state.kind === 'ready' ? (
-        <PanelFrame
-          session={state.session}
-          onLogout={() => endToCard('logged-out')}
-          onSessionEnd={() => endToCard('session-ended')}
-        />
-      ) : (
-        <PanelGate card={state.kind === 'gate' ? state.card : null} />
-      )}
+      <PopupHost container={rootRef}>
+        <NoticeHost container={rootRef}>
+          {state.kind === 'ready' ? (
+            <PanelFrame
+              session={state.session}
+              onLogout={() => endToCard('logged-out')}
+              onSessionEnd={() => endToCard('session-ended')}
+            />
+          ) : (
+            <PanelGate card={state.kind === 'gate' ? state.card : null} />
+          )}
+        </NoticeHost>
+      </PopupHost>
     </div>
   );
 }
