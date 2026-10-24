@@ -11,6 +11,8 @@ import type {
   AdminMeDTO,
   AdminPlayerDeleteResultDTO,
   AdminResetResultDTO,
+  AdminSessionDTO,
+  AdminSessionRequest,
   AdminStateDTO,
   AdminTickLogEntryDTO,
   AdminTickRunResultDTO,
@@ -294,6 +296,22 @@ export const api = {
   /** GET /admin/me — 200 {is_admin: true} for admins, 403 otherwise. */
   adminMe(token: string, signal?: AbortSignal) {
     return apiFetch<AdminMeDTO>('/admin/me', { token, signal });
+  },
+
+  /**
+   * POST /admin/session — exchange the one-time link token (from the
+   * panel page's `#t=` fragment) for a short panel Bearer session.
+   * NO Bearer is sent: the link token itself is the credential.
+   * 401 PANEL_LINK_INVALID for an unknown/expired/spent link, 403
+   * ADMIN_REQUIRED when the player no longer holds admin rights.
+   */
+  adminExchangeSession(linkToken: string, signal?: AbortSignal) {
+    const body: AdminSessionRequest = { token: linkToken };
+    return apiFetch<AdminSessionDTO>('/admin/session', {
+      method: 'POST',
+      body,
+      signal,
+    });
   },
 
   /** GET /admin/state — aggregated per-module state views. */
