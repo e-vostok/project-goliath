@@ -68,6 +68,12 @@ export const ERRORS_RU: Record<string, string | typeof SERVER_RU> = {
   ORDER_TITLE_INVALID: SERVER_RU,
   ORDER_SUMMARY_INVALID: SERVER_RU,
   ORDER_URL_INVALID: SERVER_RU,
+  /* Admin judge assignment (0.11.0 unit 10b) — the preview's blocker
+     codes, also the POST /admin/orders/{n}/judge refusals. */
+  ORDER_ALREADY_DECIDED:
+    'По приказу уже вынесен вердикт — судью менять нельзя.',
+  JUDGE_IS_AUTHOR: 'Автор приказа не может быть его судьёй',
+  ALREADY_JUDGE: 'Этот игрок уже назначен судьёй этого приказа.',
 
   /* Map maintenance — transient states the player cannot act on. */
   RETIRED_PROVINCE_OWNED: 'Действие сейчас недоступно. Попробуйте позже.',

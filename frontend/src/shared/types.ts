@@ -470,6 +470,80 @@ export interface AdminNationColorCheckRequest {
   nation_id?: string;
 }
 
+/**
+ * GET /admin/state — the aggregated per-module state views (0.11.0
+ * unit 6a). Each hook defines its own payload, so `modules` stays
+ * loosely typed; the orders section reads the `04_orders` slice as
+ * AdminOrdersStateViewDTO.
+ */
+export interface AdminStateDTO {
+  modules: Record<string, unknown>;
+}
+
+/**
+ * The `04_orders` slice of GET /admin/state (Spec 5.7): the
+ * distribution worker's mode and last pass plus the stage counters —
+ * the part of the 6a state view the orders list does not replace.
+ */
+export interface AdminOrdersStateViewDTO {
+  orders_total: number;
+  worker_mode: 'RUNNING' | 'STOPPED';
+  last_pass_at: string | null;
+  stages: { SUBMITTED: number; DISTRIBUTED: number; VERDICT: number };
+  overdue_total: number;
+  unassigned_total: number;
+  oldest_unassigned_age_minutes: number | null;
+}
+
+/**
+ * One row of GET /admin/orders (0.11.0 unit 10a) — the panel's
+ * «Приказы» table. `status` is the derived stage, `overdue` marks an
+ * undecided order past its deadline; the author nation fields are the
+ * order's snapshot. POST /admin/orders/{n}/judge answers this shape.
+ */
+export interface AdminOrderDTO {
+  number: number;
+  title: string;
+  author_nation_short_name: string | null;
+  author_nation_flag_id: string | null;
+  author_name: string | null;
+  judge_vk_user_id: number | null;
+  judge_name: string | null;
+  status: 'NO_JUDGE' | 'AWAITING_VERDICT' | 'DECIDED';
+  /** 'YYYY-MM-DD HH:MM:SS' in the tick timezone; null when undistributed. */
+  deadline_at: string | null;
+  overdue: boolean;
+}
+
+/** GET /admin/orders — one page plus the full matching count. */
+export interface AdminOrdersDTO {
+  items: AdminOrderDTO[];
+  total: number;
+}
+
+/**
+ * GET /admin/orders/{number}/judge-preview (0.11.0 unit 10a) — the
+ * read-only "what POST /judge would check": the current and picked
+ * judges, the one `blocker` the service would refuse with (null when
+ * it would pass) and the ready Russian `warnings` the panel shows
+ * under the fixed lead. `warnings[].text` is rendered verbatim.
+ */
+export interface AdminOrderJudgePreviewDTO {
+  current_judge: { vk_user_id: number | null; name: string | null } | null;
+  new_judge: { vk_user_id: number; name: string | null };
+  blocker:
+    | 'ORDER_ALREADY_DECIDED'
+    | 'JUDGE_IS_AUTHOR'
+    | 'ALREADY_JUDGE'
+    | null;
+  warnings: { code: string; text: string }[];
+}
+
+/** POST /admin/orders/{number}/judge request — the judge's VK id. */
+export interface AdminOrderAssignJudgeRequest {
+  judge_vk_user_id: number;
+}
+
 /** One admin_audit_log row (GET /admin/audit-log) — the «Журнал» table. */
 export interface AdminAuditItemDTO {
   id: number;
