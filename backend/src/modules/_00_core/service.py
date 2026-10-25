@@ -19,11 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules._00_core.color_policy import oklab_distance
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
+    AlreadyOwnerError,
     CapitalNotInProvincesError,
+    CapitalRequiredError,
     ColorTakenError,
     ColorTooCloseError,
     FlagInvalidError,
     FrequencyCapExceededError,
+    LastProvinceError,
     NameTakenError,
     NationAlreadyExistsError,
     NationNotFoundError,
@@ -31,9 +34,11 @@ from modules._00_core.exceptions import (
     PortraitInvalidError,
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
+    ProvinceNotLandError,
     ProvinceTakenError,
     RetiredProvinceHistoryError,
     RetiredProvinceOwnedError,
+    SeizeNotConfirmedError,
     ShortNameTakenError,
 )
 from modules._00_core.hooks import (
@@ -207,6 +212,22 @@ class NationRegistryRow:
 ColorStatus = Literal["OK", "TAKEN", "TOO_CLOSE"]
 
 
+@dataclass(frozen=True)
+class ProvinceTransferResult:
+    """
+    Outcome of ``ProvinceService.transfer`` — ids only.
+
+    ``new_capital_province_id`` is the replacement capital actually
+    assigned to the donor (None when the donor's capital was not
+    touched — including donors with no capital at all).
+    """
+
+    province_id: int
+    previous_nation_id: str | None
+    new_nation_id: str | None
+    new_capital_province_id: int | None
+
+
 class ProvinceService:
     """Service for the provinces table (map nodes)."""
 
@@ -355,6 +376,144 @@ class ProvinceService:
             )
             for row in result.all()
         ]
+
+    @staticmethod
+    async def transfer(
+        session: AsyncSession,
+        province_id: int,
+        to_nation_id: str | None,
+        *,
+        new_capital_province_id: int | None = None,
+        new_capital_name: str | None = None,
+        confirm_seize: bool = False,
+        config: CoreConfig,
+    ) -> ProvinceTransferResult:
+        """
+        Move a land province to a nation, or free it — the admin
+        transfer/release operation (0.11.0 unit 9a).
+
+        ``to_nation_id=None`` frees the province. The administrator is
+        NOT bound by ``min/max_provinces_per_nation`` and may take a
+        province owned by another nation with ``confirm_seize=True`` —
+        but the donor's LAST province can never leave (the nation must
+        be deleted instead), and when the moved province is the donor's
+        capital a replacement among the donor's remaining provinces is
+        mandatory (INV-14). A donor with no capital (a pre-0.8.0
+        nation) is left as it is.
+
+        Runs inside the caller's transaction under the nations
+        advisory lock — never commits. Check order: the province
+        exists and is LAND -> the target nation exists ->
+        ALREADY_OWNER -> SEIZE_NOT_CONFIRMED -> LAST_PROVINCE ->
+        CAPITAL_REQUIRED / CAPITAL_NOT_IN_PROVINCES -> the
+        ``new_capital_name`` format check.
+
+        Exactly one ``OwnershipChange`` is announced through
+        ``notify_ownership_changed`` in the same transaction (the
+        map's ownership journal is written by its own listener,
+        INV-M7): the new owner's name/short name/colour for a
+        transfer, all None for a release.
+
+        Raises:
+            ProvinceNotFoundError: unknown province id.
+            ProvinceNotLandError: the node is a sea zone.
+            NationNotFoundError: unknown target nation id.
+            AlreadyOwnerError: already the target's, or already free
+                on a release.
+            SeizeNotConfirmedError: owned by another nation and
+                ``confirm_seize`` is false.
+            LastProvinceError: the donor owns only this province.
+            CapitalRequiredError: the donor's capital is moving and
+                no replacement was given.
+            CapitalNotInProvincesError: the replacement is not one of
+                the donor's remaining provinces.
+            CapitalNameInvalidError: ``new_capital_name`` fails the
+                Part 3 text checks.
+        """
+        province = await session.get(Province, province_id)
+        if province is None:
+            raise ProvinceNotFoundError(province_id)
+        if province.kind != "LAND":
+            raise ProvinceNotLandError(province_id)
+
+        target = None
+        if to_nation_id is not None:
+            target = await session.get(Nation, to_nation_id)
+            if target is None:
+                raise NationNotFoundError(to_nation_id)
+
+        # The lock covers the donor's province-set reads and the write —
+        # the same check-then-write serialization create/update use
+        # (INV-13's mechanism, reused for the ownership move).
+        await _take_nations_lock(session)
+
+        previous_nation_id = province.nation_id
+        if previous_nation_id == to_nation_id:
+            raise AlreadyOwnerError(province_id)
+
+        donor = None
+        donor_province_ids: list[int] = []
+        if previous_nation_id is not None:
+            if to_nation_id is not None and not confirm_seize:
+                raise SeizeNotConfirmedError(province_id)
+            donor = await session.get(Nation, previous_nation_id)
+            donor_province_ids = list(
+                (
+                    await session.execute(
+                        select(Province.id).where(
+                            Province.nation_id == previous_nation_id
+                        )
+                    )
+                ).scalars()
+            )
+            if len(donor_province_ids) == 1:
+                raise LastProvinceError(previous_nation_id)
+
+        replacing_capital = (
+            donor is not None and donor.capital_province_id == province_id
+        )
+        if replacing_capital:
+            if new_capital_province_id is None or new_capital_name is None:
+                raise CapitalRequiredError(previous_nation_id)
+            remaining = [pid for pid in donor_province_ids if pid != province_id]
+            if new_capital_province_id not in remaining:
+                raise CapitalNotInProvincesError(new_capital_province_id)
+        if new_capital_name is not None:
+            new_capital_name = validate_capital_name(new_capital_name, config)
+
+        province.nation_id = to_nation_id
+        assigned_capital_id = None
+        if replacing_capital:
+            donor.capital_province_id = new_capital_province_id
+            donor.capital_name = new_capital_name
+            assigned_capital_id = new_capital_province_id
+
+        # The ONLY ownership announcement for this move — the map's
+        # journal listens here; nothing else writes it (INV-M7).
+        turn = await _current_turn(session)
+        await notify_ownership_changed(
+            session,
+            [
+                OwnershipChange(
+                    province_id=province_id,
+                    prev_nation_id=previous_nation_id,
+                    new_nation_id=to_nation_id,
+                    new_name=target.name if target is not None else None,
+                    new_short_name=(
+                        target.short_name if target is not None else None
+                    ),
+                    new_color=target.color_hex if target is not None else None,
+                    turn=turn,
+                )
+            ],
+        )
+
+        return ProvinceTransferResult(
+            province_id=province_id,
+            previous_nation_id=previous_nation_id,
+            new_nation_id=to_nation_id,
+            new_capital_province_id=assigned_capital_id,
+        )
 
 
 class PlayerService:
