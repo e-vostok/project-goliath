@@ -729,12 +729,14 @@ async def admin_audit_log(
     before_id: Annotated[int | None, Query(ge=1)] = None,
 ) -> dict:
     """
-    One page of the permanent admin journal («Журнал», unit 7).
+    One page of the bounded admin journal («Журнал», unit 7).
 
     Filters: ``actor_vk_user_id`` and ``action`` match exactly;
     ``date_from``/``date_to`` are 'YYYY-MM-DD' local calendar dates in
     the tick timezone, inclusive. ``before_id`` is the cursor — the
     answer's ``next_before_id`` (null at the last page) feeds it.
+    ``retention_limit`` is the current ``admin_panel.audit_log_max_rows``
+    — the caption under the table shows it.
 
     ``actor_name`` is the display name the player-info hooks know —
     null when the actor is no longer a player (the journal survives
@@ -775,6 +777,7 @@ async def admin_audit_log(
             for row in items
         ],
         "next_before_id": items[-1].id if len(rows) > limit else None,
+        "retention_limit": config.admin_panel.audit_log_max_rows,
     }
 
 

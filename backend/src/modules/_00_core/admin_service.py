@@ -4,8 +4,10 @@ Admin grants and audit-log services for module 00_core (0.11.0 unit 3).
 Two public services, both working strictly inside the caller's
 transaction and never committing:
 
-- ``AdminAuditService`` — appends to and reads the permanent
-  ``admin_audit_log`` journal of admin-panel actions.
+- ``AdminAuditService`` — appends to and reads the bounded
+  ``admin_audit_log`` journal of admin-panel actions: every write
+  trims the table to the newest ``admin_panel.audit_log_max_rows``
+  rows in the same transaction.
 - ``AdminGrantService`` — manages ``admin_grants``, the
   database-issued admin rights that complement the
   ADMIN_VK_USER_IDS env allowlist. The env parsing itself stays in
@@ -17,10 +19,11 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.security import _admin_vk_user_ids, is_admin_vk_user
+from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError, PlayerNotFoundError
 from modules._00_core.models import AdminAuditLog, AdminGrant, Player
 
@@ -46,7 +49,12 @@ class LastAdminError(CoreDomainError):
 
 
 class AdminAuditService:
-    """The permanent journal of admin-panel actions."""
+    """
+    The journal of admin-panel actions, bounded by
+    ``admin_panel.audit_log_max_rows``: record() deletes the oldest
+    rows above the cap automatically. There is no way to delete or
+    edit a row by hand — only this automatic trimming removes them.
+    """
 
     @staticmethod
     async def record(
@@ -63,6 +71,14 @@ class AdminAuditService:
         commits, so the entry lands or rolls back together with the
         action it describes. ``details`` carries ids and before/after
         values only — never tokens or raw launch params.
+
+        Right after the new row flushes, the same transaction deletes
+        every row with ``id <= new_id - audit_log_max_rows`` — journal
+        ids only grow, so this keeps the newest N rows with one cheap
+        indexed delete and no count query. The cap is read from the
+        config on every call; the new row is never touched and an
+        empty match is a no-op. Roll back the caller's transaction and
+        the deleted rows come back.
         """
         row = AdminAuditLog(
             actor_vk_user_id=actor_vk_user_id,
@@ -74,6 +90,12 @@ class AdminAuditService:
         )
         session.add(row)
         await session.flush()
+        limit = CoreConfig.from_yaml(
+            CoreConfig.get_default_config_path()
+        ).admin_panel.audit_log_max_rows
+        await session.execute(
+            delete(AdminAuditLog).where(AdminAuditLog.id <= row.id - limit)
+        )
         return row
 
     @staticmethod

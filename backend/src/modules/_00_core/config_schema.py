@@ -134,6 +134,14 @@ class AdminPanelSettings(BaseModel):
         description="Максимум невостребованных одноразовых ссылок на одного "
         "игрока; сверх предела самая старая выбрасывается.",
     )
+    audit_log_max_rows: int = Field(
+        default=5000,
+        ge=500,
+        le=1000000,
+        description="Предел записей журнала администратора "
+        "(admin_audit_log): при каждой новой записи самые старые сверх "
+        "предела удаляются автоматически.",
+    )
 
 
 class NationSettings(BaseModel):

@@ -2,11 +2,14 @@
  * LogSection — «Журнал» (0.11.0 unit 7), approved mockup
  * docs/06_DESIGN/0.11.0 screen 08.
  *
- * The permanent admin journal: a filter row (Администратор, Действие,
+ * The bounded admin journal (only the newest retention_limit rows
+ * are kept; nobody can delete or edit a row by hand): a filter row
+ * (Администратор, Действие,
  * С даты, По дату — the two dropdowns fed by
  * GET /admin/audit-log/filters — and «Сбросить»), then the table card
  * (Время (МСК), Кто, Действие, Над чем, Кратко), the caption
- * «Показано N · записи не удаляются и не правятся» and «Показать
+ * «Показано N · хранятся последние M записей, править и удалять
+ * вручную нельзя» and «Показать
  * ещё» driven by the answer's next_before_id cursor. «Над чем» is
  * built from target type and id in plain words, «—» when the action
  * has no target.
@@ -188,6 +191,11 @@ function targetText(item: AdminAuditItemDTO): string {
   return item.target_id !== null ? `${word} ${item.target_id}` : word;
 }
 
+/** 7654 → "7 654" — thin-space (U+2009) thousands grouping for the caption. */
+function thinGrouped(value: number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009');
+}
+
 /* ---------------------------------------------------------------- */
 /* The section.                                                      */
 /* ---------------------------------------------------------------- */
@@ -205,6 +213,7 @@ export function LogSection() {
 
   const [items, setItems] = useState<AdminAuditItemDTO[]>([]);
   const [nextBeforeId, setNextBeforeId] = useState<number | null>(null);
+  const [retentionLimit, setRetentionLimit] = useState<number | null>(null);
   const [status, setStatus] = useState<ListStatus>('loading');
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -234,6 +243,7 @@ export function LogSection() {
           beforeId === null ? page.items : [...prev, ...page.items],
         );
         setNextBeforeId(page.next_before_id);
+        setRetentionLimit(page.retention_limit);
         setStatus('ready');
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
@@ -488,7 +498,7 @@ export function LogSection() {
             </tbody>
           </table>
         )}
-        {status === 'ready' && items.length > 0 && (
+        {status === 'ready' && items.length > 0 && retentionLimit !== null && (
           <span
             data-testid="log-shown"
             style={{
@@ -496,7 +506,9 @@ export function LogSection() {
               color: tokenVar('ink-muted'),
             }}
           >
-            Показано {items.length} · записи не удаляются и не правятся
+            {`Показано ${items.length} · хранятся последние ${thinGrouped(
+              retentionLimit,
+            )} записей, править и удалять вручную нельзя`}
           </span>
         )}
         {status === 'ready' && nextBeforeId !== null && (

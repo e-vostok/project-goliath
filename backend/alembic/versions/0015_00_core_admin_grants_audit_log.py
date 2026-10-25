@@ -8,13 +8,16 @@ Two new 00_core tables:
   (``player_id`` UNIQUE, FK -> players.id); ``granted_by_vk_user_id``
   is a plain snapshot of the granting admin — deliberately no FK, so
   the record survives deletion of the granting player.
-- ``admin_audit_log`` — permanent journal of admin-panel actions.
+- ``admin_audit_log`` — bounded journal of admin-panel actions:
+  only the newest ``admin_panel.audit_log_max_rows`` rows are kept,
+  AdminAuditService.record() deletes the oldest ones automatically.
   ``actor_vk_user_id`` is a snapshot too (no FK): history survives
   player deletion. ``details`` is JSON for ids and before/after
   values only — never tokens or raw launch params.
 
 Neither table is touched by the world reset: the audit log is
-permanent history, and grants define who may operate the panel.
+durable history (bounded by the row cap), and grants define who may
+operate the panel.
 
 Downgrade drops both tables.
 """

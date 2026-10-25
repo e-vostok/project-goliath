@@ -302,11 +302,14 @@ export interface AdminAuditItemDTO {
 
 /**
  * GET /admin/audit-log — one journal page. `next_before_id` is the
- * cursor for «Показать ещё»; null on the last page.
+ * cursor for «Показать ещё»; null on the last page. `retention_limit`
+ * is the current admin_panel.audit_log_max_rows — the caption under
+ * the table prints it.
  */
 export interface AdminAuditLogDTO {
   items: AdminAuditItemDTO[];
   next_before_id: number | null;
+  retention_limit: number;
 }
 
 /** GET /admin/audit-log/filters — the two dropdowns' values. */

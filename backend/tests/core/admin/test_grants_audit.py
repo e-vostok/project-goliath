@@ -34,6 +34,7 @@ from modules._00_core.admin_service import (
     LastAdminError,
     RootAdminProtectedError,
 )
+from modules._00_core.config_schema import CoreConfig
 from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
@@ -319,3 +320,139 @@ class TestAdminAuditLog:
             ).scalars().all()
             assert [row.action for row in rows] == ["tick.run", "world.reset"]
             assert all(row.actor_vk_user_id == ADMIN_VK_ID for row in rows)
+
+
+class TestAdminAuditRetention:
+    """The journal keeps only the newest audit_log_max_rows rows."""
+
+    @staticmethod
+    def _patch_limit(monkeypatch, limit: int) -> None:
+        """Point CoreConfig at the real config with the retention cap
+        replaced by ``limit`` — the mini_map_config pattern: from_yaml
+        answers a ready model, no YAML rewriting."""
+        config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+        config.admin_panel.audit_log_max_rows = limit
+        monkeypatch.setattr(
+            CoreConfig, "from_yaml", classmethod(lambda cls, path: config)
+        )
+
+    @pytest.mark.asyncio
+    async def test_record_trims_to_newest_n(self, test_db_session, monkeypatch):
+        """With the cap patched to 5, writing 8 rows leaves exactly the
+        newest 5: the 3 oldest ids are gone and the row just written is
+        always kept."""
+        self._patch_limit(monkeypatch, 5)
+        rows = []
+        for i in range(8):
+            rows.append(
+                await AdminAuditService.record(
+                    test_db_session,
+                    actor_vk_user_id=ADMIN_VK_ID,
+                    action="tick.run",
+                    summary=f"Запись {i}.",
+                )
+            )
+
+        kept = await AdminAuditService.list_recent(test_db_session, limit=50)
+        assert [row.id for row in kept] == [row.id for row in reversed(rows[3:])]
+        assert kept[0].id == rows[-1].id
+
+    @pytest.mark.asyncio
+    async def test_trim_rolls_back_with_the_caller(
+        self, test_db_session, monkeypatch
+    ):
+        """The trim lands in the CALLER's transaction: the rows it
+        deleted come back on rollback, together with the new row
+        itself."""
+        self._patch_limit(monkeypatch, 5)
+        seeded = []
+        for i in range(8):
+            row = AdminAuditLog(
+                actor_vk_user_id=ADMIN_VK_ID,
+                action="tick.run",
+                summary=f"Запись {i}.",
+            )
+            test_db_session.add(row)
+            seeded.append(row)
+        await test_db_session.flush()
+        seeded_ids = [row.id for row in seeded]
+        await test_db_session.commit()
+
+        new_row = await AdminAuditService.record(
+            test_db_session,
+            actor_vk_user_id=ADMIN_VK_ID,
+            action="world.reset",
+            summary="Выполнен сброс состояния мира.",
+        )
+        kept = await AdminAuditService.list_recent(test_db_session, limit=50)
+        assert [row.id for row in kept] == [
+            new_row.id,
+            *reversed(seeded_ids[4:]),
+        ]
+
+        await test_db_session.rollback()
+        restored = await AdminAuditService.list_recent(test_db_session, limit=50)
+        assert [row.id for row in restored] == list(reversed(seeded_ids))
+
+    @pytest.mark.asyncio
+    async def test_reset_and_player_delete_never_wipe_journal(
+        self, live_client, monkeypatch
+    ):
+        """Even with the cap patched to 3, the world reset and the
+        player deletion only trim down to the newest 3 rows — the
+        destructive paths themselves never empty the journal, and the
+        deleted player's own rows survive within the window."""
+        self._patch_limit(monkeypatch, 3)
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _auth_headers(live_client, ADMIN_VK_ID)
+
+        # Five rows authored by the soon-deleted player, written
+        # directly — no record(), so no trimming yet.
+        async with get_session_context() as session:
+            session.add(Player(vk_user_id=777001))
+            for i in range(5):
+                session.add(
+                    AdminAuditLog(
+                        actor_vk_user_id=777001,
+                        action="tick.run",
+                        summary=f"Запись {i}.",
+                    )
+                )
+            await session.commit()
+
+        delete = await live_client.post(
+            "/api/v1/admin/players/777001/delete",
+            json={"confirm_vk_user_id": 777001},
+            headers=headers,
+        )
+        assert delete.status_code == 200, delete.text
+        async with get_session_context() as session:
+            rows = (
+                await session.execute(
+                    select(AdminAuditLog).order_by(AdminAuditLog.id)
+                )
+            ).scalars().all()
+            assert [row.action for row in rows] == [
+                "tick.run",
+                "tick.run",
+                "player.delete",
+            ]
+            assert any(row.actor_vk_user_id == 777001 for row in rows)
+
+        reset = await live_client.post(
+            "/api/v1/admin/state/reset",
+            json={"confirm": True},
+            headers=headers,
+        )
+        assert reset.status_code == 200, reset.text
+        async with get_session_context() as session:
+            rows = (
+                await session.execute(
+                    select(AdminAuditLog).order_by(AdminAuditLog.id)
+                )
+            ).scalars().all()
+            assert [row.action for row in rows] == [
+                "tick.run",
+                "player.delete",
+                "world.reset",
+            ]
