@@ -25,7 +25,6 @@ import type {
 } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
-import { TextField } from '../../../shared/ui/fields';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import { useNotice } from '../../../shared/ui/Notice';
 import { Popup } from '../../../shared/ui/Popup';
@@ -624,12 +623,48 @@ export function TurnSection() {
           }
         >
           <span style={TEXT_STYLES['body']}>{RESET_CONSEQUENCE}</span>
-          <TextField
-            id="reset-confirm-word"
-            label="Наберите «СБРОС» для подтверждения"
-            value={resetWord}
-            onChange={setResetWord}
-          />
+          {/* The mockup's .fld: a normal-case caption label above the
+              field (the shared TextField's label is uppercase). */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              minWidth: 0,
+            }}
+          >
+            <label
+              htmlFor="reset-confirm-word"
+              style={{
+                ...TEXT_STYLES['caption'],
+                color: tokenVar('ink-muted'),
+              }}
+            >
+              Наберите «СБРОС» для подтверждения
+            </label>
+            <input
+              id="reset-confirm-word"
+              value={resetWord}
+              onChange={(event) => setResetWord(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                // Enter never submits anything anywhere in the app.
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                }
+              }}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                height: SIZES['button-h'],
+                padding: '0 12px',
+                borderRadius: RADII['radius-md'],
+                background: tokenVar('surface-inset'),
+                border: `1px solid ${tokenVar('ink-faint')}`,
+                color: tokenVar('ink'),
+                ...TEXT_STYLES['body'],
+              }}
+            />
+          </div>
           {resetError !== null && (
             <span
               data-testid="reset-error"

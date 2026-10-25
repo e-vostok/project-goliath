@@ -34,7 +34,6 @@ import type {
 } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
-import { TextField } from '../../../shared/ui/fields';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import { useNotice } from '../../../shared/ui/Notice';
 import { Popup } from '../../../shared/ui/Popup';
@@ -385,7 +384,7 @@ export function PlayersSection() {
           gap: SPACING['space-3'],
         }}
       >
-        <div style={{ width: 280 }}>
+        <div style={{ width: 340 }}>
           <label
             htmlFor="players-search"
             style={{
@@ -705,12 +704,48 @@ export function PlayersSection() {
               ))}
             </ul>
           )}
-          <TextField
-            id="player-delete-confirm"
-            label={`Для подтверждения введите VK ID: ${expectedId}`}
-            value={typedId}
-            onChange={setTypedId}
-          />
+          {/* The mockup's .fld: a normal-case caption label above the
+              field (the shared TextField's label is uppercase). */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              minWidth: 0,
+            }}
+          >
+            <label
+              htmlFor="player-delete-confirm"
+              style={{
+                ...TEXT_STYLES['caption'],
+                color: tokenVar('ink-muted'),
+              }}
+            >
+              Для подтверждения введите VK ID: {expectedId}
+            </label>
+            <input
+              id="player-delete-confirm"
+              value={typedId}
+              onChange={(event) => setTypedId(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                // Enter never submits anything anywhere in the app.
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                }
+              }}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                height: SIZES['button-h'],
+                padding: '0 12px',
+                borderRadius: RADII['radius-md'],
+                background: tokenVar('surface-inset'),
+                border: `1px solid ${tokenVar('ink-faint')}`,
+                color: tokenVar('ink'),
+                ...TEXT_STYLES['body'],
+              }}
+            />
+          </div>
           {deleteError !== null && (
             <span
               data-testid="player-delete-error"
