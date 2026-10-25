@@ -202,6 +202,69 @@ class CapitalNotInProvincesError(CoreDomainError):
         )
 
 
+class ProvinceNotLandError(CoreDomainError):
+    """Raised when a transfer targets a sea zone — only LAND is ownable."""
+
+    def __init__(self, province_id: int):
+        super().__init__(
+            f"Province {province_id} is a sea zone and cannot be owned",
+            "PROVINCE_NOT_LAND",
+        )
+
+
+class AlreadyOwnerError(CoreDomainError):
+    """Raised when the province already has the requested owner."""
+
+    def __init__(self, province_id: int):
+        super().__init__(
+            f"Province {province_id} already has the requested owner",
+            "ALREADY_OWNER",
+        )
+
+
+class SeizeNotConfirmedError(CoreDomainError):
+    """Taking a province owned by another nation needs confirm_seize."""
+
+    def __init__(self, province_id: int):
+        super().__init__(
+            f"Province {province_id} is owned by another nation — "
+            "pass confirm_seize to take it",
+            "SEIZE_NOT_CONFIRMED",
+        )
+
+
+class LastProvinceError(CoreDomainError):
+    """The donor's last province can never be freed or moved."""
+
+    def __init__(self, nation_id: str):
+        super().__init__(
+            f"Nation {nation_id} owns only this province — "
+            "delete the nation instead",
+            "LAST_PROVINCE",
+        )
+
+
+class CapitalRequiredError(CoreDomainError):
+    """Moving the donor's capital requires a replacement pick."""
+
+    def __init__(self, nation_id: str):
+        super().__init__(
+            f"Nation {nation_id} loses its capital province — "
+            "a new capital is required",
+            "CAPITAL_REQUIRED",
+        )
+
+
+class ProvinceNameUnknownError(CoreDomainError):
+    """No province-info hook knows a display name for the id."""
+
+    def __init__(self, province_id: int):
+        super().__init__(
+            f"No province-info hook knows a name for province {province_id}",
+            "PROVINCE_NAME_UNKNOWN",
+        )
+
+
 class RetiredProvinceOwnedError(CoreDomainError):
     """A retired map node still belongs to a nation (INV-M5, Spec 1.9).
 

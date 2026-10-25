@@ -54,6 +54,7 @@ ADMIN_AUDIT_ACTION_LABELS = {
     "nation.create": "Создание государства",
     "nation.update": "Правка государства",
     "nation.delete": "Удаление государства",
+    "province.transfer": "Передача провинции",
 }
 
 

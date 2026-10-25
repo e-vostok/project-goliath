@@ -1,8 +1,10 @@
 """
 HTTP API router for the admin panel.
 
-Twenty-four endpoints (prefix /api/v1/admin): GET /me, GET /state,
-GET /players, GET /provinces, GET /nations, POST /nations,
+Twenty-six endpoints (prefix /api/v1/admin): GET /me, GET /state,
+GET /players, GET /provinces,
+GET /provinces/{province_id}/transfer-preview,
+POST /provinces/{province_id}/transfer, GET /nations, POST /nations,
 GET /nations/{nation_id}, PATCH /nations/{nation_id},
 POST /nations/color-check, GET /nations/{nation_id}/delete-preview,
 POST /nations/{nation_id}/delete, GET /overview, GET /tick-log,
@@ -70,6 +72,9 @@ from modules._00_core.exceptions import (
     CoreDomainError,
     NationNotFoundError,
     PlayerNotFoundError,
+    ProvinceNameUnknownError,
+    ProvinceNotFoundError,
+    ProvinceNotLandError,
 )
 from modules._00_core.models import (
     AdminGrant,
@@ -81,7 +86,11 @@ from modules._00_core.models import (
 )
 from modules._00_core.router import GameClockNotFoundError
 from modules._00_core.schemas import _COLOR_HEX_PATTERN, _validate_nation_name
-from modules._00_core.service import NationService, PlayerService
+from modules._00_core.service import (
+    NationService,
+    PlayerService,
+    ProvinceService,
+)
 from modules._00_core.tick_schedule import format_game_time
 
 logger = logging.getLogger(__name__)
@@ -375,6 +384,24 @@ class NationDeleteRequest(BaseModel):
     confirm_short_name: Any = None
 
 
+class ProvinceTransferRequest(BaseModel):
+    """
+    Body for POST /provinces/{province_id}/transfer (0.11.0 unit 9a):
+    ``to_nation_id`` is the target nation — explicit null means
+    "free the province"; ``confirm_seize`` is the separate
+    confirmation for taking a province owned by another nation;
+    ``new_capital_province_id`` picks the donor's replacement capital
+    when the moved province was its capital (its display name comes
+    from the province-info hooks — the service never sees raw names).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    to_nation_id: str | None = None
+    confirm_seize: bool = False
+    new_capital_province_id: int | None = None
+
+
 def _tick_log_dict(row: TickLog, config: CoreConfig) -> dict:
     game_date = format_game_date(
         compute_game_date(row.turn_number, config), config
@@ -651,6 +678,230 @@ async def list_provinces(
             for row in page
         ],
         "total": total,
+    }
+
+
+@router.get("/provinces/{province_id}/transfer-preview")
+async def admin_province_transfer_preview(
+    province_id: int,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    to_nation_id: str | None = None,
+) -> dict:
+    """
+    What transferring this province would do — read-only, never
+    commits (0.11.0 unit 9a). No ``to_nation_id`` previews a release.
+
+    The fixed shape tells the panel everything the action endpoint
+    would check, without performing it: the province (display name
+    through the province-info hooks), the donor nation (or null for a
+    free province), the receiver (or null), whether the call would
+    seize from another nation, whether a new capital must be chosen
+    and the donor's remaining provinces as ``capital_candidates``
+    (ordered by name, same rule as the nation delete-preview), the
+    province counts after the operation, and a ``blocker`` naming the
+    refusal the action would hit (``LAST_PROVINCE``,
+    ``ALREADY_OWNER``) — null when it would pass.
+
+    Unknown province -> 404 PROVINCE_NOT_FOUND; a sea zone -> 422
+    PROVINCE_NOT_LAND; unknown target nation -> 404 NATION_NOT_FOUND.
+    """
+    province = await session.get(Province, province_id)
+    if province is None:
+        raise ProvinceNotFoundError(province_id)
+    if province.kind != "LAND":
+        raise ProvinceNotLandError(province_id)
+
+    to_nation = None
+    if to_nation_id is not None:
+        to_nation = await session.get(Nation, to_nation_id)
+        if to_nation is None:
+            raise NationNotFoundError(to_nation_id)
+
+    donor = None
+    donor_province_ids: list[int] = []
+    if province.nation_id is not None:
+        donor = await session.get(Nation, province.nation_id)
+        donor_province_ids = list(
+            (
+                await session.execute(
+                    select(Province.id).where(Province.nation_id == donor.id)
+                )
+            ).scalars()
+        )
+
+    receiver_count = 0
+    if to_nation is not None:
+        receiver_count = (
+            await session.execute(
+                select(func.count())
+                .select_from(Province)
+                .where(Province.nation_id == to_nation.id)
+            )
+        ).scalar_one()
+
+    remaining_ids = [pid for pid in donor_province_ids if pid != province_id]
+    info = await _collect_province_info(session, [province_id, *remaining_ids])
+    candidates = sorted(
+        (
+            {"id": pid, "name": info.get(pid, {}).get("name")}
+            for pid in remaining_ids
+        ),
+        key=lambda item: ((item["name"] or "").casefold(), item["id"]),
+    )
+
+    blocker = None
+    if province.nation_id == to_nation_id:
+        # Already the target's — or already free on a release.
+        blocker = "ALREADY_OWNER"
+    elif donor is not None and len(donor_province_ids) == 1:
+        blocker = "LAST_PROVINCE"
+
+    return {
+        "province": {
+            "id": province.id,
+            "name": info.get(province_id, {}).get("name"),
+        },
+        "from_nation": (
+            None
+            if donor is None
+            else {
+                "id": donor.id,
+                "short_name": donor.short_name,
+                "provinces_count": len(donor_province_ids),
+                "capital_province_id": donor.capital_province_id,
+                "capital_name": donor.capital_name,
+            }
+        ),
+        "to_nation": (
+            None
+            if to_nation is None
+            else {
+                "id": to_nation.id,
+                "short_name": to_nation.short_name,
+                "provinces_count": receiver_count,
+            }
+        ),
+        "seizes": donor is not None and to_nation is not None,
+        "capital_choice_needed": (
+            donor is not None and donor.capital_province_id == province_id
+        ),
+        "capital_candidates": candidates,
+        "donor_after": (
+            None if donor is None else len(donor_province_ids) - 1
+        ),
+        "receiver_after": (
+            None if to_nation is None else receiver_count + 1
+        ),
+        "blocker": blocker,
+    }
+
+
+@router.post("/provinces/{province_id}/transfer")
+async def admin_province_transfer(
+    province_id: int,
+    body: ProvinceTransferRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Move a province to a nation — or free it (0.11.0 unit 9a).
+
+    Calls the unchanged ``ProvinceService.transfer``: every domain
+    refusal keeps its HTTP code, rolls the transaction back and writes
+    no journal row. When ``new_capital_province_id`` is set, the new
+    capital's name is the chosen province's display name through the
+    province-info hooks — 422 PROVINCE_NAME_UNKNOWN when no hook knows
+    one.
+
+    On success one ``province.transfer`` journal row lands in the same
+    transaction, before the commit: the summary is one Russian
+    sentence, ``details`` carries ids and the ``seized`` flag only.
+    The map's ownership journal is written by its own listener — not
+    here. The answer is the service result: ``province_id``,
+    ``previous_nation_id``, ``new_nation_id``,
+    ``new_capital_province_id``.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+
+    new_capital_name = None
+    if body.new_capital_province_id is not None:
+        capital_info = await _collect_province_info(
+            session, [body.new_capital_province_id]
+        )
+        new_capital_name = capital_info.get(
+            body.new_capital_province_id, {}
+        ).get("name")
+        if new_capital_name is None:
+            raise ProvinceNameUnknownError(body.new_capital_province_id)
+
+    result = await ProvinceService.transfer(
+        session,
+        province_id,
+        body.to_nation_id,
+        new_capital_province_id=body.new_capital_province_id,
+        new_capital_name=new_capital_name,
+        confirm_seize=body.confirm_seize,
+        config=config,
+    )
+
+    # Names for the audit sentence: the province's display name through
+    # the hooks (falling back to the bare id — the journal must write
+    # regardless), the nations' own short names for the state labels.
+    info = await _collect_province_info(session, [province_id])
+    province_subject = (
+        info.get(province_id, {}).get("name") or str(province_id)
+    )
+    short_names: dict[str, str] = {}
+    for nation_id in (result.previous_nation_id, result.new_nation_id):
+        if nation_id is not None:
+            nation = await session.get(Nation, nation_id)
+            short_names[nation_id] = nation.short_name
+
+    if result.previous_nation_id is None:
+        summary = (
+            f"Свободная провинция «{province_subject}» передана "
+            f"государству «{short_names[result.new_nation_id]}»."
+        )
+    elif result.new_nation_id is None:
+        summary = (
+            f"Провинция «{province_subject}» выведена из-под "
+            f"государства «{short_names[result.previous_nation_id]}»."
+        )
+    else:
+        summary = (
+            f"Провинция «{province_subject}» передана: "
+            f"«{short_names[result.previous_nation_id]}» → "
+            f"«{short_names[result.new_nation_id]}»."
+        )
+    if result.new_capital_province_id is not None:
+        summary += f" Новая столица — «{new_capital_name}»."
+
+    seized = (
+        result.previous_nation_id is not None
+        and result.new_nation_id is not None
+    )
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="province.transfer",
+        target_type="province",
+        target_id=str(province_id),
+        summary=summary,
+        details={
+            "province_id": province_id,
+            "previous_nation_id": result.previous_nation_id,
+            "new_nation_id": result.new_nation_id,
+            "new_capital_province_id": result.new_capital_province_id,
+            "seized": seized,
+        },
+    )
+    await session.commit()
+    return {
+        "province_id": result.province_id,
+        "previous_nation_id": result.previous_nation_id,
+        "new_nation_id": result.new_nation_id,
+        "new_capital_province_id": result.new_capital_province_id,
     }
 
 
