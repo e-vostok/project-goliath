@@ -309,7 +309,11 @@ class AdminGrant(Base):
 
 
 class AdminAuditLog(Base):
-    """Permanent journal of admin-panel actions (0.11.0 unit 3).
+    """Bounded journal of admin-panel actions (0.11.0 unit 3).
+
+    Keeps only the newest admin_panel.audit_log_max_rows rows:
+    AdminAuditService.record() deletes the oldest ones above the cap
+    automatically — nobody deletes or edits rows by hand.
 
     actor_vk_user_id is a snapshot, not a FK: the history must survive
     deletion of the acting player. details carries ids and before/after

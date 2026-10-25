@@ -49,6 +49,7 @@ def _base_config() -> dict:
             "link_ttl_seconds": 60,
             "session_ttl_minutes": 60,
             "max_pending_links_per_player": 3,
+            "audit_log_max_rows": 5000,
         },
         "nation": {
             "nation_name_min_length": 2,
@@ -142,6 +143,7 @@ def test_valid_config_loads():
     assert config.admin_panel.link_ttl_seconds == 60
     assert config.admin_panel.session_ttl_minutes == 60
     assert config.admin_panel.max_pending_links_per_player == 3
+    assert config.admin_panel.audit_log_max_rows == 5000
     assert config.nation.nation_name_min_length == 2
     assert config.nation.nation_name_max_length == 60
     assert config.nation.short_name_min_length == 2
@@ -578,6 +580,8 @@ def test_health_max_heartbeat_age_must_exceed_retry_plus_interval(tmp_path):
         ("session_ttl_minutes", 241),
         ("max_pending_links_per_player", 0),
         ("max_pending_links_per_player", 11),
+        ("audit_log_max_rows", 499),
+        ("audit_log_max_rows", 1000001),
     ],
 )
 def test_admin_panel_values_out_of_bounds_rejected(tmp_path, key, value):

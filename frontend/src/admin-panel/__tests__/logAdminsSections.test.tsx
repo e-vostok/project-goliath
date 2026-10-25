@@ -98,6 +98,7 @@ const AUDIT_PAGE_1 = {
     },
   ],
   next_before_id: 11,
+  retention_limit: 7654,
 };
 
 const AUDIT_PAGE_2 = {
@@ -115,6 +116,7 @@ const AUDIT_PAGE_2 = {
     },
   ],
   next_before_id: null,
+  retention_limit: 7654,
 };
 
 const AUDIT_FILTERS = {
@@ -351,9 +353,12 @@ describe('«Журнал» section', () => {
     expect(table).toHaveTextContent('Сброс мира');
     // No target → the dash, not an empty cell.
     expect(table).toHaveTextContent('—');
-    expect(screen.getByTestId('log-shown')).toHaveTextContent(
-      'Показано 2 · записи не удаляются и не правятся',
+    const caption = screen.getByTestId('log-shown');
+    expect(caption).toHaveTextContent(
+      'Показано 2 · хранятся последние 7 654 записей, править и удалять вручную нельзя',
     );
+    // The number comes from the answer, thin-space grouped.
+    expect(caption.textContent).toContain('7\u2009654');
   });
 
   it('the filters send their query values to /admin/audit-log', async () => {

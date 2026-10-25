@@ -31,6 +31,7 @@ from modules._00_core.admin_service import (
     AdminAuditService,
     AdminGrantService,
 )
+from modules._00_core.config_schema import CoreConfig
 from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
@@ -399,6 +400,24 @@ class TestAuditLogEndpoint:
             "admin.grant": "Выдача прав",
             "admin.revoke": "Снятие прав",
         }
+
+    @pytest.mark.asyncio
+    async def test_retention_limit_in_answer(
+        self, live_client, monkeypatch
+    ):
+        """The answer carries the current ``audit_log_max_rows`` next
+        to ``items``/``next_before_id`` — the «Журнал» caption under
+        the table prints it."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _admin_headers(live_client)
+        config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+        config.admin_panel.audit_log_max_rows = 700
+        monkeypatch.setattr(
+            CoreConfig, "from_yaml", classmethod(lambda cls, path: config)
+        )
+
+        body = await _get(live_client, headers, AUDIT_URL)
+        assert body["retention_limit"] == 700
 
 
 class TestAdminsEndpoint:
