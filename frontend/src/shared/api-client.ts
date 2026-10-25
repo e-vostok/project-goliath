@@ -12,10 +12,14 @@ import type {
   AdminAuditLogDTO,
   AdminEntryDTO,
   AdminMeDTO,
+  AdminNationCreateRequest,
+  AdminNationDTO,
+  AdminNationsDTO,
   AdminOverviewTileDTO,
   AdminPanelLinkDTO,
   AdminPlayerDeleteResultDTO,
   AdminPlayersDTO,
+  AdminProvincesDTO,
   AdminResetResultDTO,
   AdminSessionDTO,
   AdminSessionRequest,
@@ -356,6 +360,84 @@ export const api = {
       `/admin/players${suffix ? `?${suffix}` : ''}`,
       { token, signal },
     );
+  },
+
+  /**
+   * GET /admin/provinces — one page of the LAND-province picker
+   * (0.11.0 unit 8a) as `{items, total}`; `search` goes through the
+   * modules' province-name hooks, `free_only` keeps unowned rows.
+   */
+  adminProvinces(
+    token: string,
+    query: {
+      search?: string;
+      free_only?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.free_only) {
+      params.set('free_only', 'true');
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminProvincesDTO>(
+      `/admin/provinces${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/nations — one page of the «Государства» table as
+   * `{items, total}`; `search` is a short/full-name substring.
+   */
+  adminNations(
+    token: string,
+    query: { search?: string; limit?: number; offset?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminNationsDTO>(
+      `/admin/nations${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations — create a nation for the chosen player through
+   * the unchanged NationService path; answers the list-item shape.
+   */
+  adminNationCreate(
+    token: string,
+    body: AdminNationCreateRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDTO>('/admin/nations', {
+      method: 'POST',
+      body,
+      token,
+      signal,
+    });
   },
 
   /**
