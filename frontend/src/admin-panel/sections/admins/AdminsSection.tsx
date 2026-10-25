@@ -614,7 +614,7 @@ export function AdminsSection() {
             style={{
               display: 'block',
               marginBottom: 6,
-              ...TEXT_STYLES['label'],
+              ...TEXT_STYLES['caption'],
               color: tokenVar('ink-muted'),
             }}
           >

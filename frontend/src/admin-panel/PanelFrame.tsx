@@ -154,143 +154,156 @@ export function PanelFrame({
         reportUnauthorized: onSessionEnd,
       }}
     >
-      <header
+      {/* The frame is a column at least one window tall: the top bar,
+          then the «menu + content» row stretched over what remains —
+          a short section never leaves the menu hanging mid-window. */}
+      <div
+        data-testid="panel-frame"
         style={{
-          height: SIZES['topbar-h'],
-          boxSizing: 'border-box',
-          background: tokenVar('surface'),
-          borderBottom: `1px solid ${tokenVar('line')}`,
           display: 'flex',
-          alignItems: 'center',
-          padding: '0 16px',
-          gap: 16,
-          flexShrink: 0,
+          flexDirection: 'column',
+          minHeight: '100vh',
         }}
       >
-        <PanelBrand />
-        <span
-          aria-hidden="true"
-          style={{ width: 1, height: 24, background: tokenVar('line') }}
-        />
-        <span
+        <header
           style={{
-            ...TEXT_STYLES['label'],
-            color: tokenVar('signal-ink'),
-          }}
-        >
-          Пульт · панель администратора
-        </span>
-        <span style={{ flexGrow: 1, minWidth: 0 }} />
-        <span
-          data-testid="panel-session-left"
-          style={{
-            ...TEXT_STYLES['caption'],
-            color: tokenVar('ink-muted'),
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Сеанс: ещё {minutesLeft} мин
-        </span>
-        {clock !== null && (
-          <TurnBadge>
-            ХОД {clock.current_turn} · {clock.game_date_text.toUpperCase()}
-          </TurnBadge>
-        )}
-        <ThemeToggle />
-        <button
-          type="button"
-          onClick={onLogout}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: SIZES['button-h-small'],
-            padding: '0 12px',
-            border: 'none',
-            borderRadius: RADII['radius-md'],
-            background: tokenVar('surface-inset'),
-            color: tokenVar('ink'),
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            ...TEXT_STYLES['body'],
-          }}
-        >
-          Выйти
-        </button>
-      </header>
-      <div style={{ display: 'flex', alignItems: 'stretch', flexGrow: 1 }}>
-        <nav
-          aria-label="Разделы панели"
-          style={{
-            width: 232,
-            flexShrink: 0,
+            height: SIZES['topbar-h'],
+            boxSizing: 'border-box',
             background: tokenVar('surface'),
-            borderRight: `1px solid ${tokenVar('line')}`,
-            padding: '16px 12px',
+            borderBottom: `1px solid ${tokenVar('line')}`,
             display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
+            alignItems: 'center',
+            padding: '0 16px',
+            gap: 16,
+            flexShrink: 0,
           }}
         >
+          <PanelBrand />
+          <span
+            aria-hidden="true"
+            style={{ width: 1, height: 24, background: tokenVar('line') }}
+          />
           <span
             style={{
               ...TEXT_STYLES['label'],
-              color: tokenVar('ink-muted'),
-              margin: '12px 12px 4px',
+              color: tokenVar('signal-ink'),
             }}
           >
-            Разделы
+            Пульт · панель администратора
           </span>
-          {PANEL_SECTIONS.map((section) => {
-            const selected = section.slug === active.slug;
-            return (
-              <a
-                key={section.slug}
-                href={`#/${section.slug}`}
-                aria-current={selected ? 'page' : undefined}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  height: 40,
-                  padding: '0 12px',
-                  borderRadius: RADII['radius-md'],
-                  background: selected
-                    ? tokenVar('surface-inset')
-                    : 'transparent',
-                  color: tokenVar(selected ? 'ink' : 'ink-muted'),
-                  textDecoration: 'none',
-                  ...TEXT_STYLES['body'],
-                }}
-              >
-                <PanelIcon name={section.icon} accent={selected} />
-                {section.title}
-              </a>
-            );
-          })}
-          <span style={{ flexGrow: 1 }} />
+          <span style={{ flexGrow: 1, minWidth: 0 }} />
           <span
+            data-testid="panel-session-left"
             style={{
               ...TEXT_STYLES['caption'],
               color: tokenVar('ink-muted'),
-              padding: '0 12px',
+              whiteSpace: 'nowrap',
             }}
           >
-            Каждое действие пишется в журнал.
+            Сеанс: ещё {minutesLeft} мин
           </span>
-        </nav>
-        <main
-          style={{
-            flexGrow: 1,
-            minWidth: 0,
-            padding: 24,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-          }}
-        >
-          <ActiveSection />
-        </main>
+          {clock !== null && (
+            <TurnBadge>
+              ХОД {clock.current_turn} ·{' '}
+              {clock.game_date_text.toUpperCase()}
+            </TurnBadge>
+          )}
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={onLogout}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: SIZES['button-h-small'],
+              padding: '0 12px',
+              border: 'none',
+              borderRadius: RADII['radius-md'],
+              background: tokenVar('surface-inset'),
+              color: tokenVar('ink'),
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              ...TEXT_STYLES['body'],
+            }}
+          >
+            Выйти
+          </button>
+        </header>
+        <div style={{ display: 'flex', alignItems: 'stretch', flex: 1 }}>
+          <nav
+            aria-label="Разделы панели"
+            style={{
+              width: 232,
+              flexShrink: 0,
+              background: tokenVar('surface'),
+              borderRight: `1px solid ${tokenVar('line')}`,
+              padding: '16px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            <span
+              style={{
+                ...TEXT_STYLES['label'],
+                color: tokenVar('ink-muted'),
+                margin: '12px 12px 4px',
+              }}
+            >
+              Разделы
+            </span>
+            {PANEL_SECTIONS.map((section) => {
+              const selected = section.slug === active.slug;
+              return (
+                <a
+                  key={section.slug}
+                  href={`#/${section.slug}`}
+                  aria-current={selected ? 'page' : undefined}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    height: 40,
+                    padding: '0 12px',
+                    borderRadius: RADII['radius-md'],
+                    background: selected
+                      ? tokenVar('surface-inset')
+                      : 'transparent',
+                    color: tokenVar(selected ? 'ink' : 'ink-muted'),
+                    textDecoration: 'none',
+                    ...TEXT_STYLES['body'],
+                  }}
+                >
+                  <PanelIcon name={section.icon} accent={selected} />
+                  {section.title}
+                </a>
+              );
+            })}
+            <span
+              style={{
+                ...TEXT_STYLES['caption'],
+                color: tokenVar('ink-muted'),
+                padding: '0 12px',
+                marginTop: 'auto',
+              }}
+            >
+              Каждое действие пишется в журнал.
+            </span>
+          </nav>
+          <main
+            style={{
+              flexGrow: 1,
+              minWidth: 0,
+              padding: 24,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+            }}
+          >
+            <ActiveSection />
+          </main>
+        </div>
       </div>
     </AdminSessionContext.Provider>
   );

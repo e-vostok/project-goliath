@@ -133,6 +133,37 @@ it('«Выйти» clears the stored session and shows the logout card', async (
   expect(window.sessionStorage.getItem(SESSION_KEY)).toBeNull();
 });
 
+it('the frame fills the window and the menu caption is the menu\'s last child', async () => {
+  // A stored session opens straight into the short «Игроки» section.
+  window.sessionStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({
+      token: 'panel-session-jwt-xyz',
+      exp: Date.now() + 3_600_000,
+    }),
+  );
+  window.location.hash = '#/players';
+  server.use(
+    http.get('*/api/v1/admin/me', () =>
+      HttpResponse.json({ is_admin: true, reset_allowed: false }),
+    ),
+    http.get('*/api/v1/game-clock', () => HttpResponse.json(CLOCK_DTO)),
+    http.get('*/api/v1/admin/players', () =>
+      HttpResponse.json({ items: [], total: 0 }),
+    ),
+  );
+  renderPanel();
+
+  const nav = await screen.findByRole('navigation', {
+    name: 'Разделы панели',
+  });
+  const frame = screen.getByTestId('panel-frame');
+  expect(frame.style.minHeight).toBe('100vh');
+  expect(nav.lastElementChild).toHaveTextContent(
+    'Каждое действие пишется в журнал.',
+  );
+});
+
 it('a later 401 from the API ends the session the same way', async () => {
   window.location.hash = `#t=${LINK_TOKEN}`;
   server.use(

@@ -146,7 +146,7 @@ function FilterField({
       <label
         htmlFor={id}
         style={{
-          ...TEXT_STYLES['label'],
+          ...TEXT_STYLES['caption'],
           color: tokenVar('ink-muted'),
         }}
       >

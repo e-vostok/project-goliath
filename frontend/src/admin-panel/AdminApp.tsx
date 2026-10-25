@@ -17,12 +17,13 @@
  * logged.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { api, ApiError } from '../shared/api-client';
 import { NoticeHost } from '../shared/ui/Notice';
 import { PopupHost } from '../shared/ui/Popup';
-import { TEXT_STYLES } from '../shared/ui/tokens';
+import { useTheme } from '../shared/ui/theme';
+import { applyThemeVars, TEXT_STYLES } from '../shared/ui/tokens';
 import { takeEntryToken } from './entryToken';
 import type { GateCardKind } from './PanelGate';
 import { PanelGate } from './PanelGate';
@@ -98,6 +99,15 @@ export function AdminApp() {
     clearSession();
     setState({ kind: 'gate', card });
   };
+
+  // The panel owns the whole window: the same --pax-* set the
+  // ThemeProvider puts on its wrapper also lands on <html>, so the
+  // page's `var(--pax-ground)` background (admin.css) paints every
+  // pixel the frame does not cover — short sections and over-scroll.
+  const { resolved } = useTheme();
+  useLayoutEffect(() => {
+    applyThemeVars(document.documentElement, resolved);
+  }, [resolved]);
 
   // The page's own root is the popup/notice container: the panel owns
   // the viewport, so the shared Popup pins itself to its top.

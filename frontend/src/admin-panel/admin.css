@@ -16,4 +16,13 @@ html,
 body {
   margin: 0;
   padding: 0;
+  min-height: 100%;
+  /* The theme token, applied to <html> by AdminApp: the page ground
+     reaches the window edge even where the frame's own background
+     ends (short sections) and under over-scroll. */
+  background: var(--pax-ground);
+}
+
+#root {
+  min-height: 100vh;
 }
