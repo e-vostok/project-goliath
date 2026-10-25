@@ -43,6 +43,7 @@ from modules._02_bot.startup import start_runtime_if_ready, startup_bot
 from modules._03_registry.profile_worker import start_profile_worker_if_ready
 from modules._03_registry.router import router as registry_router
 from modules._03_registry.startup import startup_registry
+from modules._04_orders.admin_router import router as orders_admin_router
 from modules._04_orders.router import router as orders_router
 from modules._04_orders.startup import (
     register_orders_extensions,
@@ -189,7 +190,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.10.15",
+    version="0.10.16",
     lifespan=lifespan,
 )
 
@@ -204,6 +205,7 @@ app.include_router(map_router)
 app.include_router(bot_router)
 app.include_router(registry_router)
 app.include_router(orders_router)
+app.include_router(orders_admin_router)
 
 # Maps domain error codes to HTTP status codes (Spec Part 5).
 # UNAUTHORIZED and GAME_CLOCK_NOT_FOUND are additions to the spec's
@@ -260,6 +262,9 @@ _ERROR_CODE_STATUS = {
     "ORDER_VERDICT_FORBIDDEN": 403,
     "ORDER_VERDICT_EXISTS": 409,
     "ORDER_NUMBER_CONFLICT": 500,
+    "ORDER_ALREADY_DECIDED": 409,
+    "JUDGE_IS_AUTHOR": 409,
+    "ALREADY_JUDGE": 409,
     "PLAYER_NOT_FOUND": 404,
     "CONFIRMATION_MISMATCH": 422,
     "CANNOT_DELETE_SELF": 409,

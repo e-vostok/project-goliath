@@ -59,6 +59,13 @@ MODULE_SLUG = "04_orders"
 OVERDUE_LIST_CAP = 50
 ASSIGNED_LIST_CAP = 50
 
+# The Russian labels of every action code 04_orders writes into
+# admin_audit_log — the panel's «Журнал» renders these; a code nobody
+# registered stays raw (0.11.0 unit 10a).
+ORDERS_AUDIT_ACTION_LABELS = {
+    "order.assign_judge": "Назначение судьи",
+}
+
 
 def _aware(moment: datetime) -> datetime:
     """Naive datetimes are read as UTC (storage convention)."""
@@ -309,4 +316,6 @@ def register_orders_admin_hooks() -> None:
         AdminRegistry.register_player_preview(MODULE_SLUG, orders_player_delete_preview)
     if MODULE_SLUG not in AdminRegistry.get_overview_hooks():
         AdminRegistry.register_overview(MODULE_SLUG, orders_overview)
+    if MODULE_SLUG not in AdminRegistry.get_audit_action_hooks():
+        AdminRegistry.register_audit_actions(MODULE_SLUG, ORDERS_AUDIT_ACTION_LABELS)
     register_player_delete_hook(f"{MODULE_SLUG}.player_delete", orders_delete_player)
