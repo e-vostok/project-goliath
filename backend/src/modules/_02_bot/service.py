@@ -25,7 +25,7 @@ from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from sqlalchemy import delete, false, select
+from sqlalchemy import and_, delete, false, or_, select, update
 from sqlalchemy import event as sa_event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -225,6 +225,55 @@ class BotService:
         if not is_bot_active():
             return set()
         return await consent.allowed_ids(session, player_ids)
+
+    @staticmethod
+    async def cancel_pending(
+        session: AsyncSession,
+        *,
+        player_id: str,
+        type_key: str,
+        event_key: str,
+        now: datetime | None = None,
+    ) -> int:
+        """
+        Recall a producer's not-yet-sent NOTIFICATION rows (0.11.0 unit
+        10a) — the cancelling half of :meth:`enqueue`, called inside the
+        caller's transaction when the queued event became meaningless
+        before the send (the order's judge changed). Matched by
+        ``(player_id, type_key, event_key)`` — ``uq_bot_outbox_dedup``
+        bounds the answer to one row.
+
+        "Not yet sent" means ``PENDING`` plus ``LEASED`` rows whose
+        lease already expired: a re-claim would put such a row back on
+        the wire, and a late writer still holding the lost lease finds
+        no matching row (the sender re-reads by ``lease_token``), so it
+        cannot resurrect the drop. A row under a live lease is
+        mid-flight — mutating it would race the in-progress send — and
+        terminal rows are untouched. Returns the number of dropped
+        rows; never commits.
+        """
+        t = now if now is not None else datetime.now(UTC)
+        result = await session.execute(
+            update(BotOutbox)
+            .where(
+                BotOutbox.player_id == player_id,
+                BotOutbox.type_key == type_key,
+                BotOutbox.event_key == event_key,
+                BotOutbox.kind == "NOTIFICATION",
+                or_(
+                    BotOutbox.status == "PENDING",
+                    and_(
+                        BotOutbox.status == "LEASED",
+                        or_(
+                            BotOutbox.lease_until.is_(None),
+                            BotOutbox.lease_until <= t,
+                        ),
+                    ),
+                ),
+            )
+            .values(status="DROPPED", drop_reason="CANCELLED")
+        )
+        return result.rowcount or 0
 
     @staticmethod
     def app_link(fragment: str) -> str | None:
