@@ -125,7 +125,8 @@ TABLE_COVERAGE: dict[str, object] = {
     ),
     "admin_audit_log": (
         "kept",
-        "admin journal — the audit trail survives reset and deletion",
+        "admin journal — bounded by record() to the newest "
+        "audit_log_max_rows rows; survives reset and player deletion",
     ),
     "admin_grants": (
         "kept",
