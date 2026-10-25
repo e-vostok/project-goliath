@@ -1,10 +1,13 @@
 """
 HTTP API router for the admin panel.
 
-Nineteen endpoints (prefix /api/v1/admin): GET /me, GET /state,
+Twenty-four endpoints (prefix /api/v1/admin): GET /me, GET /state,
 GET /players, GET /provinces, GET /nations, POST /nations,
-GET /overview, GET /tick-log, POST /tick/run,
-POST /state/reset, GET /players/{vk_user_id}/delete-preview,
+GET /nations/{nation_id}, PATCH /nations/{nation_id},
+POST /nations/color-check, GET /nations/{nation_id}/delete-preview,
+POST /nations/{nation_id}/delete, GET /overview, GET /tick-log,
+POST /tick/run, POST /state/reset,
+GET /players/{vk_user_id}/delete-preview,
 POST /players/{vk_user_id}/delete, POST /panel-link, POST /session,
 GET /audit-log, GET /audit-log/filters, GET /admins, POST /admins and
 POST /admins/{vk_user_id}/revoke.
@@ -183,6 +186,16 @@ class PlayerDeleteFailedError(CoreDomainError):
         )
 
 
+class NationDeleteFailedError(CoreDomainError):
+    """Raised when the nation delete transaction throws; maps to a 500."""
+
+    def __init__(self, cause: Exception):
+        super().__init__(
+            f"Nation deletion failed and rolled back: {type(cause).__name__}: {cause}",
+            "NATION_DELETE_FAILED",
+        )
+
+
 class CannotRevokeSelfError(CoreDomainError):
     """An administrator may not revoke their own admin rights."""
 
@@ -349,6 +362,17 @@ class AdminNationColorCheckRequest(BaseModel):
 
     color_hex: str = Field(pattern=_COLOR_HEX_PATTERN)
     nation_id: str | None = None
+
+
+class NationDeleteRequest(BaseModel):
+    """
+    Body for POST /nations/{nation_id}/delete (0.11.0 unit 8c): the
+    administrator retypes the nation's short name — it must equal it
+    exactly after trimming (same rule as the player deletion's
+    retyped VK id), anything else is a CONFIRMATION_MISMATCH.
+    """
+
+    confirm_short_name: Any = None
 
 
 def _tick_log_dict(row: TickLog, config: CoreConfig) -> dict:
@@ -936,6 +960,159 @@ async def update_nation(
     )
     await session.commit()
     return await _nation_edit_dto(session, nation)
+
+
+async def _nation_delete_preview(session: AsyncSession, nation: Nation) -> dict:
+    """
+    The fixed-shape delete-preview response for one nation (0.11.0
+    unit 8c): the nation's identity, its owner, the provinces it
+    holds (display names through the province-info hooks, ordered by
+    name) and the merged ``consequences`` — every registered
+    nation-preview hook contributes ready Russian sentences of what
+    the deletion touches in its own tables.
+
+    A failing hook propagates: a wrong preview must never authorize
+    a real deletion (the same rule as the player preview). Read-only,
+    never commits.
+    """
+    owner = (
+        await session.execute(
+            select(Player).where(Player.id == nation.owner_player_id)
+        )
+    ).scalar_one()
+    province_ids = list(
+        (
+            await session.execute(
+                select(Province.id).where(Province.nation_id == nation.id)
+            )
+        ).scalars()
+    )
+    info = await _collect_province_info(session, province_ids)
+    provinces = sorted(
+        (
+            {"id": pid, "name": info.get(pid, {}).get("name")}
+            for pid in province_ids
+        ),
+        key=lambda item: ((item["name"] or "").casefold(), item["id"]),
+    )
+    names = await _display_names_by_vk(session, {owner.vk_user_id})
+    consequences: list[dict] = []
+    for preview_hook in AdminRegistry.get_nation_preview_hooks().values():
+        consequences.extend(await preview_hook(session, nation.id))
+    return {
+        "nation_id": nation.id,
+        "short_name": nation.short_name,
+        "name": nation.name,
+        "owner_vk_user_id": owner.vk_user_id,
+        "owner_name": names.get(owner.vk_user_id),
+        "provinces": provinces,
+        "consequences": consequences,
+    }
+
+
+@router.get("/nations/{nation_id}/delete-preview")
+async def admin_nation_delete_preview(
+    nation_id: str,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    What deleting this nation would do — read-only, never commits.
+
+    The consequence lines come from the same module hooks whose data
+    the real deletion detaches, so a positive preview is an honest
+    statement of the destructive operation. 404 NATION_NOT_FOUND for
+    unknown ids.
+    """
+    nation = (
+        await session.execute(select(Nation).where(Nation.id == nation_id))
+    ).scalar_one_or_none()
+    if nation is None:
+        raise NationNotFoundError(nation_id)
+    return await _nation_delete_preview(session, nation)
+
+
+@router.post("/nations/{nation_id}/delete")
+async def admin_nation_delete(
+    nation_id: str,
+    body: NationDeleteRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Delete a nation — irreversible; the owner stays a player and may
+    register a new nation.
+
+    Guards, in order: the nation must exist (404 NATION_NOT_FOUND);
+    the retyped ``confirm_short_name`` must equal the nation's short
+    name after trimming, case-sensitive (422 CONFIRMATION_MISMATCH).
+
+    The deletion itself is the unchanged ``NationService.delete`` on
+    the request session — one transaction, all-or-nothing: provinces
+    freed, scheduled actions orphaned, the release entries written to
+    the map's ownership journal, then the nation row. Any failure
+    rolls everything back and answers 500 NATION_DELETE_FAILED. One
+    ``nation.delete`` journal row lands before the commit, plus a
+    WARNING audit line; the answer returns the preview that was true
+    at the moment of deletion.
+    """
+    nation = (
+        await session.execute(select(Nation).where(Nation.id == nation_id))
+    ).scalar_one_or_none()
+    if nation is None:
+        raise NationNotFoundError(nation_id)
+    if (
+        body.confirm_short_name is None
+        or str(body.confirm_short_name).strip() != nation.short_name
+    ):
+        raise ConfirmationMismatchError()
+
+    owner = (
+        await session.execute(
+            select(Player).where(Player.id == nation.owner_player_id)
+        )
+    ).scalar_one()
+    owner_subject = await _admin_subject(session, owner)
+    # Snapshot the values the audit row and the answer need — the
+    # nation row is gone after NationService.delete flushes.
+    short_name = nation.short_name
+    owner_player_id = nation.owner_player_id
+    preview = await _nation_delete_preview(session, nation)
+    # The preview orders provinces by display name; the audit details
+    # keep the plain id order, same as nation.create's details.
+    province_ids = sorted(item["id"] for item in preview["provinces"])
+    try:
+        await NationService.delete(session, nation.id)
+    except Exception as exc:
+        await session.rollback()
+        logger.exception("Admin nation delete failed for nation_id %s", nation_id)
+        raise NationDeleteFailedError(exc) from exc
+
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="nation.delete",
+        target_type="nation",
+        target_id=nation_id,
+        summary=(
+            f"Удалено государство «{short_name}» игрока {owner_subject}; "
+            f"провинций освобождено: {len(province_ids)}."
+        ),
+        details={
+            "nation_id": nation_id,
+            "owner_player_id": owner_player_id,
+            "owner_vk_user_id": owner.vk_user_id,
+            "province_ids": province_ids,
+        },
+    )
+    await session.commit()
+    logger.warning(
+        "admin_nation_delete admin_vk_user_id=%s nation_id=%s provinces_released=%s",
+        admin.vk_user_id,
+        nation_id,
+        len(province_ids),
+    )
+    return preview
 
 
 @router.get("/overview")

@@ -23,6 +23,12 @@ StateViewHook = Callable[[AsyncSession], Awaitable[dict]]
 # (counts only — e.g. {"outbox_rows": 3}); the admin endpoint merges the
 # fragments into its fixed-shape response. Read-only, never commits.
 PlayerPreviewHook = Callable[[AsyncSession, str], Awaitable[dict]]
+# A nation-delete preview hook sees (session, nation_id) and returns a
+# list of {"code": str, "text": str} — one ready Russian sentence per
+# consequence the deletion has inside the module's own tables; the
+# admin endpoint merges them into its fixed-shape "consequences"
+# list. Read-only, never commits.
+NationPreviewHook = Callable[[AsyncSession, str], Awaitable[list[dict]]]
 # An overview hook sees (session) and returns the module's tiles for the
 # panel's «Состояние мира» card — a list of
 # {"key": str, "label": str, "value": str, "sort": int} with `value`
@@ -61,6 +67,7 @@ class AdminRegistry:
     _reset_hooks: dict[str, ResetHook] = {}
     _state_view_hooks: dict[str, StateViewHook] = {}
     _player_preview_hooks: dict[str, PlayerPreviewHook] = {}
+    _nation_preview_hooks: dict[str, NationPreviewHook] = {}
     _overview_hooks: dict[str, OverviewHook] = {}
     # slug -> (info_fn, search_fn|None); the search half is optional.
     _player_info_hooks: dict[
@@ -141,6 +148,32 @@ class AdminRegistry:
             )
         cls._player_preview_hooks[module_slug] = preview_fn
         logger.info(f"Registered admin player-preview hook for module '{module_slug}'")
+
+    @classmethod
+    def register_nation_preview(
+        cls, module_slug: str, preview_fn: NationPreviewHook
+    ) -> None:
+        """
+        Register a nation-delete preview hook for a module.
+
+        Args:
+            module_slug: The owning module's slug.
+            preview_fn: Async function taking (session, nation_id) that
+                        returns a list of {"code", "text"} consequence
+                        lines — what deleting this nation would do to
+                        the module's own data. Called by the admin
+                        panel's nation delete-preview endpoint.
+
+        Raises:
+            ValueError: If a preview hook is already registered for
+                        module_slug.
+        """
+        if module_slug in cls._nation_preview_hooks:
+            raise ValueError(
+                f"Nation-preview hook already registered for module '{module_slug}'"
+            )
+        cls._nation_preview_hooks[module_slug] = preview_fn
+        logger.info(f"Registered admin nation-preview hook for module '{module_slug}'")
 
     @classmethod
     def register_overview(cls, module_slug: str, overview_fn: OverviewHook) -> None:
@@ -275,6 +308,11 @@ class AdminRegistry:
         return dict(cls._player_preview_hooks)
 
     @classmethod
+    def get_nation_preview_hooks(cls) -> dict[str, NationPreviewHook]:
+        """Return all nation-delete preview hooks in registration order."""
+        return dict(cls._nation_preview_hooks)
+
+    @classmethod
     def get_overview_hooks(cls) -> dict[str, OverviewHook]:
         """Return all registered overview hooks in registration order."""
         return dict(cls._overview_hooks)
@@ -324,6 +362,7 @@ class AdminRegistry:
         cls._reset_hooks.clear()
         cls._state_view_hooks.clear()
         cls._player_preview_hooks.clear()
+        cls._nation_preview_hooks.clear()
         cls._overview_hooks.clear()
         cls._player_info_hooks.clear()
         cls._province_info_hooks.clear()
