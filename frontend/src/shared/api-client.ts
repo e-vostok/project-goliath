@@ -19,6 +19,10 @@ import type {
   AdminNationDTO,
   AdminNationsDTO,
   AdminNationUpdateRequest,
+  AdminOrderAssignJudgeRequest,
+  AdminOrderDTO,
+  AdminOrderJudgePreviewDTO,
+  AdminOrdersDTO,
   AdminOverviewTileDTO,
   AdminPanelLinkDTO,
   AdminPlayerDeleteResultDTO,
@@ -30,6 +34,7 @@ import type {
   AdminResetResultDTO,
   AdminSessionDTO,
   AdminSessionRequest,
+  AdminStateDTO,
   AdminTickLogEntryDTO,
   AdminTickRunResultDTO,
   AuthResponseDTO,
@@ -570,6 +575,91 @@ export const api = {
         token,
         signal,
       },
+    );
+  },
+
+  /**
+   * GET /admin/state — the aggregated per-module state views; each
+   * hook's payload stays loosely typed under `modules[slug]`.
+   */
+  adminState(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminStateDTO>('/admin/state', { token, signal });
+  },
+
+  /**
+   * GET /admin/orders — one page of the «Приказы» table as
+   * `{items, total}`; `status` is the derived-stage filter
+   * (`all|waiting|assigned|decided`), `search` an exact number or a
+   * title substring.
+   */
+  adminOrders(
+    token: string,
+    query: {
+      status?: 'all' | 'waiting' | 'assigned' | 'decided';
+      search?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.status !== undefined && query.status !== 'all') {
+      params.set('status', query.status);
+    }
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminOrdersDTO>(
+      `/admin/orders${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/orders/{number}/judge-preview (0.11.0 unit 10a) —
+   * read-only: the current and picked judges, the one `blocker` code
+   * and the ready Russian `warnings`. 404 ORDER_NOT_FOUND /
+   * PLAYER_NOT_FOUND.
+   */
+  adminOrderJudgePreview(
+    token: string,
+    number: number,
+    judgeVkUserId: number,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminOrderJudgePreviewDTO>(
+      `/admin/orders/${encodeURIComponent(
+        String(number),
+      )}/judge-preview?judge_vk_user_id=${judgeVkUserId}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/orders/{number}/judge — assign or reassign the judge
+   * (0.11.0 unit 10a); answers the order's list item. Service refusals
+   * keep their codes: ORDER_ALREADY_DECIDED, JUDGE_IS_AUTHOR,
+   * ALREADY_JUDGE.
+   */
+  adminOrderAssignJudge(
+    token: string,
+    number: number,
+    judgeVkUserId: number,
+    signal?: AbortSignal,
+  ) {
+    const body: AdminOrderAssignJudgeRequest = {
+      judge_vk_user_id: judgeVkUserId,
+    };
+    return apiFetch<AdminOrderDTO>(
+      `/admin/orders/${encodeURIComponent(String(number))}/judge`,
+      { method: 'POST', body, token, signal },
     );
   },
 
