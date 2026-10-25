@@ -51,6 +51,7 @@ ADMIN_AUDIT_ACTION_LABELS = {
     "panel.login": "Вход в панель",
     "admin.grant": "Выдача прав",
     "admin.revoke": "Снятие прав",
+    "nation.create": "Создание государства",
 }
 
 

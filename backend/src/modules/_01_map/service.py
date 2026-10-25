@@ -107,6 +107,21 @@ class MapService:
             return tuple(self._data.nodes.values())
         return tuple(n for n in self._data.nodes.values() if n.kind == kind)
 
+    def display_names(
+        self, kind: NodeKind | None = None
+    ) -> dict[int, str]:
+        """
+        ``{node_id: display_name}`` for every node (or one kind) — the
+        names exactly as the map shows them (``name_ru`` else ``name``
+        else ``key``). The public read path the admin panel's
+        province-info hook uses; pure memory, no database.
+        """
+        return {
+            node.id: node.display_name
+            for node in self._data.nodes.values()
+            if kind is None or node.kind == kind
+        }
+
     # ------------------------------------------------------------- edges
 
     def neighbors(
