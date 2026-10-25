@@ -521,11 +521,12 @@ async def list_players(
     The panel's «Игроки» list (0.11.0 unit 6b): one page of players
     ordered by registration then id — ``{"items", "total"}``. Each item
     carries ``vk_user_id``, ``display_name`` assembled through the
-    player-info hooks (null when no module knows one),
-    ``nation_short_name`` (null for a nationless player),
-    ``created_at`` formatted in the tick timezone like every admin
-    answer, and ``is_admin`` — env allowlist or grant — computed once
-    for the page, not per row.
+    player-info hooks (null when no module knows one), ``registry_number``
+    the player's permanent Registry number from the same hooks (null
+    until the registry has issued one), ``nation_short_name`` (null for
+    a nationless player), ``created_at`` formatted in the tick timezone
+    like every admin answer, and ``is_admin`` — env allowlist or grant —
+    computed once for the page, not per row.
 
     ``search`` is an OR over an exact VK id, a case-insensitive
     substring of the nation short/full name and every hook's search.
@@ -595,6 +596,7 @@ async def list_players(
             {
                 "vk_user_id": row.vk_user_id,
                 "display_name": info.get(row.id, {}).get("display_name"),
+                "registry_number": info.get(row.id, {}).get("registry_number"),
                 "nation_short_name": row.short_name,
                 "created_at": format_game_time(
                     row.created_at, config.tick.tick_timezone

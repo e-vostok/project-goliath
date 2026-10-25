@@ -106,6 +106,7 @@ TABLE_COVERAGE: dict[str, object] = {
     "players": "player_delete",
     "bot_consents": "player_delete",
     "registry_vk_profiles": "player_delete",
+    "registry_player_numbers": "player_delete",
     # -- deliberately survive both -----------------------------------
     "provinces": (
         "kept",
@@ -131,6 +132,11 @@ TABLE_COVERAGE: dict[str, object] = {
     "admin_grants": (
         "kept",
         "admin rights survive reset; granted players are undeletable",
+    ),
+    "registry_number_counter": (
+        "kept",
+        "выданные номера не отзываются: счётчик только растёт, "
+        "мир сбрасывается, игроки остаются",
     ),
 }
 

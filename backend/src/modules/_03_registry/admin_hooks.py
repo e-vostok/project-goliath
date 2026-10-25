@@ -9,16 +9,19 @@ Admin hooks of module 03_registry (Spec 5.4).
 - No reset hook (D9): VK profiles describe people, not world state — a
   world reset keeps them.
 - Player delete ``"03_registry.player_delete"``: removes the player's
-  cached ``registry_vk_profiles`` row. Runs inside
-  ``PlayerService.delete_player``'s transaction — a raise aborts the
-  whole deletion (no per-hook savepoint).
+  cached ``registry_vk_profiles`` row and the
+  ``registry_player_numbers`` row — the freed number itself is never
+  reissued because ``registry_number_counter`` only grows (0.11.0
+  unit 11). Runs inside ``PlayerService.delete_player``'s transaction
+  — a raise aborts the whole deletion (no per-hook savepoint).
 - Player preview ``"03_registry"``: returns ``{"vk_profile_rows"}`` —
   0 or 1 — for the admin delete-preview; read-only.
 - Player info ``"03_registry"`` (0.11.0 unit 6b): the panel's
-  «Игроки» table column ``display_name`` — ``first_name last_name``
-  of the cached VK profile, OK status only — plus the matching
-  free-text search over those names. Both halves are thin read-only
-  delegates into ``service.py``.
+  «Игроки» table columns ``display_name`` — ``first_name last_name``
+  of the cached VK profile, OK status only — and ``registry_number``,
+  the stored permanent number (unit 11); plus the matching free-text
+  search over those names. Both halves are thin read-only delegates
+  into ``service.py`` and never issue numbers.
 
 ``register_registry_admin_hooks`` is idempotent like the other modules'
 registrars: membership check, never double-register.
@@ -32,13 +35,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.admin.registry import AdminRegistry
 from modules._00_core.hooks import register_player_delete_hook
 from modules._00_core.service import NationService, PlayerService
-from modules._03_registry.models import RegistryVkProfile
+from modules._03_registry.models import (
+    RegistryPlayerNumber,
+    RegistryVkProfile,
+)
 from modules._03_registry.profile_worker import (
     get_last_cycle_at,
     get_worker_mode,
 )
 from modules._03_registry.service import (
     admin_display_names,
+    admin_registry_numbers,
     admin_search_player_ids,
 )
 
@@ -93,13 +100,21 @@ async def registry_player_delete_preview(session: AsyncSession, player_id: str) 
 
 
 async def registry_player_info(session: AsyncSession, player_ids: list[str]) -> dict:
-    """``{player_id: {"display_name": name}}`` for the panel's players table."""
-    return {
-        player_id: {"display_name": name}
-        for player_id, name in (
-            await admin_display_names(session, player_ids)
-        ).items()
-    }
+    """
+    ``{player_id: {"display_name"?, "registry_number"?}}`` — the panel's
+    players-table columns this module owns. Read-only: numbers are
+    reported, never issued, so an unissued player has no key and the
+    panel shows the empty dash.
+    """
+    names = await admin_display_names(session, player_ids)
+    numbers = await admin_registry_numbers(session, player_ids)
+
+    out: dict[str, dict] = {}
+    for player_id, name in names.items():
+        out.setdefault(player_id, {})["display_name"] = name
+    for player_id, number in numbers.items():
+        out.setdefault(player_id, {})["registry_number"] = number
+    return out
 
 
 async def registry_player_search(session: AsyncSession, text: str) -> set:
@@ -109,7 +124,9 @@ async def registry_player_search(session: AsyncSession, text: str) -> set:
 
 async def registry_delete_player(session: AsyncSession, player_id: str) -> None:
     """
-    Remove the cached VK profile of one player (admin player deletion).
+    Remove the cached VK profile and the issued Registry number of one
+    player (admin player deletion). The number itself is never reissued
+    — ``registry_number_counter`` only grows.
 
     An explicit DELETE, not FK cascade: SQLite may run without enforced
     foreign keys. Inside the caller's transaction; never commits, and a
@@ -117,6 +134,9 @@ async def registry_delete_player(session: AsyncSession, player_id: str) -> None:
     """
     await session.execute(
         delete(RegistryVkProfile).where(RegistryVkProfile.player_id == player_id)
+    )
+    await session.execute(
+        delete(RegistryPlayerNumber).where(RegistryPlayerNumber.player_id == player_id)
     )
 
 
