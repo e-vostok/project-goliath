@@ -24,6 +24,9 @@ import type {
   AdminPlayerDeleteResultDTO,
   AdminPlayersDTO,
   AdminProvincesDTO,
+  AdminProvinceTransferPreviewDTO,
+  AdminProvinceTransferRequest,
+  AdminProvinceTransferResultDTO,
   AdminResetResultDTO,
   AdminSessionDTO,
   AdminSessionRequest,
@@ -398,6 +401,48 @@ export const api = {
     return apiFetch<AdminProvincesDTO>(
       `/admin/provinces${suffix ? `?${suffix}` : ''}`,
       { token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/provinces/{id}/transfer-preview (0.11.0 unit 9b) —
+   * read-only "what the transfer would do"; a null `toNationId`
+   * previews a release. 404 PROVINCE_NOT_FOUND / NATION_NOT_FOUND,
+   * 422 PROVINCE_NOT_LAND.
+   */
+  adminProvinceTransferPreview(
+    token: string,
+    provinceId: number,
+    toNationId: string | null = null,
+    signal?: AbortSignal,
+  ) {
+    const query =
+      toNationId !== null
+        ? `?to_nation_id=${encodeURIComponent(toNationId)}`
+        : '';
+    return apiFetch<AdminProvinceTransferPreviewDTO>(
+      `/admin/provinces/${encodeURIComponent(
+        String(provinceId),
+      )}/transfer-preview${query}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/provinces/{id}/transfer — move the province to
+   * `to_nation_id` or free it (null). Domain refusals keep their
+   * codes: ALREADY_OWNER, SEIZE_NOT_CONFIRMED, LAST_PROVINCE,
+   * CAPITAL_REQUIRED, PROVINCE_NAME_UNKNOWN, PROVINCE_NOT_LAND.
+   */
+  adminProvinceTransfer(
+    token: string,
+    provinceId: number,
+    body: AdminProvinceTransferRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminProvinceTransferResultDTO>(
+      `/admin/provinces/${encodeURIComponent(String(provinceId))}/transfer`,
+      { method: 'POST', body, token, signal },
     );
   },
 

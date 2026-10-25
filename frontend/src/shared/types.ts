@@ -303,6 +303,57 @@ export interface AdminProvincesDTO {
 }
 
 /**
+ * GET /admin/provinces/{id}/transfer-preview (0.11.0 unit 9b) — the
+ * fixed-shape "what POST /transfer would check and change": the
+ * donor (`from_nation`, null for a free province), the receiver
+ * (`to_nation`, null previews a release), `seizes` (a province owned
+ * by another nation moves), `capital_choice_needed` plus the donor's
+ * remaining provinces as `capital_candidates`, the after-counts and
+ * the `blocker` the action would hit (null when it would pass).
+ */
+export interface AdminProvinceTransferPreviewDTO {
+  province: { id: number; name: string | null };
+  from_nation: {
+    id: string;
+    short_name: string;
+    provinces_count: number;
+    capital_province_id: number | null;
+    capital_name: string | null;
+  } | null;
+  to_nation: {
+    id: string;
+    short_name: string;
+    provinces_count: number;
+  } | null;
+  seizes: boolean;
+  capital_choice_needed: boolean;
+  capital_candidates: { id: number; name: string | null }[];
+  donor_after: number | null;
+  receiver_after: number | null;
+  blocker: 'ALREADY_OWNER' | 'LAST_PROVINCE' | null;
+}
+
+/**
+ * POST /admin/provinces/{id}/transfer request — `to_nation_id` null
+ * frees the province; `confirm_seize` allows taking a province owned
+ * by another nation; `new_capital_province_id` is mandatory when the
+ * moved province is the donor's capital.
+ */
+export interface AdminProvinceTransferRequest {
+  to_nation_id: string | null;
+  confirm_seize: boolean;
+  new_capital_province_id: number | null;
+}
+
+/** POST /admin/provinces/{id}/transfer result — the service answer. */
+export interface AdminProvinceTransferResultDTO {
+  province_id: number;
+  previous_nation_id: string | null;
+  new_nation_id: string | null;
+  new_capital_province_id: number | null;
+}
+
+/**
  * One row of GET /admin/nations (0.11.0 unit 8a) — the «Государства»
  * table. `owner_name` is the hook-assembled display name (null when no
  * module knows one); POST /admin/nations answers the same shape.
