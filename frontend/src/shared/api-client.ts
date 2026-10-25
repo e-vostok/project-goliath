@@ -12,9 +12,12 @@ import type {
   AdminAuditLogDTO,
   AdminEntryDTO,
   AdminMeDTO,
+  AdminNationColorCheckRequest,
   AdminNationCreateRequest,
+  AdminNationDetailDTO,
   AdminNationDTO,
   AdminNationsDTO,
+  AdminNationUpdateRequest,
   AdminOverviewTileDTO,
   AdminPanelLinkDTO,
   AdminPlayerDeleteResultDTO,
@@ -433,6 +436,51 @@ export const api = {
     signal?: AbortSignal,
   ) {
     return apiFetch<AdminNationDTO>('/admin/nations', {
+      method: 'POST',
+      body,
+      token,
+      signal,
+    });
+  },
+
+  /**
+   * GET /admin/nations/{id} — the edit page's data: the twelve
+   * editable fields plus owner, capital province and provinces count.
+   */
+  adminNation(token: string, nationId: string, signal?: AbortSignal) {
+    return apiFetch<AdminNationDetailDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * PATCH /admin/nations/{id} — send only the changed fields; answers
+   * the same detail shape. An empty body is the server's 400
+   * NOTHING_TO_CHANGE.
+   */
+  adminNationUpdate(
+    token: string,
+    nationId: string,
+    body: AdminNationUpdateRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDetailDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}`,
+      { method: 'PATCH', body, token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations/color-check — the panel's own colour probe
+   * (`nation_id` excludes the edited nation on the edit page).
+   */
+  adminNationColorCheck(
+    token: string,
+    body: AdminNationColorCheckRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<ColorCheckDTO>('/admin/nations/color-check', {
       method: 'POST',
       body,
       token,
