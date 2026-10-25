@@ -185,6 +185,7 @@ ALLOWLIST: [files and folders that may change]
 DENYLIST: [what must not change]
 Spec: `docs/02_SYSTEM_SPECS/[module_slug].md` (list the passages to touch, do not edit it, unless this task is the Spec task). Config and schema: `configs/[module_slug].yaml`, `backend/src/modules/[module_slug]/config_schema.py`.
 UI (only if the task builds or changes a window): approved mockup, window type per `docs/02_SYSTEM_SPECS/00_core_ui.md`, shared components from `frontend/src/shared/ui/`. Any task that changes how a window looks is built against the PNG files in `docs/06_DESIGN/<version>/`. The report contains a table «экран → совпадает / расхождения» with the PNG name. If the PNG and the text of the task disagree, the PNG wins; report the difference.
+Panel: what, if anything, the admin panel must show, change or reset for this unit — rules in «Панель администратора успевает за игрой», `docs/development_workflow.md`.
 
 ## Tests
 New test (one): [what it proves, path]. Suites to run: per the rules, for the touched areas.
@@ -229,7 +230,7 @@ New test (one): [what it proves, path]. Suites to run: per the rules, for the to
 
 1. СТРАТЕГИЧЕСКИЙ ОБЗОР: состояние вертикальных срезов (какие модули готовы на всех слоях), здоровье Tick DAG и конфигов, технический долг и нарушения инвариантов, открытые вопросы из PROJECT_STATE.md.
 2. ЦЕЛЬ ВЕРСИИ: одна связная цель в 2 предложениях.
-3. РАБОЧИЕ ЕДИНИЦЫ: список с типом каждой (МОДУЛЬ, РАСШИРЕНИЕ, ИССЛЕДОВАНИЕ, ТРЕК А/Б/В, ТЕХ), весом S/M/L и зависимостями. Не более 10–12 единиц. Исследования рискованных мест — первыми.
+3. РАБОЧИЕ ЕДИНИЦЫ: список с типом каждой (МОДУЛЬ, РАСШИРЕНИЕ, ИССЛЕДОВАНИЕ, ТРЕК А/Б/В, ТЕХ), весом S/M/L и зависимостями. Не более 10–12 единиц. Исследования рискованных мест — первыми. Для каждой единицы план отвечает на вопрос «что в панели администратора?».
 4. ИСКЛЮЧЕНО: что сознательно не входит в версию.
 5. РИСКИ И НЕИЗВЕСТНЫЕ: что может сорвать версию и как проверим.
 6. КРИТЕРИИ ПРИЁМКИ: что именно я проверю в настоящем ВК (списком, простым языком).

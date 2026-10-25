@@ -1,8 +1,8 @@
 """
 ORM models for module 00_core.
 
-Defines the 6 core tables: players, nations, provinces, scheduled_actions,
-game_clock, and tick_log.
+Defines the 8 core tables: players, nations, provinces, scheduled_actions,
+game_clock, tick_log, admin_grants, and admin_audit_log.
 """
 
 from __future__ import annotations
@@ -280,3 +280,57 @@ class TickLog(Base):
         index=True,
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AdminGrant(Base):
+    """A database-issued admin right (0.11.0 unit 3).
+
+    Complements the ADMIN_VK_USER_IDS env allowlist: require_admin
+    accepts a player whose vk_user_id is allowlisted OR who holds a
+    grant row here. granted_by_vk_user_id is a plain snapshot of who
+    issued the grant — deliberately no FK, so the journal survives
+    player deletion.
+    """
+
+    __tablename__ = "admin_grants"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    player_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("players.id"), nullable=False, unique=True
+    )
+    granted_by_vk_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AdminAuditLog(Base):
+    """Bounded journal of admin-panel actions (0.11.0 unit 3).
+
+    Keeps only the newest admin_panel.audit_log_max_rows rows:
+    AdminAuditService.record() deletes the oldest ones above the cap
+    automatically — nobody deletes or edits rows by hand.
+
+    actor_vk_user_id is a snapshot, not a FK: the history must survive
+    deletion of the acting player. details carries ids and before/after
+    values only — never tokens or raw launch params.
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    actor_vk_user_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    summary: Mapped[str] = mapped_column(String(300), nullable=False)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)

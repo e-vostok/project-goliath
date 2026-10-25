@@ -119,7 +119,8 @@ def test_migration_0010_up_down_up(tmp_path, monkeypatch):
     assert ORDERS_INDEXES <= indexes
 
     command.downgrade(cfg, "0009")
-    assert _tables(url) == before - {"orders"}
+    # 0015's admin tables ride the same downgrade path.
+    assert _tables(url) == before - {"orders", "admin_grants", "admin_audit_log"}
 
     command.upgrade(cfg, "head")
     assert "orders" in _tables(url)

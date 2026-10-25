@@ -8,9 +8,32 @@
  */
 
 import type {
+  AdminAuditFiltersDTO,
+  AdminAuditLogDTO,
+  AdminEntryDTO,
   AdminMeDTO,
+  AdminNationColorCheckRequest,
+  AdminNationCreateRequest,
+  AdminNationDeletePreviewDTO,
+  AdminNationDetailDTO,
+  AdminNationDTO,
+  AdminNationsDTO,
+  AdminNationUpdateRequest,
+  AdminOrderAssignJudgeRequest,
+  AdminOrderDTO,
+  AdminOrderJudgePreviewDTO,
+  AdminOrdersDTO,
+  AdminOverviewTileDTO,
+  AdminPanelLinkDTO,
   AdminPlayerDeleteResultDTO,
+  AdminPlayersDTO,
+  AdminProvincesDTO,
+  AdminProvinceTransferPreviewDTO,
+  AdminProvinceTransferRequest,
+  AdminProvinceTransferResultDTO,
   AdminResetResultDTO,
+  AdminSessionDTO,
+  AdminSessionRequest,
   AdminStateDTO,
   AdminTickLogEntryDTO,
   AdminTickRunResultDTO,
@@ -296,9 +319,359 @@ export const api = {
     return apiFetch<AdminMeDTO>('/admin/me', { token, signal });
   },
 
-  /** GET /admin/state — aggregated per-module state views. */
+  /**
+   * POST /admin/panel-link — issue the one-time link token that opens
+   * the panel page (`/admin.html#t=<token>`) in a new tab.
+   */
+  adminPanelLink(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminPanelLinkDTO>('/admin/panel-link', {
+      method: 'POST',
+      token,
+      signal,
+    });
+  },
+
+  /**
+   * POST /admin/session — exchange the one-time link token (from the
+   * panel page's `#t=` fragment) for a short panel Bearer session.
+   * NO Bearer is sent: the link token itself is the credential.
+   * 401 PANEL_LINK_INVALID for an unknown/expired/spent link, 403
+   * ADMIN_REQUIRED when the player no longer holds admin rights.
+   */
+  adminExchangeSession(linkToken: string, signal?: AbortSignal) {
+    const body: AdminSessionRequest = { token: linkToken };
+    return apiFetch<AdminSessionDTO>('/admin/session', {
+      method: 'POST',
+      body,
+      signal,
+    });
+  },
+
+  /**
+   * GET /admin/players — one page of the «Игроки» table as
+   * `{items, total}`; `search` is an exact VK id, a nation name
+   * substring or a module hook's name match.
+   */
+  adminPlayers(
+    token: string,
+    query: { search?: string; limit?: number; offset?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminPlayersDTO>(
+      `/admin/players${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/provinces — one page of the LAND-province picker
+   * (0.11.0 unit 8a) as `{items, total}`; `search` goes through the
+   * modules' province-name hooks, `free_only` keeps unowned rows.
+   */
+  adminProvinces(
+    token: string,
+    query: {
+      search?: string;
+      free_only?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.free_only) {
+      params.set('free_only', 'true');
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminProvincesDTO>(
+      `/admin/provinces${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/provinces/{id}/transfer-preview (0.11.0 unit 9b) —
+   * read-only "what the transfer would do"; a null `toNationId`
+   * previews a release. 404 PROVINCE_NOT_FOUND / NATION_NOT_FOUND,
+   * 422 PROVINCE_NOT_LAND.
+   */
+  adminProvinceTransferPreview(
+    token: string,
+    provinceId: number,
+    toNationId: string | null = null,
+    signal?: AbortSignal,
+  ) {
+    const query =
+      toNationId !== null
+        ? `?to_nation_id=${encodeURIComponent(toNationId)}`
+        : '';
+    return apiFetch<AdminProvinceTransferPreviewDTO>(
+      `/admin/provinces/${encodeURIComponent(
+        String(provinceId),
+      )}/transfer-preview${query}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/provinces/{id}/transfer — move the province to
+   * `to_nation_id` or free it (null). Domain refusals keep their
+   * codes: ALREADY_OWNER, SEIZE_NOT_CONFIRMED, LAST_PROVINCE,
+   * CAPITAL_REQUIRED, PROVINCE_NAME_UNKNOWN, PROVINCE_NOT_LAND.
+   */
+  adminProvinceTransfer(
+    token: string,
+    provinceId: number,
+    body: AdminProvinceTransferRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminProvinceTransferResultDTO>(
+      `/admin/provinces/${encodeURIComponent(String(provinceId))}/transfer`,
+      { method: 'POST', body, token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/nations — one page of the «Государства» table as
+   * `{items, total}`; `search` is a short/full-name substring.
+   */
+  adminNations(
+    token: string,
+    query: { search?: string; limit?: number; offset?: number } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminNationsDTO>(
+      `/admin/nations${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations — create a nation for the chosen player through
+   * the unchanged NationService path; answers the list-item shape.
+   */
+  adminNationCreate(
+    token: string,
+    body: AdminNationCreateRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDTO>('/admin/nations', {
+      method: 'POST',
+      body,
+      token,
+      signal,
+    });
+  },
+
+  /**
+   * GET /admin/nations/{id} — the edit page's data: the twelve
+   * editable fields plus owner, capital province and provinces count.
+   */
+  adminNation(token: string, nationId: string, signal?: AbortSignal) {
+    return apiFetch<AdminNationDetailDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * PATCH /admin/nations/{id} — send only the changed fields; answers
+   * the same detail shape. An empty body is the server's 400
+   * NOTHING_TO_CHANGE.
+   */
+  adminNationUpdate(
+    token: string,
+    nationId: string,
+    body: AdminNationUpdateRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDetailDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}`,
+      { method: 'PATCH', body, token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations/color-check — the panel's own colour probe
+   * (`nation_id` excludes the edited nation on the edit page).
+   */
+  adminNationColorCheck(
+    token: string,
+    body: AdminNationColorCheckRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<ColorCheckDTO>('/admin/nations/color-check', {
+      method: 'POST',
+      body,
+      token,
+      signal,
+    });
+  },
+
+  /**
+   * GET /admin/nations/{id}/delete-preview (0.11.0 unit 8c) — what
+   * deleting the nation would do: the provinces it frees plus every
+   * module's consequence lines.
+   */
+  adminNationDeletePreview(
+    token: string,
+    nationId: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}/delete-preview`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations/{id}/delete — irreversible; the owner stays
+   * a player. The body carries the retyped short name; the backend
+   * answers 422 CONFIRMATION_MISMATCH when it differs, and returns
+   * the preview that was true at the moment of deletion.
+   */
+  adminNationDelete(
+    token: string,
+    nationId: string,
+    confirmShortName: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}/delete`,
+      {
+        method: 'POST',
+        body: { confirm_short_name: confirmShortName },
+        token,
+        signal,
+      },
+    );
+  },
+
+  /**
+   * GET /admin/state — the aggregated per-module state views; each
+   * hook's payload stays loosely typed under `modules[slug]`.
+   */
   adminState(token: string, signal?: AbortSignal) {
     return apiFetch<AdminStateDTO>('/admin/state', { token, signal });
+  },
+
+  /**
+   * GET /admin/orders — one page of the «Приказы» table as
+   * `{items, total}`; `status` is the derived-stage filter
+   * (`all|waiting|assigned|decided`), `search` an exact number or a
+   * title substring.
+   */
+  adminOrders(
+    token: string,
+    query: {
+      status?: 'all' | 'waiting' | 'assigned' | 'decided';
+      search?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.status !== undefined && query.status !== 'all') {
+      params.set('status', query.status);
+    }
+    if (query.search) {
+      params.set('search', query.search);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminOrdersDTO>(
+      `/admin/orders${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/orders/{number}/judge-preview (0.11.0 unit 10a) —
+   * read-only: the current and picked judges, the one `blocker` code
+   * and the ready Russian `warnings`. 404 ORDER_NOT_FOUND /
+   * PLAYER_NOT_FOUND.
+   */
+  adminOrderJudgePreview(
+    token: string,
+    number: number,
+    judgeVkUserId: number,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminOrderJudgePreviewDTO>(
+      `/admin/orders/${encodeURIComponent(
+        String(number),
+      )}/judge-preview?judge_vk_user_id=${judgeVkUserId}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/orders/{number}/judge — assign or reassign the judge
+   * (0.11.0 unit 10a); answers the order's list item. Service refusals
+   * keep their codes: ORDER_ALREADY_DECIDED, JUDGE_IS_AUTHOR,
+   * ALREADY_JUDGE.
+   */
+  adminOrderAssignJudge(
+    token: string,
+    number: number,
+    judgeVkUserId: number,
+    signal?: AbortSignal,
+  ) {
+    const body: AdminOrderAssignJudgeRequest = {
+      judge_vk_user_id: judgeVkUserId,
+    };
+    return apiFetch<AdminOrderDTO>(
+      `/admin/orders/${encodeURIComponent(String(number))}/judge`,
+      { method: 'POST', body, token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/overview — the «Состояние мира» tiles merged from every
+   * module's overview hook, sorted by `sort`.
+   */
+  adminOverview(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminOverviewTileDTO[]>('/admin/overview', {
+      token,
+      signal,
+    });
   },
 
   /** GET /admin/tick-log — newest tick_log rows first (default limit 20). */
@@ -363,6 +736,80 @@ export const api = {
         token,
         signal,
       },
+    );
+  },
+
+  /**
+   * GET /admin/audit-log — one journal page {items, next_before_id}.
+   * `before_id` is the «Показать ещё» cursor; dates are 'YYYY-MM-DD'
+   * in the tick timezone.
+   */
+  adminAuditLog(
+    token: string,
+    query: {
+      actor_vk_user_id?: number;
+      action?: string;
+      date_from?: string;
+      date_to?: string;
+      limit?: number;
+      before_id?: number;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.actor_vk_user_id !== undefined) {
+      params.set('actor_vk_user_id', String(query.actor_vk_user_id));
+    }
+    if (query.action) {
+      params.set('action', query.action);
+    }
+    if (query.date_from) {
+      params.set('date_from', query.date_from);
+    }
+    if (query.date_to) {
+      params.set('date_to', query.date_to);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.before_id !== undefined) {
+      params.set('before_id', String(query.before_id));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminAuditLogDTO>(
+      `/admin/audit-log${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /** GET /admin/audit-log/filters — the journal filters' dropdowns. */
+  adminAuditLogFilters(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminAuditFiltersDTO>('/admin/audit-log/filters', {
+      token,
+      signal,
+    });
+  },
+
+  /** GET /admin/admins — env admins first, then the granted ones. */
+  adminAdmins(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminEntryDTO[]>('/admin/admins', { token, signal });
+  },
+
+  /** POST /admin/admins — grant admin rights to an existing player. */
+  adminGrantAdmin(token: string, vkUserId: number, signal?: AbortSignal) {
+    return apiFetch<{ granted: number }>('/admin/admins', {
+      method: 'POST',
+      body: { vk_user_id: vkUserId },
+      token,
+      signal,
+    });
+  },
+
+  /** POST /admin/admins/{vk_user_id}/revoke — revoke admin rights. */
+  adminRevokeAdmin(token: string, vkUserId: number, signal?: AbortSignal) {
+    return apiFetch<{ revoked: number }>(
+      `/admin/admins/${encodeURIComponent(String(vkUserId))}/revoke`,
+      { method: 'POST', token, signal },
     );
   },
 };

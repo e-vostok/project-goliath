@@ -58,6 +58,8 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
     command.upgrade(alembic_cfg, "head")
 
     saved_resets = AdminRegistry.get_reset_hooks()
+    saved_player_infos = AdminRegistry.get_player_info_hooks()
+    saved_province_infos = AdminRegistry.get_province_info_hooks()
     saved_handlers = {
         phase: list(handlers) for phase, handlers in TickOrchestrator._handlers.items()
     }
@@ -72,6 +74,10 @@ async def live_client(tmp_path, monkeypatch, mini_map_config):
 
     AdminRegistry._reset_hooks.clear()
     AdminRegistry._reset_hooks.update(saved_resets)
+    AdminRegistry._player_info_hooks.clear()
+    AdminRegistry._player_info_hooks.update(saved_player_infos)
+    AdminRegistry._province_info_hooks.clear()
+    AdminRegistry._province_info_hooks.update(saved_province_infos)
     TickOrchestrator._handlers.clear()
     TickOrchestrator._handlers.update(saved_handlers)
     TickOrchestrator._finalize_callback = saved_finalize

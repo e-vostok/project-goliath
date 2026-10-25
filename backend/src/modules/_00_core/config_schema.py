@@ -111,6 +111,39 @@ class AuthSettings(BaseModel):
     )
 
 
+class AdminPanelSettings(BaseModel):
+    """Одноразовая ссылка и короткий сеанс панели администратора (0.11.0)."""
+
+    link_ttl_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=300,
+        description="Время жизни одноразовой метки входа в панель, секунды "
+        "(нужно только пережить открытие новой вкладки).",
+    )
+    session_ttl_minutes: int = Field(
+        default=60,
+        ge=5,
+        le=240,
+        description="Время жизни сеанса панели (короткий Bearer JWT), минуты.",
+    )
+    max_pending_links_per_player: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Максимум невостребованных одноразовых ссылок на одного "
+        "игрока; сверх предела самая старая выбрасывается.",
+    )
+    audit_log_max_rows: int = Field(
+        default=5000,
+        ge=500,
+        le=1000000,
+        description="Предел записей журнала администратора "
+        "(admin_audit_log): при каждой новой записи самые старые сверх "
+        "предела удаляются автоматически.",
+    )
+
+
 class NationSettings(BaseModel):
     nation_name_min_length: int = Field(ge=1, le=10)
     nation_name_max_length: int = Field(ge=1, le=100)
@@ -390,6 +423,7 @@ class CoreConfig(BaseModel):
 
     tick: TickSettings
     auth: AuthSettings
+    admin_panel: AdminPanelSettings
     nation: NationSettings
     color: ColorSettings
     catalog: CatalogSettings

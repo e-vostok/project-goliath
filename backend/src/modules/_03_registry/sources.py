@@ -7,9 +7,9 @@ Built-in table sources of module 03_registry (Spec 3.2, 3.3, Appendix A).
 ``RegistryRow`` whose key carries no ``vk_user_id`` and no player uuid
 (INV-R2): ``p<number>`` for players, the nation id for nations.
 
-Both ``load`` functions are two flat queries at most — the player list
-plus one ``registry_vk_profiles`` fetch — so the query count does not
-grow with the number of players.
+Both ``load`` functions are a handful of flat queries — the player
+list, the stored numbers and one ``registry_vk_profiles`` fetch — so
+the query count does not grow with the number of players.
 
 ``load_player`` (Spec 5.6) returns the single ``players`` row addressed
 by the Registry number — the very cells ``_player_row`` builds for the
@@ -42,6 +42,7 @@ from modules._03_registry.errors import RegistryPlayerNotFoundError
 from modules._03_registry.models import RegistryVkProfile
 from modules._03_registry.profile_worker import aware_utc, request_wake
 from modules._03_registry.registry import RegistryRow, register_table_source
+from modules._03_registry.service import ensure_player_numbers
 
 # The value keys each source promises (Spec 3.2, 3.3) — a config column's
 # ``source`` must name one of these (checked at startup, Spec 2.5).
@@ -55,12 +56,15 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     """
     The ``players`` source (Spec 3.2).
 
-    ``number`` is the 1-based position in the (created_at, id) order of
-    ``PlayerService.list_for_registry`` — fixed for a player, because
-    players are never deleted and ``created_at`` never changes (D2).
-    The person name comes from the saved VK profile: ``"{first} {last}"``
-    stripped, or the configured fallback when it is empty or the profile
-    row is absent; the avatar shows only for an ``OK`` profile.
+    ``number`` is the player's permanent Registry number, issued once
+    by ``ensure_player_numbers`` and stored in
+    ``registry_player_numbers`` — it survives the deletion of other
+    players (D2, 0.11.0 unit 11). Rows keep their (created_at, id)
+    order of ``PlayerService.list_for_registry``, so the numbers of a
+    table can skip the freed ones. The person name comes from the
+    saved VK profile: ``"{first} {last}"`` stripped, or the configured
+    fallback when it is empty or the profile row is absent; the avatar
+    shows only for an ``OK`` profile.
     """
     # Local import: sources.py is imported by startup.py, so a top-level
     # import of the config holder would be a cycle (same pattern as
@@ -73,6 +77,7 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
     registry_config = get_registry_config()
     core_config = get_core_config()
 
+    numbers = await ensure_player_numbers(session)
     rows = await PlayerService.list_for_registry(session)
     player_ids = [row.player_id for row in rows]
     profiles: dict[str, RegistryVkProfile] = {}
@@ -97,9 +102,13 @@ async def load_players(session: AsyncSession) -> list[RegistryRow]:
 
     return [
         _player_row(
-            row, profiles.get(row.player_id), number, registry_config, core_config
+            row,
+            profiles.get(row.player_id),
+            numbers[row.player_id],
+            registry_config,
+            core_config,
         )
-        for number, row in enumerate(rows, start=1)
+        for row in rows
     ]
 
 
@@ -113,8 +122,9 @@ def _player_row(
     """
     One ``players``-table row (Spec 3.2) — the cells shared by
     ``load_players`` and ``load_player`` so the table and the player
-    route can never disagree. ``number`` is the 1-based position; the
-    key ``p<number>`` carries no ``vk_user_id`` and no uuid (INV-R2).
+    route can never disagree. ``number`` is the stored permanent
+    number; the key ``p<number>`` carries no ``vk_user_id`` and no
+    uuid (INV-R2).
     """
     name = ""
     avatar_url: str | None = None
@@ -156,12 +166,14 @@ async def load_player(session: AsyncSession, number: int) -> RegistryRow:
     (Spec 5.6) — the very ``_player_row`` the table shows for
     ``p<number>``.
 
-    Reads the whole ``PlayerService.list_for_registry`` list and picks
-    element ``number`` (players are few — no separate core method);
-    a ``number`` outside ``1..len(rows)`` raises
-    ``RegistryPlayerNotFoundError``. The wake-up rule is the table's
-    Spec 2.4 one, narrowed to this one player: no profile row or a due
-    retry rings the worker's bell.
+    The address is the permanent stored number (0.11.0 unit 11), not a
+    list position: ``ensure_player_numbers`` runs first, then the row
+    whose stored number is ``number`` is picked out of
+    ``PlayerService.list_for_registry`` (players are few — no separate
+    core method). A number nobody holds — never issued, or freed by a
+    deleted player — raises ``RegistryPlayerNotFoundError``. The
+    wake-up rule is the table's Spec 2.4 one, narrowed to this one
+    player: no profile row or a due retry rings the worker's bell.
     """
     # Local imports, same cycle guard as in load_players.
     from modules._03_registry.startup import (
@@ -169,10 +181,13 @@ async def load_player(session: AsyncSession, number: int) -> RegistryRow:
         get_registry_config,
     )
 
+    numbers = await ensure_player_numbers(session)
     rows = await PlayerService.list_for_registry(session)
-    if number < 1 or number > len(rows):
+    row = next(
+        (r for r in rows if numbers.get(r.player_id) == number), None
+    )
+    if row is None:
         raise RegistryPlayerNotFoundError(number)
-    row = rows[number - 1]
 
     result = await session.execute(
         select(RegistryVkProfile).where(RegistryVkProfile.player_id == row.player_id)

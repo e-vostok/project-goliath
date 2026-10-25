@@ -53,6 +53,8 @@ def orders_isolation(monkeypatch):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
+    saved_player_infos = AdminRegistry.get_player_info_hooks()
+    saved_province_infos = AdminRegistry.get_province_info_hooks()
     # register_orders_extensions() writes into the bot registry —
     # snapshot and restore it like the rest of the process globals.
     saved_types = bot_registry.get_notification_types()
@@ -78,6 +80,10 @@ def orders_isolation(monkeypatch):
     AdminRegistry._reset_hooks.update(saved_resets)
     AdminRegistry._player_preview_hooks.clear()
     AdminRegistry._player_preview_hooks.update(saved_previews)
+    AdminRegistry._player_info_hooks.clear()
+    AdminRegistry._player_info_hooks.update(saved_player_infos)
+    AdminRegistry._province_info_hooks.clear()
+    AdminRegistry._province_info_hooks.update(saved_province_infos)
     bot_registry.clear_registry()
     for key, variables in saved_types.items():
         bot_registry.register_notification_type(key, variables)

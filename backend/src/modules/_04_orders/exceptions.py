@@ -125,6 +125,53 @@ class OrderVerdictExistsError(OrderDomainError):
         )
 
 
+class OrderAlreadyDecidedError(OrderDomainError):
+    """
+    A verdict is already written, so the judge can no longer change —
+    HTTP 409 (0.11.0 unit 10a, admin judge reassignment).
+    """
+
+    code = "ORDER_ALREADY_DECIDED"
+
+    def __init__(self, number: int):
+        super().__init__(
+            f"По приказу №{number} уже вынесен вердикт — судью менять нельзя",
+            self.code,
+            details={"number": number},
+        )
+
+
+class OrderJudgeIsAuthorError(OrderDomainError):
+    """
+    The player picked as the new judge is the order's author — HTTP
+    409 (0.11.0 unit 10a). Distinct from the player-facing refusals:
+    it names the cause because only an administrator ever sees it.
+    """
+
+    code = "JUDGE_IS_AUTHOR"
+
+    def __init__(self, number: int):
+        super().__init__(
+            f"Автор приказа №{number} не может быть его судьёй",
+            self.code,
+            details={"number": number},
+        )
+
+
+class OrderJudgeAlreadyAssignedError(OrderDomainError):
+    """The player picked as the new judge already judges the order —
+    HTTP 409 (0.11.0 unit 10a)."""
+
+    code = "ALREADY_JUDGE"
+
+    def __init__(self, number: int):
+        super().__init__(
+            f"Этот игрок уже назначен судьёй приказа №{number}",
+            self.code,
+            details={"number": number},
+        )
+
+
 class OrderNumberConflictError(OrderDomainError):
     """
     The public number could not be assigned after the retry budget —

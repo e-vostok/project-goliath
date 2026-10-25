@@ -4,7 +4,7 @@
  * scheme gives dark. The bridge is stubbed so tests can speak «VK».
  */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 
 import { ThemeProvider, useTheme } from '../theme';
 
@@ -47,11 +47,16 @@ function Probe() {
   );
 }
 
-function renderProbe() {
+async function renderProbe() {
   render(
     <ThemeProvider>
       <Probe />
     </ThemeProvider>,
+  );
+  // The provider subscribes to vk-bridge through a dynamic import —
+  // wait until the listener is registered before tests emit schemes.
+  await waitFor(() =>
+    expect(bridgeMock.listeners.size).toBeGreaterThan(0),
   );
   return screen.getByTestId('probe');
 }
@@ -62,9 +67,9 @@ afterEach(() => {
 });
 
 describe('theme resolution', () => {
-  it('lets a stored mode win over the VK scheme', () => {
+  it('lets a stored mode win over the VK scheme', async () => {
     window.localStorage.setItem('pax.theme', 'light');
-    const probe = renderProbe();
+    const probe = await renderProbe();
     expect(probe).toHaveTextContent('light:light');
     emitVkScheme('vkcom_dark');
     expect(probe).toHaveTextContent('light:light:vkcom_dark');
@@ -74,14 +79,17 @@ describe('theme resolution', () => {
     ['vkcom_dark', 'dark'],
     ['space_gray', 'dark'],
     ['bright_light', 'light'],
-  ])('in «авто» follows the reported scheme %s → %s', (scheme, resolved) => {
-    const probe = renderProbe();
-    emitVkScheme(scheme);
-    expect(probe).toHaveTextContent(`auto:${resolved}:${scheme}`);
-  });
+  ])(
+    'in «авто» follows the reported scheme %s → %s',
+    async (scheme, resolved) => {
+      const probe = await renderProbe();
+      emitVkScheme(scheme);
+      expect(probe).toHaveTextContent(`auto:${resolved}:${scheme}`);
+    },
+  );
 
-  it('resolves an unknown scheme to dark', () => {
-    const probe = renderProbe();
+  it('resolves an unknown scheme to dark', async () => {
+    const probe = await renderProbe();
     emitVkScheme('some_future_scheme');
     expect(probe).toHaveTextContent('auto:dark:some_future_scheme');
   });

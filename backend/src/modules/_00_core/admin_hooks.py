@@ -2,9 +2,9 @@
 Admin-panel hooks for module 00_core.
 
 00_core owns the players/nations/provinces/scheduled_actions/game_clock/
-tick_log tables, so its admin state view and reset live here in the module
-package and are exposed to the panel through AdminRegistry — one
-registration call per hook, from the app lifespan.
+tick_log tables, so its admin state view, overview tiles and reset live
+here in the module package and are exposed to the panel through
+AdminRegistry — one registration call per hook, from the app lifespan.
 
 register_admin_hooks() is idempotent: the lifespan runs on every app boot
 (including repeated LifespanManager boots in tests), so re-registration
@@ -15,13 +15,17 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin.registry import AdminRegistry
+from core.admin.security import _admin_vk_user_ids
+from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import (
+    AdminGrant,
     GameClock,
     Nation,
     Player,
@@ -36,6 +40,22 @@ logger = logging.getLogger(__name__)
 
 MODULE_SLUG = "00_core"
 LIST_CAP = 200
+
+# The Russian labels of every action code 00_core writes into
+# admin_audit_log — the panel's «Журнал» renders these; a code nobody
+# registered stays raw.
+ADMIN_AUDIT_ACTION_LABELS = {
+    "tick.run": "Запуск хода",
+    "world.reset": "Сброс мира",
+    "player.delete": "Удаление игрока",
+    "panel.login": "Вход в панель",
+    "admin.grant": "Выдача прав",
+    "admin.revoke": "Снятие прав",
+    "nation.create": "Создание государства",
+    "nation.update": "Правка государства",
+    "nation.delete": "Удаление государства",
+    "province.transfer": "Передача провинции",
+}
 
 
 async def _restart_tick_log_id(session: AsyncSession) -> None:
@@ -89,6 +109,132 @@ async def _restart_tick_log_id(session: AsyncSession) -> None:
 async def _count(session: AsyncSession, model) -> int:
     result = await session.execute(select(func.count()).select_from(model))
     return result.scalar_one()
+
+
+# The panel shows the tick zone as a city name (mockup 02: «Москва»),
+# not the IANA id; zones without a Russian short name fall back to the
+# IANA city part ("America/New_York" -> "New York").
+_TZ_DISPLAY_NAMES = {"Europe/Moscow": "Москва"}
+
+
+def _tz_display_name(tz_name: str) -> str:
+    return _TZ_DISPLAY_NAMES.get(
+        tz_name, tz_name.rsplit("/", 1)[-1].replace("_", " ")
+    )
+
+
+def _genitive_month(name: str) -> str:
+    """
+    Russian genitive of a configured month name for the «Следующий
+    ход» tile ("25 октября, 00:00"): -ь/-й -> -я (январь -> января,
+    май -> мая), -т -> -та (март -> марта, август -> августа); other
+    endings stay verbatim.
+    """
+    if name.endswith(("ь", "й")):
+        return name[:-1] + "я"
+    if name.endswith("т"):
+        return name + "а"
+    return name
+
+
+def _next_tick_text(
+    moment: datetime | None, tz_name: str, month_names: list[str]
+) -> str | None:
+    """«25 октября, 00:00» — the instant rendered in tick_timezone."""
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    local = moment.astimezone(ZoneInfo(tz_name))
+    month = _genitive_month(month_names[local.month - 1])
+    return f"{local.day} {month}, {local:%H:%M}"
+
+
+async def admin_overview(session: AsyncSession) -> list[dict]:
+    """
+    The 00_core tiles of the panel's «Состояние мира» card (mockup 02).
+
+    `sort` takes 10–60 for the world's own figures and 90 for the
+    administrators count — deliberately after the orders tiles
+    (70–80) so the merged cross-module list follows the mockup.
+    Values arrive formatted for display; `—` stands in when the
+    game_clock row is absent. Read-only, never commits.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    clock = (
+        await session.execute(select(GameClock).where(GameClock.id == 1))
+    ).scalar_one_or_none()
+
+    players_total = await _count(session, Player)
+    nations_total = await _count(session, Nation)
+    provinces_total = await _count(session, Province)
+    provinces_owned = (
+        await session.execute(
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id.is_not(None))
+        )
+    ).scalar_one()
+
+    # The admin set is the env allowlist plus the granted players'
+    # vk ids, distinct — the same union AdminGrantService computes for
+    # its LAST_ADMIN guard.
+    granted_vk_ids = (
+        await session.execute(
+            select(Player.vk_user_id).join(
+                AdminGrant, AdminGrant.player_id == Player.id
+            )
+        )
+    ).all()
+    admins_total = len({vk for (vk,) in granted_vk_ids} | _admin_vk_user_ids())
+
+    if clock is None:
+        turn_text = next_text = None
+    else:
+        game_date = format_game_date(
+            compute_game_date(clock.current_turn, config), config
+        )
+        turn_text = f"{clock.current_turn} · {game_date.lower()}"
+        next_text = _next_tick_text(
+            clock.next_tick_at,
+            config.tick.tick_timezone,
+            config.calendar.month_names,
+        )
+
+    return [
+        {"key": "turn", "label": "Ход", "value": turn_text or "—", "sort": 10},
+        {
+            "key": "next_turn",
+            "label": "Следующий ход",
+            "value": next_text or "—",
+            "sort": 20,
+        },
+        {
+            "key": "tick_timezone",
+            "label": "Часовой пояс",
+            "value": _tz_display_name(config.tick.tick_timezone),
+            "sort": 30,
+        },
+        {"key": "players", "label": "Игроки", "value": str(players_total), "sort": 40},
+        {
+            "key": "nations",
+            "label": "Государства",
+            "value": str(nations_total),
+            "sort": 50,
+        },
+        {
+            "key": "provinces_occupied",
+            "label": "Провинций занято",
+            "value": f"{provinces_owned} из {provinces_total}",
+            "sort": 60,
+        },
+        {
+            "key": "admins",
+            "label": "Администраторы",
+            "value": str(admins_total),
+            "sort": 90,
+        },
+    ]
 
 
 async def admin_state_view(session: AsyncSession) -> dict:
@@ -209,6 +355,67 @@ async def admin_player_delete_preview(session: AsyncSession, player_id: str) -> 
     }
 
 
+def _releases_word(count: int) -> str:
+    """Russian plural of «освобождение» for the journal line."""
+    if 10 < count % 100 < 20:
+        return "освобождений"
+    forms = {1: "освобождение", 2: "освобождения", 3: "освобождения", 4: "освобождения"}
+    return forms.get(count % 10, "освобождений")
+
+
+async def admin_nation_delete_preview(
+    session: AsyncSession, nation_id: str
+) -> list[dict]:
+    """
+    The 00_core consequence lines of the nation delete-preview
+    (0.11.0 unit 8c): the scheduled actions that would be orphaned by
+    ``NationService.delete`` and the release entries the map's
+    ownership journal would gain — one ready Russian sentence each.
+    Zero counts produce no line. Read-only, never commits.
+    """
+    scheduled = (
+        await session.execute(
+            select(func.count())
+            .select_from(ScheduledAction)
+            .where(ScheduledAction.nation_id == nation_id)
+        )
+    ).scalar_one()
+    provinces = (
+        await session.execute(
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id == nation_id)
+        )
+    ).scalar_one()
+    lines: list[dict] = []
+    if scheduled:
+        lines.append(
+            {
+                "code": "scheduled_actions",
+                "text": (
+                    f"запланированных действий государства: {scheduled} — "
+                    "они останутся без государства"
+                ),
+            }
+        )
+    if provinces:
+        verb = (
+            "запишется"
+            if provinces % 10 == 1 and provinces % 100 != 11
+            else "запишутся"
+        )
+        lines.append(
+            {
+                "code": "ownership_journal",
+                "text": (
+                    f"в журнал владения карты {verb} {provinces} "
+                    f"{_releases_word(provinces)} провинций"
+                ),
+            }
+        )
+    return lines
+
+
 async def admin_reset(session: AsyncSession) -> None:
     """
     Wipe the 00_core world back to a fresh game.
@@ -265,3 +472,9 @@ def register_admin_hooks() -> None:
         AdminRegistry.register_reset(MODULE_SLUG, admin_reset)
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
         AdminRegistry.register_player_preview(MODULE_SLUG, admin_player_delete_preview)
+    if MODULE_SLUG not in AdminRegistry.get_nation_preview_hooks():
+        AdminRegistry.register_nation_preview(MODULE_SLUG, admin_nation_delete_preview)
+    if MODULE_SLUG not in AdminRegistry.get_overview_hooks():
+        AdminRegistry.register_overview(MODULE_SLUG, admin_overview)
+    if MODULE_SLUG not in AdminRegistry.get_audit_action_hooks():
+        AdminRegistry.register_audit_actions(MODULE_SLUG, ADMIN_AUDIT_ACTION_LABELS)

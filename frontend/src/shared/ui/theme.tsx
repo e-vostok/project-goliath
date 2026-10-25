@@ -19,7 +19,6 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
-import bridge from '@vkontakte/vk-bridge';
 import { ConfigProvider, Platform } from '@vkontakte/vkui';
 
 import { MoonIcon, SunIcon } from './icons';
@@ -106,55 +105,56 @@ export function useTheme(): ThemeContextValue {
   return value;
 }
 
-function readConfigScheme(config: unknown): string | null {
-  const scheme = (config as { scheme?: unknown } | null)?.scheme;
-  return typeof scheme === 'string' && scheme ? scheme : null;
-}
-
-export function ThemeProvider({ children }: { children: ReactNode }) {
+export function ThemeProvider({
+  children,
+  listenVkScheme = true,
+}: {
+  children: ReactNode;
+  /**
+   * Whether to subscribe the resolved theme to the scheme VK reports
+   * over vk-bridge (Spec 5.4). The admin panel page lives in a bare
+   * browser tab and must not import vk-bridge at all — it passes
+   * `false`, so «авто» holds the dark fallback there.
+   */
+  listenVkScheme?: boolean;
+}) {
   const [mode, setModeState] = useState<ThemeMode>(readStoredMode);
   const [vkScheme, setVkScheme] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Ask VK for its scheme once and keep listening for changes; outside
   // VK both calls simply never answer (Spec 5.4 — «не проверено»).
+  // The bridge reaches this provider only through a dynamic import of
+  // ./vkScheme: bundles that never run inside VK (the /admin page)
+  // pass `listenVkScheme={false}` and neither import vk-bridge nor
+  // ever execute this effect.
   useEffect(() => {
-    const onBridgeEvent = (event: {
-      detail?: { type?: string; data?: unknown };
-    }) => {
-      try {
-        if (event?.detail?.type === 'VKWebAppUpdateConfig') {
-          const scheme = readConfigScheme(event.detail.data);
-          if (scheme) {
-            setVkScheme(scheme);
-          }
-        }
-      } catch {
-        // A malformed bridge event must never break the theme.
-      }
-    };
-    try {
-      bridge.subscribe(onBridgeEvent);
-      void bridge
-        .send('VKWebAppGetConfig')
-        .then((config) => {
-          const scheme = readConfigScheme(config);
-          if (scheme) {
-            setVkScheme(scheme);
-          }
-        })
-        .catch(() => {});
-    } catch {
-      // No bridge at all — «авто» stays on the dark fallback.
+    if (!listenVkScheme) {
+      return;
     }
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    void import('./vkScheme')
+      .then((mod) => {
+        if (cancelled) {
+          return;
+        }
+        try {
+          unsubscribe = mod.subscribeVkScheme((scheme) => {
+            if (!cancelled) {
+              setVkScheme(scheme);
+            }
+          });
+        } catch {
+          // No bridge at all — «авто» stays on the dark fallback.
+        }
+      })
+      .catch(() => {});
     return () => {
-      try {
-        bridge.unsubscribe(onBridgeEvent);
-      } catch {
-        // Bridge may already be gone — nothing to undo.
-      }
+      cancelled = true;
+      unsubscribe?.();
     };
-  }, []);
+  }, [listenVkScheme]);
 
   const resolved: ResolvedTheme =
     mode === 'auto' ? schemeToTheme(vkScheme) : mode;

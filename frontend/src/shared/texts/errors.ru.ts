@@ -44,6 +44,8 @@ export const ERRORS_RU: Record<string, string | typeof SERVER_RU> = {
   /* Nation. */
   NATION_ALREADY_EXISTS: 'У вас уже есть государство.',
   NATION_NOT_FOUND: 'Государство не найдено.',
+  /* PATCH /admin/nations/{id} with an empty body (0.11.0 unit 8b). */
+  NOTHING_TO_CHANGE: 'Нечего сохранять — поля не изменились.',
 
   /* Player, clock, map, registry. */
   PLAYER_NOT_FOUND: 'Игрок не найден.',
@@ -66,6 +68,12 @@ export const ERRORS_RU: Record<string, string | typeof SERVER_RU> = {
   ORDER_TITLE_INVALID: SERVER_RU,
   ORDER_SUMMARY_INVALID: SERVER_RU,
   ORDER_URL_INVALID: SERVER_RU,
+  /* Admin judge assignment (0.11.0 unit 10b) — the preview's blocker
+     codes, also the POST /admin/orders/{n}/judge refusals. */
+  ORDER_ALREADY_DECIDED:
+    'По приказу уже вынесен вердикт — судью менять нельзя.',
+  JUDGE_IS_AUTHOR: 'Автор приказа не может быть его судьёй',
+  ALREADY_JUDGE: 'Этот игрок уже назначен судьёй этого приказа.',
 
   /* Map maintenance — transient states the player cannot act on. */
   RETIRED_PROVINCE_OWNED: 'Действие сейчас недоступно. Попробуйте позже.',
@@ -81,4 +89,18 @@ export const ERRORS_RU: Record<string, string | typeof SERVER_RU> = {
   CONFIRMATION_MISMATCH: 'Подтверждение не совпало — проверьте ввод.',
   CANNOT_DELETE_SELF: 'Удалить самого себя нельзя.',
   CANNOT_DELETE_ADMIN: 'Удалить администратора нельзя.',
+
+  /* Province transfer — the panel's «Провинции» (0.11.0 unit 9b). */
+  ALREADY_OWNER: 'Провинция уже принадлежит этому государству.',
+  SEIZE_NOT_CONFIRMED:
+    'Подтвердите изъятие провинции у другого государства.',
+  LAST_PROVINCE:
+    'Это последняя провинция государства. Вывести или передать её ' +
+    'нельзя: государство без провинций не бывает. Если государство ' +
+    'больше не нужно, удалите его целиком в разделе «Государства».',
+  CAPITAL_REQUIRED:
+    'Провинция — столица государства: выберите новую столицу из ' +
+    'оставшихся провинций.',
+  PROVINCE_NAME_UNKNOWN:
+    'У выбранной провинции нет названия — назначить её столицей нельзя.',
 };

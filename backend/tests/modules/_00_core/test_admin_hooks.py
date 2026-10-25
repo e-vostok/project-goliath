@@ -123,11 +123,15 @@ def registry_guard():
     """Isolate class-level AdminRegistry state from other test modules."""
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
+    saved_player_infos = AdminRegistry.get_player_info_hooks()
+    saved_province_infos = AdminRegistry.get_province_info_hooks()
     AdminRegistry.clear_handlers()
     yield
     AdminRegistry.clear_handlers()
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.update(saved_resets)
+    AdminRegistry._player_info_hooks.update(saved_player_infos)
+    AdminRegistry._province_info_hooks.update(saved_province_infos)
 
 
 def _utc(dt: datetime) -> datetime:
@@ -524,11 +528,12 @@ class TestAdminEndpointFunctions:
     async def test_admin_tick_run_direct(self, test_db_session):
         from core.admin.router import admin_tick_run
 
+        admin = await _seed_player(test_db_session, vk_user_id=424242)
         test_db_session.add(GameClockFactory.build(current_turn=0))
         await test_db_session.flush()
         await test_db_session.commit()
 
-        result = await admin_tick_run(admin=None, session=test_db_session)
+        result = await admin_tick_run(admin=admin, session=test_db_session)
 
         assert result["ok"] is True
         assert result["current_turn"] == 1
@@ -542,18 +547,19 @@ class TestAdminEndpointFunctions:
         """Real ticks push ids past 1; after reset the next row is id 1."""
         from core.admin.router import admin_tick_run
 
+        admin = await _seed_player(test_db_session, vk_user_id=424242)
         test_db_session.add(GameClockFactory.build(current_turn=0))
         await test_db_session.commit()
 
         for _ in range(3):
-            result = await admin_tick_run(admin=None, session=test_db_session)
+            result = await admin_tick_run(admin=admin, session=test_db_session)
             assert result["ok"] is True
         assert result["tick_log"]["id"] == 3
 
         await admin_reset(test_db_session)
         await test_db_session.commit()
 
-        result = await admin_tick_run(admin=None, session=test_db_session)
+        result = await admin_tick_run(admin=admin, session=test_db_session)
         assert result["ok"] is True
         assert result["current_turn"] == 1
         assert result["tick_log"]["id"] == 1
@@ -565,13 +571,14 @@ class TestAdminEndpointFunctions:
         gets id 1."""
         from core.admin.router import admin_tick_run
 
+        admin = await _seed_player(test_db_session, vk_user_id=424242)
         test_db_session.add(GameClockFactory.build(current_turn=0))
         await test_db_session.commit()
 
         await admin_reset(test_db_session)
         await test_db_session.commit()
 
-        result = await admin_tick_run(admin=None, session=test_db_session)
+        result = await admin_tick_run(admin=admin, session=test_db_session)
         assert result["ok"] is True
         assert result["tick_log"]["id"] == 1
 
@@ -641,6 +648,8 @@ class TestAdminEndpointFunctions:
 
         register_admin_hooks()
 
+        admin = await _seed_player(test_db_session, vk_user_id=424242)
+
         # confirm must be literal True — falsy and non-bool both rejected.
         for body in (
             StateResetRequest(confirm=False),
@@ -648,13 +657,13 @@ class TestAdminEndpointFunctions:
             StateResetRequest(),
         ):
             with pytest.raises(ConfirmRequiredError):
-                await admin_state_reset(body=body, admin=None, session=test_db_session)
+                await admin_state_reset(body=body, admin=admin, session=test_db_session)
 
         # Success path: all hooks commit, response lists slugs in
         # execution order (reverse registration — only 00_core here).
         result = await admin_state_reset(
             body=StateResetRequest(confirm=True),
-            admin=None,
+            admin=admin,
             session=test_db_session,
         )
         assert result["reset"] == ["00_core"]
@@ -672,7 +681,7 @@ class TestAdminEndpointFunctions:
         with pytest.raises(ResetFailedError) as exc_info:
             await admin_state_reset(
                 body=StateResetRequest(confirm=True),
-                admin=None,
+                admin=admin,
                 session=test_db_session,
             )
         assert exc_info.value.code == "RESET_FAILED"

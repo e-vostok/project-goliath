@@ -52,7 +52,11 @@ from modules._02_bot.service import BotService, EnqueueResult
 from modules._04_orders import distribution
 from modules._04_orders.distribution import JudgeCandidate
 from modules._04_orders.exceptions import (
+    OrderAlreadyDecidedError,
     OrderAuthorLimitReachedError,
+    OrderDomainError,
+    OrderJudgeAlreadyAssignedError,
+    OrderJudgeIsAuthorError,
     OrderNationRequiredError,
     OrderNotFoundError,
     OrderNumberConflictError,
@@ -61,6 +65,8 @@ from modules._04_orders.exceptions import (
 )
 from modules._04_orders.models import Order, is_overdue
 from modules._04_orders.notifications import (
+    ORDER_JUDGE_ASSIGNED,
+    ORDER_JUDGE_REMINDER,
     notify_assignment,
     notify_reminder,
     notify_verdict,
@@ -114,6 +120,20 @@ class SubmitOutcome:
 
     view: OrderDetailView
     created: bool
+
+
+@dataclass(frozen=True)
+class AdminAssignOutcome:
+    """
+    ``admin_assign_judge`` result (0.11.0 unit 10a): the updated row,
+    the judge it replaced (``None`` on a directive assignment to a
+    judge-less order) and the number of queued bot rows the
+    reassignment cancelled for that previous judge.
+    """
+
+    order: Order
+    previous_judge_player_id: str | None
+    cancelled_outbox_rows: int
 
 
 @dataclass(frozen=True)
@@ -898,6 +918,154 @@ class OrderService:
         return _detail_view(order, now=verdict_at, viewer_player_id=player_id)
 
     @staticmethod
+    async def admin_assign_judge(
+        session: AsyncSession,
+        number: int,
+        judge_player_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> AdminAssignOutcome:
+        """
+        Give an order its judge — or replace the current one — by an
+        administrator's decision (0.11.0 unit 10a).
+
+        The module advisory lock serializes the write with submissions,
+        distributions and verdicts on PostgreSQL; on SQLite the single
+        writer needs no lock. The rating threshold, the pending-verdicts
+        limit and the reachability rule do NOT apply — the administrator
+        chooses any player, including themselves — and nobody gets a bot
+        message: ``notify_assignment`` is never called, the reminder is
+        switched off by stamping ``reminder_sent_at = now`` (the
+        worker's sweep only claims ``reminder_sent_at IS NULL`` rows)
+        and the previous judge's still-unsent assignment/reminder rows
+        are recalled through ``BotService.cancel_pending`` in the same
+        transaction.
+
+        Refusals, in order: unknown number (``ORDER_NOT_FOUND``), a
+        verdict already written (``ORDER_ALREADY_DECIDED``), the new
+        judge is the order's author (``JUDGE_IS_AUTHOR``), the new
+        judge already judges the order (``ALREADY_JUDGE``). The write is
+        one conditional ``UPDATE`` (INV-O1) guarded on ``verdict_at IS
+        NULL`` and the judge value just read; a lost race re-reads and
+        re-evaluates the refusals for the winning state. Judge load
+        counters need no recomputing — ``distribute``'s aggregating
+        query, the worker and the preview all derive them from the
+        rows. Never commits; the caller owns the transaction boundary.
+        """
+        from modules._04_orders.startup import get_orders_config
+
+        judge = get_orders_config().judge
+        moment = now if now is not None else datetime.now(UTC)
+
+        # 1. Module lock — same key as submit/distribute/write_verdict.
+        if session.bind.dialect.name == "postgresql":
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"),
+                {"key": ORDERS_ADVISORY_LOCK_KEY},
+            )
+
+        order: Order | None = None
+        previous_judge_id: str | None = None
+
+        # 2–4. Read, refusals, conditional write — retried only while a
+        # race moves the row between our read and our UPDATE. Under the
+        # module lock a racing judge write is all but impossible, so
+        # three attempts are far beyond need.
+        for _attempt in range(3):
+            # 2. The order exists.
+            order = (
+                await session.execute(
+                    select(Order).where(Order.number == number)
+                )
+            ).scalar_one_or_none()
+            if order is None:
+                raise OrderNotFoundError(number)
+
+            # 3. The refusal order of the admin contract.
+            if order.verdict_at is not None:
+                raise OrderAlreadyDecidedError(number)
+            if judge_player_id == order.author_player_id:
+                raise OrderJudgeIsAuthorError(number)
+            if order.judge_player_id == judge_player_id:
+                raise OrderJudgeAlreadyAssignedError(number)
+            previous_judge_id = order.judge_player_id
+
+            # 4. Conditional write (INV-O1): the four assignment
+            # columns plus the deliberate reminder switch-off, only
+            # while the row is still undecided and carries the judge
+            # just read. The spec's ``IS NOT DISTINCT FROM`` is written
+            # portably — SQLite knows it only as IS NULL / equality.
+            judge_guard = (
+                Order.judge_player_id.is_(None)
+                if previous_judge_id is None
+                else Order.judge_player_id == previous_judge_id
+            )
+            result = await session.execute(
+                update(Order)
+                .where(
+                    Order.id == order.id,
+                    Order.verdict_at.is_(None),
+                    judge_guard,
+                )
+                .values(
+                    judge_player_id=judge_player_id,
+                    distributed_at=moment,
+                    deadline_at=moment
+                    + timedelta(seconds=judge.deadline_seconds),
+                    reminder_at=moment
+                    + timedelta(seconds=judge.reminder_seconds),
+                    # On purpose (Project Owner: no bot messages at
+                    # all): marks the reminder handled so the worker's
+                    # sweep never tells the new judge.
+                    reminder_sent_at=moment,
+                )
+            )
+            if result.rowcount:
+                break
+        else:
+            # Three lost races in a row — re-read and answer for the
+            # state that won, like write_verdict does.
+            fresh = (
+                await session.execute(select(Order).where(Order.id == order.id))
+            ).scalar_one()
+            if fresh.verdict_at is not None:
+                raise OrderAlreadyDecidedError(number)
+            if fresh.judge_player_id == judge_player_id:
+                raise OrderJudgeAlreadyAssignedError(number)
+            # A still-assignable row after three lost races means
+            # concurrent judge writes outside the module lock — a 500,
+            # never a silent overwrite.
+            raise OrderDomainError(
+                "the order's judge keeps changing under concurrent writes",
+                "ORDER_ASSIGN_RACE",
+            )
+
+        await session.refresh(order)
+
+        # 5. The previous judge's still-unsent order rows must never go
+        # out (Project Owner: no bot messages) — recalled through the
+        # bot's own cancel in the same transaction.
+        cancelled = 0
+        if previous_judge_id is not None:
+            for type_key, prefix in (
+                (ORDER_JUDGE_ASSIGNED, "order_assigned"),
+                (ORDER_JUDGE_REMINDER, "order_reminder"),
+            ):
+                cancelled += await BotService.cancel_pending(
+                    session,
+                    player_id=previous_judge_id,
+                    type_key=type_key,
+                    event_key=f"{prefix}:{order.id}",
+                    now=moment,
+                )
+
+        return AdminAssignOutcome(
+            order=order,
+            previous_judge_player_id=previous_judge_id,
+            cancelled_outbox_rows=cancelled,
+        )
+
+    @staticmethod
     async def unresolved_count(session: AsyncSession, *, player_id: str) -> int:
         """
         The author's orders without a verdict — the ``unresolved_orders``
@@ -912,3 +1080,26 @@ class OrderService:
             )
         )
         return result.scalar_one()
+
+    @staticmethod
+    async def unresolved_counts_world(session: AsyncSession) -> dict[str, int]:
+        """
+        Two world-wide counters for the admin overview tiles
+        (0.11.0 unit 6a). ``without_verdict`` — every order still
+        unresolved, the spec D14 «приказов без вердикта»: the derived
+        stages SUBMITTED and DISTRIBUTED together (``verdict_at IS
+        NULL``). ``awaiting_distribution`` — orders still waiting for a
+        judge, the distribution queue: the derived stage SUBMITTED
+        (``judge_player_id IS NULL``). Read-only, never commits.
+        """
+        result = await session.execute(
+            select(
+                func.count().filter(Order.verdict_at.is_(None)),
+                func.count().filter(Order.judge_player_id.is_(None)),
+            ).select_from(Order)
+        )
+        without_verdict, awaiting_distribution = result.one()
+        return {
+            "without_verdict": without_verdict,
+            "awaiting_distribution": awaiting_distribution,
+        }

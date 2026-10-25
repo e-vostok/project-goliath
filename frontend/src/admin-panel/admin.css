@@ -1,0 +1,28 @@
+/*
+ * Admin panel page (0.11.0 unit 5a) — a standalone browser tab, so the
+ * page owns the viewport (unlike the Mini App, where the VK iframe
+ * follows the content height). All colours/fonts/sizes come from the
+ * --pax-* tokens and TEXT_STYLES on the theme wrapper — this file only
+ * resets the document itself.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  /* The theme token, applied to <html> by AdminApp: the page ground
+     reaches the window edge even where the frame's own background
+     ends (short sections) and under over-scroll. */
+  background: var(--pax-ground);
+}
+
+#root {
+  min-height: 100vh;
+}

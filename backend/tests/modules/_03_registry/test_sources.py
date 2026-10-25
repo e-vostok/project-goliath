@@ -137,12 +137,18 @@ class TestPlayersTable:
     async def test_players_build_query_count_is_constant(
         self, test_db_session, test_db_engine, registry_started
     ):
-        """One players join + one profiles fetch — independent of N."""
+        """Numbering check + players join + profiles fetch — flat, not N-dependent."""
+        players = []
         for i in range(5):
-            await seed_player(
-                test_db_session, 501300 + i, created_at=T0.replace(hour=i)
+            players.append(
+                await seed_player(
+                    test_db_session, 501300 + i, created_at=T0.replace(hour=i)
+                )
             )
         await test_db_session.flush()
+        # Warm the numbers table: issuing writes once, then the steady
+        # state is a fixed count of flat queries.
+        await build_table(test_db_session, "players")
 
         statements: list[str] = []
 
@@ -158,7 +164,9 @@ class TestPlayersTable:
                 "before_cursor_execute",
                 _count,
             )
-        assert len(statements) == 2
+        # list_for_registry (inside ensure) + stored numbers +
+        # list_for_registry (source rows) + profiles fetch.
+        assert len(statements) == 4
 
 
 class TestNationsTable:
