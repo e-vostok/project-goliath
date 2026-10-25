@@ -465,7 +465,7 @@ export function PlayersSection() {
           >
             <thead>
               <tr>
-                {['Игрок', 'Государство', 'Регистрация', 'Роль', ''].map(
+                {['Игрок', '№ в Реестре', 'Государство', 'Регистрация', 'Роль', ''].map(
                   (head, index) => (
                     <th
                       key={index}
@@ -514,6 +514,33 @@ export function PlayersSection() {
                           VK {player.vk_user_id}
                         </span>
                       </>
+                    )}
+                  </td>
+                  <td
+                    data-testid={`registry-number-${player.vk_user_id}`}
+                    style={{
+                      height: 44,
+                      padding: '4px 12px',
+                      borderBottom:
+                        index === items.length - 1
+                          ? 'none'
+                          : `1px solid ${tokenVar('line')}`,
+                      verticalAlign: 'middle',
+                      ...TEXT_STYLES['body'],
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {player.registry_number !== null ? (
+                      `№${player.registry_number}`
+                    ) : (
+                      <span
+                        style={{
+                          ...TEXT_STYLES['caption'],
+                          color: tokenVar('ink-muted'),
+                        }}
+                      >
+                        —
+                      </span>
                     )}
                   </td>
                   <td

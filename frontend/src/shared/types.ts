@@ -271,6 +271,8 @@ export interface AdminPlayerDTO {
   vk_user_id: number;
   /** Hook-assembled display name (the VK profile cache); null when unknown. */
   display_name: string | null;
+  /** The player's permanent Registry number; null until the registry issues one. */
+  registry_number: number | null;
   /** The player's nation's short name; null for a nationless player. */
   nation_short_name: string | null;
   /** 'YYYY-MM-DD HH:MM:SS' in the tick timezone, like every admin answer. */

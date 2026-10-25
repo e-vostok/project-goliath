@@ -17,9 +17,11 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core.service import PlayerService
 from modules._03_registry.cells import cell_matches
 from modules._03_registry.config_schema import ColumnConfig
 from modules._03_registry.errors import (
@@ -27,10 +29,20 @@ from modules._03_registry.errors import (
     RegistryProviderError,
     RegistryTableNotFoundError,
 )
-from modules._03_registry.models import RegistryVkProfile
+from modules._03_registry.models import (
+    RegistryNumberCounter,
+    RegistryPlayerNumber,
+    RegistryVkProfile,
+)
 from modules._03_registry.registry import Cell, RegistryRow, get_table_source
 
 logger = logging.getLogger(__name__)
+
+# PostgreSQL advisory-lock key serializing number issuing across every
+# process sharing the database ('REGNUM' as ASCII hex). Must fit
+# bigint; no-op dialects skip it. Differs from the other modules' keys
+# (00_core NATIONS, 04_orders ORDERS) — each lock guards its own data.
+REGISTRY_NUMBERS_ADVISORY_LOCK_KEY = 0x5245474E554D
 
 
 @dataclass(frozen=True)
@@ -156,6 +168,122 @@ async def build_table(session: AsyncSession, table_id: str) -> BuiltTable:
             for row in rows
         ],
     )
+
+
+# ── Permanent player numbers (0.11.0 unit 11) ────────────────────────
+#
+# A Registry number is issued once and never changes or moves to
+# another player: ``registry_player_numbers`` maps ``player_id`` to its
+# ``number`` and ``registry_number_counter.last_number`` is the only
+# source of new ones — it just grows, so a gap left by a deleted
+# player stays a gap. ``load_players``/``load_player`` call
+# ``ensure_player_numbers`` first; the admin player-info hook reads the
+# stored numbers through ``admin_registry_numbers`` and never issues.
+
+
+async def _player_numbers(
+    session: AsyncSession, player_ids: list[str]
+) -> dict[str, int]:
+    """``{player_id: number}`` of the stored rows for ``player_ids``."""
+    if not player_ids:
+        return {}
+    rows = await session.execute(
+        select(RegistryPlayerNumber.player_id, RegistryPlayerNumber.number).where(
+            RegistryPlayerNumber.player_id.in_(player_ids)
+        )
+    )
+    return {player_id: number for player_id, number in rows.all()}
+
+
+async def ensure_player_numbers(session: AsyncSession) -> dict[str, int]:
+    """
+    Give a permanent Registry number to every player that has none
+    (0.11.0 unit 11); returns ``{player_id: number}`` of every current
+    player.
+
+    New numbers go out in the (created_at, id) order of
+    ``PlayerService.list_for_registry`` (INV-R1 — players are read only
+    through 00_core), each ``last_number + 1``. Idempotent: an issued
+    number is never rewritten, a counter never rewound. On PostgreSQL
+    the module advisory lock serializes the check-then-insert sequence
+    between processes and ``uq_registry_player_numbers_number`` is the
+    second line of defence; on SQLite the single writer is enough —
+    a lost insert race rolls back and retries on the winner's
+    committed state (bounded).
+
+    The registry routes never commit the request transaction — they
+    were read-only until numbers existed — so the issuing branch
+    commits itself; plain reads stay commit-free and the lock is
+    released with the commit.
+    """
+    for attempt in range(3):
+        players = await PlayerService.list_for_registry(session)
+        player_ids = [row.player_id for row in players]
+        numbers = await _player_numbers(session, player_ids)
+        missing = [pid for pid in player_ids if pid not in numbers]
+        if not missing:
+            return numbers
+
+        if session.bind.dialect.name == "postgresql":
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"),
+                {"key": REGISTRY_NUMBERS_ADVISORY_LOCK_KEY},
+            )
+
+        # Re-read under the lock: a concurrent call may have issued
+        # some of the missing numbers while this transaction waited
+        # for it.
+        numbers.update(await _player_numbers(session, missing))
+        still_missing = [pid for pid in missing if pid not in numbers]
+        if not still_missing:
+            return numbers
+
+        counter = (
+            await session.execute(
+                select(RegistryNumberCounter).where(RegistryNumberCounter.id == 1)
+            )
+        ).scalar_one_or_none()
+        if counter is None:
+            # A schema built from Base.metadata alone (tests, a
+            # database created before migration 0016 ran) has no
+            # counter row: seed it from the highest issued number,
+            # never lower.
+            highest = (
+                await session.execute(select(func.max(RegistryPlayerNumber.number)))
+            ).scalar_one() or 0
+            counter = RegistryNumberCounter(id=1, last_number=highest)
+            session.add(counter)
+
+        next_number = counter.last_number
+        for player_id in still_missing:
+            next_number += 1
+            session.add(RegistryPlayerNumber(player_id=player_id, number=next_number))
+            numbers[player_id] = next_number
+        counter.last_number = next_number
+        try:
+            await session.commit()
+            return numbers
+        except IntegrityError:
+            # Lost a race on a dialect without the advisory lock: the
+            # winner's commit is now visible — recompute from fresh
+            # state instead of surfacing a constraint error.
+            await session.rollback()
+            if attempt == 2:
+                raise
+
+    return numbers  # unreachable — the loop always returns or raises
+
+
+async def admin_registry_numbers(
+    session: AsyncSession, player_ids: list[str]
+) -> dict[str, int]:
+    """
+    Stored Registry numbers for the panel's «Игроки» column
+    (0.11.0 unit 11). Read-only like every player-info hook — it never
+    issues numbers, so a player the registry has not seen yet simply
+    has no key (the panel shows the empty dash).
+    """
+    return await _player_numbers(session, player_ids)
 
 
 # ── Admin players table (0.11.0 unit 6b) ─────────────────────────────
