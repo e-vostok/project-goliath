@@ -46,7 +46,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,7 +63,11 @@ from modules._00_core.admin_service import (
 )
 from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
-from modules._00_core.exceptions import CoreDomainError, PlayerNotFoundError
+from modules._00_core.exceptions import (
+    CoreDomainError,
+    NationNotFoundError,
+    PlayerNotFoundError,
+)
 from modules._00_core.models import (
     AdminGrant,
     GameClock,
@@ -258,6 +262,93 @@ class AdminNationCreateRequest(BaseModel):
     @classmethod
     def check_name_length(cls, value: str) -> str:
         return _validate_nation_name(value)
+
+    @field_validator("province_ids")
+    @classmethod
+    def check_province_ids_unique(cls, value: list[int]) -> list[int]:
+        """
+        A repeated id would pass the count check while claiming fewer
+        provinces than the list suggests (0.11.0 unit 8b fix to 8a).
+        """
+        if len(set(value)) != len(value):
+            raise ValueError("province_ids must not contain duplicates")
+        return value
+
+
+# The twelve descriptive fields PATCH /admin/nations/{id} accepts —
+# the player's edit-window set (INV-8), minus flag, portrait, anthem
+# and anything province-related. Order is the audit summary's.
+NATION_EDITABLE_FIELDS: tuple[str, ...] = (
+    "name",
+    "short_name",
+    "color_hex",
+    "motto",
+    "description",
+    "leader_name",
+    "leader_title",
+    "gender",
+    "succession_type",
+    "leader_bio",
+    "history_url",
+    "capital_name",
+)
+
+# The Russian field names for the nation.update journal summary —
+# keyed by the request's field codes.
+NATION_FIELD_LABELS: dict[str, str] = {
+    "name": "полное название",
+    "short_name": "краткое название",
+    "color_hex": "цвет",
+    "motto": "девиз",
+    "description": "описание",
+    "leader_name": "имя лидера",
+    "leader_title": "должность лидера",
+    "gender": "пол лидера",
+    "succession_type": "преемственность",
+    "leader_bio": "биография лидера",
+    "history_url": "ссылка на историю",
+    "capital_name": "столица",
+}
+
+
+class AdminNationUpdateRequest(BaseModel):
+    """
+    Body for PATCH /nations/{nation_id} (0.11.0 unit 8b): only the
+    twelve editable fields, all optional — absent/None means "do not
+    change", "" on an optional field clears it to NULL, "" on a
+    mandatory field is the service's own *_INVALID error (INV-8).
+
+    ``extra="forbid"``: a flag, portrait, anthem or province field is
+    a 422, not a silent ignore.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    short_name: str | None = None
+    color_hex: str | None = Field(default=None, pattern=_COLOR_HEX_PATTERN)
+    motto: str | None = None
+    description: str | None = None
+    leader_name: str | None = None
+    leader_title: str | None = None
+    gender: str | None = None
+    succession_type: str | None = None
+    leader_bio: str | None = None
+    history_url: str | None = None
+    capital_name: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def check_name_length(cls, value: str | None) -> str | None:
+        return _validate_nation_name(value)
+
+
+class AdminNationColorCheckRequest(BaseModel):
+    """Body for POST /nations/color-check: the colour plus, on the
+    edit page, the nation whose own colour is excluded."""
+
+    color_hex: str = Field(pattern=_COLOR_HEX_PATTERN)
+    nation_id: str | None = None
 
 
 def _tick_log_dict(row: TickLog, config: CoreConfig) -> dict:
@@ -710,6 +801,141 @@ async def create_nation(
         "provinces_count": len(body.province_ids),
         "capital_name": nation.capital_name,
     }
+
+
+@router.post("/nations/color-check")
+async def admin_nation_color_check(
+    body: AdminNationColorCheckRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    The panel's own colour decision (0.11.0 unit 8b): the same
+    ``NationService.color_status`` the player's form consults, with
+    ``nation_id`` excluding the edited nation itself. Read-only.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    return {
+        "status": await NationService.color_status(
+            session,
+            body.color_hex,
+            config,
+            exclude_nation_id=body.nation_id,
+        )
+    }
+
+
+async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
+    """The GET/PATCH nation shape: the twelve editable fields plus
+    the read-only owner, capital province and province count."""
+    owner = (
+        await session.execute(
+            select(Player).where(Player.id == nation.owner_player_id)
+        )
+    ).scalar_one()
+    provinces_count = (
+        await session.execute(
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id == nation.id)
+        )
+    ).scalar_one()
+    names = await _display_names_by_vk(session, {owner.vk_user_id})
+    return {
+        "id": nation.id,
+        "owner_vk_user_id": owner.vk_user_id,
+        "owner_name": names.get(owner.vk_user_id),
+        "capital_province_id": nation.capital_province_id,
+        "provinces_count": provinces_count,
+        **{field: getattr(nation, field) for field in NATION_EDITABLE_FIELDS},
+    }
+
+
+@router.get("/nations/{nation_id}")
+async def get_nation(
+    nation_id: str,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    The edit page's data (0.11.0 unit 8b): the twelve editable fields
+    plus ``id``, ``owner_vk_user_id``, ``owner_name`` (player-info
+    hooks), ``capital_province_id`` and ``provinces_count``. Unknown
+    id -> 404 NATION_NOT_FOUND.
+    """
+    nation = (
+        await session.execute(select(Nation).where(Nation.id == nation_id))
+    ).scalar_one_or_none()
+    if nation is None:
+        raise NationNotFoundError(nation_id)
+    return await _nation_edit_dto(session, nation)
+
+
+@router.patch("/nations/{nation_id}")
+async def update_nation(
+    nation_id: str,
+    body: AdminNationUpdateRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> Any:
+    """
+    Edit a nation's main data (0.11.0 unit 8b): the unchanged
+    ``NationService.update`` with its PATCH semantics — only the sent
+    fields are checked and written; flag, portrait, provinces and the
+    capital province are never touched (a stray key is a 422 from the
+    request model). An empty change set -> 400 NOTHING_TO_CHANGE.
+
+    One ``nation.update`` journal row lands in the same transaction
+    before the commit — summary names the changed fields in Russian,
+    ``details`` carries ids and the field CODES only, never the texts.
+    A refusal rolls everything back and writes nothing.
+    """
+    changes = {
+        field: value
+        for field, value in body.model_dump(exclude_unset=True).items()
+        if value is not None
+    }
+    if not changes:
+        # main.py's map is version-only for this unit — the refusal is
+        # answered in the handler's own {detail, code, details} shape.
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": "Nothing to change",
+                "code": "NOTHING_TO_CHANGE",
+            },
+        )
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    nation = await NationService.update(
+        session,
+        nation_id=nation_id,
+        config=config,
+        **changes,
+    )
+
+    changed_labels = [
+        NATION_FIELD_LABELS[field]
+        for field in NATION_EDITABLE_FIELDS
+        if field in changes
+    ]
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="nation.update",
+        target_type="nation",
+        target_id=nation.id,
+        summary=(
+            f"Изменены данные государства «{nation.short_name}»: "
+            f"{', '.join(changed_labels)}."
+        ),
+        details={
+            "nation_id": nation.id,
+            "owner_player_id": nation.owner_player_id,
+            "fields": [field for field in NATION_EDITABLE_FIELDS if field in changes],
+        },
+    )
+    await session.commit()
+    return await _nation_edit_dto(session, nation)
 
 
 @router.get("/overview")

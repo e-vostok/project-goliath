@@ -581,3 +581,382 @@ class TestAdminNationCreate:
             json=_create_body(OWNER_VK_ID),
         )
         assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_duplicate_province_ids_rejected(
+        self, live_client, monkeypatch
+    ):
+        """Unit-8b fix to 8a: a repeated id must not pass the count
+        check — the request model answers 422 before the service."""
+        await _auth_headers(live_client, OWNER_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+
+        response = await live_client.post(
+            "/api/v1/admin/nations",
+            headers=headers,
+            json=_create_body(
+                OWNER_VK_ID, province_ids=[1001, 1002, 1003, 1004, 1004]
+            ),
+        )
+
+        assert response.status_code == 422
+        assert await _nations_count() == 0
+        assert await _audit_rows(action="nation.create") == []
+
+
+async def _seed_nation(vk_user_id: int, **overrides) -> str:
+    """A second nation straight into the app's database (the linked
+    mini map cannot host a second 5-province group). Returns its id."""
+    async with get_session_context() as session:
+        owner = (
+            await session.execute(
+                select(Player).where(Player.vk_user_id == vk_user_id)
+            )
+        ).scalar_one()
+        nation = Nation(
+            id=str(uuid.uuid4()),
+            owner_player_id=owner.id,
+            name="Beta Realm",
+            color_hex="#445566",
+            leader_name=VALID_PROFILE["leader_name"],
+            leader_title=VALID_PROFILE["leader_title"],
+            history_url=VALID_PROFILE["history_url"],
+            short_name="BeR",
+            gender=VALID_PROFILE["gender"],
+            succession_type=VALID_PROFILE["succession_type"],
+            capital_name=VALID_PROFILE["capital_name"],
+            flag_id=VALID_PROFILE["flag_id"],
+            portrait_id=VALID_PROFILE["portrait_id"],
+            created_at=datetime.now(UTC),
+            created_turn=0,
+        )
+        for key, value in overrides.items():
+            setattr(nation, key, value)
+        session.add(nation)
+        await session.commit()
+        return nation.id
+
+
+async def _nation_row(nation_id: str) -> dict:
+    """The nation's stored columns — the before/after snapshot for the
+    'a refusal changes nothing' assertions."""
+    async with get_session_context() as session:
+        nation = (
+            await session.execute(select(Nation).where(Nation.id == nation_id))
+        ).scalar_one()
+        return {
+            column.name: getattr(nation, column.name)
+            for column in Nation.__table__.columns
+        }
+
+
+class TestAdminNationGet:
+    """GET /api/v1/admin/nations/{id} — the edit page's data."""
+
+    @pytest.mark.asyncio
+    async def test_returns_editable_fields(self, live_client, monkeypatch):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+
+        response = await live_client.get(
+            f"/api/v1/admin/nations/{created['id']}", headers=headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == created["id"]
+        assert data["owner_vk_user_id"] == OWNER_VK_ID
+        assert data["owner_name"] is None  # no display-name hook answer
+        assert data["capital_province_id"] == STARTING_GROUP[0]
+        assert data["provinces_count"] == 5
+        assert data["name"] == "Player Nation"
+        assert data["short_name"] == "Testland"
+        assert data["color_hex"] == "#123456"
+        assert data["leader_name"] == VALID_PROFILE["leader_name"]
+        assert data["gender"] == VALID_PROFILE["gender"]
+        assert data["succession_type"] == VALID_PROFILE["succession_type"]
+        assert data["history_url"] == VALID_PROFILE["history_url"]
+        assert data["capital_name"] == VALID_PROFILE["capital_name"]
+        assert data["motto"] is None
+        assert data["description"] is None
+        assert data["leader_bio"] is None
+        # Never editable here — not even returned as editable fields.
+        assert "flag_id" not in data
+        assert "portrait_id" not in data
+
+    @pytest.mark.asyncio
+    async def test_unknown_id_404(self, live_client, monkeypatch):
+        headers = await _admin_headers(live_client, monkeypatch)
+        response = await live_client.get(
+            f"/api/v1/admin/nations/{uuid.uuid4()}", headers=headers
+        )
+        assert response.status_code == 404
+        assert response.json()["code"] == "NATION_NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_non_admin_forbidden(self, live_client):
+        headers = await _auth_headers(live_client, OWNER_VK_ID)
+        response = await live_client.get(
+            f"/api/v1/admin/nations/{uuid.uuid4()}", headers=headers
+        )
+        assert response.status_code == 403
+
+
+class TestAdminNationUpdate:
+    """PATCH /api/v1/admin/nations/{id} — NationService.update + audit."""
+
+    @pytest.mark.asyncio
+    async def test_updates_only_sent_fields_and_audits(
+        self, live_client, monkeypatch
+    ):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+        before = await _nation_row(created["id"])
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={
+                "name": "Renamed Realm",
+                "motto": "All roads",
+                "description": "A longer story.",
+                "leader_bio": "Once a dockmaster.",
+                "capital_name": "Newport",
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        after = await _nation_row(created["id"])
+        assert after["name"] == "Renamed Realm"
+        assert after["motto"] == "All roads"
+        assert after["description"] == "A longer story."
+        assert after["leader_bio"] == "Once a dockmaster."
+        assert after["capital_name"] == "Newport"
+        # Everything unsent stays — flag, portrait, capital province,
+        # colour, names and provinces above all.
+        for key in (
+            "short_name",
+            "color_hex",
+            "leader_name",
+            "leader_title",
+            "gender",
+            "succession_type",
+            "history_url",
+            "flag_id",
+            "portrait_id",
+            "capital_province_id",
+            "owner_player_id",
+        ):
+            assert after[key] == before[key], key
+        assert data["provinces_count"] == 5
+
+        rows = await _audit_rows(action="nation.update")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.actor_vk_user_id == ADMIN_VK_ID
+        assert row.target_type == "nation"
+        assert row.target_id == created["id"]
+        assert row.summary == (
+            "Изменены данные государства «Testland»: полное название, "
+            "девиз, описание, биография лидера, столица."
+        )
+        # Field codes only — never the sent texts.
+        assert row.details["nation_id"] == created["id"]
+        assert sorted(row.details["fields"]) == sorted(
+            ["name", "motto", "description", "leader_bio", "capital_name"]
+        )
+        assert "Renamed Realm" not in str(row.details)
+
+    @pytest.mark.asyncio
+    async def test_clearing_optional_field(
+        self, live_client, monkeypatch
+    ):
+        """An empty string clears an optional field to NULL (INV-8) —
+        and the journal still names the field."""
+        created = await _create_nation_as_player(
+            live_client, OWNER_VK_ID, motto="Old motto"
+        )
+        headers = await _admin_headers(live_client, monkeypatch)
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={"motto": ""},
+        )
+
+        assert response.status_code == 200, response.text
+        assert (await _nation_row(created["id"]))["motto"] is None
+        rows = await _audit_rows(action="nation.update")
+        assert len(rows) == 1
+        assert rows[0].details["fields"] == ["motto"]
+
+    @pytest.mark.asyncio
+    async def test_name_taken_refusal(self, live_client, monkeypatch):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        await _auth_headers(live_client, SECOND_VK_ID)
+        await _seed_nation(SECOND_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+        before = await _nation_row(created["id"])
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={"name": "Beta Realm"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "NAME_TAKEN"
+        assert await _nation_row(created["id"]) == before
+        assert await _audit_rows(action="nation.update") == []
+
+    @pytest.mark.asyncio
+    async def test_short_name_taken_refusal(self, live_client, monkeypatch):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        await _auth_headers(live_client, SECOND_VK_ID)
+        await _seed_nation(SECOND_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+        before = await _nation_row(created["id"])
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={"short_name": "BeR"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "SHORT_NAME_TAKEN"
+        assert await _nation_row(created["id"]) == before
+        assert await _audit_rows(action="nation.update") == []
+
+    @pytest.mark.asyncio
+    async def test_color_too_close_refusal(self, live_client, monkeypatch):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        await _auth_headers(live_client, SECOND_VK_ID)
+        await _seed_nation(SECOND_VK_ID)  # colour #445566
+        headers = await _admin_headers(live_client, monkeypatch)
+        before = await _nation_row(created["id"])
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={"color_hex": "#445567"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "COLOR_TOO_CLOSE"
+        assert await _nation_row(created["id"]) == before
+        assert await _audit_rows(action="nation.update") == []
+
+    @pytest.mark.asyncio
+    async def test_bad_field_format_refusal(self, live_client, monkeypatch):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+        before = await _nation_row(created["id"])
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={"leader_name": ""},  # mandatory — "" is not a clear
+        )
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "LEADER_NAME_INVALID"
+        assert await _nation_row(created["id"]) == before
+        assert await _audit_rows(action="nation.update") == []
+
+    @pytest.mark.asyncio
+    async def test_forbidden_field_422(self, live_client, monkeypatch):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+        before = await _nation_row(created["id"])
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={"flag_id": "flag_placeholder_2"},
+        )
+
+        assert response.status_code == 422
+        assert await _nation_row(created["id"]) == before
+        assert await _audit_rows(action="nation.update") == []
+
+    @pytest.mark.asyncio
+    async def test_empty_body_nothing_to_change(
+        self, live_client, monkeypatch
+    ):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{created['id']}",
+            headers=headers,
+            json={},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "NOTHING_TO_CHANGE"
+        assert await _audit_rows(action="nation.update") == []
+
+    @pytest.mark.asyncio
+    async def test_unknown_id_404(self, live_client, monkeypatch):
+        headers = await _admin_headers(live_client, monkeypatch)
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{uuid.uuid4()}",
+            headers=headers,
+            json={"name": "No such nation"},
+        )
+        assert response.status_code == 404
+        assert response.json()["code"] == "NATION_NOT_FOUND"
+        assert await _audit_rows(action="nation.update") == []
+
+    @pytest.mark.asyncio
+    async def test_non_admin_forbidden(self, live_client):
+        headers = await _auth_headers(live_client, OWNER_VK_ID)
+        response = await live_client.patch(
+            f"/api/v1/admin/nations/{uuid.uuid4()}",
+            headers=headers,
+            json={"name": "No such nation"},
+        )
+        assert response.status_code == 403
+
+
+class TestAdminNationColorCheck:
+    """POST /api/v1/admin/nations/color-check — the panel's own probe."""
+
+    @pytest.mark.asyncio
+    async def test_own_colour_ok_with_nation_id(
+        self, live_client, monkeypatch
+    ):
+        created = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        headers = await _admin_headers(live_client, monkeypatch)
+
+        own = await live_client.post(
+            "/api/v1/admin/nations/color-check",
+            headers=headers,
+            json={
+                "color_hex": "#123456",
+                "nation_id": created["id"],
+            },
+        )
+        assert own.status_code == 200
+        assert own.json() == {"status": "OK"}
+
+        # Without the exclusion the very same colour is taken.
+        clash = await live_client.post(
+            "/api/v1/admin/nations/color-check",
+            headers=headers,
+            json={"color_hex": "#123456"},
+        )
+        assert clash.status_code == 200
+        assert clash.json() == {"status": "TAKEN"}
+
+    @pytest.mark.asyncio
+    async def test_non_admin_forbidden(self, live_client):
+        headers = await _auth_headers(live_client, OWNER_VK_ID)
+        response = await live_client.post(
+            "/api/v1/admin/nations/color-check",
+            headers=headers,
+            json={"color_hex": "#123456"},
+        )
+        assert response.status_code == 403

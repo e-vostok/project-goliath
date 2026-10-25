@@ -346,6 +346,62 @@ export interface AdminNationCreateRequest {
   capital_province_id?: number | null;
 }
 
+/**
+ * GET /admin/nations/{id} and the PATCH answer (0.11.0 unit 8b) —
+ * the twelve editable fields plus the read-only owner, capital
+ * province and province count. Flag, portrait and provinces are
+ * never editable here, so they are not in the shape.
+ */
+export interface AdminNationDetailDTO {
+  id: string;
+  owner_vk_user_id: number;
+  owner_name: string | null;
+  capital_province_id: number | null;
+  provinces_count: number;
+  name: string;
+  short_name: string;
+  color_hex: string;
+  motto: string | null;
+  description: string | null;
+  leader_name: string | null;
+  leader_title: string | null;
+  gender: string | null;
+  succession_type: string | null;
+  leader_bio: string | null;
+  history_url: string | null;
+  capital_name: string | null;
+}
+
+/**
+ * PATCH /admin/nations/{id} request (0.11.0 unit 8b) — only the
+ * changed fields are sent; an absent key means "do not change",
+ * '' clears an optional field to NULL (INV-8).
+ */
+export interface AdminNationUpdateRequest {
+  name?: string;
+  short_name?: string;
+  color_hex?: string;
+  motto?: string;
+  description?: string;
+  leader_name?: string;
+  leader_title?: string;
+  gender?: string;
+  succession_type?: string;
+  leader_bio?: string;
+  history_url?: string;
+  capital_name?: string;
+}
+
+/**
+ * POST /admin/nations/color-check request (0.11.0 unit 8b) — the
+ * panel's own colour probe; `nation_id` excludes the edited nation
+ * from the comparison on the edit page.
+ */
+export interface AdminNationColorCheckRequest {
+  color_hex: string;
+  nation_id?: string;
+}
+
 /** One admin_audit_log row (GET /admin/audit-log) — the «Журнал» table. */
 export interface AdminAuditItemDTO {
   id: number;

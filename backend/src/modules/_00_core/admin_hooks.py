@@ -52,6 +52,7 @@ ADMIN_AUDIT_ACTION_LABELS = {
     "admin.grant": "Выдача прав",
     "admin.revoke": "Снятие прав",
     "nation.create": "Создание государства",
+    "nation.update": "Правка государства",
 }
 
 

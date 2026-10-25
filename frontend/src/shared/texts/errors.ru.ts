@@ -44,6 +44,8 @@ export const ERRORS_RU: Record<string, string | typeof SERVER_RU> = {
   /* Nation. */
   NATION_ALREADY_EXISTS: 'У вас уже есть государство.',
   NATION_NOT_FOUND: 'Государство не найдено.',
+  /* PATCH /admin/nations/{id} with an empty body (0.11.0 unit 8b). */
+  NOTHING_TO_CHANGE: 'Нечего сохранять — поля не изменились.',
 
   /* Player, clock, map, registry. */
   PLAYER_NOT_FOUND: 'Игрок не найден.',
