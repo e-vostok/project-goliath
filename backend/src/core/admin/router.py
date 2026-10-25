@@ -1,8 +1,9 @@
 """
 HTTP API router for the admin panel.
 
-Sixteen endpoints (prefix /api/v1/admin): GET /me, GET /state,
-GET /players, GET /overview, GET /tick-log, POST /tick/run,
+Nineteen endpoints (prefix /api/v1/admin): GET /me, GET /state,
+GET /players, GET /provinces, GET /nations, POST /nations,
+GET /overview, GET /tick-log, POST /tick/run,
 POST /state/reset, GET /players/{vk_user_id}/delete-preview,
 POST /players/{vk_user_id}/delete, POST /panel-link, POST /session,
 GET /audit-log, GET /audit-log/filters, GET /admins, POST /admins and
@@ -45,8 +46,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.admin import panel_access
@@ -68,10 +69,12 @@ from modules._00_core.models import (
     GameClock,
     Nation,
     Player,
+    Province,
     TickLog,
 )
 from modules._00_core.router import GameClockNotFoundError
-from modules._00_core.service import PlayerService
+from modules._00_core.schemas import _COLOR_HEX_PATTERN, _validate_nation_name
+from modules._00_core.service import NationService, PlayerService
 from modules._00_core.tick_schedule import format_game_time
 
 logger = logging.getLogger(__name__)
@@ -227,6 +230,36 @@ class AdminGrantRequest(BaseModel):
     vk_user_id: int
 
 
+class AdminNationCreateRequest(BaseModel):
+    """
+    Body for POST /nations (0.11.0 unit 8a): the simplified admin
+    creation — no questionnaire, but the same format checks as the
+    player's own form: the name length is validated here on the
+    stripped value, ``color_hex`` carries the fixed ``#RRGGBB``
+    pattern, everything else is NationService's own domain check in
+    its own order. The first of ``province_ids`` is the capital unless
+    ``capital_province_id`` picks another member.
+    """
+
+    owner_vk_user_id: int
+    name: str
+    short_name: str
+    color_hex: str = Field(pattern=_COLOR_HEX_PATTERN)
+    leader_name: str
+    leader_title: str
+    gender: str
+    succession_type: str
+    history_url: str
+    motto: str | None = None
+    province_ids: list[int]
+    capital_province_id: int | None = None
+
+    @field_validator("name")
+    @classmethod
+    def check_name_length(cls, value: str) -> str:
+        return _validate_nation_name(value)
+
+
 def _tick_log_dict(row: TickLog, config: CoreConfig) -> dict:
     game_date = format_game_date(
         compute_game_date(row.turn_number, config), config
@@ -307,6 +340,30 @@ async def _collect_player_info(
             continue
         for player_id, fields in (columns or {}).items():
             info.setdefault(player_id, {}).update(fields)
+    return info
+
+
+async def _collect_province_info(
+    session: AsyncSession, province_ids: list[int]
+) -> dict[int, dict]:
+    """
+    Merge every province-info hook's columns for one page of provinces
+    (0.11.0 unit 8a).
+
+    A failing hook is logged, its session work rolled back and its
+    columns skipped — one broken module must never take the province
+    pickers down, the same rule the player columns follow.
+    """
+    info: dict[int, dict] = {}
+    for slug, (info_fn, _) in AdminRegistry.get_province_info_hooks().items():
+        try:
+            columns = await info_fn(session, province_ids)
+        except Exception:
+            logger.exception("Admin province-info hook failed for '%s'", slug)
+            await session.rollback()
+            continue
+        for province_id, fields in (columns or {}).items():
+            info.setdefault(province_id, {}).update(fields)
     return info
 
 
@@ -405,6 +462,253 @@ async def list_players(
             for row in rows
         ],
         "total": total,
+    }
+
+
+@router.get("/provinces")
+async def list_provinces(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    search: str | None = None,
+    free_only: bool = False,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
+    """
+    The panel's province picker list (0.11.0 unit 8a): LAND provinces
+    only, ``{"items", "total"}``, ordered by the province's display name
+    (case-folded in Python, same as the players list's Cyrillic sort)
+    then id. Each item carries ``id``, the ``name`` assembled through
+    the province-info hooks (null when no module knows one),
+    ``nation_id`` and the owner's ``nation_short_name``.
+
+    ``free_only`` keeps only unowned rows; ``search`` filters by the
+    hooks' own name search — a failing search hook is logged, rolled
+    back and skipped. The endpoint serves both the nation-creation
+    picker and unit 9's province tools.
+    """
+    text = (search or "").strip()
+    hook_province_ids: set[int] = set()
+    if text:
+        for slug, (_, search_fn) in AdminRegistry.get_province_info_hooks().items():
+            if search_fn is None:
+                continue
+            try:
+                found = await search_fn(session, text)
+            except Exception:
+                logger.exception(
+                    "Admin province-search hook failed for '%s'", slug
+                )
+                await session.rollback()
+                continue
+            hook_province_ids.update(found or set())
+
+    rows = (
+        await session.execute(
+            select(Province.id, Province.nation_id, Nation.short_name)
+            .outerjoin(Nation, Province.nation_id == Nation.id)
+            .where(Province.kind == "LAND")
+        )
+    ).all()
+    if free_only:
+        rows = [row for row in rows if row.nation_id is None]
+    if text:
+        rows = [row for row in rows if row.id in hook_province_ids]
+
+    info = await _collect_province_info(session, [row.id for row in rows])
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            (info.get(row.id, {}).get("name") or "").casefold(),
+            row.id,
+        ),
+    )
+    total = len(rows)
+    page = rows[offset : offset + limit]
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "name": info.get(row.id, {}).get("name"),
+                "nation_id": row.nation_id,
+                "nation_short_name": row.short_name,
+            }
+            for row in page
+        ],
+        "total": total,
+    }
+
+
+@router.get("/nations")
+async def list_nations(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    search: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
+    """
+    The panel's «Государства» list (0.11.0 unit 8a): one page of nations
+    ordered by creation then id — ``{"items", "total"}``. Each item
+    carries ``id``, ``short_name``, ``name``, ``flag_id``,
+    ``owner_vk_user_id``, the ``owner_name`` the player-info hooks know
+    (null when none does), ``provinces_count`` and ``capital_name``.
+
+    ``search`` is a case-insensitive substring over the short and full
+    name — case-folded in Python like the players list, because
+    SQLite's ``lower()`` only folds ASCII.
+    """
+    text = (search or "").strip()
+    rows_all = (
+        await session.execute(
+            select(
+                Nation.id,
+                Nation.short_name,
+                Nation.name,
+                Nation.flag_id,
+                Nation.capital_name,
+                Player.vk_user_id,
+            )
+            .join(Player, Nation.owner_player_id == Player.id)
+            .order_by(Nation.created_at, Nation.id)
+        )
+    ).all()
+    if text:
+        lowered = text.casefold()
+        rows_all = [
+            row
+            for row in rows_all
+            if lowered in row.name.casefold()
+            or lowered in row.short_name.casefold()
+        ]
+    total = len(rows_all)
+    rows = rows_all[offset : offset + limit]
+
+    counts: dict[str, int] = {}
+    if rows:
+        pairs = (
+            await session.execute(
+                select(Province.nation_id, func.count())
+                .where(Province.nation_id.in_([row.id for row in rows]))
+                .group_by(Province.nation_id)
+            )
+        ).all()
+        counts = {nation_id: count for nation_id, count in pairs}
+
+    names = await _display_names_by_vk(
+        session, {row.vk_user_id for row in rows}
+    )
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "short_name": row.short_name,
+                "name": row.name,
+                "flag_id": row.flag_id,
+                "owner_vk_user_id": row.vk_user_id,
+                "owner_name": names.get(row.vk_user_id),
+                "provinces_count": counts.get(row.id, 0),
+                "capital_name": row.capital_name,
+            }
+            for row in rows
+        ],
+        "total": total,
+    }
+
+
+@router.post("/nations")
+async def create_nation(
+    body: AdminNationCreateRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Create a nation for a chosen player (0.11.0 unit 8a): the simplified
+    admin path — no questionnaire, no review, but the SAME
+    NationService.create the player's own registration calls, so every
+    check applies in its own order (field format, uniqueness, colour,
+    province freedom and count, capital membership, satellite checks).
+
+    Unknown owner -> 404 PLAYER_NOT_FOUND. The flag and the leader
+    portrait are the first catalog entries; ``capital_name`` is the
+    capital province's display name resolved through the province-info
+    hooks. On success one ``nation.create`` journal row is written in
+    the same transaction, before the commit — a refusal rolls
+    everything back and writes nothing.
+    """
+    player = await _load_player_by_vk_id(session, body.owner_vk_user_id)
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+
+    # The capital: the explicit pick, else the first province sent —
+    # the same default NationService.create applies internally.
+    capital_id = body.capital_province_id
+    if capital_id is None and body.province_ids:
+        capital_id = body.province_ids[0]
+    capital_name = None
+    if capital_id is not None:
+        capital_info = await _collect_province_info(session, [capital_id])
+        capital_name = capital_info.get(capital_id, {}).get("name")
+    if capital_name is None:
+        # Only a refusal path reaches here (no provinces / unknown
+        # capital id): the placeholder passes the field's format check
+        # so the service's own later check fires in its own order — it
+        # is never stored, every failure rolls back.
+        capital_name = (
+            f"Провинция {capital_id if capital_id is not None else ''}".strip()
+        )
+
+    nation = await NationService.create(
+        session,
+        owner_player_id=player.id,
+        name=body.name,
+        color_hex=body.color_hex,
+        province_ids=body.province_ids,
+        config=config,
+        leader_name=body.leader_name,
+        leader_title=body.leader_title,
+        history_url=body.history_url,
+        short_name=body.short_name,
+        gender=body.gender,
+        succession_type=body.succession_type,
+        capital_name=capital_name,
+        capital_province_id=body.capital_province_id,
+        motto=body.motto,
+        flag_id=config.catalog.flag_ids[0] if config.catalog.flag_ids else None,
+        portrait_id=(
+            config.catalog.portrait_ids[0] if config.catalog.portrait_ids else None
+        ),
+    )
+
+    names = await _display_names_by_vk(session, {player.vk_user_id})
+    owner_subject = names.get(player.vk_user_id, str(player.vk_user_id))
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="nation.create",
+        target_type="nation",
+        target_id=nation.id,
+        summary=(
+            f"Создано государство «{nation.short_name}» для игрока "
+            f"{owner_subject}."
+        ),
+        details={
+            "nation_id": nation.id,
+            "owner_player_id": player.id,
+            "owner_vk_user_id": player.vk_user_id,
+            "capital_province_id": nation.capital_province_id,
+            "province_ids": body.province_ids,
+        },
+    )
+    await session.commit()
+    return {
+        "id": nation.id,
+        "short_name": nation.short_name,
+        "name": nation.name,
+        "flag_id": nation.flag_id,
+        "owner_vk_user_id": player.vk_user_id,
+        "owner_name": names.get(player.vk_user_id),
+        "provinces_count": len(body.province_ids),
+        "capital_name": nation.capital_name,
     }
 
 

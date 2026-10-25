@@ -5,7 +5,10 @@ Extension-point implementations of 01_map, registered at startup
 - ownership listener -> writes map_ownership_log rows (INV-M7);
 - registration check "after_free"  -> PROVINCE_NOT_LAND;
 - registration check "after_count" -> STARTING_GROUP_NOT_CONNECTED;
-- admin reset hook -> clears the journal (INV-M8).
+- admin reset hook -> clears the journal (INV-M8);
+- admin province-info hook (0.11.0 unit 8a) -> the panel's province
+  names ("name" column and the free-text search) — the map's own
+  display names.
 
 Nothing here commits: listeners run inside the caller's transaction.
 """
@@ -78,6 +81,38 @@ async def reset_ownership_log(session: AsyncSession) -> None:
     await clear_all(session)
 
 
+def _make_province_info(map_service: MapService):
+    async def info(session: AsyncSession, province_ids: list[int]) -> dict:
+        """
+        ``{province_id: {"name": display_name}}`` — the map's own node
+        names for the panel's province pickers. The session is unused:
+        names live in memory; unknown ids are skipped.
+        """
+        names = map_service.display_names()
+        return {
+            pid: {"name": names[pid]}
+            for pid in province_ids
+            if pid in names
+        }
+
+    return info
+
+
+def _make_province_search(map_service: MapService):
+    async def search(session: AsyncSession, text: str) -> set[int]:
+        """Land node ids whose display name contains ``text``."""
+        needle = text.strip().casefold()
+        if not needle:
+            return set()
+        return {
+            pid
+            for pid, name in map_service.display_names(kind=KIND_LAND).items()
+            if needle in name.casefold()
+        }
+
+    return search
+
+
 def register_map_hooks(map_service: MapService, config: MapConfig) -> None:
     """
     Register all 01_map extension points. Registration is idempotent:
@@ -97,3 +132,9 @@ def register_map_hooks(map_service: MapService, config: MapConfig) -> None:
     )
     if MODULE_SLUG not in AdminRegistry.get_reset_hooks():
         AdminRegistry.register_reset(MODULE_SLUG, reset_ownership_log)
+    if MODULE_SLUG not in AdminRegistry.get_province_info_hooks():
+        AdminRegistry.register_province_info(
+            MODULE_SLUG,
+            _make_province_info(map_service),
+            _make_province_search(map_service),
+        )

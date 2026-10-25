@@ -284,6 +284,68 @@ export interface AdminPlayersDTO {
   total: number;
 }
 
+/**
+ * One row of GET /admin/provinces (0.11.0 unit 8a) — a LAND map node
+ * for the province pickers: the hook-assembled display `name` (null
+ * when no module knows one) and the owning nation, if any.
+ */
+export interface AdminProvinceDTO {
+  id: number;
+  name: string | null;
+  nation_id: string | null;
+  nation_short_name: string | null;
+}
+
+/** GET /admin/provinces — one page plus the full matching count. */
+export interface AdminProvincesDTO {
+  items: AdminProvinceDTO[];
+  total: number;
+}
+
+/**
+ * One row of GET /admin/nations (0.11.0 unit 8a) — the «Государства»
+ * table. `owner_name` is the hook-assembled display name (null when no
+ * module knows one); POST /admin/nations answers the same shape.
+ */
+export interface AdminNationDTO {
+  id: string;
+  short_name: string;
+  name: string;
+  flag_id: string | null;
+  owner_vk_user_id: number;
+  owner_name: string | null;
+  provinces_count: number;
+  capital_name: string | null;
+}
+
+/** GET /admin/nations — one page plus the full matching count. */
+export interface AdminNationsDTO {
+  items: AdminNationDTO[];
+  total: number;
+}
+
+/**
+ * POST /admin/nations request (0.11.0 unit 8a) — the simplified admin
+ * creation: no questionnaire, no flag/portrait picks (the server takes
+ * the first catalog entries), no capital name (derived from the
+ * capital province's map name). `capital_province_id` absent means the
+ * first of `province_ids`.
+ */
+export interface AdminNationCreateRequest {
+  owner_vk_user_id: number;
+  name: string;
+  short_name: string;
+  color_hex: string;
+  leader_name: string;
+  leader_title: string;
+  gender: string;
+  succession_type: string;
+  history_url: string;
+  motto: string | null;
+  province_ids: number[];
+  capital_province_id?: number | null;
+}
+
 /** One admin_audit_log row (GET /admin/audit-log) — the «Журнал» table. */
 export interface AdminAuditItemDTO {
   id: number;

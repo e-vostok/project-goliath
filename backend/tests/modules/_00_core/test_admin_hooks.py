@@ -124,12 +124,14 @@ def registry_guard():
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_player_infos = AdminRegistry.get_player_info_hooks()
+    saved_province_infos = AdminRegistry.get_province_info_hooks()
     AdminRegistry.clear_handlers()
     yield
     AdminRegistry.clear_handlers()
     AdminRegistry._state_view_hooks.update(saved_views)
     AdminRegistry._reset_hooks.update(saved_resets)
     AdminRegistry._player_info_hooks.update(saved_player_infos)
+    AdminRegistry._province_info_hooks.update(saved_province_infos)
 
 
 def _utc(dt: datetime) -> datetime:

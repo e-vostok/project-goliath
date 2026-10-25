@@ -38,6 +38,15 @@ PlayerInfoHook = Callable[[AsyncSession, list[str]], Awaitable[dict]]
 # player ids matching the free-text query in this module's data —
 # merged into GET /admin/players's OR-filter with the core fields.
 PlayerSearchHook = Callable[[AsyncSession, str], Awaitable[set]]
+# A province-info hook sees (session, province_ids) — the ids of the
+# page being rendered — and returns {province_id: {field: value}}:
+# the module's display columns for the panel's province pickers
+# (01_map's "name"). Read-only, never commits.
+ProvinceInfoHook = Callable[[AsyncSession, list[int]], Awaitable[dict]]
+# A province-search hook sees (session, text) and returns the set of
+# province ids matching the free-text query in this module's data —
+# merged into GET /admin/provinces's filter.
+ProvinceSearchHook = Callable[[AsyncSession, str], Awaitable[set]]
 
 
 class AdminRegistry:
@@ -56,6 +65,11 @@ class AdminRegistry:
     # slug -> (info_fn, search_fn|None); the search half is optional.
     _player_info_hooks: dict[
         str, tuple[PlayerInfoHook, PlayerSearchHook | None]
+    ] = {}
+    # slug -> (info_fn, search_fn|None) — the province twin of the
+    # player-info pair.
+    _province_info_hooks: dict[
+        str, tuple[ProvinceInfoHook, ProvinceSearchHook | None]
     ] = {}
     # slug -> {action_code: Russian label} — audit rows carry the
     # machine code; the journal screen renders the label of the module
@@ -185,6 +199,40 @@ class AdminRegistry:
         )
 
     @classmethod
+    def register_province_info(
+        cls,
+        module_slug: str,
+        info_fn: ProvinceInfoHook,
+        search_fn: ProvinceSearchHook | None = None,
+    ) -> None:
+        """
+        Register a province-info hook for a module.
+
+        Args:
+            module_slug: The owning module's slug.
+            info_fn: Async function taking (session, province_ids) that
+                     returns {province_id: {field: value}} — the module's
+                     display columns for the panel's province pickers
+                     (e.g. 01_map's "name"). Called by the
+                     GET /admin/provinces endpoint.
+            search_fn: Optional async function taking (session, text)
+                       that returns the set of province ids matching the
+                       free-text query inside this module's data.
+
+        Raises:
+            ValueError: If a province-info hook is already registered for
+                        module_slug.
+        """
+        if module_slug in cls._province_info_hooks:
+            raise ValueError(
+                f"Province-info hook already registered for module '{module_slug}'"
+            )
+        cls._province_info_hooks[module_slug] = (info_fn, search_fn)
+        logger.info(
+            f"Registered admin province-info hook for module '{module_slug}'"
+        )
+
+    @classmethod
     def register_audit_actions(
         cls, module_slug: str, actions: dict[str, str]
     ) -> None:
@@ -239,6 +287,13 @@ class AdminRegistry:
         return dict(cls._player_info_hooks)
 
     @classmethod
+    def get_province_info_hooks(
+        cls,
+    ) -> dict[str, tuple[ProvinceInfoHook, ProvinceSearchHook | None]]:
+        """All (info_fn, search_fn|None) pairs in registration order."""
+        return dict(cls._province_info_hooks)
+
+    @classmethod
     def get_audit_action_hooks(cls) -> dict[str, dict[str, str]]:
         """All {slug: {action_code: label}} maps in registration order."""
         return {
@@ -271,4 +326,5 @@ class AdminRegistry:
         cls._player_preview_hooks.clear()
         cls._overview_hooks.clear()
         cls._player_info_hooks.clear()
+        cls._province_info_hooks.clear()
         cls._audit_action_hooks.clear()
