@@ -122,6 +122,31 @@ const CREATED = {
   capital_name: 'Генуя',
 };
 
+/** The delete-preview answer — the screen-03d popup's seed. */
+const NATION_DELETE_PREVIEW = {
+  nation_id: 'n-2',
+  short_name: 'Лига',
+  name: 'Балтийская Лига',
+  owner_vk_user_id: 100000002,
+  owner_name: null,
+  provinces: [
+    { id: 101, name: 'Рига' },
+    { id: 102, name: 'Юрмала' },
+    { id: 103, name: 'Лиепая' },
+    { id: 104, name: 'Вентспилс' },
+  ],
+  consequences: [
+    {
+      code: 'scheduled_actions',
+      text: 'запланированных действий государства: 1 — они останутся без государства',
+    },
+    {
+      code: 'ownership_journal',
+      text: 'в журнал владения карты запишутся 4 освобождения провинций',
+    },
+  ],
+};
+
 /** GET /admin/nations/n-1 — the edit page's seed (screen 03b). */
 const NATION_DETAIL = {
   id: 'n-1',
@@ -149,14 +174,18 @@ interface Counters {
   patch: number;
   patchBody: Record<string, unknown> | null;
   colorCheck: number;
+  preview: number;
+  del: number;
 }
 
 function allowSection({
   createAnswer,
   patchAnswer,
+  deleteAnswer,
 }: {
   createAnswer?: { status: number; body: { detail: string; code: string } };
   patchAnswer?: { status: number; body: { detail: string; code: string } };
+  deleteAnswer?: { status: number; body: { detail: string; code: string } };
 } = {}): Counters {
   const counters: Counters = {
     nations: 0,
@@ -164,6 +193,8 @@ function allowSection({
     patch: 0,
     patchBody: null,
     colorCheck: 0,
+    preview: 0,
+    del: 0,
   };
   server.use(
     http.post('*/api/v1/admin/session', () =>
@@ -202,6 +233,19 @@ function allowSection({
     http.get('*/api/v1/admin/nations', () => {
       counters.nations += 1;
       return HttpResponse.json(NATIONS);
+    }),
+    http.get('*/api/v1/admin/nations/*/delete-preview', () => {
+      counters.preview += 1;
+      return HttpResponse.json(NATION_DELETE_PREVIEW);
+    }),
+    http.post('*/api/v1/admin/nations/*/delete', () => {
+      counters.del += 1;
+      if (deleteAnswer !== undefined) {
+        return HttpResponse.json(deleteAnswer.body, {
+          status: deleteAnswer.status,
+        });
+      }
+      return HttpResponse.json(NATION_DELETE_PREVIEW);
     }),
     http.get('*/api/v1/admin/provinces', () => HttpResponse.json(PROVINCES)),
     http.get('*/api/v1/admin/players', () => HttpResponse.json(PLAYERS)),
@@ -302,9 +346,9 @@ it('renders the list from GET /admin/nations', async () => {
   expect(screen.getByTestId('nations-shown')).toHaveTextContent(
     'Показано 2 из 2',
   );
-  // Unit 8b adds «Править» per row; deletion is still 8c's.
+  // Units 8b/8c add «Править» and the red «Удалить…» per row.
   expect(screen.getAllByText('Править')).toHaveLength(2);
-  expect(screen.queryByText(/Удалить/)).not.toBeInTheDocument();
+  expect(screen.getAllByText('Удалить…')).toHaveLength(2);
 });
 
 it('the submit stays disabled until the form is complete', async () => {
@@ -493,5 +537,103 @@ it('a success notices and returns to the list', async () => {
   await waitFor(() => expect(counters.patch).toBe(1));
   await screen.findByText('Данные государства «Синд» сохранены.');
   await screen.findByTestId('nations-table');
+  await waitFor(() => expect(counters.nations).toBe(2));
+});
+
+/* ---------------------------------------------------------------- */
+/* The deletion popup (screen 03d, unit 8c).                         */
+/* ---------------------------------------------------------------- */
+
+const CONFIRM_LABEL = 'Для подтверждения введите краткое название: Лига';
+
+it('«Удалить…» opens the screen-03d popup with the consequence bullets', async () => {
+  const counters = allowSection();
+  await enterSection();
+
+  fireEvent.click(screen.getByTestId('nation-delete-n-2'));
+  const popup = await screen.findByTestId('nation-delete-popup');
+  const list = await screen.findByTestId('nation-delete-consequences');
+
+  expect(counters.preview).toBe(1);
+  expect(popup).toHaveTextContent('Удалить государство «Лига»?');
+  expect(popup).toHaveTextContent(
+    'Игрок VK 100000002 останется в игре без государства и сможет создать новое.',
+  );
+  expect(list).toHaveTextContent('государство «Лига» (Балтийская Лига)');
+  expect(list).toHaveTextContent(
+    '4 провинции станут свободными: Рига, Юрмала, Лиепая, Вентспилс',
+  );
+  expect(list).toHaveTextContent(
+    'запланированных действий государства: 1 — они останутся без государства',
+  );
+  expect(list).toHaveTextContent(
+    'в журнал владения карты запишутся 4 освобождения провинций',
+  );
+});
+
+it('«Удалить государство» stays disabled until the exact short name is typed', async () => {
+  allowSection();
+  await enterSection();
+
+  fireEvent.click(screen.getByTestId('nation-delete-n-2'));
+  await screen.findByTestId('nation-delete-consequences');
+
+  const confirm = screen.getByTestId('confirm-nation-delete');
+  expect(confirm).toBeDisabled();
+
+  const input = screen.getByLabelText(CONFIRM_LABEL);
+  // Wrong case — the short name comparison is exact.
+  fireEvent.change(input, { target: { value: 'лига' } });
+  expect(confirm).toBeDisabled();
+  fireEvent.change(input, { target: { value: 'Лига2' } });
+  expect(confirm).toBeDisabled();
+
+  // Surrounding whitespace trims; the exact name enables the button.
+  fireEvent.change(input, { target: { value: '  Лига  ' } });
+  expect(confirm).toBeEnabled();
+});
+
+it('a refusal shows its Russian line inside the open popup', async () => {
+  allowSection({
+    deleteAnswer: {
+      status: 422,
+      body: { detail: 'mismatch', code: 'CONFIRMATION_MISMATCH' },
+    },
+  });
+  await enterSection();
+
+  fireEvent.click(screen.getByTestId('nation-delete-n-2'));
+  await screen.findByTestId('nation-delete-consequences');
+  fireEvent.change(screen.getByLabelText(CONFIRM_LABEL), {
+    target: { value: 'Лига' },
+  });
+  fireEvent.click(screen.getByTestId('confirm-nation-delete'));
+
+  const error = await screen.findByTestId('nation-delete-error');
+  expect(error).toHaveTextContent(
+    'Подтверждение не совпало — проверьте ввод.',
+  );
+  expect(screen.getByTestId('nation-delete-popup')).toBeInTheDocument();
+});
+
+it('a success closes the popup, notices and reloads the list', async () => {
+  const counters = allowSection();
+  await enterSection();
+  expect(counters.nations).toBe(1);
+
+  fireEvent.click(screen.getByTestId('nation-delete-n-2'));
+  await screen.findByTestId('nation-delete-consequences');
+  fireEvent.change(screen.getByLabelText(CONFIRM_LABEL), {
+    target: { value: 'Лига' },
+  });
+  fireEvent.click(screen.getByTestId('confirm-nation-delete'));
+
+  await waitFor(() => expect(counters.del).toBe(1));
+  await waitFor(() =>
+    expect(
+      screen.queryByTestId('nation-delete-popup'),
+    ).not.toBeInTheDocument(),
+  );
+  await screen.findByText('Государство «Лига» удалено.');
   await waitFor(() => expect(counters.nations).toBe(2));
 });

@@ -14,6 +14,7 @@ import type {
   AdminMeDTO,
   AdminNationColorCheckRequest,
   AdminNationCreateRequest,
+  AdminNationDeletePreviewDTO,
   AdminNationDetailDTO,
   AdminNationDTO,
   AdminNationsDTO,
@@ -486,6 +487,45 @@ export const api = {
       token,
       signal,
     });
+  },
+
+  /**
+   * GET /admin/nations/{id}/delete-preview (0.11.0 unit 8c) — what
+   * deleting the nation would do: the provinces it frees plus every
+   * module's consequence lines.
+   */
+  adminNationDeletePreview(
+    token: string,
+    nationId: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}/delete-preview`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations/{id}/delete — irreversible; the owner stays
+   * a player. The body carries the retyped short name; the backend
+   * answers 422 CONFIRMATION_MISMATCH when it differs, and returns
+   * the preview that was true at the moment of deletion.
+   */
+  adminNationDelete(
+    token: string,
+    nationId: string,
+    confirmShortName: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(nationId)}/delete`,
+      {
+        method: 'POST',
+        body: { confirm_short_name: confirmShortName },
+        token,
+        signal,
+      },
+    );
   },
 
   /**

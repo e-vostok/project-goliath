@@ -84,7 +84,7 @@ export function PanelCard({
   );
 }
 
-type PanelButtonKind = 'plain' | 'primary';
+type PanelButtonKind = 'plain' | 'primary' | 'danger' | 'danger-outline';
 
 export function PanelButton({
   kind = 'plain',
@@ -104,11 +104,19 @@ export function PanelButton({
   const skin =
     kind === 'primary'
       ? { background: tokenVar('action'), color: onAction, border: 'none' }
-      : {
-          background: tokenVar('surface-inset'),
-          color: tokenVar('ink'),
-          border: 'none',
-        };
+      : kind === 'danger'
+        ? { background: tokenVar('danger'), color: onAction, border: 'none' }
+        : kind === 'danger-outline'
+          ? {
+              background: 'transparent',
+              color: tokenVar('danger'),
+              border: `1px solid ${tokenVar('danger')}`,
+            }
+          : {
+              background: tokenVar('surface-inset'),
+              color: tokenVar('ink'),
+              border: 'none',
+            };
   return (
     <button
       type="button"

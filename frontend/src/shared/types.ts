@@ -373,6 +373,23 @@ export interface AdminNationDetailDTO {
 }
 
 /**
+ * GET /admin/nations/{id}/delete-preview and the matching POST
+ * /delete answer (0.11.0 unit 8c) — what deleting the nation would
+ * do: the owner (who stays a player), the provinces it frees
+ * (display names, ordered by name) and every module's ready Russian
+ * consequence line merged from the nation-preview hooks.
+ */
+export interface AdminNationDeletePreviewDTO {
+  nation_id: string;
+  short_name: string;
+  name: string;
+  owner_vk_user_id: number;
+  owner_name: string | null;
+  provinces: { id: number; name: string | null }[];
+  consequences: { code: string; text: string }[];
+}
+
+/**
  * PATCH /admin/nations/{id} request (0.11.0 unit 8b) — only the
  * changed fields are sent; an absent key means "do not change",
  * '' clears an optional field to NULL (INV-8).
