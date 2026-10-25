@@ -53,6 +53,7 @@ ADMIN_AUDIT_ACTION_LABELS = {
     "admin.revoke": "Снятие прав",
     "nation.create": "Создание государства",
     "nation.update": "Правка государства",
+    "nation.delete": "Удаление государства",
 }
 
 
@@ -353,6 +354,67 @@ async def admin_player_delete_preview(session: AsyncSession, player_id: str) -> 
     }
 
 
+def _releases_word(count: int) -> str:
+    """Russian plural of «освобождение» for the journal line."""
+    if 10 < count % 100 < 20:
+        return "освобождений"
+    forms = {1: "освобождение", 2: "освобождения", 3: "освобождения", 4: "освобождения"}
+    return forms.get(count % 10, "освобождений")
+
+
+async def admin_nation_delete_preview(
+    session: AsyncSession, nation_id: str
+) -> list[dict]:
+    """
+    The 00_core consequence lines of the nation delete-preview
+    (0.11.0 unit 8c): the scheduled actions that would be orphaned by
+    ``NationService.delete`` and the release entries the map's
+    ownership journal would gain — one ready Russian sentence each.
+    Zero counts produce no line. Read-only, never commits.
+    """
+    scheduled = (
+        await session.execute(
+            select(func.count())
+            .select_from(ScheduledAction)
+            .where(ScheduledAction.nation_id == nation_id)
+        )
+    ).scalar_one()
+    provinces = (
+        await session.execute(
+            select(func.count())
+            .select_from(Province)
+            .where(Province.nation_id == nation_id)
+        )
+    ).scalar_one()
+    lines: list[dict] = []
+    if scheduled:
+        lines.append(
+            {
+                "code": "scheduled_actions",
+                "text": (
+                    f"запланированных действий государства: {scheduled} — "
+                    "они останутся без государства"
+                ),
+            }
+        )
+    if provinces:
+        verb = (
+            "запишется"
+            if provinces % 10 == 1 and provinces % 100 != 11
+            else "запишутся"
+        )
+        lines.append(
+            {
+                "code": "ownership_journal",
+                "text": (
+                    f"в журнал владения карты {verb} {provinces} "
+                    f"{_releases_word(provinces)} провинций"
+                ),
+            }
+        )
+    return lines
+
+
 async def admin_reset(session: AsyncSession) -> None:
     """
     Wipe the 00_core world back to a fresh game.
@@ -409,6 +471,8 @@ def register_admin_hooks() -> None:
         AdminRegistry.register_reset(MODULE_SLUG, admin_reset)
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
         AdminRegistry.register_player_preview(MODULE_SLUG, admin_player_delete_preview)
+    if MODULE_SLUG not in AdminRegistry.get_nation_preview_hooks():
+        AdminRegistry.register_nation_preview(MODULE_SLUG, admin_nation_delete_preview)
     if MODULE_SLUG not in AdminRegistry.get_overview_hooks():
         AdminRegistry.register_overview(MODULE_SLUG, admin_overview)
     if MODULE_SLUG not in AdminRegistry.get_audit_action_hooks():

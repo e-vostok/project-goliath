@@ -3,9 +3,9 @@
  * mockup screen 03): the search row with «Поиск по названию» and
  * «Показано N из M», the primary «Создать государство» button, one
  * table card — Государство (catalog flag, short name over full
- * name), Владелец, Провинций, Столица, and the right-most «Править»
- * column of unit 8b — plus «Показать ещё» while total exceeds what
- * is shown. Deletion belongs to 8c, so no «Удалить…» here.
+ * name), Владелец, Провинций, Столица, and the right-most actions
+ * column: «Править» (unit 8b) and the red-outline «Удалить…» (unit
+ * 8c) — plus «Показать ещё» while total exceeds what is shown.
  * Split out of NationsSection.tsx for unit 8b; behaviour unchanged.
  */
 
@@ -53,10 +53,13 @@ function FlagCell({ flagId }: { flagId: string | null }) {
 export function NationsList({
   onCreate,
   onEdit,
+  onDelete,
 }: {
   onCreate: () => void;
   /** Row action — opens screen 03b for the nation. */
   onEdit: (nation: AdminNationDTO) => void;
+  /** Row action — opens the screen-03d deletion popup. */
+  onDelete: (nation: AdminNationDTO) => void;
 }) {
   const { token, reportUnauthorized } = useAdminSession();
 
@@ -296,6 +299,13 @@ export function NationsList({
                         onClick={() => onEdit(nation)}
                       >
                         Править
+                      </PanelButton>{' '}
+                      <PanelButton
+                        kind="danger-outline"
+                        testId={`nation-delete-${nation.id}`}
+                        onClick={() => onDelete(nation)}
+                      >
+                        Удалить…
                       </PanelButton>
                     </td>
                   </tr>
