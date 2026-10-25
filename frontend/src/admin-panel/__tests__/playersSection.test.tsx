@@ -41,6 +41,7 @@ const PLAYERS = {
     {
       vk_user_id: 100000001,
       display_name: 'Елена Владимирова',
+      registry_number: 1,
       nation_short_name: 'Федерация',
       created_at: '2026-10-20 00:00:03',
       is_admin: true,
@@ -48,6 +49,7 @@ const PLAYERS = {
     {
       vk_user_id: 100000002,
       display_name: 'Мария Волкова',
+      registry_number: 2,
       nation_short_name: 'Лига',
       created_at: '2026-10-21 00:00:03',
       is_admin: false,
@@ -55,6 +57,7 @@ const PLAYERS = {
     {
       vk_user_id: 100000004,
       display_name: 'Пётр Малинин',
+      registry_number: null,
       nation_short_name: null,
       created_at: '2026-10-23 00:00:03',
       is_admin: false,
@@ -166,6 +169,18 @@ it('renders the table from GET /admin/players', async () => {
   expect(screen.getByTestId('players-shown')).toHaveTextContent(
     'Показано 3 из 3',
   );
+});
+
+it('shows the «№ в Реестре» column — number or dash when unissued', async () => {
+  allowSection();
+  await enterSection();
+
+  const table = screen.getByTestId('players-table');
+  expect(table).toHaveTextContent('№ в Реестре');
+  expect(screen.getByTestId('registry-number-100000001')).toHaveTextContent('№1');
+  expect(screen.getByTestId('registry-number-100000002')).toHaveTextContent('№2');
+  // Player without an issued Registry number → the empty dash.
+  expect(screen.getByTestId('registry-number-100000004')).toHaveTextContent('—');
 });
 
 it('admins get «Администратора удалить нельзя» instead of the button', async () => {
