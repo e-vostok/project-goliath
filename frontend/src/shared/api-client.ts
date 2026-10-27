@@ -43,6 +43,7 @@ import type {
   GameClockDTO,
   NationCreateRequest,
   NationDTO,
+  NationImageDTO,
   NationPublicDTO,
   NationRulesDTO,
   NationUpdateRequest,
@@ -80,9 +81,15 @@ export class ApiError extends Error {
 }
 
 export interface ApiFetchOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** JSON-serialized request body. */
   body?: unknown;
+  /**
+   * A binary request body sent as-is (the image upload endpoint):
+   * bypasses JSON serialization and no Content-Type is set — the
+   * server decides by the file's bytes, not its declared type.
+   */
+  rawBody?: Blob;
   /** Short-lived Bearer JWT for the current session (never persisted). */
   token?: string;
   signal?: AbortSignal;
@@ -135,7 +142,11 @@ async function request(
       method: options.method ?? 'GET',
       headers,
       body:
-        options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        options.rawBody !== undefined
+          ? options.rawBody
+          : options.body !== undefined
+            ? JSON.stringify(options.body)
+            : undefined,
     }),
     options.signal,
   );
@@ -284,6 +295,25 @@ export const api = {
       token,
       signal,
     });
+  },
+
+  /**
+   * PUT /nations/me/images/{kind} — the file itself is the request
+   * body (no JSON, no multipart, no Content-Type); the server reads
+   * the bytes (Spec Part 5 «Загрузка»). Answers NationImageDTO;
+   * 413 IMAGE_TOO_LARGE, 415 IMAGE_UNSUPPORTED,
+   * 422 IMAGE_ORIENTATION_INVALID.
+   */
+  uploadNationImage(
+    token: string,
+    kind: 'flag' | 'portrait',
+    file: Blob,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<NationImageDTO>(
+      `/nations/me/images/${encodeURIComponent(kind)}`,
+      { method: 'PUT', rawBody: file, token, signal },
+    );
   },
 
   /** GET /provinces — optional id filter and/or free-only flag. */

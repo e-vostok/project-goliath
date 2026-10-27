@@ -80,6 +80,13 @@ export const RULES: NationRulesDTO = {
   min_provinces: 3,
   max_provinces: 3,
   palette: ['#102030', '#a0b0c0'],
+  images: {
+    flag_width: 610,
+    flag_height: 410,
+    portrait_width: 610,
+    portrait_height: 810,
+    max_upload_bytes: 6291456,
+  },
   genders: ['male', 'female'],
   succession_types: ['elections', 'appointment', 'criteria', 'inheritance'],
 };

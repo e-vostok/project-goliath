@@ -1,7 +1,7 @@
 /**
  * LeaderBlock — «Глава государства» on the nation card (UI Spec 9.1,
- * mockup «Main»): portrait 72×88 (`PortraitStub` when the nation has no uploaded one
- * without one), the leader name in `heading`, the title as a
+ * mockup «Main», 0.12.0 board 14): portrait 72×96 (`PortraitStub`
+ * when the nation has no uploaded one), the leader name in `heading`, the title as a
  * `signal-ink` `label` (hidden when empty) and the biography as plain
  * text with its line breaks kept — no row captions anywhere.
  */
@@ -31,7 +31,7 @@ export function LeaderBlock({
             src={nation.portrait_url}
             alt={`Портрет лидера ${nation.name}`}
             width={72}
-            height={88}
+            height={96}
             style={{
               borderRadius: RADII['radius-md'],
               objectFit: 'cover',
