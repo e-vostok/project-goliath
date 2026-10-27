@@ -626,7 +626,7 @@ class TestNationEndpoints:
 
 
 # The exact response contract of GET /nations/{nation_id} (Spec Part 5):
-# 18 keys, nothing more — a new key fails the key-set test.
+# 20 keys, nothing more — a new key fails the key-set test.
 NATION_PUBLIC_KEYS = {
     "id",
     "created_at",
@@ -636,6 +636,7 @@ NATION_PUBLIC_KEYS = {
     "motto",
     "description",
     "flag_url",
+    "flag_thumb_url",
     "province_ids",
     "capital_province_id",
     "capital_name",
@@ -643,6 +644,7 @@ NATION_PUBLIC_KEYS = {
     "leader_title",
     "leader_bio",
     "portrait_url",
+    "portrait_thumb_url",
     "history_url",
     "level",
     "judge_rating",
@@ -654,7 +656,7 @@ class TestNationPublic:
     player's nation (Bible §7, Spec Part 5, version 0.9.0 unit 14)."""
 
     async def test_returns_exact_public_key_set(self, client, test_db_session):
-        """200 with exactly the 18 Spec keys — the service fields
+        """200 with exactly the 20 Spec keys — the service fields
         (owner_player_id, gender, succession_type, anthem_url) and any
         VK identifier can never leak through this route."""
         owner = await seed_player(test_db_session, vk_user_id=111)
@@ -940,6 +942,13 @@ class TestNationProfileEndpoints:
             "min_provinces": nation.min_provinces_per_nation,
             "max_provinces": nation.max_provinces_per_nation,
             "palette": CORE_CONFIG.color.palette,
+            "images": {
+                "flag_width": CORE_CONFIG.images.flag_width,
+                "flag_height": CORE_CONFIG.images.flag_height,
+                "portrait_width": CORE_CONFIG.images.portrait_width,
+                "portrait_height": CORE_CONFIG.images.portrait_height,
+                "max_upload_bytes": CORE_CONFIG.images.max_upload_bytes,
+            },
             "genders": ["male", "female"],
             "succession_types": [
                 "elections",
