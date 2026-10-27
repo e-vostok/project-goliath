@@ -18,7 +18,7 @@ import io
 import time
 
 import pytest
-from PIL import Image, ImageDraw, features
+from PIL import Image, ImageDraw, JpegImagePlugin, features
 
 from modules._00_core import images
 from modules._00_core.config_schema import CoreConfig
@@ -157,19 +157,78 @@ def test_unsupported_or_broken_files_rejected(payload):
 # --- Отсечка по заголовку до распаковки -------------------------------------
 
 
-@pytest.mark.parametrize("size", [(9000, 10), (6000, 5000)])
-def test_oversize_rejected_before_decode(monkeypatch, size):
-    """Сторона больше max_side (9000×10) или площадь больше max_pixels
-    (6000×5000 = 30 МП) — IMAGE_TOO_LARGE, и пиксели не распаковываются."""
-    payload = _png(size)
+@pytest.mark.parametrize(
+    "size,mode",
+    [
+        ((9000, 10), "RGB"),  # сторона больше max_side
+        ((6000, 5000), "RGB"),  # площадь больше max_pixels (30 МП)
+        ((12000, 10000), "1"),  # 120 МП: зона DecompressionBombWarning
+    ],
+)
+def test_oversize_rejected_before_decode(monkeypatch, size, mode):
+    """Сторона больше max_side или площадь больше max_pixels —
+    IMAGE_TOO_LARGE, и пиксели не распаковываются. Однобитный PNG
+    12000×10000 — маленький файл с огромным заголовком: зона
+    предупреждения Pillow (не ошибка), наш лимит отсекает раньше."""
+    buf = io.BytesIO()
+    Image.new(mode, size).save(buf, "PNG")
     monkeypatch.setattr(
         Image.Image,
         "load",
         lambda self: pytest.fail("pixels must not be decoded"),
     )
     with pytest.raises(ImageTooLargeError) as exc_info:
-        process_image(payload, "flag", IMAGES)
+        process_image(buf.getvalue(), "flag", IMAGES)
     assert exc_info.value.code == "IMAGE_TOO_LARGE"
+
+
+def test_decompression_bomb_is_too_large():
+    """Заголовок сверх предела распаковщика Pillow (~179 МП) —
+    IMAGE_TOO_LARGE (413), а не 500: DecompressionBombError поднимается
+    уже на Image.open."""
+    buf = io.BytesIO()
+    Image.new("1", (20000, 10000)).save(buf, "PNG")
+
+    with pytest.raises(ImageTooLargeError) as exc_info:
+        process_image(buf.getvalue(), "flag", IMAGES)
+    assert exc_info.value.code == "IMAGE_TOO_LARGE"
+
+
+def test_jpeg_draft_reduces_decode(monkeypatch):
+    """draft запрашивает ЦЕЛЕВОЙ размер: распаковка JPEG реально
+    уменьшается (пик памяти не зависит от источника), а выход остаётся
+    точным 600×400."""
+    recorded: list[tuple[tuple[int, int], tuple[int, int]]] = []
+    original = JpegImagePlugin.JpegImageFile.draft
+
+    def _spy(self: Image.Image, mode: str, size: tuple[int, int]):
+        result = original(self, mode, size)
+        recorded.append((size, self.size))
+        return result
+
+    monkeypatch.setattr(JpegImagePlugin.JpegImageFile, "draft", _spy)
+
+    result = process_image(_encoded("JPEG", (6000, 4000)), "flag", IMAGES)
+
+    _request, decoded = recorded.pop()
+    assert decoded[0] < 6000 and decoded[1] < 4000
+    assert decoded[0] >= 600 and decoded[1] >= 400
+    assert _decode(result.full).size == (600, 400)
+
+    # EXIF-ориентация 6: кадр хранится 4000×6000 (показывается 6000×4000)
+    # — запрос draft перевёрнут в координаты сохранённого кадра (400×600).
+    stored = Image.new("RGB", (4000, 6000), (60, 140, 60))
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    buf = io.BytesIO()
+    stored.save(buf, "JPEG", exif=exif)
+
+    result = process_image(buf.getvalue(), "flag", IMAGES)
+
+    _request, decoded = recorded.pop()
+    assert decoded[0] < 4000 and decoded[1] < 6000
+    assert decoded[0] >= 400 and decoded[1] >= 600
+    assert _decode(result.full).size == (600, 400)
 
 
 # --- Ориентация -------------------------------------------------------------
