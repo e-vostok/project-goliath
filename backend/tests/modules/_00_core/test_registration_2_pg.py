@@ -95,6 +95,8 @@ async def test_two_concurrent_registrations_one_color(pg_live_client):
 
 # --- Migration 0011 on PostgreSQL ------------------------------------------
 
+# Columns 0011 adds that still exist at head — migration 0017 dropped
+# flag_id/portrait_id from this set (0.12.0 unit 4).
 _NEW_COLUMNS = [
     "short_name",
     "gender",
@@ -102,8 +104,6 @@ _NEW_COLUMNS = [
     "motto",
     "description",
     "leader_bio",
-    "flag_id",
-    "portrait_id",
     "anthem_url",
     "capital_province_id",
     "capital_name",
@@ -132,7 +132,7 @@ def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
     """Clean upgrade and downgrade of 0011+0012 on real PostgreSQL:
     ``uq_nations_short_name`` and the named capital FK present at head,
     short_name NOT NULL with the full-name backfill, existing rows
-    untouched, downgrade drops only the eleven columns."""
+    untouched, downgrade drops only the added columns."""
     url = wiped_pg
     _upgrade(url, "0010", monkeypatch)
 

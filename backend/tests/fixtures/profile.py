@@ -19,7 +19,4 @@ VALID_PROFILE: dict[str, str] = {
     "gender": "male",
     "succession_type": "elections",
     "capital_name": "Testburg",
-    # Since 0.9.0 both are mandatory on create — always catalog ids.
-    "flag_id": "flag_placeholder_1",
-    "portrait_id": "portrait_placeholder_1",
 }

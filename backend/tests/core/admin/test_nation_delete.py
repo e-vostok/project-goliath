@@ -296,8 +296,6 @@ class TestNationDeletePreview:
                     gender=VALID_PROFILE["gender"],
                     succession_type=VALID_PROFILE["succession_type"],
                     capital_name="Mini Alpha",
-                    flag_id=VALID_PROFILE["flag_id"],
-                    portrait_id=VALID_PROFILE["portrait_id"],
                     created_at=datetime.now(UTC),
                     created_turn=0,
                 )

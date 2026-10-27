@@ -103,7 +103,6 @@ def _list_item(
         "number": order.number,
         "title": order.title,
         "author_nation_short_name": order.nation_short_name,
-        "author_nation_flag_id": order.nation_flag_id,
         "author_name": names.get(order.author_player_id),
         "judge_vk_user_id": judge_vk_user_id,
         "judge_name": names.get(order.judge_player_id),

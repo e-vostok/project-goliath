@@ -340,7 +340,7 @@ class AdminNationUpdateRequest(BaseModel):
     change", "" on an optional field clears it to NULL, "" on a
     mandatory field is the service's own *_INVALID error (INV-8).
 
-    ``extra="forbid"``: a flag, portrait, anthem or province field is
+    ``extra="forbid"``: an anthem, picture or province field is
     a 422, not a silent ignore.
     """
 
@@ -918,7 +918,7 @@ async def list_nations(
     """
     The panel's «Государства» list (0.11.0 unit 8a): one page of nations
     ordered by creation then id — ``{"items", "total"}``. Each item
-    carries ``id``, ``short_name``, ``name``, ``flag_id``,
+    carries ``id``, ``short_name``, ``name``,
     ``owner_vk_user_id``, the ``owner_name`` the player-info hooks know
     (null when none does), ``provinces_count`` and ``capital_name``.
 
@@ -933,7 +933,6 @@ async def list_nations(
                 Nation.id,
                 Nation.short_name,
                 Nation.name,
-                Nation.flag_id,
                 Nation.capital_name,
                 Player.vk_user_id,
             )
@@ -972,7 +971,6 @@ async def list_nations(
                 "id": row.id,
                 "short_name": row.short_name,
                 "name": row.name,
-                "flag_id": row.flag_id,
                 "owner_vk_user_id": row.vk_user_id,
                 "owner_name": names.get(row.vk_user_id),
                 "provinces_count": counts.get(row.id, 0),
@@ -997,8 +995,9 @@ async def create_nation(
     check applies in its own order (field format, uniqueness, colour,
     province freedom and count, capital membership, satellite checks).
 
-    Unknown owner -> 404 PLAYER_NOT_FOUND. The flag and the leader
-    portrait are the first catalog entries; ``capital_name`` is the
+    Unknown owner -> 404 PLAYER_NOT_FOUND. The nation is created
+    without pictures (the flag and the portrait arrive with the
+    upload, unit 6); ``capital_name`` is the
     capital province's display name resolved through the province-info
     hooks. On success one ``nation.create`` journal row is written in
     the same transaction, before the commit — a refusal rolls
@@ -1041,10 +1040,6 @@ async def create_nation(
         capital_name=capital_name,
         capital_province_id=body.capital_province_id,
         motto=body.motto,
-        flag_id=config.catalog.flag_ids[0] if config.catalog.flag_ids else None,
-        portrait_id=(
-            config.catalog.portrait_ids[0] if config.catalog.portrait_ids else None
-        ),
     )
 
     names = await _display_names_by_vk(session, {player.vk_user_id})
@@ -1072,7 +1067,6 @@ async def create_nation(
         "id": nation.id,
         "short_name": nation.short_name,
         "name": nation.name,
-        "flag_id": nation.flag_id,
         "owner_vk_user_id": player.vk_user_id,
         "owner_name": names.get(player.vk_user_id),
         "provinces_count": len(body.province_ids),

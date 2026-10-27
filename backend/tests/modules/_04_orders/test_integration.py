@@ -124,7 +124,7 @@ class TestEndToEnd:
             "name": "Северная Лига",
             "color": nation.color_hex,
             "short_name": nation.short_name,
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
 
         # The second eligible player appears; the worker pass called

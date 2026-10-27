@@ -194,8 +194,8 @@ class TestRowsEndpoint:
 class TestNationCellsAcrossTables:
     """Spec 1.4/1.6 (3.2, 3.3, 3.7): the nations-table «name» column
     carries the same ``nation`` cell the players table gives the owner
-    nation — short name + catalog flag + the nation id that opens the
-    subscreen; a nation without a flag keeps ``flag_url = None``."""
+    nation — short name + colour + the nation id that opens the
+    subscreen; ``flag_url`` stays None until the upload lands."""
 
     async def test_nation_cells_in_nations_and_players_tables(
         self, client, test_db_session, registry_started
@@ -210,7 +210,6 @@ class TestNationCellsAcrossTables:
             "#AA2201",
             created_turn=0,
             short_name="СКВГ",
-            flag_id="flag_placeholder_1",
         )
         flagless = await seed_nation(
             test_db_session,
@@ -219,7 +218,6 @@ class TestNationCellsAcrossTables:
             "#AA2202",
             created_turn=1,
             short_name="ДКП",
-            flag_id=None,
         )
         headers = bearer_headers(viewer.id)
 
@@ -227,12 +225,11 @@ class TestNationCellsAcrossTables:
         assert resp.status_code == 200
         n_rows = resp.json()["rows"]
         nations_by_key = {row["key"]: row["cells"] for row in n_rows}
-        flag_png = "/assets/nations/flags/flag_placeholder_1.png"
         assert nations_by_key[modern.id]["name"] == {
             "id": modern.id,
             "name": "СКВГ",
             "color": "#AA2201",
-            "flag_url": flag_png,
+            "flag_url": None,
         }
         assert nations_by_key[flagless.id]["name"] == {
             "id": flagless.id,
@@ -251,7 +248,7 @@ class TestNationCellsAcrossTables:
             "id": modern.id,
             "name": "СКВГ",
             "color": "#AA2201",
-            "flag_url": flag_png,
+            "flag_url": None,
         }
         assert p_rows["p2"]["nation"] == {
             "id": flagless.id,

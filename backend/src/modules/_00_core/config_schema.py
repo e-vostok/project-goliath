@@ -27,9 +27,6 @@ _HOSTNAME_RE = re.compile(
 # Цвет в формате #RRGGBB (регистр не важен: сервис приводит к верхнему).
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-# Идентификатор готового флага или портрета (он же имя файла без расширения).
-_CATALOG_ID_RE = re.compile(r"^[a-z0-9_]{1,50}$")
-
 
 def _check_hosts(field: str, hosts: list[str]) -> list[str]:
     """Хосты: нижний регистр, без схемы, порта и пути, без дублей."""
@@ -360,30 +357,6 @@ class ColorSettings(BaseModel):
         return self
 
 
-class CatalogSettings(BaseModel):
-    flag_ids: list[str] = Field(
-        max_length=200,
-        description="Идентификаторы готовых флагов (имя файла без расширения).",
-    )
-    portrait_ids: list[str] = Field(
-        max_length=200,
-        description="Идентификаторы готовых портретов правителя.",
-    )
-
-    @field_validator("flag_ids", "portrait_ids")
-    @classmethod
-    def check_ids(cls, ids: list[str]) -> list[str]:
-        for item in ids:
-            if _CATALOG_ID_RE.match(item) is None:
-                raise ValueError(
-                    f"catalog: '{item}' не подходит: нужны строчная латиница, "
-                    "цифры и «_», длина 1–50"
-                )
-        if len(set(ids)) != len(ids):
-            raise ValueError("catalog: дубли недопустимы")
-        return ids
-
-
 class CalendarSettings(BaseModel):
     epoch_start_date: date
     months_per_turn: int = Field(
@@ -426,7 +399,6 @@ class CoreConfig(BaseModel):
     admin_panel: AdminPanelSettings
     nation: NationSettings
     color: ColorSettings
-    catalog: CatalogSettings
     calendar: CalendarSettings
 
     @model_validator(mode="after")

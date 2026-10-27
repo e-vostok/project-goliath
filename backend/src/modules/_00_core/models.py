@@ -130,10 +130,6 @@ class Nation(Base):
     motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     leader_bio: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    # NULL flag/portrait stays legal for rows from before 0.9.0:
-    # NationService.create requires both since 0.9.0, PATCH never does.
-    flag_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    portrait_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # не используется с 0.9.0, снятие — бэклог 00_core
     anthem_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     # use_alter + a named FK: nations <-> provinces reference each other
