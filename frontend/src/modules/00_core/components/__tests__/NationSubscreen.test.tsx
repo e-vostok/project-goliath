@@ -27,7 +27,6 @@ const NATION: NationPublicDTO = {
   color_hex: '#C0392B',
   motto: 'Слово и дело',
   description: 'Вольный город на севере.',
-  flag_id: null,
   flag_url: null,
   // 1002 «Бета» is listed before the capital 1001 «Альфа» on purpose —
   // the territory block must move the capital first.
@@ -37,7 +36,6 @@ const NATION: NationPublicDTO = {
   leader_name: 'Борис Первый',
   leader_title: 'Князь',
   leader_bio: null,
-  portrait_id: null,
   portrait_url: null,
   history_url: 'https://vk.com/@novgorod-history',
   level: 3,

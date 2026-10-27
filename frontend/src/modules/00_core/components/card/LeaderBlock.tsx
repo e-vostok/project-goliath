@@ -1,6 +1,6 @@
 /**
  * LeaderBlock — «Глава государства» on the nation card (UI Spec 9.1,
- * mockup «Main»): portrait 72×88 (`PortraitStub` for a legacy nation
+ * mockup «Main»): portrait 72×88 (`PortraitStub` when the nation has no uploaded one
  * without one), the leader name in `heading`, the title as a
  * `signal-ink` `label` (hidden when empty) and the biography as plain
  * text with its line breaks kept — no row captions anywhere.

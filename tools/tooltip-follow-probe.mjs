@@ -103,7 +103,6 @@ const NATION_PUBLIC = {
   color_hex: '#C0392B',
   motto: 'Слово и дело',
   description: 'Вольный город на севере.',
-  flag_id: null,
   flag_url: null,
   province_ids: [1001, 1002],
   capital_province_id: 1001,
@@ -111,7 +110,6 @@ const NATION_PUBLIC = {
   leader_name: 'Борис Первый',
   leader_title: 'Князь',
   leader_bio: null,
-  portrait_id: null,
   portrait_url: null,
   history_url: null,
   level: 3,
@@ -138,8 +136,6 @@ const RULES = {
   min_provinces: 3,
   max_provinces: 3,
   palette: ['#102030'],
-  flags: [],
-  portraits: [],
   genders: ['male', 'female'],
   succession_types: ['elections'],
 };
@@ -232,7 +228,7 @@ function json(route, body) {
 }
 
 async function stubApi(page) {
-  // Catch-all first: nothing leaves the machine (flag/avatar URLs,
+  // Catch-all first: nothing leaves the machine (avatar URLs,
   // vk-bridge fallbacks); local vite traffic defers to the network.
   await page.route('**/*', (route) => {
     const url = route.request().url();

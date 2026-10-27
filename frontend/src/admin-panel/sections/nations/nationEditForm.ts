@@ -120,13 +120,8 @@ export function editFieldForError(code: string): EditFieldKey | null {
       return null;
     default:
       // Every other NationField key exists on this page except the
-      // create-only ones (flag/portrait/provinces) — guard them out.
-      if (
-        mapped === 'flagId' ||
-        mapped === 'portraitId' ||
-        mapped === 'provinces' ||
-        mapped === 'capitalNameEdited'
-      ) {
+      // create-only provinces — guard them out.
+      if (mapped === 'provinces' || mapped === 'capitalNameEdited') {
         return null;
       }
       return mapped as EditFieldKey;

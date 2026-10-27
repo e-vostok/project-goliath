@@ -103,7 +103,7 @@ function registerAppHandlers() {
       HttpResponse.json({ is_admin: false }),
     ),
     // The VKUI View mounts EVERY panel eagerly — PanelCreateNation is
-    // always up (nation===null) and its symbols tab reads rules.flags;
+    // always up (nation===null);
     // the full RULES fixture keeps it alive.
     http.get('*/api/v1/nations/rules', () => HttpResponse.json(RULES)),
     http.get('*/api/v1/provinces', () => HttpResponse.json([])),
@@ -356,7 +356,6 @@ const NATION_PUBLIC: NationPublicDTO = {
   color_hex: '#C0392B',
   motto: 'Слово и дело',
   description: 'Вольный город на севере.',
-  flag_id: null,
   flag_url: null,
   province_ids: [1002, 1001],
   capital_province_id: 1001,
@@ -364,7 +363,6 @@ const NATION_PUBLIC: NationPublicDTO = {
   leader_name: 'Борис Первый',
   leader_title: 'Князь',
   leader_bio: null,
-  portrait_id: null,
   portrait_url: null,
   history_url: 'https://vk.com/@novgorod-history',
   level: 3,
@@ -785,7 +783,6 @@ const OWN_NATION: NationDTO = {
   color_hex: '#2b2db0',
   motto: null,
   description: null,
-  flag_id: null,
   flag_url: null,
   province_ids: [],
   capital_province_id: null,
@@ -794,7 +791,6 @@ const OWN_NATION: NationDTO = {
   gender: 'male',
   leader_title: 'Председатель',
   leader_bio: null,
-  portrait_id: null,
   portrait_url: null,
   succession_type: null,
   history_url: null,

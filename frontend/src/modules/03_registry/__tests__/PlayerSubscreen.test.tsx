@@ -37,7 +37,7 @@ const PLAYER: RegistryPlayerDTO = {
     id: NATION_ID,
     name: 'НВГ',
     color: '#C0392B',
-    flag_url: '/assets/nations/flags/flag_1.png',
+    flag_url: '/test-img/flag_1.png',
   },
 };
 

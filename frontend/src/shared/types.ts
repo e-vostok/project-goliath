@@ -32,7 +32,6 @@ export interface NationDTO {
   color_hex: string;
   motto: string | null;
   description: string | null;
-  flag_id: string | null;
   flag_url: string | null;
   province_ids: number[];
   capital_province_id: number | null;
@@ -42,7 +41,6 @@ export interface NationDTO {
   gender: string | null;
   leader_title: string | null;
   leader_bio: string | null;
-  portrait_id: string | null;
   portrait_url: string | null;
   succession_type: string | null;
   history_url: string | null;
@@ -54,7 +52,7 @@ export interface NationDTO {
 
 /**
  * The public view of another player's nation (Bible §7, Spec Part 5) —
- * exactly the 20 keys the server sends; the service fields
+ * exactly the public keys the server sends; the service fields
  * (`owner_player_id`, `gender`, `succession_type`, `anthem_url`) and VK
  * identifiers are never part of it.
  */
@@ -66,7 +64,6 @@ export interface NationPublicDTO {
   color_hex: string;
   motto: string | null;
   description: string | null;
-  flag_id: string | null;
   flag_url: string | null;
   province_ids: number[];
   capital_province_id: number | null;
@@ -74,7 +71,6 @@ export interface NationPublicDTO {
   leader_name: string | null;
   leader_title: string | null;
   leader_bio: string | null;
-  portrait_id: string | null;
   portrait_url: string | null;
   history_url: string | null;
   level: number;
@@ -87,7 +83,6 @@ export interface NationCreateRequest {
   color_hex: string;
   motto: string | null;
   description: string | null;
-  flag_id: string | null;
   province_ids: number[];
   capital_province_id: number | null;
   capital_name: string;
@@ -95,7 +90,6 @@ export interface NationCreateRequest {
   gender: string;
   leader_title: string;
   leader_bio: string | null;
-  portrait_id: string | null;
   succession_type: string;
   history_url: string;
   anthem_url: string | null;
@@ -107,21 +101,14 @@ export interface NationUpdateRequest {
   color_hex?: string | null;
   motto?: string | null;
   description?: string | null;
-  flag_id?: string | null;
   capital_name?: string | null;
   leader_name?: string | null;
   gender?: string | null;
   leader_title?: string | null;
   leader_bio?: string | null;
-  portrait_id?: string | null;
   succession_type?: string | null;
   history_url?: string | null;
   anthem_url?: string | null;
-}
-
-export interface CatalogItemDTO {
-  id: string;
-  url: string;
 }
 
 export interface NationRulesDTO {
@@ -145,8 +132,6 @@ export interface NationRulesDTO {
   min_provinces: number;
   max_provinces: number;
   palette: string[];
-  flags: CatalogItemDTO[];
-  portraits: CatalogItemDTO[];
   genders: string[];
   succession_types: string[];
 }
@@ -364,7 +349,6 @@ export interface AdminNationDTO {
   id: string;
   short_name: string;
   name: string;
-  flag_id: string | null;
   owner_vk_user_id: number;
   owner_name: string | null;
   provinces_count: number;
@@ -380,7 +364,7 @@ export interface AdminNationsDTO {
 /**
  * POST /admin/nations request (0.11.0 unit 8a) — the simplified admin
  * creation: no questionnaire, no flag/portrait picks (the server takes
- * the first catalog entries), no capital name (derived from the
+ * no pictures), no capital name (derived from the
  * capital province's map name). `capital_province_id` absent means the
  * first of `province_ids`.
  */
@@ -507,7 +491,6 @@ export interface AdminOrderDTO {
   number: number;
   title: string;
   author_nation_short_name: string | null;
-  author_nation_flag_id: string | null;
   author_name: string | null;
   judge_vk_user_id: number | null;
   judge_name: string | null;
@@ -615,8 +598,6 @@ export const ErrorCodes = {
   MOTTO_INVALID: 'MOTTO_INVALID',
   DESCRIPTION_INVALID: 'DESCRIPTION_INVALID',
   LEADER_BIO_INVALID: 'LEADER_BIO_INVALID',
-  FLAG_INVALID: 'FLAG_INVALID',
-  PORTRAIT_INVALID: 'PORTRAIT_INVALID',
   HISTORY_URL_INVALID: 'HISTORY_URL_INVALID',
   ANTHEM_URL_INVALID: 'ANTHEM_URL_INVALID',
   CAPITAL_NAME_INVALID: 'CAPITAL_NAME_INVALID',

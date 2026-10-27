@@ -42,7 +42,6 @@ const NATIONS = {
       id: 'n-1',
       short_name: 'Синдикат',
       name: 'Северный Синдикат',
-      flag_id: 'flag_placeholder_1',
       owner_vk_user_id: 100000001,
       owner_name: 'Алексей Морозов',
       provinces_count: 6,
@@ -52,7 +51,6 @@ const NATIONS = {
       id: 'n-2',
       short_name: 'Лига',
       name: 'Балтийская Лига',
-      flag_id: null,
       owner_vk_user_id: 100000002,
       owner_name: null,
       provinces_count: 4,
@@ -83,8 +81,7 @@ const RULES = {
   min_provinces: 1,
   max_provinces: 5,
   palette: [],
-  flags: [{ id: 'flag_placeholder_1', url: '/f.png' }],
-  portraits: [{ id: 'portrait_placeholder_1', url: '/p.png' }],
+
   genders: ['male', 'female'],
   succession_types: ['elections', 'appointment', 'criteria', 'inheritance'],
 };
@@ -115,7 +112,6 @@ const CREATED = {
   id: 'n-new',
   short_name: 'Лигурия',
   name: 'Лигурийская Республика',
-  flag_id: 'flag_placeholder_1',
   owner_vk_user_id: 100000002,
   owner_name: 'Мария Волкова',
   provinces_count: 1,
