@@ -153,7 +153,7 @@ class TestScenarioA:
             "id": nation1_id,
             "name": "Северная Марка",
             "color": "#AA1111",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
         assert "flag" not in n1["cells"]
         assert n1["cells"]["formed"] == {
@@ -169,7 +169,7 @@ class TestScenarioA:
             "id": nation2_id,
             "name": "Ладожский Союз",
             "color": "#22BB33",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
         assert n2["cells"]["formed"] == {
             "text": format_game_date(
@@ -196,13 +196,13 @@ class TestScenarioA:
             "id": nation1_id,
             "name": "Северная Марка",
             "color": "#AA1111",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
         assert p_rows[1]["cells"]["nation"] == {
             "id": nation2_id,
             "name": "Ладожский Союз",
             "color": "#22BB33",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)
@@ -242,7 +242,7 @@ class TestScenarioA:
             "id": nation2_id,
             "name": "Ладожский Союз",
             "color": "#22BB33",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
         assert p_rows[2]["cells"]["nation"] is None
         _assert_no_identifiers(resp.text, players)

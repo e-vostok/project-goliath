@@ -164,20 +164,6 @@ class LeaderBioInvalidError(CoreDomainError):
         super().__init__(f"Leader bio is invalid: {reason}", "LEADER_BIO_INVALID")
 
 
-class FlagInvalidError(CoreDomainError):
-    """Raised when the flag id is outside the catalog (INV-15)."""
-
-    def __init__(self, reason: str):
-        super().__init__(f"Flag id is invalid: {reason}", "FLAG_INVALID")
-
-
-class PortraitInvalidError(CoreDomainError):
-    """Raised when the portrait id is outside the catalog (INV-15)."""
-
-    def __init__(self, reason: str):
-        super().__init__(f"Portrait id is invalid: {reason}", "PORTRAIT_INVALID")
-
-
 class AnthemUrlInvalidError(CoreDomainError):
     """Raised when the anthem URL fails the Part 3 soft link checks."""
 

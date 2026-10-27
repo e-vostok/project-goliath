@@ -68,14 +68,14 @@ class TestOrdersSource:
             "verdict",
         }
         assert row.cells["number"] == 1
-        # Name and flag stay the SNAPSHOT (INV-O6); `id` is the live
+        # Name and colour stay the SNAPSHOT (INV-O6); `id` is the live
         # nation id — the nation exists, so the cell opens its
         # subscreen.
         assert row.cells["nation"] == {
             "id": nation.id,
             "name": nation.short_name,
             "color": "#336699",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
         assert row.cells["title"] == {
             "text": VALID_TITLE,
@@ -166,7 +166,7 @@ class TestOrdersSource:
         self, test_db_session, orders_started
     ):
         """A deleted nation must not become a dead link: the cell keeps
-        the snapshot name and flag, plain, with ``id = null`` (INV-O6)."""
+        the snapshot name and colour, plain, with ``id = null`` (INV-O6)."""
         register_orders_extensions()
         startup_registry()
         nation = await _submit_one(test_db_session)
@@ -179,7 +179,7 @@ class TestOrdersSource:
             "id": None,
             "name": nation.short_name,
             "color": "#336699",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
 
     async def test_build_query_count_is_constant(

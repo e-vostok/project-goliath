@@ -66,7 +66,7 @@ class NationDTO(BaseModel):
     for nations created before the profile/0.8.0 migrations — except
     ``short_name``, which is mandatory since migration 0012; None on
     optional fields means "not set". ``flag_url``/``portrait_url`` are
-    derived through ``catalog.py`` (INV-16).
+    always None until unit 5 fills them from the uploaded images.
     """
 
     id: uuid.UUID
@@ -77,7 +77,6 @@ class NationDTO(BaseModel):
     color_hex: str
     motto: str | None
     description: str | None
-    flag_id: str | None
     flag_url: str | None
     province_ids: list[int]
     capital_province_id: int | None
@@ -86,7 +85,6 @@ class NationDTO(BaseModel):
     gender: str | None
     leader_title: str | None
     leader_bio: str | None
-    portrait_id: str | None
     portrait_url: str | None
     succession_type: str | None
     history_url: str | None
@@ -101,7 +99,7 @@ class NationPublicDTO(BaseModel):
     """
     The public view of another player's nation (Bible §7, Spec Part 5).
 
-    Exactly the 20 keys listed in the Spec — the service fields
+    Exactly the public keys listed in the Spec — the service fields
     (``owner_player_id``, ``gender``, ``succession_type``, ``anthem_url``)
     and any VK identifier can never leak: the route is declared with
     ``response_model=NationPublicDTO``.
@@ -114,7 +112,6 @@ class NationPublicDTO(BaseModel):
     color_hex: str
     motto: str | None
     description: str | None
-    flag_id: str | None
     flag_url: str | None
     province_ids: list[int]
     capital_province_id: int | None
@@ -122,7 +119,6 @@ class NationPublicDTO(BaseModel):
     leader_name: str | None
     leader_title: str | None
     leader_bio: str | None
-    portrait_id: str | None
     portrait_url: str | None
     history_url: str | None
     level: int
@@ -137,7 +133,6 @@ class NationCreateRequest(BaseModel):
     color_hex: str = Field(pattern=_COLOR_HEX_PATTERN)
     motto: str | None = None
     description: str | None = None
-    flag_id: str | None = None
     province_ids: list[int]
     capital_province_id: int | None = None
     capital_name: str
@@ -145,7 +140,6 @@ class NationCreateRequest(BaseModel):
     gender: str
     leader_title: str
     leader_bio: str | None = None
-    portrait_id: str | None = None
     succession_type: str
     history_url: str
     anthem_url: str | None = None
@@ -171,13 +165,11 @@ class NationUpdateRequest(BaseModel):
     color_hex: str | None = Field(default=None, pattern=_COLOR_HEX_PATTERN)
     motto: str | None = None
     description: str | None = None
-    flag_id: str | None = None
     capital_name: str | None = None
     leader_name: str | None = None
     gender: str | None = None
     leader_title: str | None = None
     leader_bio: str | None = None
-    portrait_id: str | None = None
     succession_type: str | None = None
     history_url: str | None = None
     anthem_url: str | None = None
@@ -186,13 +178,6 @@ class NationUpdateRequest(BaseModel):
     @classmethod
     def check_name_length(cls, value: str | None) -> str | None:
         return _validate_nation_name(value)
-
-
-class CatalogItemDTO(BaseModel):
-    """One ready-made catalog asset (flag or portrait)."""
-
-    id: str
-    url: str
 
 
 class NationRulesDTO(BaseModel):
@@ -222,8 +207,6 @@ class NationRulesDTO(BaseModel):
     min_provinces: int
     max_provinces: int
     palette: list[str]
-    flags: list[CatalogItemDTO]
-    portraits: list[CatalogItemDTO]
     genders: list[str]
     succession_types: list[str]
 

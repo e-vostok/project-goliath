@@ -43,13 +43,11 @@ from modules._00_core.exceptions import (
     ColorTakenError,
     ColorTooCloseError,
     DescriptionInvalidError,
-    FlagInvalidError,
     GenderInvalidError,
     LeaderBioInvalidError,
     LeaderNameInvalidError,
     MottoInvalidError,
     NameTakenError,
-    PortraitInvalidError,
     ProvinceCountOutOfRangeError,
     ShortNameInvalidError,
     ShortNameTakenError,
@@ -201,10 +199,6 @@ class TestFieldErrorCodes:
             ),
             ("leader_bio", "b" * 501, LeaderBioInvalidError),
             ("leader_bio", "tab\there", LeaderBioInvalidError),
-            ("flag_id", "nope", FlagInvalidError),
-            ("flag_id", None, FlagInvalidError),
-            ("portrait_id", "nope", PortraitInvalidError),
-            ("portrait_id", None, PortraitInvalidError),
             ("capital_name", "", CapitalNameInvalidError),
             ("capital_name", "c" * 41, CapitalNameInvalidError),
         ],
@@ -602,6 +596,8 @@ class TestPatchEndpoint:
 
 # --- Migration 0011 ------------------------------------------------------
 
+# Columns 0011 adds that still exist at head — migration 0017 dropped
+# flag_id/portrait_id from this set (0.12.0 unit 4).
 _NEW_COLUMNS = [
     "short_name",
     "gender",
@@ -609,8 +605,6 @@ _NEW_COLUMNS = [
     "motto",
     "description",
     "leader_bio",
-    "flag_id",
-    "portrait_id",
     "anthem_url",
     "capital_province_id",
     "capital_name",
@@ -632,7 +626,7 @@ def _downgrade(url: str, target: str, monkeypatch) -> None:
 
 
 def test_migration_0011_up_down_up(tmp_path, monkeypatch):
-    """0011 adds exactly the eleven columns, the named UNIQUE on
+    """0011 adds exactly its columns, the named UNIQUE on
     short_name and the named capital FK; 0012 then tightens short_name
     to NOT NULL, backfilling the legacy row from the full name; the
     downgrade removes only those columns."""

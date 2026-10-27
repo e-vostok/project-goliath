@@ -29,7 +29,6 @@ from core.admin.registry import AdminRegistry
 from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator
 from main import app
-from modules._00_core.config_schema import CoreConfig
 from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
@@ -44,7 +43,6 @@ from tests.modules._00_core.test_router import (
 )
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
-CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 ADMIN_VK_ID = 424242
 OWNER_VK_ID = 777001
@@ -279,7 +277,6 @@ class TestAdminNationsList:
         item = data["items"][0]
         assert item["name"] == "First Realm"
         assert item["short_name"] == "FirstR"
-        assert item["flag_id"] == VALID_PROFILE["flag_id"]
         assert item["owner_vk_user_id"] == OWNER_VK_ID
         assert item["provinces_count"] == 5
         assert item["capital_name"] == VALID_PROFILE["capital_name"]
@@ -311,8 +308,6 @@ class TestAdminNationsList:
                     gender=VALID_PROFILE["gender"],
                     succession_type=VALID_PROFILE["succession_type"],
                     capital_name=VALID_PROFILE["capital_name"],
-                    flag_id=VALID_PROFILE["flag_id"],
-                    portrait_id=VALID_PROFILE["portrait_id"],
                     created_at=datetime.now(UTC),
                     created_turn=0,
                 )
@@ -372,8 +367,8 @@ class TestAdminNationCreate:
         data = response.json()
         assert data["short_name"] == "Adminland"
         assert data["owner_vk_user_id"] == OWNER_VK_ID
-        # The first catalog entries and the map's capital name.
-        assert data["flag_id"] == CORE_CONFIG.catalog.flag_ids[0]
+        # No pictures (0.12.0 unit 4) and the map's capital name.
+        assert "flag_id" not in data
         assert data["capital_name"] == "Mini Alpha"
         assert data["provinces_count"] == 5
 
@@ -383,8 +378,6 @@ class TestAdminNationCreate:
                     select(Nation).where(Nation.id == data["id"])
                 )
             ).scalar_one()
-            assert nation.flag_id == CORE_CONFIG.catalog.flag_ids[0]
-            assert nation.portrait_id == CORE_CONFIG.catalog.portrait_ids[0]
             assert nation.capital_province_id == STARTING_GROUP[0]
             assert nation.capital_name == "Mini Alpha"
             owned = (
@@ -625,8 +618,6 @@ async def _seed_nation(vk_user_id: int, **overrides) -> str:
             gender=VALID_PROFILE["gender"],
             succession_type=VALID_PROFILE["succession_type"],
             capital_name=VALID_PROFILE["capital_name"],
-            flag_id=VALID_PROFILE["flag_id"],
-            portrait_id=VALID_PROFILE["portrait_id"],
             created_at=datetime.now(UTC),
             created_turn=0,
         )
@@ -733,7 +724,7 @@ class TestAdminNationUpdate:
         assert after["description"] == "A longer story."
         assert after["leader_bio"] == "Once a dockmaster."
         assert after["capital_name"] == "Newport"
-        # Everything unsent stays — flag, portrait, capital province,
+        # Everything unsent stays — capital province,
         # colour, names and provinces above all.
         for key in (
             "short_name",
@@ -743,8 +734,6 @@ class TestAdminNationUpdate:
             "gender",
             "succession_type",
             "history_url",
-            "flag_id",
-            "portrait_id",
             "capital_province_id",
             "owner_player_id",
         ):

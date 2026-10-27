@@ -475,7 +475,6 @@ class TestAdminOrdersApi:
         item = body["items"][1]
         assert item["title"] == "У судьи на столе"
         assert item["author_nation_short_name"] == nation.short_name
-        assert item["author_nation_flag_id"] == nation.flag_id
         assert item["judge_vk_user_id"] == judge.vk_user_id
         assert item["status"] == "AWAITING_VERDICT"
         assert item["deadline_at"] is not None

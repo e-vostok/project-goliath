@@ -72,12 +72,11 @@ class TestSubmitService:
         assert row.number == 1
         assert row.author_player_id == player.id
         # INV-O6: the snapshot columns carry the nation's identity —
-        # full name, colour, short name and flag id at submission.
+        # full name, colour and short name at submission.
         assert row.nation_id == nation.id
         assert row.nation_name == "Северная Лига"
         assert row.nation_color == nation.color_hex
         assert row.nation_short_name == nation.short_name
-        assert row.nation_flag_id == nation.flag_id
         assert row.submitted_at is not None
         assert row.judge_player_id is None
 
@@ -113,9 +112,8 @@ class TestSubmitService:
         )
         assert view.nation_name == "Старое Имя"
         assert view.nation_color == "#336699"
-        # The frozen short name and flag id survive the rename too.
+        # The frozen short name survives the rename too.
         assert view.nation_short_name == old_short_name
-        assert view.nation_flag_id == "flag_placeholder_1"
 
     async def test_submit_without_nation_refused(self, test_db_session, orders_started):
         player = PlayerFactory.build(vk_user_id=770003, nations=[])
@@ -215,7 +213,7 @@ class TestSubmitHttp:
                 "name": nation.name,
                 "color": nation.color_hex,
                 "short_name": nation.short_name,
-                "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+                "flag_url": None,
             },
             "title": VALID_TITLE,
             "summary": VALID_SUMMARY,

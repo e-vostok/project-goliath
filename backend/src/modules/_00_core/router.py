@@ -21,14 +21,12 @@ from core.security.dependencies import get_current_player
 from core.security.jwt import issue_token
 from core.security.vk_signature import validate_launch_params
 from modules._00_core.calendar import compute_game_date, format_game_date
-from modules._00_core.catalog import flag_url, portrait_url
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError, NationNotFoundError
 from modules._00_core.models import GameClock, Nation, Player, Province
 from modules._00_core.nation_enums import GENDERS, SUCCESSION_TYPES
 from modules._00_core.schemas import (
     AuthResponseDTO,
-    CatalogItemDTO,
     ColorCheckDTO,
     ColorCheckRequest,
     GameClockDTO,
@@ -95,16 +93,14 @@ def _nation_public_fields(nation: Nation, province_ids: list[int]) -> dict:
         "color_hex": nation.color_hex,
         "motto": nation.motto,
         "description": nation.description,
-        "flag_id": nation.flag_id,
-        "flag_url": flag_url(nation.flag_id),
+        "flag_url": None,  # filled from unit 5 (images.image_url, INV-16)
         "province_ids": province_ids,
         "capital_province_id": nation.capital_province_id,
         "capital_name": nation.capital_name,
         "leader_name": nation.leader_name,
         "leader_title": nation.leader_title,
         "leader_bio": nation.leader_bio,
-        "portrait_id": nation.portrait_id,
-        "portrait_url": portrait_url(nation.portrait_id),
+        "portrait_url": None,  # filled from unit 5 (images.image_url, INV-16)
         "history_url": nation.history_url,
         "level": nation.owner.level,
         "judge_rating": nation.owner.judge_rating,
@@ -207,14 +203,6 @@ async def get_nation_rules(
         min_provinces=CORE_CONFIG.nation.min_provinces_per_nation,
         max_provinces=CORE_CONFIG.nation.max_provinces_per_nation,
         palette=CORE_CONFIG.color.palette,
-        flags=[
-            CatalogItemDTO(id=flag_id, url=flag_url(flag_id))
-            for flag_id in CORE_CONFIG.catalog.flag_ids
-        ],
-        portraits=[
-            CatalogItemDTO(id=portrait_id, url=portrait_url(portrait_id))
-            for portrait_id in CORE_CONFIG.catalog.portrait_ids
-        ],
         genders=list(GENDERS),
         succession_types=list(SUCCESSION_TYPES),
     )
@@ -289,8 +277,6 @@ async def create_nation(
         motto=body.motto,
         description=body.description,
         leader_bio=body.leader_bio,
-        flag_id=body.flag_id,
-        portrait_id=body.portrait_id,
         anthem_url=body.anthem_url,
     )
     await session.commit()
@@ -319,8 +305,6 @@ async def update_nations_me(
         motto=body.motto,
         description=body.description,
         leader_bio=body.leader_bio,
-        flag_id=body.flag_id,
-        portrait_id=body.portrait_id,
         anthem_url=body.anthem_url,
         capital_name=body.capital_name,
         config=CORE_CONFIG,

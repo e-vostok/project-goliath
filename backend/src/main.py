@@ -190,7 +190,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.11.0",
+    version="0.11.1",
     lifespan=lifespan,
 )
 
@@ -242,8 +242,6 @@ _ERROR_CODE_STATUS = {
     "MOTTO_INVALID": 422,
     "DESCRIPTION_INVALID": 422,
     "LEADER_BIO_INVALID": 422,
-    "FLAG_INVALID": 422,
-    "PORTRAIT_INVALID": 422,
     "CAPITAL_NAME_INVALID": 422,
     "CAPITAL_NOT_IN_PROVINCES": 422,
     "PROVINCE_NOT_LAND": 422,

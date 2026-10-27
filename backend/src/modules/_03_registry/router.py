@@ -3,7 +3,7 @@ HTTP routes of module 03_registry (Spec 5.1, 5.2, 5.6).
 
 Endpoints under ``/api/v1/registry`` behind the shared Bearer JWT
 dependency: the table descriptions (``Cache-Control: no-cache`` — the
-client revalidates the catalog), the rows of one table and the public
+client revalidates the list), the rows of one table and the public
 card of one player by his Registry row number
 (``Cache-Control: no-store`` — player data is never cached). Every
 logged-in player sees the same contents (INV-R10); the responses carry

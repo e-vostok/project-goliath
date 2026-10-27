@@ -74,9 +74,6 @@ class Order(Base):
     nation_name: Mapped[str] = mapped_column(String(100), nullable=False)
     nation_color: Mapped[str] = mapped_column(CHAR(7), nullable=False)
     nation_short_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    # Catalog flag id (same type as nations.flag_id); NULL for nations
-    # without a chosen flag.
-    nation_flag_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     title: Mapped[str] = mapped_column(String(TITLE_COLUMN_LENGTH), nullable=False)
     summary: Mapped[str] = mapped_column(String(SUMMARY_COLUMN_LENGTH), nullable=False)
     article_url: Mapped[str] = mapped_column(String(URL_COLUMN_LENGTH), nullable=False)

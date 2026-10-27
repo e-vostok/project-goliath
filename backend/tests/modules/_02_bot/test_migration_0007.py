@@ -198,6 +198,8 @@ class TestDowngradeRoundTrip:
         assert after == before - BOT_TABLES - {
             "orders",
             "registry_vk_profiles",
+            "registry_player_numbers",
+            "registry_number_counter",
             "admin_grants",
             "admin_audit_log",
         }
