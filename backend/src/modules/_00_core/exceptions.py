@@ -298,6 +298,30 @@ class RetiredProvinceHistoryError(CoreDomainError):
         )
 
 
+class ImageTooLargeError(CoreDomainError):
+    """Raised when an upload exceeds the byte/pixel/side limits (INV-18)."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Image is too large: {reason}", "IMAGE_TOO_LARGE")
+
+
+class ImageUnsupportedError(CoreDomainError):
+    """Raised when the file is not a JPEG, PNG or WebP or cannot be parsed."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Image is unsupported: {reason}", "IMAGE_UNSUPPORTED")
+
+
+class ImageOrientationInvalidError(CoreDomainError):
+    """Raised when a flag is not wider than tall or a portrait not taller
+    than wide (checked on the size after the EXIF rotation)."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Image orientation is invalid: {reason}", "IMAGE_ORIENTATION_INVALID"
+        )
+
+
 class FrequencyCapExceededError(CoreDomainError):
     """Raised when an action frequency cap is exceeded."""
 

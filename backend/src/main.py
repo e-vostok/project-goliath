@@ -32,6 +32,7 @@ from core.tick.scheduler import scheduler_loop
 from modules._00_core.admin_hooks import register_admin_hooks
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
+from modules._00_core.images import check_image_support
 from modules._00_core.router import router as core_router
 from modules._00_core.tick_handler import register_tick_handlers
 from modules._00_core.tick_recovery import recover_interrupted_ticks
@@ -110,6 +111,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except FileNotFoundError as e:
         print(f"Configuration file not found: {e}")
         raise
+
+    # Fail fast: без кодеков Pillow приём картинок государства невозможен.
+    check_image_support()
 
     init_engine(os.environ["DATABASE_URL"])
 
@@ -190,7 +194,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.11.2",
+    version="0.11.3",
     lifespan=lifespan,
 )
 
