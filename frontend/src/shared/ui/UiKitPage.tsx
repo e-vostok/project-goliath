@@ -362,7 +362,6 @@ export function UiKitPage() {
           >
             <NationLabel
               name="НВГ"
-              flagUrl="/assets/nations/flags/flag_placeholder_1.png"
               color="#2b2db0"
               size="cell"
             />
@@ -370,7 +369,6 @@ export function UiKitPage() {
             <NationLabel name="Безвестная вотчина" size="cell" />
             <NationLabel
               name="Новгородская республика"
-              flagUrl="/assets/nations/flags/flag_placeholder_1.png"
               color="#2b2db0"
               size="tip"
             />

@@ -14,14 +14,14 @@ describe('NationLabel', () => {
     const { container } = render(
       <NationLabel
         name="НВГ"
-        flagUrl="/assets/nations/flags/f1.png"
+        flagUrl="/test-img/f1.png"
         color="#C0392B"
         size="cell"
       />,
     );
 
     const img = container.querySelector('img')!;
-    expect(img).toHaveAttribute('src', '/assets/nations/flags/f1.png');
+    expect(img).toHaveAttribute('src', '/test-img/f1.png');
     expect(img).toHaveAttribute('width', '22');
     expect(img).toHaveAttribute('height', '14');
     expect(screen.getByText('НВГ')).toBeInTheDocument();
@@ -31,7 +31,7 @@ describe('NationLabel', () => {
     const { container } = render(
       <NationLabel
         name="НВГ"
-        flagUrl="/assets/nations/flags/broken.png"
+        flagUrl="/test-img/broken.png"
         color="#C0392B"
         size="cell"
       />,

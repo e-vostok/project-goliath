@@ -22,8 +22,7 @@
  * carries only the changed fields (`toUpdateRequest`), a cleared
  * optional field goes as an empty string, and a legacy nation may be
  * saved partially — its missing mandatory fields do not block the
- * rest; a legacy NULL flag/portrait shows the first catalog tile
- * selected, so the first save already carries its id. The bot-consent
+ * rest. The bot-consent
  * row lives as one compact row at the bottom of the edit view — it was
  * reachable only from this card before.
  */
@@ -98,24 +97,6 @@ export function PanelNationHome({
     Partial<Record<NationField, string>>
   >({});
   const [formError, setFormError] = useState<string | null>(null);
-
-  // Legacy NULL flag/portrait (pre-catalog nations): the edit form
-  // always shows a tile selected — the first catalog entry — so the
-  // first save already carries `flag_id`/`portrait_id` even when the
-  // player changed nothing else (UI Spec 9.6, unit 8c).
-  useEffect(() => {
-    if (!editing || rules === null) {
-      return;
-    }
-    setForm((prev) => {
-      const flagId = prev.flagId ?? rules.flags[0]?.id ?? null;
-      const portraitId = prev.portraitId ?? rules.portraits[0]?.id ?? null;
-      if (flagId === prev.flagId && portraitId === prev.portraitId) {
-        return prev;
-      }
-      return { ...prev, flagId, portraitId };
-    });
-  }, [editing, rules]);
 
   // PATCH body — only fields whose normalized value actually changed.
   const changes = toUpdateRequest(form, nation);

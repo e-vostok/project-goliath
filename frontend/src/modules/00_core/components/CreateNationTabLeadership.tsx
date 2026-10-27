@@ -1,8 +1,6 @@
 /**
  * Tab 2 «Глава государства» of the registration window (UI Spec 9.6 —
- * version 0.9.0 unit 8c): the portrait catalog row (a portrait is
- * ALWAYS selected — no «Без портрета», the first catalog portrait is
- * preselected and stands in for a legacy NULL portrait), then one row
+ * version 0.9.0 unit 8c): one row
  * «Имя лидера *» + «Должность лидера *» + «Пол *» (two small square
  * icon buttons — the Mars spear and the Venus mirror, one active at a
  * time), the optional «Биография лидера» TextArea of three lines, and
@@ -109,62 +107,11 @@ export function CreateNationTabLeadership({
 
   return (
     <>
-      <div data-testid="form-item-portrait">
-        <FieldLabel label="Портрет" required />
-        {rules !== null && rules.portraits.length === 0 ? (
-          <div
-            style={{
-              ...TEXT_STYLES['caption'],
-              color: tokenVar('ink-muted'),
-            }}
-          >
-            Портреты появятся позже
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {(rules?.portraits ?? []).map((portrait) => {
-              const selected = form.portraitId === portrait.id;
-              return (
-                <button
-                  key={portrait.id}
-                  type="button"
-                  aria-pressed={selected}
-                  aria-label={portrait.id}
-                  onClick={() => onFieldChange('portraitId', portrait.id)}
-                  style={{
-                    width: 90,
-                    height: 120,
-                    padding: 0,
-                    border: 'none',
-                    borderRadius: RADII['radius-md'],
-                    background: 'none',
-                    cursor: 'pointer',
-                    position: 'relative',
-                    ...(selected ? selectedTile : {}),
-                  }}
-                >
-                  <img
-                    src={portrait.url}
-                    alt={portrait.id}
-                    width={90}
-                    height={120}
-                    style={{ display: 'block', borderRadius: RADII['radius-md'] }}
-                  />
-                  {selected && <PickCheck />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <FieldMessage error={errors.portraitId} />
-      </div>
-
       <div
         style={{
           display: 'flex',
           gap: 16,
           alignItems: 'flex-end',
-          marginTop: 16,
         }}
       >
         <div style={{ flex: '1 1 0', minWidth: 0 }}>

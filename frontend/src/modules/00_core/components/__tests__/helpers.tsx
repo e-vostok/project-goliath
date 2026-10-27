@@ -80,10 +80,6 @@ export const RULES: NationRulesDTO = {
   min_provinces: 3,
   max_provinces: 3,
   palette: ['#102030', '#a0b0c0'],
-  flags: [{ id: 'flag_stub', url: '/assets/nations/flags/flag_stub.png' }],
-  portraits: [
-    { id: 'portrait_stub', url: '/assets/nations/portraits/portrait_stub.png' },
-  ],
   genders: ['male', 'female'],
   succession_types: ['elections', 'appointment', 'criteria', 'inheritance'],
 };
@@ -293,8 +289,7 @@ const SEEDED_PROVINCES: ChipOption[] = [1005, 1006, 1007].map((id) => ({
 
 /**
  * A RegistrationForm with every required field filled (the optional
- * texts stay empty, flag and portrait get the stub catalog ids — both
- * are mandatory on create since 0.9.0, no capital mark — the server
+ * texts stay empty, no capital mark — the server
  * defaults the capital to the first province). The UI cannot reach some
  * fields until Issues 13–15, so tests that need an enabled submit seed
  * this through the v2 draft.
@@ -308,12 +303,10 @@ export function completeRegistrationForm(
     color: '#e64545',
     motto: '',
     description: '',
-    flagId: 'flag_stub',
     leaderName: 'Иван Грозный',
     gender: 'male',
     leaderTitle: 'Верховный правитель',
     leaderBio: '',
-    portraitId: 'portrait_stub',
     successionType: 'elections',
     historyUrl: 'https://vk.com/@testia-istoriya',
     provinces: SEEDED_PROVINCES.map((chip) => ({ ...chip })),

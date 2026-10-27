@@ -3,7 +3,7 @@
  * docs/06_DESIGN/0.11.0 screen 05.
  *
  * The card «Приказы» (caption «Судью видят только администраторы»)
- * lists one page of GET /admin/orders: № / Название / Автор (flag +
+ * lists one page of GET /admin/orders: № / Название / Автор (flag stub +
  * short name) / Судья (name or «—») / Статус (badge «Нет судьи» /
  * «Ждёт вердикта», a red «Просрочен» on top of it when `overdue`,
  * green «Вердикт вынесен») / action («Переназначить…» on an assigned
@@ -287,22 +287,9 @@ function StatusBadge({ order }: { order: AdminOrderDTO }) {
   );
 }
 
-/** The 24×16 author-nation flag of an order row; a stub when none. */
-function FlagCell({ flagId }: { flagId: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (flagId === null || failed) {
-    return <FlagStub variant="cell" />;
-  }
-  return (
-    <img
-      src={`/assets/nations/flags/${flagId}.png`}
-      alt=""
-      width={24}
-      height={16}
-      onError={() => setFailed(true)}
-      style={{ display: 'block', borderRadius: RADII['radius-sm'] }}
-    />
-  );
+/** The 24×16 author-nation flag of an order row — a stub until the upload lands. */
+function FlagCell() {
+  return <FlagStub variant="cell" />;
 }
 
 /** The .warn caution block of the judge popup. */
@@ -1048,7 +1035,7 @@ export function OrdersSection() {
                           gap: 10,
                         }}
                       >
-                        <FlagCell flagId={order.author_nation_flag_id} />
+                        <FlagCell />
                         <span>{order.author_nation_short_name}</span>
                       </span>
                     ) : (

@@ -1,7 +1,7 @@
 /**
  * NationCardHeader — the screen title of the «Штаб» card (UI Spec
  * 9.1, mockup «PAX ATOMICA — макеты окон» board 8): flag 96×64
- * (`FlagStub` for a legacy nation without one), the short name as the
+ * (`FlagStub` when the nation has no uploaded flag), the short name as the
  * small label line above the name — always shown, no «Кратко:» words —
  * the name in `display-lg`, the motto in italics when set, the colour
  * swatch with HEX, and the «Изменить» button on the right (the pencil

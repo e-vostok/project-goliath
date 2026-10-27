@@ -11,9 +11,7 @@
  * buttons.
  *
  * The current tab and every field value live in this container as one
- * `RegistrationForm` object; a flag and a portrait are ALWAYS selected
- * — an unset pick falls onto the first catalog entry as soon as
- * `GET /nations/rules` arrives (the anthem field is gone; `anthem_url`
+ * `RegistrationForm` object (the anthem field is gone; `anthem_url`
  * is never sent).
  *
  * Provinces are picked on the map — the «Выбрать на карте» button on
@@ -136,24 +134,6 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   >({});
   const [formError, setFormError] = useState<string | null>(null);
 
-  // A flag and a portrait are ALWAYS selected (UI Spec 9.6): as soon as
-  // the catalog arrives an unset pick falls onto the first entry — a
-  // new form starts preselected, a legacy draft with NULL stands on the
-  // first tile too.
-  useEffect(() => {
-    if (rules === null) {
-      return;
-    }
-    setForm((prev) => {
-      const flagId = prev.flagId ?? rules.flags[0]?.id ?? null;
-      const portraitId = prev.portraitId ?? rules.portraits[0]?.id ?? null;
-      if (flagId === prev.flagId && portraitId === prev.portraitId) {
-        return prev;
-      }
-      return { ...prev, flagId, portraitId };
-    });
-  }, [rules]);
-
   const clearFieldError = (field: NationField) =>
     setFieldErrors((prev) => {
       if (!(field in prev)) {
@@ -228,8 +208,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   }
 
   // Mirror the form into the session draft — only once the player
-  // edited it (the auto-picked first flag/portrait alone is not a
-  // draft); a form back to pristine drops the entry.
+  // edited it; a form back to pristine drops the entry.
   useEffect(() => {
     if (!touched || registrationFormIsEmpty(form)) {
       clearDraft();

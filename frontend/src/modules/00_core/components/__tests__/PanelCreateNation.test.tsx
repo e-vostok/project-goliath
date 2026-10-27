@@ -442,7 +442,6 @@ describe('PanelCreateNation — submit', () => {
         color_hex: '#E64545',
         motto: 'Мы победим',
         description: null,
-        flag_id: 'flag_stub',
         province_ids: [1005, 1006, 1007],
         capital_province_id: null,
         capital_name: 'Столицево',
@@ -450,12 +449,14 @@ describe('PanelCreateNation — submit', () => {
         gender: 'male',
         leader_title: 'Верховный правитель',
         leader_bio: null,
-        portrait_id: 'portrait_stub',
         succession_type: 'elections',
         history_url: 'https://vk.com/@testia-istoriya',
       },
     ]);
     expect(bodies[0]).not.toHaveProperty('anthem_url');
+    // 0.12.0 unit 4: no catalog ids ever leave the form.
+    expect(bodies[0]).not.toHaveProperty('flag_id');
+    expect(bodies[0]).not.toHaveProperty('portrait_id');
     // The shared success bar reports «Государство создано» (UI Spec 7).
     expect(await screen.findByTestId('notice')).toHaveTextContent(
       'Государство создано',
@@ -464,16 +465,7 @@ describe('PanelCreateNation — submit', () => {
 });
 
 describe('PanelCreateNation — tab 1 symbols', () => {
-  it('no «Без флага» tile — the first catalog flag is always selected', async () => {
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
-
-    // Once the catalog lands, the first flag stands selected on a NEW form.
-    const flag = await screen.findByRole('button', { name: 'flag_stub' });
-    await waitFor(() => expect(flag).toHaveAttribute('aria-pressed', 'true'));
-    expect(screen.queryByText('Без флага')).not.toBeInTheDocument();
-  });
-
-  it('debounced color-check hint, palette swatch fills HEX, flag + upper-case color submit', async () => {
+  it('debounced color-check hint, palette swatch fills HEX, upper-case color submit', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const bodies: unknown[] = [];
@@ -486,14 +478,14 @@ describe('PanelCreateNation — tab 1 symbols', () => {
           return HttpResponse.json(NATION, { status: 201 });
         }),
       );
-      seedRegistrationDraft({ color: '', flagId: null });
+      seedRegistrationDraft({ color: '' });
       const user = userEvent.setup({
         advanceTimers: vi.advanceTimersByTime,
       });
       renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
 
       const hexInput = await screen.findByLabelText('Цвет государства');
-      // Wait for the rules so the palette and flag grids render.
+      // Wait for the rules so the palette grid renders.
       const swatch = await screen.findByTestId('color-swatch-#102030');
 
       // A typed valid HEX calls color-check only after the debounce.
@@ -512,15 +504,13 @@ describe('PanelCreateNation — tab 1 symbols', () => {
       await user.click(swatch);
       expect(hexInput).toHaveValue(RULES.palette[0]);
 
-      // A flag pick then submit sends flag_id and an upper-case
+      // Submit sends an upper-case
       // color_hex — the «слишком похож» hint never blocks the button.
-      await user.click(screen.getByRole('button', { name: 'flag_stub' }));
       fireEvent.change(hexInput, { target: { value: 'a1b2c3' } });
       await goToTab(user, 4);
       await user.click(submitButton());
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({
-        flag_id: 'flag_stub',
         color_hex: '#A1B2C3',
       });
     } finally {
@@ -530,20 +520,6 @@ describe('PanelCreateNation — tab 1 symbols', () => {
 });
 
 describe('PanelCreateNation — tab 2 leadership', () => {
-  it('no «Без портрета» tile — the first catalog portrait is always selected', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
-    await goToTab(user, 2);
-
-    const portrait = await screen.findByRole('button', {
-      name: 'portrait_stub',
-    });
-    await waitFor(() =>
-      expect(portrait).toHaveAttribute('aria-pressed', 'true'),
-    );
-    expect(screen.queryByText('Без портрета')).not.toBeInTheDocument();
-  });
-
   it('«Пол» is two small icon buttons — Mars first, one active at a time', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
@@ -573,7 +549,7 @@ describe('PanelCreateNation — tab 2 leadership', () => {
     ).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('portrait, gender and a succession card submit their codes; the four cards form one radio group', async () => {
+  it('gender and a succession card submit their codes; the four cards form one radio group', async () => {
     const bodies: unknown[] = [];
     server.use(
       http.post('*/api/v1/nations', async ({ request }) => {
@@ -581,18 +557,13 @@ describe('PanelCreateNation — tab 2 leadership', () => {
         return HttpResponse.json(NATION, { status: 201 });
       }),
     );
-    // All required fields filled except the three picked on tab 2.
-    seedRegistrationDraft({ portraitId: null, gender: '', successionType: '' });
+    // All required fields filled except gender and succession on tab 2.
+    seedRegistrationDraft({ gender: '', successionType: '' });
     const onCreated = vi.fn();
     const user = userEvent.setup();
     renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
     await goToTab(user, 2);
 
-    // The grids render once GET /nations/rules has landed (the NULL
-    // portrait of the seed already stands on the first catalog tile).
-    await user.click(
-      await screen.findByRole('button', { name: 'portrait_stub' }),
-    );
     const genderItem = screen.getByTestId('form-item-gender');
     await user.click(
       within(genderItem).getByRole('radio', { name: 'Женский' }),
@@ -644,7 +615,6 @@ describe('PanelCreateNation — tab 2 leadership', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
     expect(bodies).toEqual([
       expect.objectContaining({
-        portrait_id: 'portrait_stub',
         gender: 'female',
         succession_type: 'criteria',
       }),
@@ -1048,13 +1018,11 @@ describe('mapErrorCodeToField', () => {
     expect(mapErrorCodeToField('DESCRIPTION_INVALID')).toBe('description');
     expect(mapErrorCodeToField('COLOR_TAKEN')).toBe('color');
     expect(mapErrorCodeToField('COLOR_TOO_CLOSE')).toBe('color');
-    expect(mapErrorCodeToField('FLAG_INVALID')).toBe('flagId');
     // Tab 2.
     expect(mapErrorCodeToField('LEADER_NAME_INVALID')).toBe('leaderName');
     expect(mapErrorCodeToField('GENDER_INVALID')).toBe('gender');
     expect(mapErrorCodeToField('LEADER_TITLE_INVALID')).toBe('leaderTitle');
     expect(mapErrorCodeToField('LEADER_BIO_INVALID')).toBe('leaderBio');
-    expect(mapErrorCodeToField('PORTRAIT_INVALID')).toBe('portraitId');
     expect(mapErrorCodeToField('SUCCESSION_INVALID')).toBe('successionType');
     // Tab 3 — history only; the anthem code maps nowhere (generic
     // banner) — the interface no longer has the field.
@@ -1089,7 +1057,6 @@ describe('fieldToTab', () => {
       'color',
       'motto',
       'description',
-      'flagId',
     ] as const) {
       expect(fieldToTab(field)).toBe(1);
     }
@@ -1098,7 +1065,6 @@ describe('fieldToTab', () => {
       'gender',
       'leaderTitle',
       'leaderBio',
-      'portraitId',
       'successionType',
     ] as const) {
       expect(fieldToTab(field)).toBe(2);
