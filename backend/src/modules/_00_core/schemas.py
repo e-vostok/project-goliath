@@ -65,8 +65,8 @@ class NationDTO(BaseModel):
     Nation representation (Spec Part 5). None on mandatory fields only
     for nations created before the profile/0.8.0 migrations — except
     ``short_name``, which is mandatory since migration 0012; None on
-    optional fields means "not set". ``flag_url``/``portrait_url`` are
-    always None until unit 5 fills them from the uploaded images.
+    optional fields means "not set". The four ``*_url`` picture fields
+    are None until the nation uploads the image (0.12.0 unit 5b).
     """
 
     id: uuid.UUID
@@ -78,6 +78,7 @@ class NationDTO(BaseModel):
     motto: str | None
     description: str | None
     flag_url: str | None
+    flag_thumb_url: str | None
     province_ids: list[int]
     capital_province_id: int | None
     capital_name: str | None
@@ -86,6 +87,7 @@ class NationDTO(BaseModel):
     leader_title: str | None
     leader_bio: str | None
     portrait_url: str | None
+    portrait_thumb_url: str | None
     succession_type: str | None
     history_url: str | None
     # не используется с 0.9.0, снятие — бэклог 00_core
@@ -113,6 +115,7 @@ class NationPublicDTO(BaseModel):
     motto: str | None
     description: str | None
     flag_url: str | None
+    flag_thumb_url: str | None
     province_ids: list[int]
     capital_province_id: int | None
     capital_name: str | None
@@ -120,9 +123,18 @@ class NationPublicDTO(BaseModel):
     leader_title: str | None
     leader_bio: str | None
     portrait_url: str | None
+    portrait_thumb_url: str | None
     history_url: str | None
     level: int
     judge_rating: int
+
+
+class NationImageDTO(BaseModel):
+    """Answer of PUT /api/v1/nations/me/images/{kind} (Spec Part 5)."""
+
+    kind: str
+    url: str
+    thumb_url: str
 
 
 class NationCreateRequest(BaseModel):
@@ -148,6 +160,17 @@ class NationCreateRequest(BaseModel):
     @classmethod
     def check_name_length(cls, value: str) -> str:
         return _validate_nation_name(value)
+
+
+class NationRulesImagesDTO(BaseModel):
+    """The upload limits the nation form needs for its image hints
+    (Spec Part 5): the exact output sizes and the body cutoff."""
+
+    flag_width: int
+    flag_height: int
+    portrait_width: int
+    portrait_height: int
+    max_upload_bytes: int
 
 
 class NationUpdateRequest(BaseModel):
@@ -207,6 +230,7 @@ class NationRulesDTO(BaseModel):
     min_provinces: int
     max_provinces: int
     palette: list[str]
+    images: NationRulesImagesDTO
     genders: list[str]
     succession_types: list[str]
 

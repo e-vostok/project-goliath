@@ -14,8 +14,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core import images
 from modules._00_core.color_policy import oklab_distance
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
@@ -52,6 +54,7 @@ from modules._00_core.hooks import (
 from modules._00_core.models import (
     GameClock,
     Nation,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -201,6 +204,39 @@ class NationRegistryRow:
 
 
 ColorStatus = Literal["OK", "TAKEN", "TOO_CLOSE"]
+
+
+@dataclass(frozen=True)
+class NationImageView:
+    """The result of ``NationService.replace_image`` — the new content
+    key and timestamp of the row after the replace."""
+
+    kind: str
+    sha256: str
+    uploaded_at: datetime
+
+
+@dataclass(frozen=True)
+class NationImageRefs:
+    """The public picture references of one nation (Spec Part 2
+    «Публичное представление картинок»): the sha256 content keys —
+    None for a picture the nation never uploaded. Satellites and the
+    nation DTOs turn them into URLs only via ``images.image_url``
+    (INV-16)."""
+
+    flag_sha256: str | None
+    portrait_sha256: str | None
+
+
+@dataclass(frozen=True)
+class NationImageInfo:
+    """One picture of a nation for the admin panel (Spec Part 2
+    «Картинки в панели»): ready URLs plus who uploaded it and when."""
+
+    url: str
+    thumb_url: str
+    uploaded_at: datetime
+    uploaded_by_player_id: str | None
 
 
 @dataclass(frozen=True)
@@ -703,6 +739,22 @@ class GameClockService:
             last_tick_at=clock.last_tick_at,
             next_tick_at=clock.next_tick_at,
         )
+
+
+def _apply_image(
+    row: NationImage,
+    processed: images.ProcessedImage,
+    player_id: str,
+    uploaded_at: datetime,
+) -> None:
+    """Rewrite an existing nation_images row with the new processed
+    content — the previous bytes and hash are gone at flush."""
+    row.sha256 = processed.sha256
+    row.full_bytes = processed.full
+    row.thumb_bytes = processed.thumb
+    row.byte_size = processed.byte_size
+    row.uploaded_by_player_id = player_id
+    row.uploaded_at = uploaded_at
 
 
 async def _take_nations_lock(session: AsyncSession) -> None:
@@ -1268,6 +1320,162 @@ class NationService:
         )
 
     @staticmethod
+    async def replace_image(
+        session: AsyncSession,
+        nation_id: str,
+        player_id: str,
+        kind: str,
+        processed: images.ProcessedImage,
+    ) -> NationImageView:
+        """
+        Insert or replace the nation's picture row of ``kind`` (INV-15).
+
+        Runs inside the caller's transaction and never commits: a
+        replacement rewrites the row, so the previous content is gone
+        immediately and its sha256 URL turns 404 on commit. Race-safe
+        under two concurrent uploads of the same kind: the unique key
+        (nation_id, kind) turns the loser's INSERT into an
+        IntegrityError, which is retried once as an UPDATE inside a
+        SAVEPOINT — portable between PostgreSQL and SQLite.
+        """
+        row = (
+            await session.execute(
+                select(NationImage).where(
+                    NationImage.nation_id == nation_id,
+                    NationImage.kind == kind,
+                )
+            )
+        ).scalar_one_or_none()
+        now = datetime.now(UTC)
+
+        if row is None:
+            try:
+                # INSERT through a SAVEPOINT (Core insert, not a pending
+                # ORM object — a rolled-back savepoint must not leave
+                # anything to retry): on the unique-key loss the
+                # transaction stays usable on both dialects.
+                async with session.begin_nested():
+                    await session.execute(
+                        insert(NationImage).values(
+                            nation_id=nation_id,
+                            kind=kind,
+                            sha256=processed.sha256,
+                            full_bytes=processed.full,
+                            thumb_bytes=processed.thumb,
+                            byte_size=processed.byte_size,
+                            uploaded_by_player_id=player_id,
+                            uploaded_at=now,
+                        )
+                    )
+            except IntegrityError:
+                # A concurrent upload of the same kind won the INSERT
+                # race; its committed row is now visible — update it
+                # instead of failing (INV-15 holds either way).
+                row = (
+                    await session.execute(
+                        select(NationImage).where(
+                            NationImage.nation_id == nation_id,
+                            NationImage.kind == kind,
+                        )
+                    )
+                ).scalar_one()
+                _apply_image(row, processed, player_id, now)
+        else:
+            _apply_image(row, processed, player_id, now)
+            await session.flush()
+
+        return NationImageView(
+            kind=kind, sha256=processed.sha256, uploaded_at=now
+        )
+
+    @staticmethod
+    async def image_refs(
+        session: AsyncSession, nation_ids: Iterable[str]
+    ) -> dict[str, NationImageRefs]:
+        """
+        The public picture references of the given nations — ONE query
+        for any number of ids (Spec Part 2 «Публичное представление
+        картинок», INV-16). Every requested id is present in the
+        result; a nation without pictures gets both fields None.
+        Read-only and never commits.
+        """
+        ids = list(dict.fromkeys(nation_ids))
+        refs = {
+            nation_id: NationImageRefs(
+                flag_sha256=None, portrait_sha256=None
+            )
+            for nation_id in ids
+        }
+        if not ids:
+            return refs
+        result = await session.execute(
+            select(NationImage.nation_id, NationImage.kind, NationImage.sha256)
+            .where(NationImage.nation_id.in_(ids))
+        )
+        for nation_id, kind, sha256 in result.all():
+            current = refs[nation_id]
+            if kind == "flag":
+                refs[nation_id] = NationImageRefs(
+                    flag_sha256=sha256,
+                    portrait_sha256=current.portrait_sha256,
+                )
+            else:
+                refs[nation_id] = NationImageRefs(
+                    flag_sha256=current.flag_sha256,
+                    portrait_sha256=sha256,
+                )
+        return refs
+
+    @staticmethod
+    async def image_info(
+        session: AsyncSession, nation_id: str
+    ) -> dict[str, NationImageInfo | None]:
+        """
+        The admin-panel description of the nation's pictures (Spec
+        Part 2 «Картинки в панели»): ``{"flag": …, "portrait": …}``
+        with ready URLs, the upload timestamp and the uploader — None
+        for a kind the nation never uploaded. Read-only and never
+        commits.
+        """
+        result = await session.execute(
+            select(NationImage).where(NationImage.nation_id == nation_id)
+        )
+        info: dict[str, NationImageInfo | None] = {
+            "flag": None,
+            "portrait": None,
+        }
+        for row in result.scalars().all():
+            info[row.kind] = NationImageInfo(
+                url=images.image_url(row.sha256, "full"),
+                thumb_url=images.image_url(row.sha256, "thumb"),
+                uploaded_at=row.uploaded_at,
+                uploaded_by_player_id=row.uploaded_by_player_id,
+            )
+        return info
+
+    @staticmethod
+    async def image_bytes(
+        session: AsyncSession, sha256: str, variant: str
+    ) -> bytes | None:
+        """
+        The stored WebP body of ``variant`` (``full`` | ``thumb``) of
+        any row carrying ``sha256`` — the read behind
+        GET /images/{sha256}/{variant}. Rows of different nations may
+        share one hash; the bytes are identical by construction, so
+        LIMIT 1 is enough. None when no row carries the hash.
+        Read-only and never commits.
+        """
+        column = (
+            NationImage.full_bytes
+            if variant == "full"
+            else NationImage.thumb_bytes
+        )
+        result = await session.execute(
+            select(column).where(NationImage.sha256 == sha256).limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def delete(session: AsyncSession, nation_id: str) -> None:
         """
         Delete a nation and free its provinces.
@@ -1304,6 +1512,13 @@ class NationService:
         )
         for action in result.scalars().all():
             action.nation_id = None
+
+        # INV-19: remove the nation's uploaded pictures explicitly
+        # BEFORE the nations row — the FK cascade is only a PostgreSQL
+        # safety net; SQLite may run without enforced foreign keys.
+        await session.execute(
+            delete(NationImage).where(NationImage.nation_id == nation_id)
+        )
 
         # Delete the nation
         await session.delete(nation)
