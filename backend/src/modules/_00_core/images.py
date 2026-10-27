@@ -130,8 +130,14 @@ def process_image(
         raise ValueError(f"unknown image kind: {kind!r}")
 
     # (a) Тип — по сигнатуре файла; имя файла и Content-Type не участвуют.
+    # DecompressionBombError Pillow выбрасывает уже на open по размеру из
+    # заголовка — это переполнение лимита, а не «непонятный файл» (413).
     try:
         probe = Image.open(io.BytesIO(raw), formats=_ALLOWED_FORMATS)
+    except Image.DecompressionBombError as exc:
+        raise ImageTooLargeError(
+            "declared pixel count is beyond the decoder safety limit"
+        ) from exc
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
         raise ImageUnsupportedError("not a JPEG, PNG or WebP file") from exc
 
@@ -168,15 +174,18 @@ def process_image(
             )
 
         # (d) Распаковка: JPEG читается в режиме draft — уменьшенной
-        # распаковки, у которой результат всё ещё покрывает область
-        # обрезки; пик памяти перестаёт зависеть от размера источника.
-        # У анимированных PNG/WebP берётся только первый кадр.
+        # распаковки. Запрашивается ЦЕЛЕВОЙ размер (для повёрнутых по EXIF
+        # — перевернутый: сохранённый кадр повёрнут относительно показа):
+        # результат не меньше целевого в обеих сторонах, значит
+        # центральная обрезка пропорции цели в него точно помещается, а
+        # пик памяти перестаёт зависеть от размера источника (исследование
+        # docs/05_RESEARCH/images_0.12.0.md). У анимированных PNG/WebP
+        # берётся только первый кадр.
         try:
-            cover_w, cover_h = _cover_crop_size(disp_w, disp_h, target_w, target_h)
             draft_size = (
-                (cover_h, cover_w)
+                (target_h, target_w)
                 if exif_orientation in _TRANSPOSE_ORIENTATIONS
-                else (cover_w, cover_h)
+                else (target_w, target_h)
             )
             if getattr(probe, "is_animated", False):
                 probe.seek(0)
@@ -185,6 +194,10 @@ def process_image(
             if img is None:
                 img = probe
             img.load()
+        except Image.DecompressionBombError as exc:
+            raise ImageTooLargeError(
+                "declared pixel count is beyond the decoder safety limit"
+            ) from exc
         except Exception as exc:
             raise ImageUnsupportedError("file cannot be decoded") from exc
 
