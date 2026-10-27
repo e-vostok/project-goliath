@@ -7,6 +7,8 @@
 export const SUCCESS_RU = {
   nationCreated: 'Государство создано',
   nationSaved: 'Изменения сохранены',
+  flagUploaded: 'Флаг загружен',
+  portraitUploaded: 'Портрет загружен',
   orderSubmitted: (orderNumber: number): string =>
     `Приказ №${orderNumber} подан`,
   verdictSubmitted: (orderNumber: number): string =>

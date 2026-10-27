@@ -33,6 +33,7 @@ export interface NationDTO {
   motto: string | null;
   description: string | null;
   flag_url: string | null;
+  flag_thumb_url: string | null;
   province_ids: number[];
   capital_province_id: number | null;
   capital_name: string | null;
@@ -42,6 +43,7 @@ export interface NationDTO {
   leader_title: string | null;
   leader_bio: string | null;
   portrait_url: string | null;
+  portrait_thumb_url: string | null;
   succession_type: string | null;
   history_url: string | null;
   anthem_url: string | null;
@@ -65,6 +67,7 @@ export interface NationPublicDTO {
   motto: string | null;
   description: string | null;
   flag_url: string | null;
+  flag_thumb_url: string | null;
   province_ids: number[];
   capital_province_id: number | null;
   capital_name: string | null;
@@ -72,9 +75,17 @@ export interface NationPublicDTO {
   leader_title: string | null;
   leader_bio: string | null;
   portrait_url: string | null;
+  portrait_thumb_url: string | null;
   history_url: string | null;
   level: number;
   judge_rating: number;
+}
+
+/** Answer of PUT /nations/me/images/{kind} (Spec Part 5). */
+export interface NationImageDTO {
+  kind: 'flag' | 'portrait';
+  url: string;
+  thumb_url: string;
 }
 
 export interface NationCreateRequest {
@@ -111,6 +122,15 @@ export interface NationUpdateRequest {
   anthem_url?: string | null;
 }
 
+/** The upload limits inside NationRulesDTO.images (Spec Part 5). */
+export interface NationRulesImagesDTO {
+  flag_width: number;
+  flag_height: number;
+  portrait_width: number;
+  portrait_height: number;
+  max_upload_bytes: number;
+}
+
 export interface NationRulesDTO {
   name_min_length: number;
   name_max_length: number;
@@ -132,6 +152,7 @@ export interface NationRulesDTO {
   min_provinces: number;
   max_provinces: number;
   palette: string[];
+  images: NationRulesImagesDTO;
   genders: string[];
   succession_types: string[];
 }
@@ -602,6 +623,9 @@ export const ErrorCodes = {
   ANTHEM_URL_INVALID: 'ANTHEM_URL_INVALID',
   CAPITAL_NAME_INVALID: 'CAPITAL_NAME_INVALID',
   CAPITAL_NOT_IN_PROVINCES: 'CAPITAL_NOT_IN_PROVINCES',
+  IMAGE_TOO_LARGE: 'IMAGE_TOO_LARGE',
+  IMAGE_UNSUPPORTED: 'IMAGE_UNSUPPORTED',
+  IMAGE_ORIENTATION_INVALID: 'IMAGE_ORIENTATION_INVALID',
   INVALID_SIGNATURE: 'INVALID_SIGNATURE',
   TIMESTAMP_EXPIRED: 'TIMESTAMP_EXPIRED',
   UNAUTHORIZED: 'UNAUTHORIZED',

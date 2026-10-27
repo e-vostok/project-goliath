@@ -28,6 +28,7 @@ const NATION: NationPublicDTO = {
   motto: 'Слово и дело',
   description: 'Вольный город на севере.',
   flag_url: null,
+  flag_thumb_url: null,
   // 1002 «Бета» is listed before the capital 1001 «Альфа» on purpose —
   // the territory block must move the capital first.
   province_ids: [1002, 1001],
@@ -37,6 +38,7 @@ const NATION: NationPublicDTO = {
   leader_title: 'Князь',
   leader_bio: null,
   portrait_url: null,
+  portrait_thumb_url: null,
   history_url: 'https://vk.com/@novgorod-history',
   level: 3,
   judge_rating: 12,

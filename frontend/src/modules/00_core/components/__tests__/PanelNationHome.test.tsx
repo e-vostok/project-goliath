@@ -48,6 +48,7 @@ const NATION: NationDTO = {
   motto: null,
   description: null,
   flag_url: null,
+  flag_thumb_url: null,
   // Mini-map ids — the chips must show manifest names, never numbers.
   province_ids: [1002, 1001],
   capital_province_id: 1001,
@@ -57,6 +58,7 @@ const NATION: NationDTO = {
   leader_title: 'Верховный правитель',
   leader_bio: null,
   portrait_url: null,
+  portrait_thumb_url: null,
   succession_type: 'elections',
   history_url: 'https://vk.com/@testia-istoriya',
   anthem_url: null,
