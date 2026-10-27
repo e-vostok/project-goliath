@@ -150,6 +150,13 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
         "min_provinces": nation_cfg.min_provinces_per_nation,
         "max_provinces": nation_cfg.max_provinces_per_nation,
         "palette": CORE_CONFIG.color.palette,
+        "images": {
+            "flag_width": CORE_CONFIG.images.flag_width,
+            "flag_height": CORE_CONFIG.images.flag_height,
+            "portrait_width": CORE_CONFIG.images.portrait_width,
+            "portrait_height": CORE_CONFIG.images.portrait_height,
+            "max_upload_bytes": CORE_CONFIG.images.max_upload_bytes,
+        },
         "genders": ["male", "female"],
         "succession_types": [
             "elections",

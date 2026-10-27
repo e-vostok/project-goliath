@@ -49,5 +49,5 @@ def test_upgrade_head_accepts_asyncpg_database_url(pg_url, monkeypatch):  # noqa
             ).scalar_one()
     finally:
         engine.dispose()
-    assert version == "0017"
+    assert version == "0018"
     assert clock_rows == 1

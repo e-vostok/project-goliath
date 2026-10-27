@@ -53,6 +53,7 @@ from modules._00_core.hooks import (
 )
 from modules._00_core.models import (
     Nation,
+    NationImage,
     ScheduledAction,
     TickLog,
 )
@@ -97,6 +98,7 @@ from tests.modules._00_core.test_router import (
 TABLE_COVERAGE: dict[str, object] = {
     # -- emptied by the world reset (asserted empty below) -----------
     "nations": "reset",
+    "nation_images": "reset",
     "scheduled_actions": "reset",
     "tick_log": "reset",
     "map_ownership_log": "reset",
@@ -256,9 +258,20 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
         player = PlayerFactory.build(vk_user_id=999001, nations=[])
         session.add(player)
         await session.flush()
+        nation = NationFactory.build(
+            owner=player, provinces=[], scheduled_actions=[]
+        )
+        session.add(nation)
         session.add(
-            NationFactory.build(
-                owner=player, provinces=[], scheduled_actions=[]
+            NationImage(
+                nation_id=nation.id,
+                kind="flag",
+                sha256="ab" * 32,
+                full_bytes=b"x",
+                thumb_bytes=b"y",
+                byte_size=1,
+                uploaded_by_player_id=player.id,
+                uploaded_at=datetime.now(UTC),
             )
         )
         # nation=None: the factory would otherwise build a nested
@@ -285,6 +298,7 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
 
     reset_tables = {
         "nations": Nation,
+        "nation_images": NationImage,
         "scheduled_actions": ScheduledAction,
         "tick_log": TickLog,
         "map_ownership_log": MapOwnershipLog,

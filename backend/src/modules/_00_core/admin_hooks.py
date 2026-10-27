@@ -28,6 +28,7 @@ from modules._00_core.models import (
     AdminGrant,
     GameClock,
     Nation,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -430,6 +431,9 @@ async def admin_reset(session: AsyncSession) -> None:
     """
     await session.execute(delete(ScheduledAction))
     await session.execute(update(Province).values(nation_id=None))
+    # INV-19: uploaded pictures go before the nations rows — the FK
+    # cascade is only a safety net; SQLite may run without FKs.
+    await session.execute(delete(NationImage))
     await session.execute(delete(Nation))
     await session.execute(delete(TickLog))
     await _restart_tick_log_id(session)

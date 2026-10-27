@@ -489,7 +489,7 @@ $$
 | PATCH  | `/api/v1/nations/me`       | Bearer            | `NationUpdateRequest`          | `NationDTO`         | 200 / 409 / 422     |
 | GET    | `/api/v1/provinces`        | Bearer            | `?ids=&free_only=`             | `List[ProvinceDTO]` | 200                 |
 | GET    | `/api/v1/game-clock`       | Bearer            | —                              | `GameClockDTO`      | 200                 |
-| PUT | `/api/v1/nations/me/images/{kind}` | Bearer | тело — файл | `NationImageDTO` | 200 / 404 / 413 / 415 / 422 / 429 |
+| PUT | `/api/v1/nations/me/images/{kind}` | Bearer | тело — файл | `NationImageDTO` | 200 / 404 / 413 / 415 / 422 |
 | GET | `/api/v1/images/{sha256}/{variant}` | **нет** | — | `image/webp` | 200 / 404 |
 
 `DELETE /api/v1/nations/me` отменён (Изменения 1.4) и снят в единице 8 версии 0.9.0 вместе с тестами и клиентским вызовом: игрок государство не удаляет; `NationService.delete` остаётся внутренней операцией сервиса (хук удаления игрока, сброс мира).
