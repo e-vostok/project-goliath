@@ -485,7 +485,7 @@ def register_table_source(
 
 ---
 
-## ПРИЛОЖЕНИЕ T: Тестовая матрица (Anti-Mock Guard)
+## ПРИЛОЖЕНИЕ T: Перечень проверяемых поведений (Anti-Mock Guard)
 
 **Статус (14.10.2026): выполнено — перечень отражает фактический состав тестов** (`backend/tests/`: `test_configs_validity.py`, модули `_00_core`, `_03_registry`, `__tests__` клиента).
 
