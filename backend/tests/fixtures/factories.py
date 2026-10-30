@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules._00_core.models import (
     GameClock,
     Nation,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -157,6 +158,31 @@ async def make_vk_profile(
         photo_url=photo_url,
         fetched_at=fetched_at or now,
         next_attempt_at=next_attempt_at or now,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def make_nation_image(
+    session: AsyncSession,
+    nation: Nation,
+    *,
+    kind: str = "flag",
+    sha256: str,
+    uploaded_by: Player | None = None,
+) -> NationImage:
+    """Insert a ``nation_images`` row for ``nation`` and flush it —
+    the "uploaded picture" state the registry and orders cells read."""
+    row = NationImage(
+        nation_id=nation.id,
+        kind=kind,
+        sha256=sha256,
+        full_bytes=b"full-" + sha256.encode()[:8],
+        thumb_bytes=b"thumb-" + sha256.encode()[:8],
+        byte_size=16,
+        uploaded_by_player_id=uploaded_by.id if uploaded_by else None,
+        uploaded_at=utcnow(),
     )
     session.add(row)
     await session.flush()

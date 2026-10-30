@@ -195,7 +195,8 @@ class TestNationCellsAcrossTables:
     """Spec 1.4/1.6 (3.2, 3.3, 3.7): the nations-table «name» column
     carries the same ``nation`` cell the players table gives the owner
     nation — short name + colour + the nation id that opens the
-    subscreen; ``flag_url`` stays None until the upload lands."""
+    subscreen; ``flag_url`` is None for nations without an uploaded
+    flag (the thumbnail address lands with the upload — Spec 1.9)."""
 
     async def test_nation_cells_in_nations_and_players_tables(
         self, client, test_db_session, registry_started

@@ -31,7 +31,11 @@ from modules._02_bot.models import BotOutbox
 from modules._03_registry.startup import startup_registry
 from modules._04_orders.models import Order
 from modules._04_orders.service import OrderService, RetryPassStats
-from tests.fixtures.factories import make_consent, make_order
+from tests.fixtures.factories import (
+    make_consent,
+    make_nation_image,
+    make_order,
+)
 from tests.modules._03_registry.conftest import bearer_headers
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
@@ -362,3 +366,38 @@ class TestReminderRace:
             fresh = await _order_row(session)
             assert fresh.verdict_at is not None
             assert fresh.reminder_sent_at is None
+
+
+class TestNationFlagAtShowTime:
+    """Spec «Флаг ... на момент показа» (0.12.0 unit 7): the order API
+    serves the nation's CURRENT uploaded flag as a thumbnail — an
+    order submitted before the upload shows it afterwards."""
+
+    async def test_detail_flag_url_is_current_thumbnail(
+        self, orders_client, session_factory, orders_bot_started
+    ):
+        async with session_factory() as session:
+            author, nation = await seed_author(session, 881301)
+            await session.commit()
+            author_id = author.id
+
+        headers = bearer_headers(author_id)
+        submit = await orders_client.post(
+            ORDERS_URL,
+            json={**VALID_ORDER, "client_request_id": str(uuid.uuid4())},
+            headers=headers,
+        )
+        assert submit.status_code == 201
+        # Submitted before the upload: no flag.
+        assert submit.json()["nation"]["flag_url"] is None
+
+        sha = "ab" * 32
+        async with session_factory() as session:
+            await make_nation_image(session, nation, sha256=sha)
+            await session.commit()
+
+        detail = await orders_client.get(f"{ORDERS_URL}/1", headers=headers)
+        assert detail.status_code == 200
+        assert detail.json()["nation"]["flag_url"] == (
+            f"/api/v1/images/{sha}/thumb"
+        )

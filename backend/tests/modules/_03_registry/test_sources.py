@@ -14,10 +14,10 @@ from sqlalchemy import event, select
 
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Province
-from modules._00_core.service import NationService
+from modules._00_core.service import NationService, PlayerService
 from modules._03_registry.service import build_table
 from modules._03_registry.startup import startup_registry
-from tests.fixtures.factories import make_vk_profile
+from tests.fixtures.factories import make_nation_image, make_vk_profile
 from tests.fixtures.provinces import make_land_province, make_sea_province
 from tests.modules._03_registry.conftest import seed_nation, seed_player
 
@@ -247,6 +247,92 @@ class TestNationsTable:
         rows = _rows_by_key(await build_table(test_db_session, "nations"))
         assert rows[n2.id]["number"] == 1
         assert rows[n3.id]["number"] == 2
+
+
+class TestNationFlagCells:
+    """The uploaded flag reaches the ``nation`` cells (Spec 1.9 —
+    0.12.0 unit 7): the thumbnail address after an upload, ``null``
+    before; a replacement changes the address on the next read."""
+
+    async def test_cells_carry_thumb_url_after_upload(
+        self, test_db_session, registry_started
+    ):
+        owner = await seed_player(test_db_session, 504001, created_at=T0)
+        nation = await seed_nation(
+            test_db_session,
+            owner,
+            "Флаговая",
+            "#112244",
+            created_turn=0,
+            short_name="ФЛГ",
+        )
+
+        # Before the upload both tables give a null flag_url.
+        players = _rows_by_key(await build_table(test_db_session, "players"))
+        nations = _rows_by_key(await build_table(test_db_session, "nations"))
+        assert players["p1"]["nation"]["flag_url"] is None
+        assert nations[nation.id]["name"]["flag_url"] is None
+
+        sha = "ab" * 32
+        await make_nation_image(test_db_session, nation, sha256=sha)
+
+        players = _rows_by_key(await build_table(test_db_session, "players"))
+        nations = _rows_by_key(await build_table(test_db_session, "nations"))
+        expected = f"/api/v1/images/{sha}/thumb"
+        assert players["p1"]["nation"]["flag_url"] == expected
+        assert nations[nation.id]["name"]["flag_url"] == expected
+
+    async def test_replaced_flag_changes_url_on_next_read(
+        self, test_db_session, registry_started
+    ):
+        owner = await seed_player(test_db_session, 504101, created_at=T0)
+        nation = await seed_nation(
+            test_db_session, owner, "Замена", "#223344", created_turn=0
+        )
+        old = await make_nation_image(
+            test_db_session, nation, sha256="cd" * 32
+        )
+        old.sha256 = "ef" * 32
+        await test_db_session.flush()
+
+        nations = _rows_by_key(await build_table(test_db_session, "nations"))
+        assert nations[nation.id]["name"]["flag_url"] == (
+            f"/api/v1/images/{'ef' * 32}/thumb"
+        )
+
+    async def test_list_for_registry_adds_no_per_row_queries(
+        self, test_db_session, test_db_engine, registry_started
+    ):
+        """The flag join rides inside the one list query — three
+        flagged nations still cost exactly one SELECT per list."""
+        for i in range(3):
+            owner = await seed_player(
+                test_db_session, 504200 + i, created_at=T0.replace(hour=i)
+            )
+            nation = await seed_nation(
+                test_db_session, owner, f"Строка {i}", f"#00{i:04d}",
+                created_turn=i,
+            )
+            await make_nation_image(
+                test_db_session, nation, sha256=f"{i:064x}"
+            )
+
+        statements: list[str] = []
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(test_db_engine.sync_engine, "before_cursor_execute", _count)
+        try:
+            await PlayerService.list_for_registry(test_db_session)
+            await NationService.list_for_registry(test_db_session)
+        finally:
+            event.remove(
+                test_db_engine.sync_engine,
+                "before_cursor_execute",
+                _count,
+            )
+        assert len(statements) == 2
 
 
 class TestCoreConfigInjection:
