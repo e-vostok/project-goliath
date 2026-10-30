@@ -51,7 +51,7 @@ import type {
 } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
-import { FlagStub } from '../../../shared/ui/FlagStub';
+import { FlagMark } from '../../../shared/ui/FlagMark';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import { useNotice } from '../../../shared/ui/Notice';
 import { Popup } from '../../../shared/ui/Popup';
@@ -287,9 +287,11 @@ function StatusBadge({ order }: { order: AdminOrderDTO }) {
   );
 }
 
-/** The 24×16 author-nation flag of an order row — a stub until the upload lands. */
-function FlagCell() {
-  return <FlagStub variant="cell" />;
+/** The 22×14 author-nation flag of an order row — thumb or stub. */
+function FlagCell({ url }: { url: string | null }) {
+  return (
+    <FlagMark url={url} width={22} height={14} stubVariant="cell" />
+  );
 }
 
 /** The .warn caution block of the judge popup. */
@@ -1035,7 +1037,7 @@ export function OrdersSection() {
                           gap: 10,
                         }}
                       >
-                        <FlagCell />
+                        <FlagCell url={order.flag_thumb_url} />
                         <span>{order.author_nation_short_name}</span>
                       </span>
                     ) : (

@@ -237,12 +237,14 @@ class NationImageRefs:
 @dataclass(frozen=True)
 class NationImageInfo:
     """One picture of a nation for the admin panel (Spec Part 2
-    «Картинки в панели»): ready URLs plus who uploaded it and when."""
+    «Картинки в панели»): ready URLs, the byte length of the stored
+    full WebP plus who uploaded it and when."""
 
     url: str
     thumb_url: str
     uploaded_at: datetime
     uploaded_by_player_id: str | None
+    size_bytes: int
 
 
 @dataclass(frozen=True)
@@ -1473,23 +1475,32 @@ class NationService:
         """
         The admin-panel description of the nation's pictures (Spec
         Part 2 «Картинки в панели»): ``{"flag": …, "portrait": …}``
-        with ready URLs, the upload timestamp and the uploader — None
-        for a kind the nation never uploaded. Read-only and never
-        commits.
+        with ready URLs, the upload timestamp, the uploader and the
+        stored full variant's byte length — None for a kind the nation
+        never uploaded. The WebP bodies are never loaded into Python:
+        the length is computed in SQL (``octet_length``). Read-only
+        and never commits.
         """
         result = await session.execute(
-            select(NationImage).where(NationImage.nation_id == nation_id)
+            select(
+                NationImage.kind,
+                NationImage.sha256,
+                NationImage.uploaded_by_player_id,
+                NationImage.uploaded_at,
+                func.octet_length(NationImage.full_bytes),
+            ).where(NationImage.nation_id == nation_id)
         )
         info: dict[str, NationImageInfo | None] = {
             "flag": None,
             "portrait": None,
         }
-        for row in result.scalars().all():
-            info[row.kind] = NationImageInfo(
-                url=images.image_url(row.sha256, "full"),
-                thumb_url=images.image_url(row.sha256, "thumb"),
-                uploaded_at=row.uploaded_at,
-                uploaded_by_player_id=row.uploaded_by_player_id,
+        for kind, sha256, uploaded_by, uploaded_at, size_bytes in result.all():
+            info[kind] = NationImageInfo(
+                url=images.image_url(sha256, "full"),
+                thumb_url=images.image_url(sha256, "thumb"),
+                uploaded_at=uploaded_at,
+                uploaded_by_player_id=uploaded_by,
+                size_bytes=size_bytes,
             )
         return info
 
@@ -1548,6 +1559,7 @@ class NationService:
                 thumb_url=images.image_url(row.sha256, "thumb"),
                 uploaded_at=row.uploaded_at,
                 uploaded_by_player_id=row.uploaded_by_player_id,
+                size_bytes=len(row.full_bytes),
             ),
             sha256=row.sha256,
         )

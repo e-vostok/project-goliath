@@ -43,6 +43,7 @@ import type {
 } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
+import { FlagMark } from '../../../shared/ui/FlagMark';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import { useNotice } from '../../../shared/ui/Notice';
 import { useTheme } from '../../../shared/ui/theme';
@@ -681,16 +682,10 @@ export function ProvincesSection() {
                             gap: SPACING['space-2'],
                           }}
                         >
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              display: 'block',
-                              width: 18,
-                              height: 12,
-                              flexShrink: 0,
-                              borderRadius: RADII['radius-sm'],
-                              background: tokenVar('surface-inset'),
-                            }}
+                          <FlagMark
+                            url={province.flag_thumb_url}
+                            width={18}
+                            height={12}
                           />
                           <span
                             style={{

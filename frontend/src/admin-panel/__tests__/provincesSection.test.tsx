@@ -70,15 +70,34 @@ const NATIONS = {
 
 const PROVINCES = {
   items: [
-    { id: 201, name: 'Выборг', nation_id: 'n-2', nation_short_name: 'Лига' },
+    {
+      id: 201,
+      name: 'Выборг',
+      nation_id: 'n-2',
+      nation_short_name: 'Лига',
+      flag_thumb_url: '/api/v1/images/cc33/thumb',
+    },
     {
       id: 202,
       name: 'Вышний Волочёк',
       nation_id: null,
       nation_short_name: null,
+      flag_thumb_url: null,
     },
-    { id: 203, name: 'Вена', nation_id: 'n-3', nation_short_name: 'Союз' },
-    { id: 204, name: 'Рига', nation_id: 'n-2', nation_short_name: 'Лига' },
+    {
+      id: 203,
+      name: 'Вена',
+      nation_id: 'n-3',
+      nation_short_name: 'Союз',
+      flag_thumb_url: null,
+    },
+    {
+      id: 204,
+      name: 'Рига',
+      nation_id: 'n-2',
+      nation_short_name: 'Лига',
+      flag_thumb_url: '/api/v1/images/cc33/thumb',
+    },
   ],
   total: 4,
 };
@@ -426,4 +445,23 @@ it('notices and reloads the list on success', async () => {
   expect(
     screen.getByText('Выберите провинцию слева — здесь появится, что произойдёт.'),
   ).toBeInTheDocument();
+});
+
+it('the owner cell shows the flag thumb or the stub (0.12.0 u9)', async () => {
+  allowSection();
+  await enterSection();
+
+  const withFlag = screen.getByTestId('province-row-201');
+  const img = withFlag.querySelector('img');
+  expect(img).toHaveAttribute('src', '/api/v1/images/cc33/thumb');
+  const other = screen.getByTestId('province-row-203');
+  expect(
+    other.querySelector('[aria-label="Заглушка флага"]'),
+  ).not.toBeNull();
+  fireEvent.error(img!);
+  await waitFor(() =>
+    expect(
+      withFlag.querySelector('[aria-label="Заглушка флага"]'),
+    ).not.toBeNull(),
+  );
 });

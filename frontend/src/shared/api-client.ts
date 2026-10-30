@@ -17,6 +17,7 @@ import type {
   AdminNationDeletePreviewDTO,
   AdminNationDetailDTO,
   AdminNationDTO,
+  AdminNationImageDeletePreviewDTO,
   AdminNationsDTO,
   AdminNationUpdateRequest,
   AdminOrderAssignJudgeRequest,
@@ -605,6 +606,46 @@ export const api = {
         token,
         signal,
       },
+    );
+  },
+
+  /**
+   * GET /admin/nations/{id}/images/{kind}/delete-preview (0.12.0 unit
+   * 8) — what deleting the picture would do: the stamp, the uploader
+   * and the ready «Что будет» lines. 404 NATION_NOT_FOUND /
+   * IMAGE_NOT_FOUND.
+   */
+  adminNationImageDeletePreview(
+    token: string,
+    nationId: string,
+    kind: 'flag' | 'portrait',
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationImageDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(
+        nationId,
+      )}/images/${encodeURIComponent(kind)}/delete-preview`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations/{id}/images/{kind}/delete — irreversible;
+   * no retyped confirmation (it lives in the window). Returns the
+   * preview shape that was true at the moment of deletion; a second
+   * call answers 404 IMAGE_NOT_FOUND.
+   */
+  adminNationImageDelete(
+    token: string,
+    nationId: string,
+    kind: 'flag' | 'portrait',
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationImageDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(
+        nationId,
+      )}/images/${encodeURIComponent(kind)}/delete`,
+      { method: 'POST', body: {}, token, signal },
     );
   },
 

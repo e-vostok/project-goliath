@@ -48,6 +48,7 @@ const ORDERS = {
       status: 'AWAITING_VERDICT',
       deadline_at: '2026-10-26 00:00:00',
       overdue: false,
+      flag_thumb_url: '/api/v1/images/bb22/thumb',
     },
     {
       number: 13,
@@ -59,6 +60,7 @@ const ORDERS = {
       status: 'NO_JUDGE',
       deadline_at: null,
       overdue: false,
+      flag_thumb_url: null,
     },
     {
       number: 14,
@@ -469,4 +471,23 @@ it('a server refusal shows its line inside the popup', async () => {
     'Автор приказа не может быть его судьёй',
   );
   expect(screen.getByTestId('judge-popup')).toBeInTheDocument();
+});
+
+it('the author cell shows the flag thumb or the stub (0.12.0 u9)', async () => {
+  allowSection();
+  await enterSection();
+
+  const withFlag = screen.getByTestId('order-row-12');
+  const img = withFlag.querySelector('img');
+  expect(img).toHaveAttribute('src', '/api/v1/images/bb22/thumb');
+  const without = screen.getByTestId('order-row-13');
+  expect(
+    without.querySelector('[aria-label="Заглушка флага"]'),
+  ).not.toBeNull();
+  fireEvent.error(img!);
+  await waitFor(() =>
+    expect(
+      withFlag.querySelector('[aria-label="Заглушка флага"]'),
+    ).not.toBeNull(),
+  );
 });

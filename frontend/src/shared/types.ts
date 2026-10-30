@@ -302,6 +302,8 @@ export interface AdminProvinceDTO {
   name: string | null;
   nation_id: string | null;
   nation_short_name: string | null;
+  /** The OWNING nation's current flag thumb — null for a free province (u9). */
+  flag_thumb_url: string | null;
 }
 
 /** GET /admin/provinces — one page plus the full matching count. */
@@ -374,6 +376,8 @@ export interface AdminNationDTO {
   owner_name: string | null;
   provinces_count: number;
   capital_name: string | null;
+  /** Current flag's /images/<sha>/thumb — null without an upload (0.12.0 u9). */
+  flag_thumb_url: string | null;
 }
 
 /** GET /admin/nations — one page plus the full matching count. */
@@ -405,10 +409,42 @@ export interface AdminNationCreateRequest {
 }
 
 /**
+ * One uploaded-picture entry of AdminNationDetailDTO.images (0.12.0
+ * units 8–9): `uploaded_by` is null when the uploading player is gone;
+ * `size_bytes` is the stored full WebP length and `width`/`height`
+ * the pipeline's target size of the kind.
+ */
+export interface AdminNationImageEntryDTO {
+  url: string;
+  thumb_url: string;
+  /** ISO 8601 UTC — the real-world upload moment. */
+  uploaded_at: string;
+  uploaded_by: { vk_user_id: number; name: string | null } | null;
+  size_bytes: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * GET /admin/nations/{id}/images/{kind}/delete-preview and the POST
+ * /delete answer (0.12.0 unit 8) — the picture's stamp and the ready
+ * Russian «Что будет» lines, rendered verbatim.
+ */
+export interface AdminNationImageDeletePreviewDTO {
+  nation_id: string;
+  short_name: string;
+  kind: 'flag' | 'portrait';
+  uploaded_at: string;
+  uploaded_by: { vk_user_id: number; name: string | null } | null;
+  consequences: { code: string; text: string }[];
+}
+
+/**
  * GET /admin/nations/{id} and the PATCH answer (0.11.0 unit 8b) —
  * the twelve editable fields plus the read-only owner, capital
  * province and province count. Flag, portrait and provinces are
- * never editable here, so they are not in the shape.
+ * never editable here — `images` (0.12.0 unit 8) only describes the
+ * uploads, one entry per kind or null.
  */
 export interface AdminNationDetailDTO {
   id: string;
@@ -428,6 +464,11 @@ export interface AdminNationDetailDTO {
   leader_bio: string | null;
   history_url: string | null;
   capital_name: string | null;
+  /** The nation's uploaded pictures — entry or null per kind (unit 8). */
+  images: {
+    flag: AdminNationImageEntryDTO | null;
+    portrait: AdminNationImageEntryDTO | null;
+  };
 }
 
 /**
@@ -519,6 +560,8 @@ export interface AdminOrderDTO {
   /** 'YYYY-MM-DD HH:MM:SS' in the tick timezone; null when undistributed. */
   deadline_at: string | null;
   overdue: boolean;
+  /** The author nation's CURRENT flag by nation_id; a deleted nation → null (u9). */
+  flag_thumb_url: string | null;
 }
 
 /** GET /admin/orders — one page plus the full matching count. */

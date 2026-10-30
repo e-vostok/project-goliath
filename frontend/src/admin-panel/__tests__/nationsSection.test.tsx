@@ -46,6 +46,7 @@ const NATIONS = {
       owner_name: 'Алексей Морозов',
       provinces_count: 6,
       capital_name: 'Мурманск',
+      flag_thumb_url: '/api/v1/images/aa11/thumb',
     },
     {
       id: 'n-2',
@@ -55,6 +56,7 @@ const NATIONS = {
       owner_name: null,
       provinces_count: 4,
       capital_name: 'Рига',
+      flag_thumb_url: null,
     },
   ],
   total: 2,
@@ -162,6 +164,37 @@ const NATION_DETAIL = {
   leader_bio: 'Бывший начальник порта.',
   history_url: 'https://vk.com/@sever-history',
   capital_name: 'Мурманск',
+  images: {
+    flag: {
+      url: '/api/v1/images/aa11/full',
+      thumb_url: '/api/v1/images/aa11/thumb',
+      uploaded_at: '2026-10-26T11:05:00+00:00',
+      uploaded_by: { vk_user_id: 100000001, name: 'Иван Петров' },
+      size_bytes: 42000,
+      width: 600,
+      height: 400,
+    },
+    portrait: null,
+  },
+};
+
+/** The image delete-preview answer — the screen-18b popup's seed. */
+const IMAGE_DELETE_PREVIEW = {
+  nation_id: 'n-1',
+  short_name: 'Синдикат',
+  kind: 'flag',
+  uploaded_at: '2026-10-26T11:05:00+00:00',
+  uploaded_by: { vk_user_id: 100000001, name: 'Иван Петров' },
+  consequences: [
+    {
+      code: 'image_deleted',
+      text: 'картинка удаляется с сервера насовсем; в приказах, где показан этот флаг, тоже появится заглушка',
+    },
+    {
+      code: 'audit_journal',
+      text: 'в журнал попадёт запись «Удаление картинки государства»',
+    },
+  ],
 };
 
 interface Counters {
@@ -172,16 +205,23 @@ interface Counters {
   colorCheck: number;
   preview: number;
   del: number;
+  imgPreview: number;
+  imgDelete: number;
 }
 
 function allowSection({
   createAnswer,
   patchAnswer,
   deleteAnswer,
+  imageDeleteAnswer,
 }: {
   createAnswer?: { status: number; body: { detail: string; code: string } };
   patchAnswer?: { status: number; body: { detail: string; code: string } };
   deleteAnswer?: { status: number; body: { detail: string; code: string } };
+  imageDeleteAnswer?: {
+    status: number;
+    body: { detail: string; code: string };
+  };
 } = {}): Counters {
   const counters: Counters = {
     nations: 0,
@@ -191,6 +231,8 @@ function allowSection({
     colorCheck: 0,
     preview: 0,
     del: 0,
+    imgPreview: 0,
+    imgDelete: 0,
   };
   server.use(
     http.post('*/api/v1/admin/session', () =>
@@ -226,6 +268,10 @@ function allowSection({
         ...counters.patchBody,
       });
     }),
+    http.get('*/api/v1/admin/nations/*/images/*/delete-preview', () => {
+      counters.imgPreview += 1;
+      return HttpResponse.json(IMAGE_DELETE_PREVIEW);
+    }),
     http.get('*/api/v1/admin/nations', () => {
       counters.nations += 1;
       return HttpResponse.json(NATIONS);
@@ -233,6 +279,19 @@ function allowSection({
     http.get('*/api/v1/admin/nations/*/delete-preview', () => {
       counters.preview += 1;
       return HttpResponse.json(NATION_DELETE_PREVIEW);
+    }),
+    http.get('*/api/v1/admin/nations/*/images/*/delete-preview', () => {
+      counters.imgPreview += 1;
+      return HttpResponse.json(IMAGE_DELETE_PREVIEW);
+    }),
+    http.post('*/api/v1/admin/nations/*/images/*/delete', () => {
+      counters.imgDelete += 1;
+      if (imageDeleteAnswer !== undefined) {
+        return HttpResponse.json(imageDeleteAnswer.body, {
+          status: imageDeleteAnswer.status,
+        });
+      }
+      return HttpResponse.json(IMAGE_DELETE_PREVIEW);
     }),
     http.post('*/api/v1/admin/nations/*/delete', () => {
       counters.del += 1;
@@ -632,4 +691,131 @@ it('a success closes the popup, notices and reloads the list', async () => {
   );
   await screen.findByText('Государство «Лига» удалено.');
   await waitFor(() => expect(counters.nations).toBe(2));
+});
+
+/* ---------------------------------------------------------------- */
+/* The «Картинки государства» block and the 18b popup (0.12.0 u9).    */
+/* ---------------------------------------------------------------- */
+
+it('the block shows the loaded flag and the empty portrait', async () => {
+  allowSection();
+  await enterEdit();
+
+  expect(screen.getByText('Картинки государства')).toBeInTheDocument();
+  const flag = screen.getByTestId('nation-image-flag');
+  expect(flag).toHaveTextContent('Флаг');
+  expect(flag).toHaveTextContent('Загружен 26.10.2026, 14:05');
+  expect(flag).toHaveTextContent('Игрок: Иван Петров');
+  expect(flag).toHaveTextContent('600×400 · 41 КБ');
+  expect(flag).toHaveTextContent(
+    'Показывается в «Штабе», «Реестре» и приказах.',
+  );
+  expect(flag.querySelector('img')).toHaveAttribute(
+    'src',
+    '/api/v1/images/aa11/full',
+  );
+
+  const portrait = screen.getByTestId('nation-image-portrait');
+  expect(portrait).toHaveTextContent('Портрет лидера');
+  expect(portrait).toHaveTextContent('Не загружен');
+  expect(portrait).toHaveTextContent('Игрокам показывается силуэт.');
+  expect(screen.getByTestId('nation-image-delete-portrait')).toBeDisabled();
+});
+
+it('«Удалить флаг» loads the preview and confirming drops to the stub', async () => {
+  const counters = allowSection();
+  await enterEdit();
+
+  fireEvent.click(screen.getByTestId('nation-image-delete-flag'));
+  const popup = await screen.findByTestId('nation-image-delete-popup');
+  await screen.findByTestId('image-delete-consequences');
+  expect(counters.imgPreview).toBe(1);
+  expect(popup).toHaveTextContent('Удаление флага');
+  expect(popup).toHaveTextContent(
+    'Удалить флаг государства «Синдикат»?',
+  );
+  expect(
+    screen.getByTestId('image-delete-consequences'),
+  ).toHaveTextContent(
+    'Что будет: картинка удаляется с сервера насовсем; в приказах, ' +
+      'где показан этот флаг, тоже появится заглушка. В журнал попадёт ' +
+      'запись «Удаление картинки государства».',
+  );
+
+  fireEvent.click(screen.getByTestId('confirm-image-delete'));
+  await waitFor(() => expect(counters.imgDelete).toBe(1));
+  await waitFor(() =>
+    expect(
+      screen.queryByTestId('nation-image-delete-popup'),
+    ).not.toBeInTheDocument(),
+  );
+  await screen.findByText('Флаг государства «Синдикат» удалён.');
+  // The block shows the «Не загружен» stub state at once.
+  const flag = screen.getByTestId('nation-image-flag');
+  expect(flag).toHaveTextContent('Не загружен');
+  expect(flag.querySelector('img')).toBeNull();
+  expect(screen.getByTestId('nation-image-delete-flag')).toBeDisabled();
+});
+
+it('a deletion keeps the unsaved text in the form', async () => {
+  allowSection();
+  await enterEdit();
+
+  fireEvent.change(screen.getByLabelText('Девиз'), {
+    target: { value: 'Ещё не сохранено' },
+  });
+  fireEvent.click(screen.getByTestId('nation-image-delete-flag'));
+  await screen.findByTestId('image-delete-consequences');
+  fireEvent.click(screen.getByTestId('confirm-image-delete'));
+  await waitFor(() =>
+    expect(
+      screen.queryByTestId('nation-image-delete-popup'),
+    ).not.toBeInTheDocument(),
+  );
+
+  expect(screen.getByLabelText('Девиз')).toHaveValue('Ещё не сохранено');
+});
+
+it('a 404 IMAGE_NOT_FOUND closes the popup and notices neutrally', async () => {
+  allowSection({
+    imageDeleteAnswer: {
+      status: 404,
+      body: { detail: 'gone', code: 'IMAGE_NOT_FOUND' },
+    },
+  });
+  await enterEdit();
+
+  fireEvent.click(screen.getByTestId('nation-image-delete-flag'));
+  await screen.findByTestId('image-delete-consequences');
+  fireEvent.click(screen.getByTestId('confirm-image-delete'));
+
+  await waitFor(() =>
+    expect(
+      screen.queryByTestId('nation-image-delete-popup'),
+    ).not.toBeInTheDocument(),
+  );
+  await screen.findByText('Картинки уже нет.');
+  expect(screen.getByTestId('nation-image-flag')).toHaveTextContent(
+    'Не загружен',
+  );
+});
+
+it('the nations table shows the flag thumb or the stub', async () => {
+  allowSection();
+  await enterSection();
+
+  const rows = screen.getAllByTestId('nation-row');
+  const thumb = rows[0].querySelector('img');
+  expect(thumb).toHaveAttribute('src', '/api/v1/images/aa11/thumb');
+  // The nation without an upload shows the stub.
+  expect(
+    rows[1].querySelector('[aria-label="Заглушка флага"]'),
+  ).not.toBeNull();
+  // A broken image falls back to the stub.
+  fireEvent.error(thumb!);
+  await waitFor(() =>
+    expect(
+      rows[0].querySelector('[aria-label="Заглушка флага"]'),
+    ).not.toBeNull(),
+  );
 });
