@@ -35,11 +35,19 @@ import { errorText } from '../../../shared/errorTexts';
 import { useFormDraft } from '../../../shared/formDraft';
 import { SUCCESS_RU } from '../../../shared/texts/success.ru';
 import type { NationDTO } from '../../../shared/types';
-import { SIZES, SPACING, tokenVar, useNotice } from '../../../shared/ui';
+import {
+  SIZES,
+  SPACING,
+  tokenVar,
+  useNotice,
+  type ImageSlotKind,
+} from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { nationRulesHints } from './CreateNationFields';
 import { CreateNationEditForm } from './CreateNationEditForm';
+import { ImageUploadPreview } from './ImageUploadPreview';
+import type { NationImageEditor } from './imageEditor';
 import {
   isValidColorHex,
   mapErrorCodeToField,
@@ -97,6 +105,20 @@ export function PanelNationHome({
     Partial<Record<NationField, string>>
   >({});
   const [formError, setFormError] = useState<string | null>(null);
+  // The file the player picked on the flag/portrait slot — the preview
+  // window owns it until «Загрузить» sends the raw PUT.
+  const [imagePick, setImagePick] = useState<{
+    kind: ImageSlotKind;
+    file: File;
+  } | null>(null);
+
+  // Given to the card blocks: their flag/portrait turns into the
+  // upload control of Spec element 13. This panel owns the window and
+  // the PUT; on success the nation is refreshed through `onChanged`.
+  const imageEditor: NationImageEditor = {
+    rules,
+    onUpload: (kind, file) => setImagePick({ kind, file }),
+  };
 
   // PATCH body — only fields whose normalized value actually changed.
   const changes = toUpdateRequest(form, nation);
@@ -240,7 +262,32 @@ export function PanelNationHome({
           </CardBlock>
         </div>
       ) : (
-        <NationCard nation={nation} onEdit={() => setEditing(true)} />
+        <NationCard
+          nation={nation}
+          onEdit={() => setEditing(true)}
+          imageEditor={imageEditor}
+        />
+      )}
+      {imagePick !== null && (
+        <ImageUploadPreview
+          kind={imagePick.kind}
+          mode="replace"
+          file={imagePick.file}
+          rules={rules}
+          onConfirm={async (file) => {
+            const { kind } = imagePick;
+            await api.uploadNationImage(token, kind, file);
+            setImagePick(null);
+            notify(
+              kind === 'flag'
+                ? SUCCESS_RU.flagUploaded
+                : SUCCESS_RU.portraitUploaded,
+            );
+            onChanged();
+          }}
+          onPickAnother={() => setImagePick(null)}
+          onClose={() => setImagePick(null)}
+        />
       )}
       <OrdersBlock
         nationShortName={nation.short_name}

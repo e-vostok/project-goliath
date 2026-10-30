@@ -11,7 +11,12 @@
  * value lives in the container's RegistrationForm.
  */
 
-import { useRef, type CSSProperties, type KeyboardEvent } from 'react';
+import {
+  useRef,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import {
   Icon28CrownOutline,
   Icon28PollSquareOutline,
@@ -91,7 +96,8 @@ export function CreateNationTabLeadership({
   rules,
   errors,
   onFieldChange,
-}: RegistrationTabProps) {
+  imageSlot,
+}: RegistrationTabProps & { imageSlot?: ReactNode }) {
   const genderRefs = useRef(new Map<string, HTMLButtonElement>());
   const successionRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -107,6 +113,13 @@ export function CreateNationTabLeadership({
 
   return (
     <>
+      {/* 0.12.0 board 13б — the optional portrait block opens the tab. */}
+      {imageSlot !== undefined && (
+        <div data-testid="form-item-portrait" style={{ marginBottom: 16 }}>
+          <FieldLabel label="Портрет" />
+          {imageSlot}
+        </div>
+      )}
       <div
         style={{
           display: 'flex',

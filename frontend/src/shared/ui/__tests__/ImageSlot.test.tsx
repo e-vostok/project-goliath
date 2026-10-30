@@ -112,6 +112,30 @@ describe('ImageSlot', () => {
     ).toBeInTheDocument();
   });
 
+  it('the focus ring is keyboard-only: a pointer-focus shows none, Tab focus does', () => {
+    render(
+      <ImageSlot
+        kind="flag"
+        size="shtab"
+        src={null}
+        alt="Флаг"
+        interactive
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Загрузить флаг' });
+    // jsdom cannot tell a click-focus from a Tab-focus — emulate the
+    // browser's :focus-visible answer on the button itself.
+    const matches = vi
+      .spyOn(button, 'matches')
+      .mockImplementation(() => false);
+    fireEvent.focus(button);
+    expect(button.style.outline).toBe('none');
+    fireEvent.blur(button);
+    matches.mockImplementation(() => true);
+    fireEvent.focus(button);
+    expect(button.style.outline).toContain('2px');
+  });
+
   it('busy keeps the block and ignores clicks', () => {
     const onPick = vi.fn();
     const { container } = render(
