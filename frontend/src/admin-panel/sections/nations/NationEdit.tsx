@@ -65,6 +65,7 @@ import {
   toAdminUpdateRequest,
 } from './nationEditForm';
 import type { EditFieldKey, NationEditForm } from './nationEditForm';
+import { NationImagesBlock } from './NationImagesBlock';
 
 const COLOR_HINT =
   'Должен заметно отличаться от цветов других государств.';
@@ -202,6 +203,9 @@ function NationEditForm({
   const [form, setForm] = useState<NationEditForm>(() =>
     formFromNation(nation),
   );
+  // The «Картинки государства» block's own state — deleting a picture
+  // must never touch the (possibly unsaved) text form.
+  const [images, setImages] = useState(() => nation.images);
   const [colorStatus, setColorStatus] = useState<
     'OK' | 'TAKEN' | 'TOO_CLOSE' | null
   >(null);
@@ -267,6 +271,7 @@ function NationEditForm({
     setGeneralError(null);
     try {
       const updated = await api.adminNationUpdate(token, nation.id, patch);
+      setImages(updated.images);
       notify(`Данные государства «${updated.short_name}» сохранены.`);
       onDone(true);
     } catch (error) {
@@ -300,6 +305,14 @@ function NationEditForm({
 
   return (
     <>
+      {/* Screen 18: the «Картинки государства» card above the form. */}
+      <NationImagesBlock
+        nationId={nation.id}
+        shortName={nation.short_name}
+        colorHex={nation.color_hex}
+        images={images}
+        onImagesChanged={setImages}
+      />
       <PanelCard>
         <div
           style={{

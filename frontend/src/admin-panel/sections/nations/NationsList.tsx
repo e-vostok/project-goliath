@@ -15,7 +15,7 @@ import { api, ApiError } from '../../../shared/api-client';
 import type { AdminNationDTO } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
-import { FlagStub } from '../../../shared/ui/FlagStub';
+import { FlagMark } from '../../../shared/ui/FlagMark';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import {
   SPACING,
@@ -31,9 +31,11 @@ const SEARCH_PLACEHOLDER = 'Поиск по названию';
 
 type ListStatus = 'loading' | 'ready' | 'error';
 
-/** The 24×16 nation flag of a cell — a stub until the upload lands. */
-function FlagCell() {
-  return <FlagStub variant="cell" />;
+/** The 22×14 nation flag of a cell — the uploaded thumb or the stub. */
+function FlagCell({ url }: { url: string | null }) {
+  return (
+    <FlagMark url={url} width={22} height={14} stubVariant="cell" />
+  );
 }
 
 export function NationsList({
@@ -245,7 +247,7 @@ export function NationsList({
                           gap: 10,
                         }}
                       >
-                        <FlagCell />
+                        <FlagCell url={nation.flag_thumb_url} />
                         <span>
                           <span style={{ fontWeight: 500 }}>
                             {nation.short_name}

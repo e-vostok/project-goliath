@@ -9,9 +9,7 @@
  * empty. `size="tip"` additionally sets the `heading` text style.
  */
 
-import { useState } from 'react';
-
-import { FlagStub } from './FlagStub';
+import { FlagMark } from './FlagMark';
 import { TEXT_STYLES, tokenVar } from './tokens';
 
 const SIZES = {
@@ -31,41 +29,19 @@ export function NationLabel({
   color?: string;
   size: keyof typeof SIZES;
 }) {
-  // The failed URL, not a boolean — a new flag gets a fresh try.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const { width, height, stub } = SIZES[size];
   const markRadius = size === 'sub' ? 4 : 2;
 
-  const mark =
-    flagUrl && failedUrl !== flagUrl ? (
-      <img
-        src={flagUrl}
-        alt=""
-        width={width}
-        height={height}
-        style={{
-          borderRadius: markRadius,
-          objectFit: 'cover',
-          flexShrink: 0,
-          display: 'block',
-        }}
-        onError={() => setFailedUrl(flagUrl)}
-      />
-    ) : color ? (
-      <span
-        aria-hidden
-        style={{
-          width,
-          height,
-          borderRadius: markRadius,
-          flexShrink: 0,
-          display: 'block',
-          background: color,
-        }}
-      />
-    ) : (
-      <FlagStub variant={stub} />
-    );
+  const mark = (
+    <FlagMark
+      url={flagUrl}
+      color={color}
+      width={width}
+      height={height}
+      radius={markRadius}
+      stubVariant={stub}
+    />
+  );
 
   return (
     <span
