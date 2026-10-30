@@ -389,7 +389,11 @@ function NationEditForm({
                 />
               )}
             </div>
-            <FieldMessage error={fieldErrors.color} hint={colorHint} />
+            <FieldMessage
+              error={fieldErrors.color}
+              hint={colorHint}
+              reserve
+            />
           </div>
           <TextField
             id="ef-motto"
