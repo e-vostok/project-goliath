@@ -197,6 +197,34 @@ describe('NationCell — nation «Подсказка»', () => {
     expect(nationCalls).toBe(1);
   });
 
+  it('shows the THUMBNAIL in the tip header, not the full picture (0.12.0 unit 7)', async () => {
+    vi.useFakeTimers();
+    server.use(
+      http.get(`*/api/v1/nations/${NATION_ID}`, () =>
+        HttpResponse.json({
+          ...NATION,
+          flag_url: '/api/v1/images/sha-flag/full',
+          flag_thumb_url: '/api/v1/images/sha-flag/thumb',
+        }),
+      ),
+    );
+    const { container } = renderInRoot(
+      <NationCell value={NATION_CELL} onOpen={() => {}} />,
+    );
+
+    openTip(screen.getByRole('button', { name: 'Новгород' }));
+    vi.useRealTimers();
+    await within(tip()!).findByText('Борис Первый');
+
+    const img = tip()!.querySelector('img')!;
+    expect(img).toHaveAttribute('src', '/api/v1/images/sha-flag/thumb');
+    expect(img).toHaveAttribute('width', '28');
+    expect(img).toHaveAttribute('height', '19');
+    expect(container.ownerDocument.body.innerHTML).not.toContain(
+      'sha-flag/full',
+    );
+  });
+
   it('serves a second hover within 60 s from the cache — one request', async () => {
     vi.useFakeTimers();
     registerNation();

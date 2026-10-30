@@ -150,6 +150,72 @@ describe('«Штаб» image upload', () => {
     expect(seen.body).toBe(await file.text());
   });
 
+  it('«Выбрать другой файл» opens a chooser — a pick replaces the file, a cancel keeps it', async () => {
+    // Capture the transient <input type="file"> the shared helper
+    // creates and clicks (0.12.0 unit 7 review fix).
+    const created: HTMLInputElement[] = [];
+    const realCreate = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation(
+      ((tag: string, options?: ElementCreationOptions) => {
+        const el = realCreate(tag, options);
+        if (tag === 'input') {
+          created.push(el as HTMLInputElement);
+        }
+        return el;
+      }) as typeof document.createElement,
+    );
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click');
+
+    renderWithProviders(
+      <PanelNationHome
+        nation={NATION}
+        onChanged={() => {}}
+        onOpenRegistry={() => {}}
+      />,
+    );
+    const user = userEvent.setup();
+    const slot = await screen.findByRole('button', {
+      name: 'Загрузить флаг',
+    });
+    pickFile(slot, pngFile('first.png'));
+    const popup = await screen.findByTestId('popup-image-upload');
+    expect(
+      await within(popup).findByText(/first\.png/),
+    ).toBeInTheDocument();
+
+    // The link opens a fresh chooser synchronously — the window stays.
+    const pickAnother = within(popup).getByRole('button', {
+      name: 'Выбрать другой файл',
+    });
+    const chooserCount = created.length;
+    await user.click(pickAnother);
+    expect(created.length).toBe(chooserCount + 1);
+    const chooser = created[created.length - 1];
+    expect(chooser.type).toBe('file');
+    expect(chooser.accept).toBe('image/jpeg,image/png,image/webp');
+    expect(clickSpy.mock.instances).toContain(chooser);
+
+    // A chosen file replaces the previewed one in the SAME window —
+    // the keyed remount gives a fresh decode (fresh popup node).
+    fireEvent.change(chooser, { target: { files: [pngFile('second.png')] } });
+    const popup2 = await screen.findByTestId('popup-image-upload');
+    expect(
+      await within(popup2).findByText(/second\.png/),
+    ).toBeInTheDocument();
+    expect(within(popup2).queryByText(/first\.png/)).not.toBeInTheDocument();
+
+    // Cancelling the chooser keeps the file shown as it was.
+    await user.click(
+      within(popup2).getByRole('button', { name: 'Выбрать другой файл' }),
+    );
+    const chooser2 = created[created.length - 1];
+    fireEvent.change(chooser2, { target: { files: [] } });
+    expect(
+      await within(popup2).findByText(/second\.png/),
+    ).toBeInTheDocument();
+    expect(popup2).toBeInTheDocument();
+  });
+
   it('the portrait slot uploads through PUT .../images/portrait', async () => {
     const hits: string[] = [];
     server.use(
@@ -287,6 +353,58 @@ describe('registration images', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByTestId('notice')).toHaveLength(1);
+  });
+
+  it('two failed PUTs end in onCreated plus ONE combined danger notice', async () => {
+    const calls: string[] = [];
+    server.use(
+      http.post('*/api/v1/nations', () => {
+        calls.push('create');
+        return HttpResponse.json(NATION, { status: 201 });
+      }),
+      http.put('*/api/v1/nations/me/images/flag', () => {
+        calls.push('flag');
+        return HttpResponse.json(
+          { code: 'IMAGE_TOO_LARGE', detail: 'too big' },
+          { status: 413 },
+        );
+      }),
+      http.put('*/api/v1/nations/me/images/portrait', () => {
+        calls.push('portrait');
+        return HttpResponse.json(
+          { code: 'IMAGE_UNSUPPORTED', detail: 'not an image' },
+          { status: 415 },
+        );
+      }),
+    );
+    seedRegistrationDraft();
+    const onCreated = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+
+    await pickSlotFile(user, 'Загрузить флаг', 'Использовать флаг');
+    await goToTab(user, 2);
+    await pickSlotFile(user, 'Загрузить портрет', 'Использовать портрет', {
+      w: 800,
+      h: 1000,
+    });
+    await goToTab(user, 4);
+    await user.click(
+      await screen.findByRole('button', { name: 'Основать государство' }),
+    );
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(calls).toEqual(['create', 'flag', 'portrait']);
+
+    // ONE notice carries both reasons and the both-failed tail —
+    // «Государство создано» never flashes alone.
+    const notices = screen.getAllByTestId('notice');
+    expect(notices).toHaveLength(1);
+    const text = notices[0].textContent ?? '';
+    expect(text).toContain('Файл больше 6 МБ');
+    expect(text).toContain('Это не картинка');
+    expect(text).toContain(
+      'Государство создано, но флаг и портрет не загрузились. Загрузите их позже в «Штабе» — щелчком по флагу и по портрету.',
+    );
   });
 
   it('registration with no pictures makes no PUT', async () => {

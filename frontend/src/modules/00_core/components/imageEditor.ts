@@ -50,3 +50,9 @@ export function imageUploadLaterText(kind: ImageSlotKind): string {
     ? 'Государство создано, но флаг не загрузился. Загрузите его позже в «Штабе» — щелчком по флагу.'
     : 'Государство создано, но портрет не загрузился. Загрузите его позже в «Штабе» — щелчком по портрету.';
 }
+
+/** Tail of the registration failure notice when BOTH pictures failed —
+ * the one danger notice ends with this sentence after the two reasons
+ * (0.12.0 unit 7; the notice slot shows a single message). */
+export const imageUploadLaterBothText =
+  'Государство создано, но флаг и портрет не загрузились. Загрузите их позже в «Штабе» — щелчком по флагу и по портрету.';

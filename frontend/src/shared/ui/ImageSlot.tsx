@@ -55,6 +55,26 @@ const NOUN: Record<ImageSlotKind, string> = {
 /** «JPEG, PNG или WebP» — the file input's accept list. */
 const ACCEPT = 'image/jpeg,image/png,image/webp';
 
+/**
+ * Open the file chooser for one image — a transient `<input
+ * type="file">` clicked synchronously inside the click handler so the
+ * browser allows it. The chosen File reaches `onPicked`; cancelling
+ * the chooser reports nothing and leaves the open window untouched
+ * (0.12.0 unit 7 — «Выбрать другой файл» in the preview window).
+ */
+export function pickImageFile(onPicked: (file: File) => void): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = ACCEPT;
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (file !== undefined && file !== null) {
+      onPicked(file);
+    }
+  };
+  input.click();
+}
+
 export interface ImageSlotProps {
   kind: ImageSlotKind;
   size: ImageSlotSize;

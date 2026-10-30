@@ -91,7 +91,9 @@ export function NationTip({
     };
   }, [token, nationId]);
 
-  const shownFlag = nation?.flag_url ?? flagUrl ?? null;
+  // 0.12.0 unit 7: the tip header shows the THUMBNAIL, not the full
+  // picture — the cell's flag_url already carries the server's thumb.
+  const shownFlag = nation?.flag_thumb_url ?? flagUrl ?? null;
   const shownColor = nation?.color_hex ?? color ?? undefined;
   // Unit 6a: the heading is always the SHORT name — the loaded card
   // only refreshes flag and colour, never replaces it with `name`.

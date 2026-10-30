@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy import and_, delete, func, insert, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -184,6 +184,9 @@ class PlayerRegistryRow:
     # only means "the player owns no nation", like the other nation_*
     # fields.
     nation_short_name: str
+    # The uploaded-flag content key (nation_images), like the other
+    # nation_* fields None when the player owns no nation.
+    nation_flag_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -201,6 +204,9 @@ class NationRegistryRow:
     created_at: datetime
     province_count: int
     short_name: str
+    # The uploaded-flag content key (nation_images) — None for a
+    # nation that never uploaded a flag.
+    flag_sha256: str | None = None
 
 
 ColorStatus = Literal["OK", "TAKEN", "TOO_CLOSE"]
@@ -600,7 +606,10 @@ class PlayerService:
         """
         Every player joined to the nation they own (if any), ordered by
         (created_at, id) — the row-numbering order of Spec 03_registry
-        3.2. Read-only and never commits.
+        3.2. The nation's uploaded-flag sha rides on the same row via
+        the ``nation_images`` flag join — one query for the whole list,
+        never one per player (``uq_nation_images_nation_kind`` keeps the
+        join one-to-one). Read-only and never commits.
         """
         result = await session.execute(
             select(
@@ -613,8 +622,16 @@ class PlayerService:
                 Nation.name,
                 Nation.color_hex,
                 Nation.short_name,
+                NationImage.sha256,
             )
             .outerjoin(Nation, Nation.owner_player_id == Player.id)
+            .outerjoin(
+                NationImage,
+                and_(
+                    NationImage.nation_id == Nation.id,
+                    NationImage.kind == "flag",
+                ),
+            )
             .order_by(Player.created_at, Player.id)
         )
         return [
@@ -628,6 +645,7 @@ class PlayerService:
                 nation_name=row[6],
                 nation_color=row[7],
                 nation_short_name=row[8],
+                nation_flag_sha256=row[9],
             )
             for row in result.all()
         ]
@@ -1102,8 +1120,10 @@ class NationService:
         (created_turn, created_at, id) — the row-numbering order of
         Spec 03_registry 3.3. The count is a correlated subquery over
         provinces.nation_id; sea zones can never be owned
-        (ck_provinces_sea_unowned), so they need no special case.
-        Read-only and never commits.
+        (ck_provinces_sea_unowned), so they need no special case. The
+        uploaded-flag sha joins in the same query
+        (``uq_nation_images_nation_kind`` keeps it one-to-one) — never
+        one query per nation. Read-only and never commits.
         """
         province_count = (
             select(func.count())
@@ -1120,7 +1140,16 @@ class NationService:
                 Nation.created_at,
                 province_count,
                 Nation.short_name,
-            ).order_by(Nation.created_turn, Nation.created_at, Nation.id)
+                NationImage.sha256,
+            )
+            .outerjoin(
+                NationImage,
+                and_(
+                    NationImage.nation_id == Nation.id,
+                    NationImage.kind == "flag",
+                ),
+            )
+            .order_by(Nation.created_turn, Nation.created_at, Nation.id)
         )
         return [
             NationRegistryRow(
@@ -1131,6 +1160,7 @@ class NationService:
                 created_at=row[4],
                 province_count=row[5],
                 short_name=row[6],
+                flag_sha256=row[7],
             )
             for row in result.all()
         ]

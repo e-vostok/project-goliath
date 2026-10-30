@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_session
 from core.security.dependencies import get_current_player
+from modules._00_core import images
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Player
 from modules._04_orders.dto import (
@@ -47,13 +48,15 @@ router = APIRouter(prefix="/api/v1/orders")
 def _nation_mark(view) -> NationMarkDTO:
     """The nation snapshot of a service view as the wire mark.
 
-    ``flag_url`` stays null until unit 5 (the uploaded flag, INV-16).
+    ``flag_url`` is the thumbnail of the nation's CURRENT uploaded
+    flag — the service reads it at display time; the address is built
+    only by ``images.image_url`` (INV-16).
     """
     return NationMarkDTO(
         name=view.nation_name,
         color=view.nation_color,
         short_name=view.nation_short_name,
-        flag_url=None,
+        flag_url=images.image_url(view.nation_flag_sha256, "thumb"),
     )
 
 
