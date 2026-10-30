@@ -41,6 +41,7 @@ Guard rails
 - SAFE-5. Rehearsal (only for tasks that change `data/map/**`, provinces or startup sync): start the backend on PostgreSQL from the previous manifest and quote the line `01_map started (… added, … present, … retired removed)`.
 - SAFE-6. STOP and ask only if a prerequisite of the TZ is missing, a forbidden path must change, an invariant would break, or the TZ says STOP. Otherwise decide yourself and state the assumption in one line.
 - SAFE-7. Merge class (last line of every report): `ROUTINE: Project Owner may merge and deploy now` only if the audit is clean, your suites are green, no map data / ids / database rows / startup sync / auth / tick engine changed, no new migration, env variable or dependency. Otherwise `NEEDS LEAD AI REVIEW: <one sentence why>`.
+- SAFE-8. If TEST-2 requires the PostgreSQL tier and no PostgreSQL is reachable, run every other tier, write `PostgreSQL: UNVERIFIED (<reason>)` in the report, set the class to `NEEDS LEAD AI REVIEW`, and add the line `Owner: run CI on this branch before merging` (Actions → CI → Run workflow). Never mark such a task `ROUTINE`.
 
 UI
 - UI-1. Every app window except the map fits exactly into 910 px of width — no horizontal scrollbar, nothing sticking out; design columns and controls to shrink and wrap, not to scroll sideways.

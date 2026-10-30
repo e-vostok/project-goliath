@@ -8,6 +8,8 @@
     "CI-3"
   ],
   "legacy_duplicates": 0,
+  "legacy_format": 18,
+  "legacy_refs": 9,
   "max_bytes": {
     "docs/01_GAME_BIBLE/00_core.md": 38600,
     "docs/01_GAME_BIBLE/01_map.md": 32800,
@@ -45,7 +47,7 @@
     "docs/03_ROADMAP/path_to_1_0.md": 27800,
     "docs/PROJECT_STATE.md": 39200,
     "docs/development_workflow.md": 38600,
-    "docs/devin_rules.md": 10600,
+    "docs/devin_rules.md": 11000,
     "docs/prompts_templates.md": 27600
   }
 }
