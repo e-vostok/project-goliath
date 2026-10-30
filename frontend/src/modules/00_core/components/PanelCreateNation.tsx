@@ -48,6 +48,7 @@ import {
   BlockTitle,
   ImageSlot,
   LoadingState,
+  pickImageFile,
   RADII,
   SIZES,
   SPACING,
@@ -59,7 +60,10 @@ import {
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { imageErrorText } from './imageErrorTexts';
-import { imageUploadLaterText } from './imageEditor';
+import {
+  imageUploadLaterBothText,
+  imageUploadLaterText,
+} from './imageEditor';
 import { ImageUploadPreview } from './ImageUploadPreview';
 import { isValidColorHex, normalizeColorHex } from './registrationForm';
 import { useBotStatus } from '../../02_bot/hooks/useBotStatus';
@@ -269,9 +273,11 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       const nation = await api.createNation(token, toCreateRequest(form));
       // The nation exists — now the pending pictures go one by one:
       // flag first, then the portrait. A failed upload never cancels
-      // the registration; each gets ONE danger notice (Spec «Порядок
-      // в окне регистрации» — reason text + the «в «Штабе»» tail).
-      const failedImages: string[] = [];
+      // the registration (Spec «Порядок в окне регистрации»). The
+      // notice slot shows ONE message, so failures collapse into one
+      // danger notice: one failure — reason + the «в «Штабе»» tail;
+      // both — both reasons + the shared both-failed tail.
+      const failedImages: Partial<Record<ImageSlotKind, string>> = {};
       for (const kind of ['flag', 'portrait'] as const) {
         const pending = pendingImages[kind];
         if (pending === undefined) {
@@ -280,16 +286,28 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
         try {
           await api.uploadNationImage(token, kind, pending.file);
         } catch (uploadError) {
-          failedImages.push(
-            `${imageErrorText(uploadError, kind, rules)} ${imageUploadLaterText(kind)}`,
-          );
+          failedImages[kind] = imageErrorText(uploadError, kind, rules);
         }
       }
       sendTaptic();
       clearDraft();
-      notify(SUCCESS_RU.nationCreated);
-      for (const text of failedImages) {
-        notify(text, { tone: 'danger' });
+      const flagReason = failedImages.flag;
+      const portraitReason = failedImages.portrait;
+      if (flagReason !== undefined && portraitReason !== undefined) {
+        notify(
+          `${flagReason} ${portraitReason} ${imageUploadLaterBothText}`,
+          { tone: 'danger' },
+        );
+      } else if (flagReason !== undefined) {
+        notify(`${flagReason} ${imageUploadLaterText('flag')}`, {
+          tone: 'danger',
+        });
+      } else if (portraitReason !== undefined) {
+        notify(`${portraitReason} ${imageUploadLaterText('portrait')}`, {
+          tone: 'danger',
+        });
+      } else {
+        notify(SUCCESS_RU.nationCreated);
       }
       onCreated(nation);
     } catch (error) {
@@ -553,6 +571,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
 
       {imagePick !== null && (
         <ImageUploadPreview
+          key={`${imagePick.kind}:${imagePick.file.name}:${imagePick.file.size}:${imagePick.file.lastModified}`}
           kind={imagePick.kind}
           mode="register"
           file={imagePick.file}
@@ -563,7 +582,14 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             storePendingImage(imagePick.kind, file);
             setImagePick(null);
           }}
-          onPickAnother={() => setImagePick(null)}
+          // «Выбрать другой файл» opens the chooser right away; a pick
+          // replaces the file in the SAME window (the key remounts the
+          // preview — fresh decode, error state reset), a cancel keeps it.
+          onPickAnother={() =>
+            pickImageFile((file) =>
+              setImagePick({ kind: imagePick.kind, file }),
+            )
+          }
           onClose={() => setImagePick(null)}
         />
       )}

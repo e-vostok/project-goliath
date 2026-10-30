@@ -36,6 +36,7 @@ import { useFormDraft } from '../../../shared/formDraft';
 import { SUCCESS_RU } from '../../../shared/texts/success.ru';
 import type { NationDTO } from '../../../shared/types';
 import {
+  pickImageFile,
   SIZES,
   SPACING,
   tokenVar,
@@ -270,6 +271,7 @@ export function PanelNationHome({
       )}
       {imagePick !== null && (
         <ImageUploadPreview
+          key={`${imagePick.kind}:${imagePick.file.name}:${imagePick.file.size}:${imagePick.file.lastModified}`}
           kind={imagePick.kind}
           mode="replace"
           file={imagePick.file}
@@ -285,7 +287,14 @@ export function PanelNationHome({
             );
             onChanged();
           }}
-          onPickAnother={() => setImagePick(null)}
+          // «Выбрать другой файл» opens the chooser right away; a pick
+          // replaces the file in the SAME window (the key remounts the
+          // preview — fresh decode, error state reset), a cancel keeps it.
+          onPickAnother={() =>
+            pickImageFile((file) =>
+              setImagePick({ kind: imagePick.kind, file }),
+            )
+          }
           onClose={() => setImagePick(null)}
         />
       )}

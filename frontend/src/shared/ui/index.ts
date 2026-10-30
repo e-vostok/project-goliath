@@ -42,7 +42,7 @@ export { ColorSwatch } from './ColorSwatch';
 export { FlagStub } from './FlagStub';
 export { NationLabel } from './NationLabel';
 export { PortraitStub } from './PortraitStub';
-export { ImageSlot } from './ImageSlot';
+export { ImageSlot, pickImageFile } from './ImageSlot';
 export type {
   ImageSlotKind,
   ImageSlotProps,
