@@ -5,7 +5,7 @@
  *
  * Two columns: the left one (460 px) stacks «1. Провинция» — the
  * debounced «Поиск по названию» over GET /admin/provinces, radio rows
- * with the owner's flag + short name or «свободна», «Показать ещё» by
+ * with the owner's flag stub + short name or «свободна», «Показать ещё» by
  * limit/offset — and «2. Действие» — the «Передать государству» /
  * «Вывести из-под государства» segment (withdraw is disabled for a
  * free province) plus, for a transfer, the «Государство-получатель»
@@ -29,10 +29,6 @@
  * Notice, clears the selection and reloads the list; a refusal shows
  * its own line inside the card; a 401 ends the session through the
  * frame's reportUnauthorized, as everywhere.
- *
- * The list DTO carries no flag id, so the owner flags are resolved
- * through paged GET /admin/nations (limit 100) into an id → flag_id
- * map; an unresolved owner shows the stub.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -47,6 +43,7 @@ import type {
 } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
+import { FlagMark } from '../../../shared/ui/FlagMark';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import { useNotice } from '../../../shared/ui/Notice';
 import { useTheme } from '../../../shared/ui/theme';
@@ -72,7 +69,6 @@ import {
 
 const LEFT_COLUMN_WIDTH = 460;
 const RECIPIENT_SUGGEST_LIMIT = 8;
-const NATION_FLAG_PAGE = 100;
 
 const SEARCH_LABEL = 'Поиск по названию';
 const RECIPIENT_LABEL = 'Государство-получатель';
@@ -263,10 +259,6 @@ export function ProvincesSection() {
   const [reloadKey, setReloadKey] = useState(0);
   const listSeq = useRef(0);
 
-  /* nation_id → flag_id, resolved through paged GET /admin/nations. */
-  const [flags, setFlags] = useState<Record<string, string | null>>({});
-  const flagSeq = useRef(0);
-
   /* --- card 2: the action --- */
   const [selected, setSelected] = useState<AdminProvinceDTO | null>(null);
   const [action, setAction] = useState<Action>('transfer');
@@ -337,54 +329,6 @@ export function ProvincesSection() {
     setListStatus('loading');
     void load(appliedSearch, 0, false);
   }, [appliedSearch, reloadKey, load]);
-
-  /* Owner flags: page GET /admin/nations until every visible owner is
-     known (or marked null); the list rows read the map afterwards. */
-  useEffect(() => {
-    const missing = [
-      ...new Set(
-        items
-          .map((province) => province.nation_id)
-          .filter((id): id is string => id !== null && !(id in flags)),
-      ),
-    ];
-    if (missing.length === 0) {
-      return;
-    }
-    const seq = ++flagSeq.current;
-    void (async () => {
-      const found: Record<string, string | null> = {};
-      const remaining = new Set(missing);
-      let offset = 0;
-      for (;;) {
-        const page = await api.adminNations(token, {
-          limit: NATION_FLAG_PAGE,
-          offset,
-        });
-        for (const nation of page.items) {
-          if (remaining.has(nation.id)) {
-            found[nation.id] = nation.flag_id;
-            remaining.delete(nation.id);
-          }
-        }
-        offset += page.items.length;
-        if (remaining.size === 0 || page.items.length === 0 || offset >= page.total) {
-          break;
-        }
-      }
-      // Unresolved owners get a null marker — no refetch loop.
-      for (const id of remaining) {
-        found[id] = null;
-      }
-      if (seq === flagSeq.current) {
-        setFlags((prev) => ({ ...prev, ...found }));
-      }
-    })().catch((error: unknown) => {
-      if (error instanceof ApiError && error.status === 401) {
-        reportUnauthorized();
-      }
-    });
-  }, [items, flags, token, reportUnauthorized]);
 
   /* The preview — re-fetched on every change of province, action or
      recipient; the sequence counter discards stale answers. */
@@ -738,32 +682,11 @@ export function ProvincesSection() {
                             gap: SPACING['space-2'],
                           }}
                         >
-                          {flags[province.nation_id] ? (
-                            <img
-                              src={`/assets/nations/flags/${
-                                flags[province.nation_id]
-                              }.png`}
-                              alt=""
-                              width={18}
-                              height={12}
-                              style={{
-                                display: 'block',
-                                borderRadius: RADII['radius-sm'],
-                              }}
-                            />
-                          ) : (
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                display: 'block',
-                                width: 18,
-                                height: 12,
-                                flexShrink: 0,
-                                borderRadius: RADII['radius-sm'],
-                                background: tokenVar('surface-inset'),
-                              }}
-                            />
-                          )}
+                          <FlagMark
+                            url={province.flag_thumb_url}
+                            width={18}
+                            height={12}
+                          />
                           <span
                             style={{
                               ...TEXT_STYLES['caption'],

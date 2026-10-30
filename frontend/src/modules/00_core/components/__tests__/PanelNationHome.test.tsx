@@ -15,9 +15,8 @@
  *
  * Edit covers (unit 8c): the same tab strip and blocks as the
  * registration window, the PATCH that must carry only changed fields
- * (an emptied optional field goes as '', a legacy NULL flag/portrait
- * stands on the first catalog tile so the first save already carries
- * its id), partial saves for legacy nations, inline error mapping, the
+ * (an emptied optional field goes as '',), partial saves for
+ * legacy nations, inline error mapping, the
  * read-only «Территории» tab, the bot-consent row's home at the bottom
  * of the edit view, no `anthem_url` anywhere, and the draft memory.
  */
@@ -48,8 +47,8 @@ const NATION: NationDTO = {
   color_hex: '#e64545',
   motto: null,
   description: null,
-  flag_id: null,
   flag_url: null,
+  flag_thumb_url: null,
   // Mini-map ids — the chips must show manifest names, never numbers.
   province_ids: [1002, 1001],
   capital_province_id: 1001,
@@ -58,8 +57,8 @@ const NATION: NationDTO = {
   gender: 'male',
   leader_title: 'Верховный правитель',
   leader_bio: null,
-  portrait_id: null,
   portrait_url: null,
+  portrait_thumb_url: null,
   succession_type: 'elections',
   history_url: 'https://vk.com/@testia-istoriya',
   anthem_url: null,
@@ -84,14 +83,11 @@ const LEGACY_NATION: NationDTO = {
 };
 
 /**
- * NATION with the catalog ids filled: the edit form then has no
- * legacy-pick fallback to add, so a PATCH can carry ONLY the field the
- * player actually changed (the clean «changed fields only» cases).
+ * NATION alias for the clean «changed fields only» cases — a PATCH
+ * carries only the field the player actually changed.
  */
 const FULL_NATION: NationDTO = {
   ...NATION,
-  flag_id: 'flag_stub',
-  portrait_id: 'portrait_stub',
 };
 
 function renderHome(nation: NationDTO = NATION) {
@@ -132,8 +128,8 @@ describe('PanelNationHome — the card', () => {
       ...NATION,
       motto: 'Север помнит всё',
       description: 'Профиль государства',
-      flag_url: '/assets/nations/flags/flag_stub.png',
-      portrait_url: '/assets/nations/portraits/portrait_stub.png',
+      flag_url: '/test-img/flag.png',
+      portrait_url: '/test-img/portrait.png',
       leader_bio: 'Правил долго и грозно',
     };
     const { onOpenRegistry } = renderHome(nation);
@@ -455,38 +451,6 @@ describe('PanelNationHome — edit form', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('a legacy NULL flag/portrait opens on the first catalog tile — the first save carries both ids', async () => {
-    const bodies = capturePatch(NATION);
-    const { onChanged } = renderHome(NATION); // flag_id/portrait_id: null
-    const user = userEvent.setup();
-    const save = await openEdit(user);
-
-    // Once the catalog lands the first flag stands selected, and the
-    // PATCH already differs — «Сохранить» is armed by the fallback.
-    const flag = await screen.findByRole('button', { name: 'flag_stub' });
-    await waitFor(() => expect(flag).toHaveAttribute('aria-pressed', 'true'));
-    expect(screen.queryByText('Без флага')).not.toBeInTheDocument();
-    expect(save).toBeEnabled();
-
-    await goToTab(user, 2);
-    const portrait = await screen.findByRole('button', {
-      name: 'portrait_stub',
-    });
-    await waitFor(() =>
-      expect(portrait).toHaveAttribute('aria-pressed', 'true'),
-    );
-    expect(screen.queryByText('Без портрета')).not.toBeInTheDocument();
-
-    // The player changed nothing else — the PATCH still carries the ids.
-    await user.click(save);
-    await waitFor(() =>
-      expect(bodies).toEqual([
-        { flag_id: 'flag_stub', portrait_id: 'portrait_stub' },
-      ]),
-    );
-    await waitFor(() => expect(onChanged).toHaveBeenCalled());
-  });
-
   it('the «Территории» tab is read-only: named rows, capital first, no actions', async () => {
     const user = userEvent.setup();
     renderHome(FULL_NATION);
@@ -579,12 +543,10 @@ describe('PanelNationHome — edit form', () => {
     expect(screen.getByTestId('edit-nation-form')).toBeInTheDocument();
   });
 
-  it('legacy nation: no capital input; the tab-4 rows stay; the PATCH adds the catalog fallbacks', async () => {
+  it('legacy nation: no capital input; the tab-4 rows stay; the PATCH sends only the change', async () => {
     const bodies = capturePatch({
       ...LEGACY_NATION,
       short_name: 'Тестия',
-      flag_id: 'flag_stub',
-      portrait_id: 'portrait_stub',
     });
     const { onChanged } = renderHome(LEGACY_NATION);
 
@@ -617,8 +579,6 @@ describe('PanelNationHome — edit form', () => {
       expect(bodies).toEqual([
         {
           short_name: 'Тестия',
-          flag_id: 'flag_stub',
-          portrait_id: 'portrait_stub',
         },
       ]),
     );
@@ -645,8 +605,6 @@ describe('PanelNationHome — edit form', () => {
     const bodies = capturePatch({
       ...LEGACY_NATION,
       name: 'Новая Тестия',
-      flag_id: 'flag_stub',
-      portrait_id: 'portrait_stub',
     });
     const { onChanged } = renderHome(LEGACY_NATION);
     const user = userEvent.setup();
@@ -663,8 +621,6 @@ describe('PanelNationHome — edit form', () => {
       expect(bodies).toEqual([
         {
           name: 'Новая Тестия',
-          flag_id: 'flag_stub',
-          portrait_id: 'portrait_stub',
         },
       ]),
     );

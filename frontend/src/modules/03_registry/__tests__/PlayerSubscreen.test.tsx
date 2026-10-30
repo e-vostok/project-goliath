@@ -37,7 +37,7 @@ const PLAYER: RegistryPlayerDTO = {
     id: NATION_ID,
     name: 'НВГ',
     color: '#C0392B',
-    flag_url: '/assets/nations/flags/flag_1.png',
+    flag_url: '/test-img/flag_1.png',
   },
 };
 
@@ -113,6 +113,12 @@ describe('PlayerSubscreen — content', () => {
     expect(
       within(nation).getByRole('button', { name: 'НВГ' }),
     ).toBeInTheDocument();
+    // The «sub» flag shows the cell's flag_url — the server puts the
+    // thumbnail address there (0.12.0 unit 7) — at 48×32.
+    const flag = nation.querySelector('img')!;
+    expect(flag).toHaveAttribute('src', '/test-img/flag_1.png');
+    expect(flag).toHaveAttribute('width', '48');
+    expect(flag).toHaveAttribute('height', '32');
 
     // INV-R2: nothing that even looks like the hidden identifiers.
     expect(document.body.innerHTML).not.toContain('player_id');

@@ -153,14 +153,11 @@ async def seed_nation(
     created_turn: int = 0,
     created_at: datetime | None = None,
     short_name: str | None = None,
-    flag_id: str | None = None,
 ) -> Nation:
     """One nation row; provinces are assigned by the caller.
 
     ``short_name`` is NOT NULL (migration 0012) — it defaults to a
-    fresh unique value from the factory; ``flag_id`` defaults to NULL —
-    the pre-0.9.0 state — so a flag-cell assertion never depends on a
-    catalog pick.
+    fresh unique value from the factory.
     """
     build_kwargs: dict = {"provinces": [], "scheduled_actions": []}
     if short_name is not None:
@@ -171,7 +168,6 @@ async def seed_nation(
         color_hex=color_hex,
         created_turn=created_turn,
         created_at=created_at or datetime.now(UTC),
-        flag_id=flag_id,
         **build_kwargs,
     )
     session.add(nation)

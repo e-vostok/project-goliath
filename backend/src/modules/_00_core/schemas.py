@@ -65,8 +65,8 @@ class NationDTO(BaseModel):
     Nation representation (Spec Part 5). None on mandatory fields only
     for nations created before the profile/0.8.0 migrations — except
     ``short_name``, which is mandatory since migration 0012; None on
-    optional fields means "not set". ``flag_url``/``portrait_url`` are
-    derived through ``catalog.py`` (INV-16).
+    optional fields means "not set". The four ``*_url`` picture fields
+    are None until the nation uploads the image (0.12.0 unit 5b).
     """
 
     id: uuid.UUID
@@ -77,8 +77,8 @@ class NationDTO(BaseModel):
     color_hex: str
     motto: str | None
     description: str | None
-    flag_id: str | None
     flag_url: str | None
+    flag_thumb_url: str | None
     province_ids: list[int]
     capital_province_id: int | None
     capital_name: str | None
@@ -86,8 +86,8 @@ class NationDTO(BaseModel):
     gender: str | None
     leader_title: str | None
     leader_bio: str | None
-    portrait_id: str | None
     portrait_url: str | None
+    portrait_thumb_url: str | None
     succession_type: str | None
     history_url: str | None
     # не используется с 0.9.0, снятие — бэклог 00_core
@@ -101,7 +101,7 @@ class NationPublicDTO(BaseModel):
     """
     The public view of another player's nation (Bible §7, Spec Part 5).
 
-    Exactly the 20 keys listed in the Spec — the service fields
+    Exactly the public keys listed in the Spec — the service fields
     (``owner_player_id``, ``gender``, ``succession_type``, ``anthem_url``)
     and any VK identifier can never leak: the route is declared with
     ``response_model=NationPublicDTO``.
@@ -114,19 +114,27 @@ class NationPublicDTO(BaseModel):
     color_hex: str
     motto: str | None
     description: str | None
-    flag_id: str | None
     flag_url: str | None
+    flag_thumb_url: str | None
     province_ids: list[int]
     capital_province_id: int | None
     capital_name: str | None
     leader_name: str | None
     leader_title: str | None
     leader_bio: str | None
-    portrait_id: str | None
     portrait_url: str | None
+    portrait_thumb_url: str | None
     history_url: str | None
     level: int
     judge_rating: int
+
+
+class NationImageDTO(BaseModel):
+    """Answer of PUT /api/v1/nations/me/images/{kind} (Spec Part 5)."""
+
+    kind: str
+    url: str
+    thumb_url: str
 
 
 class NationCreateRequest(BaseModel):
@@ -137,7 +145,6 @@ class NationCreateRequest(BaseModel):
     color_hex: str = Field(pattern=_COLOR_HEX_PATTERN)
     motto: str | None = None
     description: str | None = None
-    flag_id: str | None = None
     province_ids: list[int]
     capital_province_id: int | None = None
     capital_name: str
@@ -145,7 +152,6 @@ class NationCreateRequest(BaseModel):
     gender: str
     leader_title: str
     leader_bio: str | None = None
-    portrait_id: str | None = None
     succession_type: str
     history_url: str
     anthem_url: str | None = None
@@ -154,6 +160,17 @@ class NationCreateRequest(BaseModel):
     @classmethod
     def check_name_length(cls, value: str) -> str:
         return _validate_nation_name(value)
+
+
+class NationRulesImagesDTO(BaseModel):
+    """The upload limits the nation form needs for its image hints
+    (Spec Part 5): the exact output sizes and the body cutoff."""
+
+    flag_width: int
+    flag_height: int
+    portrait_width: int
+    portrait_height: int
+    max_upload_bytes: int
 
 
 class NationUpdateRequest(BaseModel):
@@ -171,13 +188,11 @@ class NationUpdateRequest(BaseModel):
     color_hex: str | None = Field(default=None, pattern=_COLOR_HEX_PATTERN)
     motto: str | None = None
     description: str | None = None
-    flag_id: str | None = None
     capital_name: str | None = None
     leader_name: str | None = None
     gender: str | None = None
     leader_title: str | None = None
     leader_bio: str | None = None
-    portrait_id: str | None = None
     succession_type: str | None = None
     history_url: str | None = None
     anthem_url: str | None = None
@@ -186,13 +201,6 @@ class NationUpdateRequest(BaseModel):
     @classmethod
     def check_name_length(cls, value: str | None) -> str | None:
         return _validate_nation_name(value)
-
-
-class CatalogItemDTO(BaseModel):
-    """One ready-made catalog asset (flag or portrait)."""
-
-    id: str
-    url: str
 
 
 class NationRulesDTO(BaseModel):
@@ -222,8 +230,7 @@ class NationRulesDTO(BaseModel):
     min_provinces: int
     max_provinces: int
     palette: list[str]
-    flags: list[CatalogItemDTO]
-    portraits: list[CatalogItemDTO]
+    images: NationRulesImagesDTO
     genders: list[str]
     succession_types: list[str]
 

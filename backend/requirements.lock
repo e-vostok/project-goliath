@@ -45,6 +45,8 @@ markupsafe==3.0.4
     # via mako
 opentelemetry-api==1.45.0
     # via fastapi
+pillow==13.0.0
+    # via project-goliath-backend (pyproject.toml)
 psycopg2-binary==2.9.13
     # via project-goliath-backend (pyproject.toml)
 pydantic==2.13.5

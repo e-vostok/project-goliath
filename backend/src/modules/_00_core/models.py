@@ -1,8 +1,8 @@
 """
 ORM models for module 00_core.
 
-Defines the 8 core tables: players, nations, provinces, scheduled_actions,
-game_clock, tick_log, admin_grants, and admin_audit_log.
+Defines the 9 core tables: players, nations, provinces, scheduled_actions,
+game_clock, tick_log, admin_grants, admin_audit_log, and nation_images.
 """
 
 from __future__ import annotations
@@ -21,9 +21,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy import (
@@ -130,10 +132,6 @@ class Nation(Base):
     motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     leader_bio: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    # NULL flag/portrait stays legal for rows from before 0.9.0:
-    # NationService.create requires both since 0.9.0, PATCH never does.
-    flag_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    portrait_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # не используется с 0.9.0, снятие — бэклог 00_core
     anthem_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     # use_alter + a named FK: nations <-> provinces reference each other
@@ -334,3 +332,58 @@ class AdminAuditLog(Base):
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     summary: Mapped[str] = mapped_column(String(300), nullable=False)
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class NationImage(Base):
+    """One uploaded picture of a nation (0.12.0 unit 5, Spec Part 1).
+
+    One row per (nation_id, kind) — a nation has at most one flag and
+    one portrait (INV-15); a replacement upload rewrites the row in the
+    same transaction, so the previous content is gone immediately and
+    its sha256-addressed URL turns 404. Both WebP variants live in the
+    row itself; ``sha256`` is the content key of ``full_bytes`` and is
+    shared freely between rows of different nations with the same file.
+
+    The CASCADE FK is only a PostgreSQL safety net: NationService.delete
+    and the world reset remove these rows with an explicit DELETE
+    before touching nations (INV-19) — SQLite test schemas may run
+    without enforced foreign keys.
+    """
+
+    __tablename__ = "nation_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nation_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey(
+            "nations.id", name="fk_nation_images_nation_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    full_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    thumb_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_by_player_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "players.id",
+            name="fk_nation_images_uploaded_by_player_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "nation_id", "kind", name="uq_nation_images_nation_kind"
+        ),
+        CheckConstraint(
+            "kind IN ('flag', 'portrait')", name="ck_nation_images_kind"
+        ),
+        Index("ix_nation_images_sha256", "sha256"),
+    )

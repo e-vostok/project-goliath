@@ -34,7 +34,7 @@ export interface ChipOption {
 
 /**
  * All create fields of Spec 1.3. Optional text fields hold '' (sent as
- * null), catalog picks hold null, and `capitalProvinceId` is null unless
+ * null), and `capitalProvinceId` is null unless
  * the player explicitly marked a capital — the server then defaults it
  * to the first selected province (INV-14). `capitalNameEdited` is the
  * «player typed the capital name by hand» flag: until it is set the
@@ -47,12 +47,10 @@ export interface RegistrationForm {
   color: string;
   motto: string;
   description: string;
-  flagId: string | null;
   leaderName: string;
   gender: string;
   leaderTitle: string;
   leaderBio: string;
-  portraitId: string | null;
   successionType: string;
   historyUrl: string;
   provinces: ChipOption[];
@@ -92,12 +90,10 @@ export function emptyRegistrationForm(): RegistrationForm {
     color: '',
     motto: '',
     description: '',
-    flagId: null,
     leaderName: '',
     gender: '',
     leaderTitle: '',
     leaderBio: '',
-    portraitId: null,
     successionType: '',
     historyUrl: '',
     provinces: [],
@@ -119,12 +115,10 @@ export function registrationFormIsEmpty(form: RegistrationForm): boolean {
     form.color === '' &&
     form.motto === '' &&
     form.description === '' &&
-    form.flagId === null &&
     form.leaderName === '' &&
     form.gender === '' &&
     form.leaderTitle === '' &&
     form.leaderBio === '' &&
-    form.portraitId === null &&
     form.successionType === '' &&
     form.historyUrl === '' &&
     form.provinces.length === 0 &&
@@ -160,13 +154,11 @@ export function fieldToTab(field: NationField): RegistrationTab {
     case 'color':
     case 'motto':
     case 'description':
-    case 'flagId':
       return 1;
     case 'leaderName':
     case 'gender':
     case 'leaderTitle':
     case 'leaderBio':
-    case 'portraitId':
     case 'successionType':
       return 2;
     case 'historyUrl':
@@ -194,8 +186,6 @@ export function mapErrorCodeToField(code: string): NationField | null {
     case ErrorCodes.COLOR_TAKEN:
     case ErrorCodes.COLOR_TOO_CLOSE:
       return 'color';
-    case ErrorCodes.FLAG_INVALID:
-      return 'flagId';
     case ErrorCodes.LEADER_NAME_INVALID:
       return 'leaderName';
     case ErrorCodes.GENDER_INVALID:
@@ -204,8 +194,6 @@ export function mapErrorCodeToField(code: string): NationField | null {
       return 'leaderTitle';
     case ErrorCodes.LEADER_BIO_INVALID:
       return 'leaderBio';
-    case ErrorCodes.PORTRAIT_INVALID:
-      return 'portraitId';
     case ErrorCodes.SUCCESSION_INVALID:
       return 'successionType';
     case ErrorCodes.HISTORY_URL_INVALID:
@@ -297,7 +285,6 @@ export function toCreateRequest(form: RegistrationForm): NationCreateRequest {
     color_hex: normalizeColorHex(form.color),
     motto: optionalText(form.motto),
     description: optionalText(form.description),
-    flag_id: form.flagId,
     province_ids: form.provinces.map((chip) => chip.value),
     capital_province_id: form.capitalProvinceId,
     capital_name: form.capitalName.trim(),
@@ -305,7 +292,6 @@ export function toCreateRequest(form: RegistrationForm): NationCreateRequest {
     gender: form.gender,
     leader_title: form.leaderTitle.trim(),
     leader_bio: optionalText(form.leaderBio),
-    portrait_id: form.portraitId,
     succession_type: form.successionType,
     history_url: form.historyUrl.trim(),
   } as NationCreateRequest;
@@ -329,12 +315,10 @@ export function registrationFormFromNation(
     color: nation.color_hex,
     motto: nation.motto ?? '',
     description: nation.description ?? '',
-    flagId: nation.flag_id,
     leaderName: nation.leader_name ?? '',
     gender: nation.gender ?? '',
     leaderTitle: nation.leader_title ?? '',
     leaderBio: nation.leader_bio ?? '',
-    portraitId: nation.portrait_id,
     successionType: nation.succession_type ?? '',
     historyUrl: nation.history_url ?? '',
     provinces: nation.province_ids.map((id) => ({
@@ -354,9 +338,7 @@ export function registrationFormFromNation(
  * emptied value equal to the nation's own (a NULL mandatory field the
  * player typed into and cleared) is omitted — nothing to change.
  * `capital_name` is emitted only for a nation that has a capital: the
- * server refuses the field for pre-0.8.0 nations (INV-14). A legacy
- * NULL flag/portrait shows the first catalog entry as selected, so the
- * first save already carries `flag_id`/`portrait_id` (0.9.0, unit 8c).
+ * server refuses the field for pre-0.8.0 nations (INV-14).
  */
 export function toUpdateRequest(
   form: RegistrationForm,
@@ -391,9 +373,6 @@ export function toUpdateRequest(
   if (description !== undefined) {
     request.description = description;
   }
-  if (form.flagId !== nation.flag_id) {
-    request.flag_id = form.flagId ?? '';
-  }
   const leaderName = diffText(form.leaderName, nation.leader_name);
   if (leaderName !== undefined) {
     request.leader_name = leaderName;
@@ -408,9 +387,6 @@ export function toUpdateRequest(
   const leaderBio = diffText(form.leaderBio, nation.leader_bio);
   if (leaderBio !== undefined) {
     request.leader_bio = leaderBio;
-  }
-  if (form.portraitId !== nation.portrait_id) {
-    request.portrait_id = form.portraitId ?? '';
   }
   if (form.successionType !== (nation.succession_type ?? '')) {
     request.succession_type = form.successionType;

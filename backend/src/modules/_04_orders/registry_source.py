@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules._00_core.catalog import flag_url
+from modules._00_core import images
 from modules._00_core.service import NationService
 from modules._03_registry.cells import (
     cell_action_text,
@@ -61,15 +61,21 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
             key=f"o{row.number}",
             cells={
                 "number": row.number,
-                # The cell name and flag stay the SNAPSHOT (INV-O6);
+                # The cell name and colour stay the SNAPSHOT (INV-O6);
                 # only the link (and the tip) are live — a deleted
                 # nation keeps its snapshot, plain, with id = null.
+                # The flag is the nation's CURRENT uploaded thumbnail
+                # (Spec «Флаг ... на момент показа»); the view already
+                # carries its sha, the address is built only by
+                # ``images.image_url`` (INV-16).
                 "nation": cell_nation(
                     row.nation_short_name,
                     row.nation_color,
-                    flag_url(row.nation_flag_id),
                     nation_id=(
                         row.nation_id if row.nation_id in existing else None
+                    ),
+                    flag_url=images.image_url(
+                        row.nation_flag_sha256, "thumb"
                     ),
                 ),
                 "title": cell_action_text(text=row.title, action=f"order:{row.number}"),

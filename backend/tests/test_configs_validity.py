@@ -86,9 +86,19 @@ def _base_config() -> dict:
             ],
             "palette": ["#6A3446", "#BE1253", "#058D1D", "#0C7CF4"],
         },
-        "catalog": {
-            "flag_ids": [],
-            "portrait_ids": [],
+        "images": {
+            "flag_width": 600,
+            "flag_height": 400,
+            "portrait_width": 600,
+            "portrait_height": 800,
+            "flag_thumb_width": 96,
+            "flag_thumb_height": 64,
+            "portrait_thumb_width": 120,
+            "portrait_thumb_height": 160,
+            "webp_quality": 85,
+            "max_upload_bytes": 5242880,
+            "max_pixels": 25000000,
+            "max_side": 8000,
         },
         "calendar": {
             "epoch_start_date": "2040-01-01",
@@ -175,10 +185,18 @@ def test_valid_config_loads():
     assert config.color.min_distance_reserved == 0.08
     assert len(config.color.reserved) == 4
     assert len(config.color.palette) == 36
-    assert config.catalog.flag_ids == [f"flag_placeholder_{i}" for i in range(1, 7)]
-    assert config.catalog.portrait_ids == [
-        f"portrait_placeholder_{i}" for i in range(1, 7)
-    ]
+    assert config.images.flag_width == 600
+    assert config.images.flag_height == 400
+    assert config.images.portrait_width == 600
+    assert config.images.portrait_height == 800
+    assert config.images.flag_thumb_width == 96
+    assert config.images.flag_thumb_height == 64
+    assert config.images.portrait_thumb_width == 120
+    assert config.images.portrait_thumb_height == 160
+    assert config.images.webp_quality == 85
+    assert config.images.max_upload_bytes == 5242880
+    assert config.images.max_pixels == 25000000
+    assert config.images.max_side == 8000
     assert str(config.calendar.epoch_start_date) == "2040-01-01"
     assert config.calendar.months_per_turn == 1
     assert config.calendar.month_names[0] == "январь"
@@ -225,26 +243,6 @@ def test_map_color_hexes_are_all_reserved():
         assert map_colors[key].upper() in reserved, (
             f"colors.{key}={map_colors[key]} is missing from color.reserved"
         )
-
-
-def test_catalog_ids_have_asset_files():
-    """Spec 1.3 Part 4: the catalog lists and the files under
-    ``frontend/public/assets/nations/`` must be in exact 1:1 sync —
-    every listed id resolves to a real PNG (INV-15), and no stray PNG
-    sits in the folders unlisted."""
-    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
-    assets = REPO_ROOT / "frontend" / "public" / "assets" / "nations"
-    for folder_name, ids in (
-        ("flags", config.catalog.flag_ids),
-        ("portraits", config.catalog.portrait_ids),
-    ):
-        folder = assets / folder_name
-        for item_id in ids:
-            assert (folder / f"{item_id}.png").is_file(), (
-                f"catalog id '{item_id}' has no file at {folder / (item_id + '.png')}"
-            )
-        stray = sorted(p.stem for p in folder.glob("*.png") if p.stem not in ids)
-        assert not stray, f"{folder}: PNG files not listed in the config: {stray}"
 
 
 def test_map_config_loads():
@@ -637,6 +635,21 @@ def test_calendar_legacy_days_per_turn_config_rejected(tmp_path):
         CoreConfig.from_yaml(path)
 
     assert "months_per_turn" in str(exc_info.value)
+
+
+# --- Images cross-rules (Spec 1.5, Part 4) ---------------------------------
+
+
+def test_images_thumb_must_match_full_proportion(tmp_path):
+    """images cross-rule: the thumbnail must repeat the full-size aspect
+    exactly (flag_width × flag_thumb_height == flag_height ×
+    flag_thumb_width) — a thumbnail of a different proportion fails."""
+    path = _write_config(tmp_path, {"images": {"flag_thumb_width": 97}})
+
+    with pytest.raises(ValidationError) as exc_info:
+        CoreConfig.from_yaml(path)
+
+    assert "flag_thumb_width" in str(exc_info.value)
 
 
 # --- Nation profile keys (Spec 1.1) ---------------------------------------

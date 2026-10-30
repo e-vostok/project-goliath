@@ -13,7 +13,7 @@ const NATION: NationMarkDTO = {
   name: 'Новгородская республика',
   color: '#C0392B',
   short_name: 'НВГ',
-  flag_url: '/assets/nations/flags/f1.png',
+  flag_url: '/test-img/f1.png',
 };
 
 describe('NationMark', () => {
@@ -26,7 +26,7 @@ describe('NationMark', () => {
     ).not.toBeInTheDocument();
     expect(container.querySelector('img')).toHaveAttribute(
       'src',
-      '/assets/nations/flags/f1.png',
+      '/test-img/f1.png',
     );
   });
 });

@@ -22,14 +22,12 @@ from modules._00_core.exceptions import (
     CapitalNameInvalidError,
     CoreDomainError,
     DescriptionInvalidError,
-    FlagInvalidError,
     GenderInvalidError,
     HistoryUrlInvalidError,
     LeaderBioInvalidError,
     LeaderNameInvalidError,
     LeaderTitleInvalidError,
     MottoInvalidError,
-    PortraitInvalidError,
     ShortNameInvalidError,
     SuccessionInvalidError,
 )
@@ -289,31 +287,3 @@ def validate_anthem_url(value: str | None, config: CoreConfig) -> str | None:
     if parsed.netloc.lower() != host:
         raise AnthemUrlInvalidError("port or userinfo is not allowed")
     return url
-
-
-def validate_flag_id(value: str | None, config: CoreConfig) -> str | None:
-    """Optional `flag_id`: must name a `catalog.flag_ids` entry (INV-15)."""
-    return _validate_catalog_id(value, config.catalog.flag_ids, FlagInvalidError)
-
-
-def validate_portrait_id(value: str | None, config: CoreConfig) -> str | None:
-    """Optional `portrait_id`: must name a `catalog.portrait_ids` entry."""
-    return _validate_catalog_id(
-        value, config.catalog.portrait_ids, PortraitInvalidError
-    )
-
-
-def _validate_catalog_id(
-    value: str | None,
-    catalog: list[str],
-    error: _TextError,
-) -> str | None:
-    """Empty after strip stores NULL; a non-empty id must be listed."""
-    if value is None:
-        return None
-    item = value.strip()
-    if not item:
-        return None
-    if item not in catalog:
-        raise error("is not in the catalog")
-    return item

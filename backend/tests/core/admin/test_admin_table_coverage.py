@@ -53,6 +53,7 @@ from modules._00_core.hooks import (
 )
 from modules._00_core.models import (
     Nation,
+    NationImage,
     ScheduledAction,
     TickLog,
 )
@@ -97,6 +98,7 @@ from tests.modules._00_core.test_router import (
 TABLE_COVERAGE: dict[str, object] = {
     # -- emptied by the world reset (asserted empty below) -----------
     "nations": "reset",
+    "nation_images": "reset",
     "scheduled_actions": "reset",
     "tick_log": "reset",
     "map_ownership_log": "reset",
@@ -256,11 +258,29 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
         player = PlayerFactory.build(vk_user_id=999001, nations=[])
         session.add(player)
         await session.flush()
-        session.add(
-            NationFactory.build(
-                owner=player, provinces=[], scheduled_actions=[]
-            )
+        nation = NationFactory.build(
+            owner=player, provinces=[], scheduled_actions=[]
         )
+        session.add(nation)
+        # The nations row must exist before the image rows: the unit of
+        # work does not order inserts of objects linked only by a raw FK
+        # value (no relationship), so a still-pending nation would let
+        # the nation_images INSERT run first and trip
+        # fk_nation_images_nation_id on PostgreSQL.
+        await session.flush()
+        for kind, sha in (("flag", "ab" * 32), ("portrait", "cd" * 32)):
+            session.add(
+                NationImage(
+                    nation_id=nation.id,
+                    kind=kind,
+                    sha256=sha,
+                    full_bytes=b"x",
+                    thumb_bytes=b"y",
+                    byte_size=1,
+                    uploaded_by_player_id=player.id,
+                    uploaded_at=datetime.now(UTC),
+                )
+            )
         # nation=None: the factory would otherwise build a nested
         # nation (and its nested owner) with random, CHECK-invalid rows.
         session.add(ScheduledActionFactory.build(nation=None))
@@ -285,6 +305,7 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
 
     reset_tables = {
         "nations": Nation,
+        "nation_images": NationImage,
         "scheduled_actions": ScheduledAction,
         "tick_log": TickLog,
         "map_ownership_log": MapOwnershipLog,

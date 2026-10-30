@@ -9,9 +9,10 @@ launch-params signatures.
 from __future__ import annotations
 
 import os
+import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -20,28 +21,37 @@ from core.db import get_session
 from core.security.dependencies import get_current_player
 from core.security.jwt import issue_token
 from core.security.vk_signature import validate_launch_params
+from modules._00_core import images
 from modules._00_core.calendar import compute_game_date, format_game_date
-from modules._00_core.catalog import flag_url, portrait_url
 from modules._00_core.config_schema import CoreConfig
-from modules._00_core.exceptions import CoreDomainError, NationNotFoundError
+from modules._00_core.exceptions import (
+    CoreDomainError,
+    ImageTooLargeError,
+    NationNotFoundError,
+)
 from modules._00_core.models import GameClock, Nation, Player, Province
 from modules._00_core.nation_enums import GENDERS, SUCCESSION_TYPES
 from modules._00_core.schemas import (
     AuthResponseDTO,
-    CatalogItemDTO,
     ColorCheckDTO,
     ColorCheckRequest,
     GameClockDTO,
     NationCreateRequest,
     NationDTO,
+    NationImageDTO,
     NationPublicDTO,
     NationRulesDTO,
+    NationRulesImagesDTO,
     NationUpdateRequest,
     PlayerDTO,
     ProvinceDTO,
     VkAuthRequest,
 )
-from modules._00_core.service import NationService, PlayerService
+from modules._00_core.service import (
+    NationImageRefs,
+    NationService,
+    PlayerService,
+)
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
@@ -80,12 +90,16 @@ async def _nation_with_owner(
     return result.unique().scalar_one_or_none()
 
 
-def _nation_public_fields(nation: Nation, province_ids: list[int]) -> dict:
+def _nation_public_fields(
+    nation: Nation, province_ids: list[int], image_refs: NationImageRefs
+) -> dict:
     """
     The field set shared by ``NationDTO`` and ``NationPublicDTO`` — exactly
     the public contract of Spec Part 5. The owner must already be loaded
     on ``nation`` (``_nation_with_owner``); ``level``/``judge_rating`` are
-    the owner Player's columns.
+    the owner Player's columns. Picture URLs are built only through
+    ``images.image_url`` (INV-16) from the sha256 refs — None when the
+    nation never uploaded that kind.
     """
     return {
         "id": nation.id,
@@ -95,16 +109,18 @@ def _nation_public_fields(nation: Nation, province_ids: list[int]) -> dict:
         "color_hex": nation.color_hex,
         "motto": nation.motto,
         "description": nation.description,
-        "flag_id": nation.flag_id,
-        "flag_url": flag_url(nation.flag_id),
+        "flag_url": images.image_url(image_refs.flag_sha256, "full"),
+        "flag_thumb_url": images.image_url(image_refs.flag_sha256, "thumb"),
         "province_ids": province_ids,
         "capital_province_id": nation.capital_province_id,
         "capital_name": nation.capital_name,
         "leader_name": nation.leader_name,
         "leader_title": nation.leader_title,
         "leader_bio": nation.leader_bio,
-        "portrait_id": nation.portrait_id,
-        "portrait_url": portrait_url(nation.portrait_id),
+        "portrait_url": images.image_url(image_refs.portrait_sha256, "full"),
+        "portrait_thumb_url": images.image_url(
+            image_refs.portrait_sha256, "thumb"
+        ),
         "history_url": nation.history_url,
         "level": nation.owner.level,
         "judge_rating": nation.owner.judge_rating,
@@ -119,7 +135,8 @@ async def _nation_dto(session: AsyncSession, nation: Nation) -> NationDTO:
     result = await session.execute(
         select(Province.id).where(Province.nation_id == nation.id).order_by(Province.id)
     )
-    fields = _nation_public_fields(nation, list(result.scalars().all()))
+    refs = (await NationService.image_refs(session, [nation.id]))[nation.id]
+    fields = _nation_public_fields(nation, list(result.scalars().all()), refs)
     return NationDTO(
         **fields,
         owner_player_id=nation.owner_player_id,
@@ -207,14 +224,13 @@ async def get_nation_rules(
         min_provinces=CORE_CONFIG.nation.min_provinces_per_nation,
         max_provinces=CORE_CONFIG.nation.max_provinces_per_nation,
         palette=CORE_CONFIG.color.palette,
-        flags=[
-            CatalogItemDTO(id=flag_id, url=flag_url(flag_id))
-            for flag_id in CORE_CONFIG.catalog.flag_ids
-        ],
-        portraits=[
-            CatalogItemDTO(id=portrait_id, url=portrait_url(portrait_id))
-            for portrait_id in CORE_CONFIG.catalog.portrait_ids
-        ],
+        images=NationRulesImagesDTO(
+            flag_width=CORE_CONFIG.images.flag_width,
+            flag_height=CORE_CONFIG.images.flag_height,
+            portrait_width=CORE_CONFIG.images.portrait_width,
+            portrait_height=CORE_CONFIG.images.portrait_height,
+            max_upload_bytes=CORE_CONFIG.images.max_upload_bytes,
+        ),
         genders=list(GENDERS),
         succession_types=list(SUCCESSION_TYPES),
     )
@@ -259,8 +275,9 @@ async def get_nation_public(
     result = await session.execute(
         select(Province.id).where(Province.nation_id == nation.id).order_by(Province.id)
     )
+    refs = (await NationService.image_refs(session, [nation.id]))[nation.id]
     return NationPublicDTO(
-        **_nation_public_fields(nation, list(result.scalars().all()))
+        **_nation_public_fields(nation, list(result.scalars().all()), refs)
     )
 
 
@@ -289,8 +306,6 @@ async def create_nation(
         motto=body.motto,
         description=body.description,
         leader_bio=body.leader_bio,
-        flag_id=body.flag_id,
-        portrait_id=body.portrait_id,
         anthem_url=body.anthem_url,
     )
     await session.commit()
@@ -319,8 +334,6 @@ async def update_nations_me(
         motto=body.motto,
         description=body.description,
         leader_bio=body.leader_bio,
-        flag_id=body.flag_id,
-        portrait_id=body.portrait_id,
         anthem_url=body.anthem_url,
         capital_name=body.capital_name,
         config=CORE_CONFIG,
@@ -366,3 +379,144 @@ async def get_game_clock(
         game_date_text=format_game_date(game_date, CORE_CONFIG),
         next_tick_at=clock.next_tick_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# Nation images (0.12.0 unit 5b): upload + public serving (Spec Part 5).
+# ---------------------------------------------------------------------------
+
+_IMAGE_KINDS = ("flag", "portrait")
+_IMAGE_VARIANTS = ("full", "thumb")
+_IMAGE_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+# A viewer's browser revalidates at most once a day; a replaced or
+# deleted picture turns its old content-hash URL into a 404 that must
+# never be cached.
+_IMAGE_CACHE_HEADERS = {"Cache-Control": "public, max-age=86400"}
+_IMAGE_NOSTORE_HEADERS = {"Cache-Control": "no-store"}
+
+
+async def _read_upload_body(request: Request, limit: int) -> bytes:
+    """
+    The raw upload body with a hard cutoff at ``limit`` — never
+    ``await request.body()`` unbounded. The declared Content-Length is
+    rejected first; a chunked or lying body is cut off mid-stream, the
+    first chunk that pushes past the limit aborts the read.
+    """
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            declared = -1
+        if declared > limit:
+            raise ImageTooLargeError(
+                f"declared body {declared} bytes exceeds "
+                f"images.max_upload_bytes={limit}"
+            )
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > limit:
+            raise ImageTooLargeError(
+                f"body exceeds images.max_upload_bytes={limit}"
+            )
+    return bytes(body)
+
+
+@router.put("/nations/me/images/{kind}", response_model=NationImageDTO)
+async def put_nation_image(
+    kind: str,
+    request: Request,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> NationImageDTO:
+    """Accept the player's uploaded flag/portrait file (Spec «Загрузка»).
+
+    Check order: a nation exists (404) -> the body cutoff (413) -> the
+    content checks of ``process_image_async`` (415 / 413 / 422) -> one
+    write transaction that re-checks the nation, replaces the row and
+    commits. ``Content-Type`` and the file name are ignored by design.
+    """
+    if kind not in _IMAGE_KINDS:
+        raise HTTPException(status_code=404)
+
+    nation = await _get_own_nation(session, player)
+    nation_id = nation.id
+    player_id = player.id
+    # The read transaction ends here: the pooled connection is released
+    # before the body is read and the processing semaphore is awaited —
+    # a slow upload must not starve the pool.
+    await session.commit()
+
+    raw = await _read_upload_body(request, CORE_CONFIG.images.max_upload_bytes)
+    processed = await images.process_image_async(raw, kind, CORE_CONFIG.images)
+
+    # ONE write transaction: the nation may have vanished while the file
+    # was processed — the 404 check repeats inside the writing tx.
+    nation = (
+        await session.execute(select(Nation).where(Nation.id == nation_id))
+    ).scalar_one_or_none()
+    if nation is None:
+        raise NationNotFoundError(nation_id)
+    view = await NationService.replace_image(
+        session, nation_id, player_id, kind, processed
+    )
+    await session.commit()
+    return NationImageDTO(
+        kind=kind,
+        url=images.image_url(view.sha256, "full"),
+        thumb_url=images.image_url(view.sha256, "thumb"),
+    )
+
+
+@router.get("/images/{sha256}/{variant}")
+async def get_nation_image(
+    sha256: str,
+    variant: str,
+    session: AsyncSession = Depends(get_session),
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> Response:
+    """Serve a stored picture publicly by content hash (Spec «Раздача»).
+
+    No Bearer token on purpose — a plain ``<img>`` tag sends no
+    Authorization header, and the content is visible to every player.
+    Anything that is not a 64-hex hash and a known variant is a 404 with
+    ``no-store`` — the same response a deleted/replaced picture gets.
+    """
+    if (
+        _IMAGE_SHA256_RE.fullmatch(sha256) is None
+        or variant not in _IMAGE_VARIANTS
+    ):
+        return Response(status_code=404, headers=_IMAGE_NOSTORE_HEADERS)
+
+    body = await NationService.image_bytes(session, sha256, variant)
+    if body is None:
+        return Response(status_code=404, headers=_IMAGE_NOSTORE_HEADERS)
+
+    headers = {
+        **_IMAGE_CACHE_HEADERS,
+        "ETag": f'"{sha256}"',
+        "X-Content-Type-Options": "nosniff",
+    }
+    if _etag_matches(if_none_match, f'"{sha256}"'):
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="image/webp", headers=headers)
+
+
+def _etag_matches(if_none_match: str | None, etag: str) -> bool:
+    """``If-None-Match`` evaluation (weak comparison): a comma-separated
+    list of entity-tags, an optional ``W/`` prefix and the ``*``
+    wildcard. Local copy of the rule used by 01_map — the core never
+    imports satellite modules."""
+    if not if_none_match:
+        return False
+    for part in if_none_match.split(","):
+        tag = part.strip()
+        if tag == "*":
+            return True
+        if tag[:2] == "W/":
+            tag = tag[2:].strip()
+        if tag == etag:
+            return True
+    return False

@@ -2,7 +2,7 @@
  * NationsList — the «Государства» table (0.11.0 units 8a/8b,
  * mockup screen 03): the search row with «Поиск по названию» and
  * «Показано N из M», the primary «Создать государство» button, one
- * table card — Государство (catalog flag, short name over full
+ * table card — Государство (flag stub, short name over full
  * name), Владелец, Провинций, Столица, and the right-most actions
  * column: «Править» (unit 8b) and the red-outline «Удалить…» (unit
  * 8c) — plus «Показать ещё» while total exceeds what is shown.
@@ -15,10 +15,9 @@ import { api, ApiError } from '../../../shared/api-client';
 import type { AdminNationDTO } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
-import { FlagStub } from '../../../shared/ui/FlagStub';
+import { FlagMark } from '../../../shared/ui/FlagMark';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import {
-  RADII,
   SPACING,
   TEXT_STYLES,
   tokenVar,
@@ -32,21 +31,10 @@ const SEARCH_PLACEHOLDER = 'Поиск по названию';
 
 type ListStatus = 'loading' | 'ready' | 'error';
 
-/** The 24×16 catalog flag of a nation cell; a stub when none/unknown. */
-function FlagCell({ flagId }: { flagId: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (flagId === null || failed) {
-    return <FlagStub variant="cell" />;
-  }
+/** The 22×14 nation flag of a cell — the uploaded thumb or the stub. */
+function FlagCell({ url }: { url: string | null }) {
   return (
-    <img
-      src={`/assets/nations/flags/${flagId}.png`}
-      alt=""
-      width={24}
-      height={16}
-      onError={() => setFailed(true)}
-      style={{ display: 'block', borderRadius: RADII['radius-sm'] }}
-    />
+    <FlagMark url={url} width={22} height={14} stubVariant="cell" />
   );
 }
 
@@ -259,7 +247,7 @@ export function NationsList({
                           gap: 10,
                         }}
                       >
-                        <FlagCell flagId={nation.flag_id} />
+                        <FlagCell url={nation.flag_thumb_url} />
                         <span>
                           <span style={{ fontWeight: 500 }}>
                             {nation.short_name}

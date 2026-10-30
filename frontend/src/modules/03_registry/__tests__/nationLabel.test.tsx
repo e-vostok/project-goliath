@@ -77,13 +77,13 @@ describe('NationCell — unit 6a look', () => {
           id: 'n1',
           name: 'НВГ',
           color: '#C0392B',
-          flag_url: '/assets/nations/flags/f1.png',
+          flag_url: '/test-img/f1.png',
         }}
       />,
     );
 
     const img = container.querySelector('img')!;
-    expect(img).toHaveAttribute('src', '/assets/nations/flags/f1.png');
+    expect(img).toHaveAttribute('src', '/test-img/f1.png');
     expect(img).toHaveAttribute('width', '22');
     expect(img).toHaveAttribute('height', '14');
     expect(screen.getByText('НВГ')).toBeInTheDocument();

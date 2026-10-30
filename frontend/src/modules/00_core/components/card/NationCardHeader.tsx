@@ -1,7 +1,7 @@
 /**
  * NationCardHeader — the screen title of the «Штаб» card (UI Spec
  * 9.1, mockup «PAX ATOMICA — макеты окон» board 8): flag 96×64
- * (`FlagStub` for a legacy nation without one), the short name as the
+ * (`FlagStub` when the nation has no uploaded flag), the short name as the
  * small label line above the name — always shown, no «Кратко:» words —
  * the name in `display-lg`, the motto in italics when set, the colour
  * swatch with HEX, and the «Изменить» button on the right (the pencil
@@ -15,7 +15,7 @@ import { useState, type ReactNode } from 'react';
 import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   ColorSwatch,
-  FlagStub,
+  ImageSlot,
   PencilIcon,
   RADII,
   SIZES,
@@ -23,12 +23,17 @@ import {
   TEXT_STYLES,
   tokenVar,
 } from '../../../../shared/ui';
+import {
+  imageSlotHint,
+  type NationImageEditor,
+} from '../imageEditor';
 import { CardBlock } from './CardBlock';
 
 export function NationCardHeader({
   nation,
   onEdit,
   action,
+  imageEditor,
 }: {
   nation: NationDTO | NationPublicDTO;
   onEdit?: () => void;
@@ -37,6 +42,11 @@ export function NationCardHeader({
    * subscreen's «Показать на карте» (unit 14c).
    */
   action?: ReactNode;
+  /**
+   * Present on the own «Штаб» card only: the flag becomes an upload
+   * control. Absent (Registry subscreen) — the flag is read-only.
+   */
+  imageEditor?: NationImageEditor;
 }) {
   return (
     <CardBlock testId="nation-card-header">
@@ -47,22 +57,28 @@ export function NationCardHeader({
           alignItems: 'center',
         }}
       >
-        {nation.flag_url ? (
-          <img
-            src={nation.flag_url}
-            alt={`Флаг ${nation.name}`}
-            width={96}
-            height={64}
-            style={{
-              borderRadius: RADII['radius-sm'],
-              objectFit: 'cover',
-              flexShrink: 0,
-              display: 'block',
-            }}
-          />
-        ) : (
-          <FlagStub variant="card" />
-        )}
+        <ImageSlot
+          kind="flag"
+          size="shtab"
+          src={nation.flag_url}
+          stubColor={nation.color_hex}
+          alt={`Флаг ${nation.name}`}
+          interactive={imageEditor !== undefined}
+          hintLines={
+            imageEditor !== undefined
+              ? imageSlotHint(
+                  'flag',
+                  nation.flag_url !== null,
+                  imageEditor.rules,
+                )
+              : undefined
+          }
+          onPick={
+            imageEditor !== undefined
+              ? (file) => imageEditor.onUpload('flag', file)
+              : undefined
+          }
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{

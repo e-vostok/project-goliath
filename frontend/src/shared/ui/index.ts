@@ -42,6 +42,12 @@ export { ColorSwatch } from './ColorSwatch';
 export { FlagStub } from './FlagStub';
 export { NationLabel } from './NationLabel';
 export { PortraitStub } from './PortraitStub';
+export { ImageSlot, pickImageFile } from './ImageSlot';
+export type {
+  ImageSlotKind,
+  ImageSlotProps,
+  ImageSlotSize,
+} from './ImageSlot';
 export { LoadingState } from './LoadingState';
 export { LoadingScreen, AuthErrorScreen } from './LoadingScreen';
 export { Subscreen } from './Subscreen';
@@ -49,8 +55,13 @@ export { ErrorState, NETWORK_ERROR_TEXT } from './ErrorState';
 export { EmptyState } from './EmptyState';
 export { Popup, PopupHost } from './Popup';
 export type { PopupProps, PopupSize } from './Popup';
-export { NoticeHost, useNotice, NOTICE_TIMEOUT_MS } from './Notice';
-export type { NoticeHostProps } from './Notice';
+export {
+  NoticeHost,
+  useNotice,
+  NOTICE_TIMEOUT_MS,
+  NOTICE_DANGER_TIMEOUT_MS,
+} from './Notice';
+export type { NoticeHostProps, NoticeTone, NotifyOptions } from './Notice';
 export { Tooltip, TooltipRow, TOOLTIP_DELAY_MS } from './Tooltip';
 export type { TooltipProps } from './Tooltip';
 export { UiKitPage } from './UiKitPage';

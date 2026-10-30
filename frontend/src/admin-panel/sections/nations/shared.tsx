@@ -88,12 +88,15 @@ type PanelButtonKind = 'plain' | 'primary' | 'danger' | 'danger-outline';
 
 export function PanelButton({
   kind = 'plain',
+  small = false,
   disabled = false,
   onClick,
   children,
   testId,
 }: {
   kind?: PanelButtonKind;
+  /** The 32 px variant (.btn.sm) for in-card action buttons. */
+  small?: boolean;
   disabled?: boolean;
   onClick: () => void;
   children: ReactNode;
@@ -128,9 +131,9 @@ export function PanelButton({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        height: SIZES['button-h'],
+        height: small ? SIZES['button-h-small'] : SIZES['button-h'],
         boxSizing: 'border-box',
-        padding: '0 16px',
+        padding: small ? '0 12px' : '0 16px',
         borderRadius: RADII['radius-md'],
         whiteSpace: 'nowrap',
         cursor: disabled ? 'default' : 'pointer',

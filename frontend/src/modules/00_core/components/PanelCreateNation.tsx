@@ -11,9 +11,7 @@
  * buttons.
  *
  * The current tab and every field value live in this container as one
- * `RegistrationForm` object; a flag and a portrait are ALWAYS selected
- * — an unset pick falls onto the first catalog entry as soon as
- * `GET /nations/rules` arrives (the anthem field is gone; `anthem_url`
+ * `RegistrationForm` object (the anthem field is gone; `anthem_url`
  * is never sent).
  *
  * Provinces are picked on the map — the «Выбрать на карте» button on
@@ -37,7 +35,7 @@
  * the explicit buttons act.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import bridge from '@vkontakte/vk-bridge';
 import { Button, FormStatus } from '@vkontakte/vkui';
 
@@ -48,16 +46,26 @@ import { SUCCESS_RU } from '../../../shared/texts/success.ru';
 import type { NationDTO } from '../../../shared/types';
 import {
   BlockTitle,
+  ImageSlot,
   LoadingState,
+  pickImageFile,
   RADII,
   SIZES,
   SPACING,
   TEXT_STYLES,
   tokenVar,
   useNotice,
+  type ImageSlotKind,
 } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
+import { imageErrorText } from './imageErrorTexts';
+import {
+  imageUploadLaterBothText,
+  imageUploadLaterText,
+} from './imageEditor';
+import { ImageUploadPreview } from './ImageUploadPreview';
+import { isValidColorHex, normalizeColorHex } from './registrationForm';
 import { useBotStatus } from '../../02_bot/hooks/useBotStatus';
 import { PanelBotGate } from '../../02_bot/components/PanelBotGate';
 import {
@@ -130,29 +138,43 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       !registrationFormIsEmpty(registrationFormFromDraft(storedDraft)),
   );
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Images chosen at registration (0.12.0, Spec «Порядок в окне
+  // регистрации»): kept in this window only — a File plus a local
+  // object URL for the slot — and sent one by one AFTER the nation
+  // exists. Not part of the session draft: a reload loses them.
+  const [pendingImages, setPendingImages] = useState<
+    Partial<Record<ImageSlotKind, { file: File; url: string }>>
+  >({});
+  const pendingRef = useRef(pendingImages);
+  pendingRef.current = pendingImages;
+  useEffect(
+    () => () => {
+      for (const pending of Object.values(pendingRef.current)) {
+        if (pending !== undefined) {
+          URL.revokeObjectURL(pending.url);
+        }
+      }
+    },
+    [],
+  );
+  const [imagePick, setImagePick] = useState<{
+    kind: ImageSlotKind;
+    file: File;
+  } | null>(null);
+  const storePendingImage = (kind: ImageSlotKind, file: File) => {
+    setPendingImages((prev) => {
+      const old = prev[kind];
+      if (old !== undefined) {
+        URL.revokeObjectURL(old.url);
+      }
+      return { ...prev, [kind]: { file, url: URL.createObjectURL(file) } };
+    });
+  };
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<NationField, string>>
   >({});
   const [formError, setFormError] = useState<string | null>(null);
-
-  // A flag and a portrait are ALWAYS selected (UI Spec 9.6): as soon as
-  // the catalog arrives an unset pick falls onto the first entry — a
-  // new form starts preselected, a legacy draft with NULL stands on the
-  // first tile too.
-  useEffect(() => {
-    if (rules === null) {
-      return;
-    }
-    setForm((prev) => {
-      const flagId = prev.flagId ?? rules.flags[0]?.id ?? null;
-      const portraitId = prev.portraitId ?? rules.portraits[0]?.id ?? null;
-      if (flagId === prev.flagId && portraitId === prev.portraitId) {
-        return prev;
-      }
-      return { ...prev, flagId, portraitId };
-    });
-  }, [rules]);
 
   const clearFieldError = (field: NationField) =>
     setFieldErrors((prev) => {
@@ -228,8 +250,7 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   }
 
   // Mirror the form into the session draft — only once the player
-  // edited it (the auto-picked first flag/portrait alone is not a
-  // draft); a form back to pristine drops the entry.
+  // edited it; a form back to pristine drops the entry.
   useEffect(() => {
     if (!touched || registrationFormIsEmpty(form)) {
       clearDraft();
@@ -250,9 +271,44 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
 
     try {
       const nation = await api.createNation(token, toCreateRequest(form));
+      // The nation exists — now the pending pictures go one by one:
+      // flag first, then the portrait. A failed upload never cancels
+      // the registration (Spec «Порядок в окне регистрации»). The
+      // notice slot shows ONE message, so failures collapse into one
+      // danger notice: one failure — reason + the «в «Штабе»» tail;
+      // both — both reasons + the shared both-failed tail.
+      const failedImages: Partial<Record<ImageSlotKind, string>> = {};
+      for (const kind of ['flag', 'portrait'] as const) {
+        const pending = pendingImages[kind];
+        if (pending === undefined) {
+          continue;
+        }
+        try {
+          await api.uploadNationImage(token, kind, pending.file);
+        } catch (uploadError) {
+          failedImages[kind] = imageErrorText(uploadError, kind, rules);
+        }
+      }
       sendTaptic();
       clearDraft();
-      notify(SUCCESS_RU.nationCreated);
+      const flagReason = failedImages.flag;
+      const portraitReason = failedImages.portrait;
+      if (flagReason !== undefined && portraitReason !== undefined) {
+        notify(
+          `${flagReason} ${portraitReason} ${imageUploadLaterBothText}`,
+          { tone: 'danger' },
+        );
+      } else if (flagReason !== undefined) {
+        notify(`${flagReason} ${imageUploadLaterText('flag')}`, {
+          tone: 'danger',
+        });
+      } else if (portraitReason !== undefined) {
+        notify(`${portraitReason} ${imageUploadLaterText('portrait')}`, {
+          tone: 'danger',
+        });
+      } else {
+        notify(SUCCESS_RU.nationCreated);
+      }
       onCreated(nation);
     } catch (error) {
       if (isConsentRequiredError(error)) {
@@ -415,8 +471,43 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
         }}
       >
         <BlockTitle icon={active.icon} title={active.title} />
-        {tab === 1 && <CreateNationTabSymbols {...tabProps} />}
-        {tab === 2 && <CreateNationTabLeadership {...tabProps} />}
+        {tab === 1 && (
+          <CreateNationTabSymbols
+            {...tabProps}
+            imageSlot={
+              <ImageSlot
+                kind="flag"
+                size="registration"
+                src={pendingImages.flag?.url ?? null}
+                stubColor={
+                  isValidColorHex(form.color)
+                    ? normalizeColorHex(form.color)
+                    : undefined
+                }
+                alt="Флаг государства"
+                interactive
+                rules={rules}
+                onPick={(file) => setImagePick({ kind: 'flag', file })}
+              />
+            }
+          />
+        )}
+        {tab === 2 && (
+          <CreateNationTabLeadership
+            {...tabProps}
+            imageSlot={
+              <ImageSlot
+                kind="portrait"
+                size="registration"
+                src={pendingImages.portrait?.url ?? null}
+                alt="Портрет лидера"
+                interactive
+                rules={rules}
+                onPick={(file) => setImagePick({ kind: 'portrait', file })}
+              />
+            }
+          />
+        )}
         {tab === 3 && <CreateNationTabHistory {...tabProps} />}
         {tab === 4 && (
           <CreateNationTabTerritories
@@ -478,6 +569,30 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
         )}
       </div>
 
+      {imagePick !== null && (
+        <ImageUploadPreview
+          key={`${imagePick.kind}:${imagePick.file.name}:${imagePick.file.size}:${imagePick.file.lastModified}`}
+          kind={imagePick.kind}
+          mode="register"
+          file={imagePick.file}
+          rules={rules}
+          onConfirm={async (file) => {
+            // Nothing is sent here — the file only lands in the
+            // window state (Spec: stored until the nation exists).
+            storePendingImage(imagePick.kind, file);
+            setImagePick(null);
+          }}
+          // «Выбрать другой файл» opens the chooser right away; a pick
+          // replaces the file in the SAME window (the key remounts the
+          // preview — fresh decode, error state reset), a cancel keeps it.
+          onPickAnother={() =>
+            pickImageFile((file) =>
+              setImagePick({ kind: imagePick.kind, file }),
+            )
+          }
+          onClose={() => setImagePick(null)}
+        />
+      )}
       {pickerOpen && (
         <ProvincePicker
           initialSelectedIds={form.provinces.map((chip) => chip.value)}

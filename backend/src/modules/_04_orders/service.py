@@ -98,7 +98,9 @@ class OrderDetailView:
     nation_name: str
     nation_color: str
     nation_short_name: str
-    nation_flag_id: str | None
+    # The CURRENT uploaded-flag key — display-time, never stored in
+    # the order (Spec «Флаг ... на момент показа», INV-O6).
+    nation_flag_sha256: str | None
     title: str
     summary: str
     article_url: str
@@ -152,7 +154,7 @@ class RegistryOrderView:
     nation_name: str
     nation_color: str
     nation_short_name: str
-    nation_flag_id: str | None
+    nation_flag_sha256: str | None
     title: str
     submitted_at: datetime
     distributed_at: datetime | None
@@ -180,7 +182,7 @@ class AssignedOrderView:
     nation_name: str
     nation_color: str
     nation_short_name: str
-    nation_flag_id: str | None
+    nation_flag_sha256: str | None
     title: str
     summary: str
     article_url: str
@@ -218,7 +220,11 @@ def _aware(moment: datetime) -> datetime:
 
 
 def _detail_view(
-    order: Order, *, now: datetime, viewer_player_id: str
+    order: Order,
+    *,
+    now: datetime,
+    viewer_player_id: str,
+    nation_flag_sha256: str | None,
 ) -> OrderDetailView:
     """The detail DTO payload for a loaded row."""
     return OrderDetailView(
@@ -226,7 +232,7 @@ def _detail_view(
         nation_name=order.nation_name,
         nation_color=order.nation_color,
         nation_short_name=order.nation_short_name,
-        nation_flag_id=order.nation_flag_id,
+        nation_flag_sha256=nation_flag_sha256,
         title=order.title,
         summary=order.summary,
         article_url=order.article_url,
@@ -243,6 +249,14 @@ def _detail_view(
             and order.verdict_at is None
         ),
     )
+
+
+async def _flag_sha256(session: AsyncSession, nation_id: str) -> str | None:
+    """The CURRENT uploaded-flag content key of one nation — read at
+    display time through ``00_core`` (Spec «Флаг ... на момент
+    показа»); a deleted or flag-less nation comes back ``None``."""
+    refs = await NationService.image_refs(session, [nation_id])
+    return refs[nation_id].flag_sha256
 
 
 def _is_number_conflict(exc: IntegrityError) -> bool:
@@ -317,7 +331,14 @@ class OrderService:
         now = datetime.now(UTC)
         if existing is not None:
             return SubmitOutcome(
-                _detail_view(existing, now=now, viewer_player_id=player_id),
+                _detail_view(
+                    existing,
+                    now=now,
+                    viewer_player_id=player_id,
+                    nation_flag_sha256=await _flag_sha256(
+                        session, existing.nation_id
+                    ),
+                ),
                 False,
             )
 
@@ -368,7 +389,13 @@ class OrderService:
         # have assigned the judge or rolled its writes back entirely.
         await session.refresh(order)
         return SubmitOutcome(
-            _detail_view(order, now=now, viewer_player_id=player_id), True
+            _detail_view(
+                order,
+                now=now,
+                viewer_player_id=player_id,
+                nation_flag_sha256=await _flag_sha256(session, order.nation_id),
+            ),
+            True,
         )
 
     @staticmethod
@@ -399,7 +426,6 @@ class OrderService:
                         nation_name=nation.name,
                         nation_color=nation.color_hex,
                         nation_short_name=nation.short_name,
-                        nation_flag_id=nation.flag_id,
                         title=title,
                         summary=summary,
                         article_url=article_url,
@@ -432,6 +458,7 @@ class OrderService:
             order,
             now=datetime.now(UTC),
             viewer_player_id=viewer_player_id,
+            nation_flag_sha256=await _flag_sha256(session, order.nation_id),
         )
 
     @staticmethod
@@ -441,7 +468,9 @@ class OrderService:
         """
         Every order for the Registry source (Spec Appendix A), newest
         first. No judge fields — the view cannot leak them (INV-O5).
-        Read-only, never commits.
+        The flag is the nation's CURRENT uploaded one — one
+        ``image_refs`` for the whole list, never stored in the order
+        (Spec «Флаг ... на момент показа»). Read-only, never commits.
         """
         result = await session.execute(
             select(
@@ -450,13 +479,16 @@ class OrderService:
                 Order.nation_name,
                 Order.nation_color,
                 Order.nation_short_name,
-                Order.nation_flag_id,
                 Order.title,
                 Order.submitted_at,
                 Order.distributed_at,
                 Order.deadline_at,
                 Order.verdict_at,
             ).order_by(Order.number.desc())
+        )
+        rows = result.all()
+        refs = await NationService.image_refs(
+            session, [row[1] for row in rows]
         )
         return [
             RegistryOrderView(
@@ -465,14 +497,14 @@ class OrderService:
                 nation_name=row[2],
                 nation_color=row[3],
                 nation_short_name=row[4],
-                nation_flag_id=row[5],
-                title=row[6],
-                submitted_at=row[7],
-                distributed_at=row[8],
-                deadline_at=row[9],
-                verdict_at=row[10],
+                nation_flag_sha256=refs[row[1]].flag_sha256,
+                title=row[5],
+                submitted_at=row[6],
+                distributed_at=row[7],
+                deadline_at=row[8],
+                verdict_at=row[9],
             )
-            for row in result.all()
+            for row in rows
         ]
 
     @staticmethod
@@ -793,7 +825,9 @@ class OrderService:
         """
         The caller's orders still awaiting a verdict, soonest deadline
         first — the judge's queue (Spec 5.2). No judge fields are ever
-        read out; the judge is the caller. Read-only, never commits.
+        read out; the judge is the caller. The flag is the nation's
+        CURRENT uploaded one — one ``image_refs`` for the whole queue
+        (Spec «Флаг ... на момент показа»). Read-only, never commits.
         """
         result = await session.execute(
             select(Order)
@@ -803,6 +837,10 @@ class OrderService:
             )
             .order_by(Order.deadline_at)
         )
+        orders = result.scalars().all()
+        refs = await NationService.image_refs(
+            session, [order.nation_id for order in orders]
+        )
         now = datetime.now(UTC)
         return [
             AssignedOrderView(
@@ -810,14 +848,14 @@ class OrderService:
                 nation_name=order.nation_name,
                 nation_color=order.nation_color,
                 nation_short_name=order.nation_short_name,
-                nation_flag_id=order.nation_flag_id,
+                nation_flag_sha256=refs[order.nation_id].flag_sha256,
                 title=order.title,
                 summary=order.summary,
                 article_url=order.article_url,
                 deadline_at=order.deadline_at,
                 overdue=is_overdue(order, now),
             )
-            for order in result.scalars()
+            for order in orders
         ]
 
     @staticmethod
@@ -915,7 +953,12 @@ class OrderService:
         except Exception:
             logger.exception("verdict notification failed for order %s", order.id)
 
-        return _detail_view(order, now=verdict_at, viewer_player_id=player_id)
+        return _detail_view(
+            order,
+            now=verdict_at,
+            viewer_player_id=player_id,
+            nation_flag_sha256=await _flag_sha256(session, order.nation_id),
+        )
 
     @staticmethod
     async def admin_assign_judge(

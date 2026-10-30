@@ -49,16 +49,16 @@ const NATION: NationPublicDTO = {
   color_hex: '#C0392B',
   motto: null,
   description: null,
-  flag_id: null,
   flag_url: null,
+  flag_thumb_url: null,
   province_ids: [1001, 1002, 1003],
   capital_province_id: 1001,
   capital_name: 'Новгород-град',
   leader_name: 'Борис Первый',
   leader_title: null,
   leader_bio: null,
-  portrait_id: null,
   portrait_url: null,
+  portrait_thumb_url: null,
   history_url: null,
   level: 3,
   judge_rating: 12,
@@ -195,6 +195,34 @@ describe('NationCell — nation «Подсказка»', () => {
       within(box).getByText('Нажмите на название, чтобы открыть государство'),
     ).toBeInTheDocument();
     expect(nationCalls).toBe(1);
+  });
+
+  it('shows the THUMBNAIL in the tip header, not the full picture (0.12.0 unit 7)', async () => {
+    vi.useFakeTimers();
+    server.use(
+      http.get(`*/api/v1/nations/${NATION_ID}`, () =>
+        HttpResponse.json({
+          ...NATION,
+          flag_url: '/api/v1/images/sha-flag/full',
+          flag_thumb_url: '/api/v1/images/sha-flag/thumb',
+        }),
+      ),
+    );
+    const { container } = renderInRoot(
+      <NationCell value={NATION_CELL} onOpen={() => {}} />,
+    );
+
+    openTip(screen.getByRole('button', { name: 'Новгород' }));
+    vi.useRealTimers();
+    await within(tip()!).findByText('Борис Первый');
+
+    const img = tip()!.querySelector('img')!;
+    expect(img).toHaveAttribute('src', '/api/v1/images/sha-flag/thumb');
+    expect(img).toHaveAttribute('width', '28');
+    expect(img).toHaveAttribute('height', '19');
+    expect(container.ownerDocument.body.innerHTML).not.toContain(
+      'sha-flag/full',
+    );
   });
 
   it('serves a second hover within 60 s from the cache — one request', async () => {

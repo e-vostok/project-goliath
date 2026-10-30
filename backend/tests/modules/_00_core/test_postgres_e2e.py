@@ -21,7 +21,6 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from core.tick.orchestrator import TickOrchestrator, TickPhase
-from modules._00_core.catalog import flag_url, portrait_url
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import (
     GameClock,
@@ -151,14 +150,13 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
         "min_provinces": nation_cfg.min_provinces_per_nation,
         "max_provinces": nation_cfg.max_provinces_per_nation,
         "palette": CORE_CONFIG.color.palette,
-        "flags": [
-            {"id": flag_id, "url": flag_url(flag_id)}
-            for flag_id in CORE_CONFIG.catalog.flag_ids
-        ],
-        "portraits": [
-            {"id": portrait_id, "url": portrait_url(portrait_id)}
-            for portrait_id in CORE_CONFIG.catalog.portrait_ids
-        ],
+        "images": {
+            "flag_width": CORE_CONFIG.images.flag_width,
+            "flag_height": CORE_CONFIG.images.flag_height,
+            "portrait_width": CORE_CONFIG.images.portrait_width,
+            "portrait_height": CORE_CONFIG.images.portrait_height,
+            "max_upload_bytes": CORE_CONFIG.images.max_upload_bytes,
+        },
         "genders": ["male", "female"],
         "succession_types": [
             "elections",
@@ -183,8 +181,6 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
             "gender": VALID_PROFILE["gender"],
             "succession_type": VALID_PROFILE["succession_type"],
             "capital_name": VALID_PROFILE["capital_name"],
-            "flag_id": VALID_PROFILE["flag_id"],
-            "portrait_id": VALID_PROFILE["portrait_id"],
         },
     )
     assert create.status_code == 201, create.text

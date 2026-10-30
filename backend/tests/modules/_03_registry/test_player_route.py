@@ -40,7 +40,6 @@ class TestPlayerRoute:
             "#AA2201",
             created_turn=0,
             short_name="СКВГ",
-            flag_id="flag_placeholder_1",
         )
         await make_vk_profile(
             test_db_session,
@@ -79,7 +78,7 @@ class TestPlayerRoute:
             "id": nation.id,
             "name": "СКВГ",
             "color": "#AA2201",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
 
     async def test_unavailable_profile_keeps_last_good_name(

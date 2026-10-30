@@ -164,20 +164,6 @@ class LeaderBioInvalidError(CoreDomainError):
         super().__init__(f"Leader bio is invalid: {reason}", "LEADER_BIO_INVALID")
 
 
-class FlagInvalidError(CoreDomainError):
-    """Raised when the flag id is outside the catalog (INV-15)."""
-
-    def __init__(self, reason: str):
-        super().__init__(f"Flag id is invalid: {reason}", "FLAG_INVALID")
-
-
-class PortraitInvalidError(CoreDomainError):
-    """Raised when the portrait id is outside the catalog (INV-15)."""
-
-    def __init__(self, reason: str):
-        super().__init__(f"Portrait id is invalid: {reason}", "PORTRAIT_INVALID")
-
-
 class AnthemUrlInvalidError(CoreDomainError):
     """Raised when the anthem URL fails the Part 3 soft link checks."""
 
@@ -310,6 +296,37 @@ class RetiredProvinceHistoryError(CoreDomainError):
             "RETIRED_PROVINCE_HISTORY",
             details={"province_ids": province_ids},
         )
+
+
+class ImageTooLargeError(CoreDomainError):
+    """Raised when an upload exceeds the byte/pixel/side limits (INV-18)."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Image is too large: {reason}", "IMAGE_TOO_LARGE")
+
+
+class ImageUnsupportedError(CoreDomainError):
+    """Raised when the file is not a JPEG, PNG or WebP or cannot be parsed."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Image is unsupported: {reason}", "IMAGE_UNSUPPORTED")
+
+
+class ImageOrientationInvalidError(CoreDomainError):
+    """Raised when a flag is not wider than tall or a portrait not taller
+    than wide (checked on the size after the EXIF rotation)."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Image orientation is invalid: {reason}", "IMAGE_ORIENTATION_INVALID"
+        )
+
+
+class ImageNotFoundError(CoreDomainError):
+    """Raised when the nation has no uploaded picture of the asked kind."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Image not found: {reason}", "IMAGE_NOT_FOUND")
 
 
 class FrequencyCapExceededError(CoreDomainError):

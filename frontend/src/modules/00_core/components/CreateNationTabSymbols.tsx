@@ -3,17 +3,15 @@
  * Spec 9.6 — version 0.9.0 unit 8c): row «Полное название *» +
  * «Краткое название *», row «Описание» (two-line TextArea, the wider
  * field) left + «Девиз» right, then «Цвет государства *» — the palette
- * grid + HEX field + the live «цвет свободен» check — and the flag
- * catalog row. A flag is ALWAYS selected: there is no «Без флага»
- * tile, the first catalog flag is preselected (and stands in for a
- * legacy NULL flag on the edit form). Purely presentational for the
+ * grid + HEX field + the live «цвет свободен» check. Purely
+ * presentational for the
  * form values — they live in the container's RegistrationForm; only
  * the debounced color-check hint is local state, because it is a pure
  * UI preview that never reaches the request body and never blocks
  * submit (the server decides at POST /nations).
  */
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon16Done } from '@vkontakte/icons';
 
 import { api } from '../../../shared/api-client';
@@ -28,7 +26,6 @@ import {
 import {
   CreateNationTextArea,
   CreateNationTextField,
-  PickCheck,
   type RegistrationTabProps,
 } from './CreateNationFields';
 import { isValidColorHex, normalizeColorHex } from './registrationForm';
@@ -66,7 +63,8 @@ export function CreateNationTabSymbols({
   rules,
   errors,
   onFieldChange,
-}: RegistrationTabProps) {
+  imageSlot,
+}: RegistrationTabProps & { imageSlot?: ReactNode }) {
   const { token } = useSession();
   const normalizedColor = normalizeColorHex(form.color);
   const colorIsValid = isValidColorHex(form.color);
@@ -245,58 +243,17 @@ export function CreateNationTabSymbols({
         <FieldMessage
           error={errors.color}
           hint={errors.color === undefined ? (colorHint ?? undefined) : undefined}
+          reserve
         />
       </div>
 
-      <div data-testid="form-item-flag" style={{ marginTop: 16 }}>
-        <FieldLabel label="Флаг" required />
-        {rules !== null && rules.flags.length === 0 ? (
-          <div
-            style={{
-              ...TEXT_STYLES['caption'],
-              color: tokenVar('ink-muted'),
-            }}
-          >
-            Флаги появятся позже
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {(rules?.flags ?? []).map((flag) => {
-              const selected = form.flagId === flag.id;
-              return (
-                <button
-                  key={flag.id}
-                  type="button"
-                  aria-pressed={selected}
-                  aria-label={flag.id}
-                  onClick={() => onFieldChange('flagId', flag.id)}
-                  style={{
-                    width: 90,
-                    height: 60,
-                    padding: 0,
-                    border: 'none',
-                    borderRadius: RADII['radius-md'],
-                    background: 'none',
-                    cursor: 'pointer',
-                    position: 'relative',
-                    ...(selected ? selectedTile : {}),
-                  }}
-                >
-                  <img
-                    src={flag.url}
-                    alt={flag.id}
-                    width={90}
-                    height={60}
-                    style={{ display: 'block', borderRadius: RADII['radius-md'] }}
-                  />
-                  {selected && <PickCheck />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <FieldMessage error={errors.flagId} />
-      </div>
+      {/* 0.12.0 board 13 — the optional flag block closes the tab. */}
+      {imageSlot !== undefined && (
+        <div data-testid="form-item-flag" style={{ marginTop: 16 }}>
+          <FieldLabel label="Флаг" />
+          {imageSlot}
+        </div>
+      )}
     </>
   );
 }

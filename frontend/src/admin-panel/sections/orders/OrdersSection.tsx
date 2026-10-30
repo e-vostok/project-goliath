@@ -3,7 +3,7 @@
  * docs/06_DESIGN/0.11.0 screen 05.
  *
  * The card «Приказы» (caption «Судью видят только администраторы»)
- * lists one page of GET /admin/orders: № / Название / Автор (flag +
+ * lists one page of GET /admin/orders: № / Название / Автор (flag stub +
  * short name) / Судья (name or «—») / Статус (badge «Нет судьи» /
  * «Ждёт вердикта», a red «Просрочен» on top of it when `overdue`,
  * green «Вердикт вынесен») / action («Переназначить…» on an assigned
@@ -51,7 +51,7 @@ import type {
 } from '../../../shared/types';
 import { EmptyState } from '../../../shared/ui/EmptyState';
 import { ErrorState } from '../../../shared/ui/ErrorState';
-import { FlagStub } from '../../../shared/ui/FlagStub';
+import { FlagMark } from '../../../shared/ui/FlagMark';
 import { LoadingState } from '../../../shared/ui/LoadingState';
 import { useNotice } from '../../../shared/ui/Notice';
 import { Popup } from '../../../shared/ui/Popup';
@@ -287,21 +287,10 @@ function StatusBadge({ order }: { order: AdminOrderDTO }) {
   );
 }
 
-/** The 24×16 author-nation flag of an order row; a stub when none. */
-function FlagCell({ flagId }: { flagId: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (flagId === null || failed) {
-    return <FlagStub variant="cell" />;
-  }
+/** The 22×14 author-nation flag of an order row — thumb or stub. */
+function FlagCell({ url }: { url: string | null }) {
   return (
-    <img
-      src={`/assets/nations/flags/${flagId}.png`}
-      alt=""
-      width={24}
-      height={16}
-      onError={() => setFailed(true)}
-      style={{ display: 'block', borderRadius: RADII['radius-sm'] }}
-    />
+    <FlagMark url={url} width={22} height={14} stubVariant="cell" />
   );
 }
 
@@ -1048,7 +1037,7 @@ export function OrdersSection() {
                           gap: 10,
                         }}
                       >
-                        <FlagCell flagId={order.author_nation_flag_id} />
+                        <FlagCell url={order.flag_thumb_url} />
                         <span>{order.author_nation_short_name}</span>
                       </span>
                     ) : (

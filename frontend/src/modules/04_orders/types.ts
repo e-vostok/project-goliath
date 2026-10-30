@@ -36,7 +36,7 @@ export interface NationMarkDTO {
   color: string;
   /** Submission-time short-name snapshot (INV-O6). */
   short_name: string;
-  /** Catalog flag URL or null when the nation had no flag at submission. */
+  /** Flag URL; null when the nation has no uploaded flag. */
   flag_url: string | null;
 }
 

@@ -252,6 +252,31 @@ class TestNationEndpoints:
         assert body["level"] == player.level
         assert body["judge_rating"] == player.judge_rating
 
+    async def test_create_nation_has_no_pictures(self, client, test_db_session):
+        """0.12.0 unit 4: the valid body carries no picture fields and
+        the created nation reports flag_url/portrait_url as null until
+        the upload lands (unit 5)."""
+        player = await seed_player(test_db_session)
+        await seed_provinces(test_db_session, [1001, 1002, 1003, 1004, 1005])
+
+        resp = await client.post(
+            "/api/v1/nations",
+            headers=bearer_headers(player.id),
+            json={
+                "name": "Test Nation",
+                "color_hex": "#FF0000",
+                "province_ids": [1001, 1002, 1003, 1004, 1005],
+                **VALID_PROFILE,
+            },
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert "flag_id" not in body
+        assert "portrait_id" not in body
+        assert body["flag_url"] is None
+        assert body["portrait_url"] is None
+
     async def test_get_nations_me(self, client, test_db_session):
         player = await seed_player(test_db_session)
         await seed_provinces(test_db_session, [1001, 1002])
@@ -610,16 +635,16 @@ NATION_PUBLIC_KEYS = {
     "color_hex",
     "motto",
     "description",
-    "flag_id",
     "flag_url",
+    "flag_thumb_url",
     "province_ids",
     "capital_province_id",
     "capital_name",
     "leader_name",
     "leader_title",
     "leader_bio",
-    "portrait_id",
     "portrait_url",
+    "portrait_thumb_url",
     "history_url",
     "level",
     "judge_rating",
@@ -794,8 +819,6 @@ class TestNationProfileEndpoints:
             ("leader_name", "x", "LEADER_NAME_INVALID"),
             ("leader_title", "", "LEADER_TITLE_INVALID"),
             ("history_url", "https://evil.com/@x", "HISTORY_URL_INVALID"),
-            ("flag_id", None, "FLAG_INVALID"),
-            ("portrait_id", None, "PORTRAIT_INVALID"),
         ],
     )
     async def test_create_nation_profile_error_maps_to_422(
@@ -848,9 +871,7 @@ class TestNationProfileEndpoints:
         assert body["capital_province_id"] is None
         assert body["capital_name"] is None
         assert body["motto"] is None
-        assert body["flag_id"] is None
         assert body["flag_url"] is None
-        assert body["portrait_id"] is None
         assert body["portrait_url"] is None
 
     async def test_short_name_is_mandatory(self, client, test_db_session):
@@ -921,14 +942,13 @@ class TestNationProfileEndpoints:
             "min_provinces": nation.min_provinces_per_nation,
             "max_provinces": nation.max_provinces_per_nation,
             "palette": CORE_CONFIG.color.palette,
-            "flags": [
-                {"id": i, "url": f"/assets/nations/flags/{i}.png"}
-                for i in CORE_CONFIG.catalog.flag_ids
-            ],
-            "portraits": [
-                {"id": i, "url": f"/assets/nations/portraits/{i}.png"}
-                for i in CORE_CONFIG.catalog.portrait_ids
-            ],
+            "images": {
+                "flag_width": CORE_CONFIG.images.flag_width,
+                "flag_height": CORE_CONFIG.images.flag_height,
+                "portrait_width": CORE_CONFIG.images.portrait_width,
+                "portrait_height": CORE_CONFIG.images.portrait_height,
+                "max_upload_bytes": CORE_CONFIG.images.max_upload_bytes,
+            },
             "genders": ["male", "female"],
             "succession_types": [
                 "elections",

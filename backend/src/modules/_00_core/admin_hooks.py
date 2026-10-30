@@ -28,6 +28,7 @@ from modules._00_core.models import (
     AdminGrant,
     GameClock,
     Nation,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -54,6 +55,7 @@ ADMIN_AUDIT_ACTION_LABELS = {
     "nation.create": "Создание государства",
     "nation.update": "Правка государства",
     "nation.delete": "Удаление государства",
+    "nation_image_delete": "Удаление картинки государства",
     "province.transfer": "Передача провинции",
 }
 
@@ -416,6 +418,37 @@ async def admin_nation_delete_preview(
     return lines
 
 
+# The Russian names of the nation_images kinds for the nation
+# delete-preview's pictures line.
+_IMAGE_KIND_LABELS = {"flag": "флаг", "portrait": "портрет"}
+
+
+async def admin_nation_images_preview(
+    session: AsyncSession, nation_id: str
+) -> list[dict]:
+    """
+    The nation delete-preview's pictures line (0.12.0 unit 8):
+    «удалятся загруженные картинки: …» naming only the kinds that
+    exist — no line for a nation without pictures. Queries through
+    the service (Rule of Read-Only Dependency), read-only, never
+    commits. Registered under ``00_core_images`` — the ``00_core``
+    slug already owns the main consequence hook.
+    """
+    info = await NationService.image_info(session, nation_id)
+    kinds = [kind for kind in ("flag", "portrait") if info[kind] is not None]
+    if not kinds:
+        return []
+    return [
+        {
+            "code": "nation_images",
+            "text": (
+                "удалятся загруженные картинки: "
+                + ", ".join(_IMAGE_KIND_LABELS[kind] for kind in kinds)
+            ),
+        }
+    ]
+
+
 async def admin_reset(session: AsyncSession) -> None:
     """
     Wipe the 00_core world back to a fresh game.
@@ -430,6 +463,9 @@ async def admin_reset(session: AsyncSession) -> None:
     """
     await session.execute(delete(ScheduledAction))
     await session.execute(update(Province).values(nation_id=None))
+    # INV-19: uploaded pictures go before the nations rows — the FK
+    # cascade is only a safety net; SQLite may run without FKs.
+    await session.execute(delete(NationImage))
     await session.execute(delete(Nation))
     await session.execute(delete(TickLog))
     await _restart_tick_log_id(session)
@@ -474,6 +510,12 @@ def register_admin_hooks() -> None:
         AdminRegistry.register_player_preview(MODULE_SLUG, admin_player_delete_preview)
     if MODULE_SLUG not in AdminRegistry.get_nation_preview_hooks():
         AdminRegistry.register_nation_preview(MODULE_SLUG, admin_nation_delete_preview)
+    # The pictures line of the nation delete-preview gets its own slug —
+    # a hook type admits one registration per slug and 00_core is taken.
+    if "00_core_images" not in AdminRegistry.get_nation_preview_hooks():
+        AdminRegistry.register_nation_preview(
+            "00_core_images", admin_nation_images_preview
+        )
     if MODULE_SLUG not in AdminRegistry.get_overview_hooks():
         AdminRegistry.register_overview(MODULE_SLUG, admin_overview)
     if MODULE_SLUG not in AdminRegistry.get_audit_action_hooks():

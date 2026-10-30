@@ -91,8 +91,6 @@ async def _make_nation(
         succession_type=VALID_PROFILE["succession_type"],
         capital_province_id=capital_province_id,
         capital_name="Testburg" if capital_province_id is not None else None,
-        flag_id=VALID_PROFILE["flag_id"],
-        portrait_id=VALID_PROFILE["portrait_id"],
         created_at=datetime.now(UTC),
         created_turn=0,
     )

@@ -23,8 +23,8 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core import images
 from modules._00_core.calendar import compute_game_date, format_game_date
-from modules._00_core.catalog import flag_url
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.service import (
     NationService,
@@ -150,8 +150,10 @@ def _player_row(
                 cell_nation(
                     row.nation_short_name,
                     row.nation_color,
-                    flag_url(row.nation_flag_id),
                     nation_id=row.nation_id,
+                    flag_url=images.image_url(
+                        row.nation_flag_sha256, "thumb"
+                    ),
                 )
                 if row.nation_id is not None
                 else None
@@ -212,8 +214,9 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
     ``created_turn``; the row key is the nation id. ``nation`` is the
     very cell the players table gives for the owner nation — short name
     (mandatory since migration 0012 — no full-name fallback), colour
-    and the catalog flag image whose path is built only by
-    ``catalog.flag_url`` (INV-16) — so the ``select_or_contains``
+    and the uploaded-flag thumbnail address built by
+    ``images.image_url`` (INV-16; ``null`` when the nation has no flag)
+    — so the ``select_or_contains``
     options match the ``nation`` cells of the players and orders
     tables exactly (Spec 3.7).
     """
@@ -233,8 +236,8 @@ async def load_nations(session: AsyncSession) -> list[RegistryRow]:
                     "nation": cell_nation(
                         row.short_name,
                         row.color_hex,
-                        flag_url(row.flag_id),
                         nation_id=row.nation_id,
+                        flag_url=images.image_url(row.flag_sha256, "thumb"),
                     ),
                     "formed": cell_date(
                         format_game_date(

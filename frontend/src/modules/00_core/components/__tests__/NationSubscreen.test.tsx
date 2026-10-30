@@ -27,8 +27,8 @@ const NATION: NationPublicDTO = {
   color_hex: '#C0392B',
   motto: 'Слово и дело',
   description: 'Вольный город на севере.',
-  flag_id: null,
   flag_url: null,
+  flag_thumb_url: null,
   // 1002 «Бета» is listed before the capital 1001 «Альфа» on purpose —
   // the territory block must move the capital first.
   province_ids: [1002, 1001],
@@ -37,8 +37,8 @@ const NATION: NationPublicDTO = {
   leader_name: 'Борис Первый',
   leader_title: 'Князь',
   leader_bio: null,
-  portrait_id: null,
   portrait_url: null,
+  portrait_thumb_url: null,
   history_url: 'https://vk.com/@novgorod-history',
   level: 3,
   judge_rating: 12,
@@ -139,6 +139,30 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
     expect(screen.queryByText(/Мужской|Женский/)).toBeNull();
     expect(screen.queryByText(/гимн/i)).toBeNull();
     expect(screen.queryByText(/наследован|выборы/i)).toBeNull();
+  });
+
+  it('the flag and portrait stay read-only — no button around the pictures (0.12.0 unit 6b)', async () => {
+    registerDefaultHandlers();
+    registerNation({
+      ...NATION,
+      flag_url: '/api/v1/images/flaghash/full',
+      flag_thumb_url: '/api/v1/images/flaghash/thumb',
+      portrait_url: '/api/v1/images/porthash/full',
+      portrait_thumb_url: '/api/v1/images/porthash/thumb',
+    });
+    renderSubscreen({});
+
+    // The pictures show…
+    const flag = await screen.findByRole('img', { name: 'Флаг Новгород' });
+    const portrait = screen.getByRole('img', {
+      name: 'Портрет лидера Новгород',
+    });
+    // …but another player's pictures are not clickable (element 13).
+    expect(flag.closest('button')).toBeNull();
+    expect(portrait.closest('button')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Загрузить/ }),
+    ).toBeNull();
   });
 
   it('opens the map through «Показать на карте» with the capital id', async () => {

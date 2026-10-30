@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules._00_core.models import (
     GameClock,
     Nation,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -163,6 +164,31 @@ async def make_vk_profile(
     return row
 
 
+async def make_nation_image(
+    session: AsyncSession,
+    nation: Nation,
+    *,
+    kind: str = "flag",
+    sha256: str,
+    uploaded_by: Player | None = None,
+) -> NationImage:
+    """Insert a ``nation_images`` row for ``nation`` and flush it —
+    the "uploaded picture" state the registry and orders cells read."""
+    row = NationImage(
+        nation_id=nation.id,
+        kind=kind,
+        sha256=sha256,
+        full_bytes=b"full-" + sha256.encode()[:8],
+        thumb_bytes=b"thumb-" + sha256.encode()[:8],
+        byte_size=16,
+        uploaded_by_player_id=uploaded_by.id if uploaded_by else None,
+        uploaded_at=utcnow(),
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
 # ── Module 04_orders seeders (Spec Part 1) ────────────────────────────
 
 
@@ -177,7 +203,6 @@ async def make_order(
     nation_name: str | None = None,
     nation_color: str | None = None,
     nation_short_name: str | None = None,
-    nation_flag_id: str | None = None,
     title: str = "Тестовый приказ",
     summary: str = "Краткая суть тестового приказа.",
     article_url: str = "https://vk.com/@test/order-article",
@@ -228,11 +253,6 @@ async def make_order(
         nation_color=nation_color or (nation.color_hex if nation else "#FF0000"),
         nation_short_name=nation_short_name
         or (nation.short_name if nation else "TestNation"),
-        nation_flag_id=(
-            nation_flag_id
-            if nation_flag_id is not None
-            else (nation.flag_id if nation else None)
-        ),
         title=title,
         summary=summary,
         article_url=article_url,

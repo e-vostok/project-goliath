@@ -68,10 +68,6 @@ const OWNER_CAN_CREATE = 'государства нет — можно созд�
 const OWNER_HAS_NATION = 'У этого игрока уже есть государство';
 const HISTORY_HINT =
   'Обязательное поле: так устроено создание государства игроком.';
-const CATALOG_HINT =
-  'Флаг и портрет — первые из каталога, их можно сменить позже у ' +
-  'игрока. Название столицы берётся по первой провинции. Анкета и ' +
-  'рассмотрение не нужны.';
 const PROVINCES_HINT =
   'Показываются только свободные провинции. Столица — первая в ' +
   'списке; чтобы выбрать другую, нажмите на её название.';
@@ -609,7 +605,11 @@ export function NationCreate({
                 />
               )}
             </div>
-            <FieldMessage error={fieldErrors.color} hint={colorHint} />
+            <FieldMessage
+              error={fieldErrors.color}
+              hint={colorHint}
+              reserve
+            />
           </div>
           <TextField
             id="nf-motto"
@@ -715,7 +715,6 @@ export function NationCreate({
             }}
           />
         </div>
-        <FieldMessage hint={CATALOG_HINT} />
       </PanelCard>
 
       <PanelCard

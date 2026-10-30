@@ -46,6 +46,8 @@ export const ERRORS_RU: Record<string, string | typeof SERVER_RU> = {
   NATION_NOT_FOUND: 'Государство не найдено.',
   /* PATCH /admin/nations/{id} with an empty body (0.11.0 unit 8b). */
   NOTHING_TO_CHANGE: 'Нечего сохранять — поля не изменились.',
+  /* The nation's uploaded picture was already removed (0.12.0 u9). */
+  IMAGE_NOT_FOUND: 'Картинки уже нет.',
 
   /* Player, clock, map, registry. */
   PLAYER_NOT_FOUND: 'Игрок не найден.',

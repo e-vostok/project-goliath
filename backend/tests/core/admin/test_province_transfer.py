@@ -192,8 +192,6 @@ async def _seed_nation(
                     if capital_province_id is not None
                     else None
                 ),
-                flag_id=VALID_PROFILE["flag_id"],
-                portrait_id=VALID_PROFILE["portrait_id"],
                 created_at=datetime.now(UTC),
                 created_turn=0,
             )

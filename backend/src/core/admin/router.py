@@ -1,13 +1,15 @@
 """
 HTTP API router for the admin panel.
 
-Twenty-six endpoints (prefix /api/v1/admin): GET /me, GET /state,
+Twenty-eight endpoints (prefix /api/v1/admin): GET /me, GET /state,
 GET /players, GET /provinces,
 GET /provinces/{province_id}/transfer-preview,
 POST /provinces/{province_id}/transfer, GET /nations, POST /nations,
 GET /nations/{nation_id}, PATCH /nations/{nation_id},
 POST /nations/color-check, GET /nations/{nation_id}/delete-preview,
-POST /nations/{nation_id}/delete, GET /overview, GET /tick-log,
+POST /nations/{nation_id}/delete,
+GET /nations/{nation_id}/images/{kind}/delete-preview,
+POST /nations/{nation_id}/images/{kind}/delete, GET /overview, GET /tick-log,
 POST /tick/run, POST /state/reset,
 GET /players/{vk_user_id}/delete-preview,
 POST /players/{vk_user_id}/delete, POST /panel-link, POST /session,
@@ -46,10 +48,10 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
@@ -62,6 +64,7 @@ from core.db import get_session, get_session_context
 from core.security.jwt import issue_token
 from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
+from modules._00_core import images
 from modules._00_core.admin_service import (
     AdminAuditService,
     AdminGrantService,
@@ -70,6 +73,7 @@ from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
     CoreDomainError,
+    ImageNotFoundError,
     NationNotFoundError,
     PlayerNotFoundError,
     ProvinceNameUnknownError,
@@ -340,7 +344,7 @@ class AdminNationUpdateRequest(BaseModel):
     change", "" on an optional field clears it to NULL, "" on a
     mandatory field is the service's own *_INVALID error (INV-8).
 
-    ``extra="forbid"``: a flag, portrait, anthem or province field is
+    ``extra="forbid"``: an anthem, picture or province field is
     a 422, not a silent ignore.
     """
 
@@ -669,6 +673,11 @@ async def list_provinces(
     )
     total = len(rows)
     page = rows[offset : offset + limit]
+    # One image_refs for the whole page (0.12.0 unit 9): the flag of
+    # the OWNING nation — a free province gets null.
+    refs = await NationService.image_refs(
+        session, [row.nation_id for row in page if row.nation_id is not None]
+    )
     return {
         "items": [
             {
@@ -676,6 +685,11 @@ async def list_provinces(
                 "name": info.get(row.id, {}).get("name"),
                 "nation_id": row.nation_id,
                 "nation_short_name": row.short_name,
+                "flag_thumb_url": (
+                    images.image_url(refs[row.nation_id].flag_sha256, "thumb")
+                    if row.nation_id is not None
+                    else None
+                ),
             }
             for row in page
         ],
@@ -918,7 +932,7 @@ async def list_nations(
     """
     The panel's «Государства» list (0.11.0 unit 8a): one page of nations
     ordered by creation then id — ``{"items", "total"}``. Each item
-    carries ``id``, ``short_name``, ``name``, ``flag_id``,
+    carries ``id``, ``short_name``, ``name``,
     ``owner_vk_user_id``, the ``owner_name`` the player-info hooks know
     (null when none does), ``provinces_count`` and ``capital_name``.
 
@@ -933,7 +947,6 @@ async def list_nations(
                 Nation.id,
                 Nation.short_name,
                 Nation.name,
-                Nation.flag_id,
                 Nation.capital_name,
                 Player.vk_user_id,
             )
@@ -966,17 +979,23 @@ async def list_nations(
     names = await _display_names_by_vk(
         session, {row.vk_user_id for row in rows}
     )
+    # One image_refs for the whole page (0.12.0 unit 9) — never per row.
+    refs = await NationService.image_refs(
+        session, [row.id for row in rows]
+    )
     return {
         "items": [
             {
                 "id": row.id,
                 "short_name": row.short_name,
                 "name": row.name,
-                "flag_id": row.flag_id,
                 "owner_vk_user_id": row.vk_user_id,
                 "owner_name": names.get(row.vk_user_id),
                 "provinces_count": counts.get(row.id, 0),
                 "capital_name": row.capital_name,
+                "flag_thumb_url": images.image_url(
+                    refs[row.id].flag_sha256, "thumb"
+                ),
             }
             for row in rows
         ],
@@ -997,8 +1016,9 @@ async def create_nation(
     check applies in its own order (field format, uniqueness, colour,
     province freedom and count, capital membership, satellite checks).
 
-    Unknown owner -> 404 PLAYER_NOT_FOUND. The flag and the leader
-    portrait are the first catalog entries; ``capital_name`` is the
+    Unknown owner -> 404 PLAYER_NOT_FOUND. The nation is created
+    without pictures (the flag and the portrait arrive with the
+    upload, unit 6); ``capital_name`` is the
     capital province's display name resolved through the province-info
     hooks. On success one ``nation.create`` journal row is written in
     the same transaction, before the commit — a refusal rolls
@@ -1041,10 +1061,6 @@ async def create_nation(
         capital_name=capital_name,
         capital_province_id=body.capital_province_id,
         motto=body.motto,
-        flag_id=config.catalog.flag_ids[0] if config.catalog.flag_ids else None,
-        portrait_id=(
-            config.catalog.portrait_ids[0] if config.catalog.portrait_ids else None
-        ),
     )
 
     names = await _display_names_by_vk(session, {player.vk_user_id})
@@ -1067,16 +1083,19 @@ async def create_nation(
             "province_ids": body.province_ids,
         },
     )
+    refs = await NationService.image_refs(session, [nation.id])
     await session.commit()
     return {
         "id": nation.id,
         "short_name": nation.short_name,
         "name": nation.name,
-        "flag_id": nation.flag_id,
         "owner_vk_user_id": player.vk_user_id,
         "owner_name": names.get(player.vk_user_id),
         "provinces_count": len(body.province_ids),
         "capital_name": nation.capital_name,
+        "flag_thumb_url": images.image_url(
+            refs[nation.id].flag_sha256, "thumb"
+        ),
     }
 
 
@@ -1102,9 +1121,60 @@ async def admin_nation_color_check(
     }
 
 
+# The uploaded-picture kinds of nation_images (INV-15) — a ``kind``
+# outside them is a bare 404, the same style the player's upload
+# endpoint uses.
+_IMAGE_KINDS = ("flag", "portrait")
+
+# The «Что будет» sentences of the image-delete confirmation window
+# (mockup 18b) — the first sentence is kind-specific, the journal
+# sentence is shared.
+_IMAGE_DELETE_CONSEQUENCES = {
+    "flag": (
+        "картинка удаляется с сервера насовсем; в приказах, где "
+        "показан этот флаг, тоже появится заглушка"
+    ),
+    "portrait": (
+        "картинка удаляется с сервера насовсем; везде, где показан "
+        "этот портрет, тоже появится заглушка"
+    ),
+}
+_IMAGE_DELETE_AUDIT_LINE = (
+    "в журнал попадёт запись «Удаление картинки государства»"
+)
+
+
+def _iso_utc(moment: datetime) -> str:
+    """ISO 8601 with an explicit offset — storage is UTC; SQLite reads
+    the column back naive, so the tz is attached, never converted."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.isoformat()
+
+
+async def _image_uploaded_by(
+    session: AsyncSession, player_id: str | None
+) -> dict | None:
+    """{vk_user_id, name} of a picture's uploader — null when the
+    uploading player no longer exists; the name comes from the
+    display-name hooks and may itself be null."""
+    if player_id is None:
+        return None
+    player = await session.get(Player, player_id)
+    if player is None:
+        return None
+    names = await _display_names_by_vk(session, {player.vk_user_id})
+    return {
+        "vk_user_id": player.vk_user_id,
+        "name": names.get(player.vk_user_id),
+    }
+
+
 async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
     """The GET/PATCH nation shape: the twelve editable fields plus
-    the read-only owner, capital province and province count."""
+    the read-only owner, capital province, province count and the
+    ``images`` block of the nation's uploaded pictures (0.12.0 unit
+    8) — one entry per kind or null for a kind never uploaded."""
     owner = (
         await session.execute(
             select(Player).where(Player.id == nation.owner_player_id)
@@ -1117,7 +1187,20 @@ async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
             .where(Province.nation_id == nation.id)
         )
     ).scalar_one()
+    image_infos = await NationService.image_info(session, nation.id)
     names = await _display_names_by_vk(session, {owner.vk_user_id})
+    # The pipeline's target size of each kind (0.12.0 unit 9) — read
+    # through the config model, never hard-coded.
+    image_config = CoreConfig.from_yaml(
+        CoreConfig.get_default_config_path()
+    ).images
+    image_dims = {
+        "flag": (image_config.flag_width, image_config.flag_height),
+        "portrait": (
+            image_config.portrait_width,
+            image_config.portrait_height,
+        ),
+    }
     return {
         "id": nation.id,
         "owner_vk_user_id": owner.vk_user_id,
@@ -1125,6 +1208,24 @@ async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
         "capital_province_id": nation.capital_province_id,
         "provinces_count": provinces_count,
         **{field: getattr(nation, field) for field in NATION_EDITABLE_FIELDS},
+        "images": {
+            kind: (
+                None
+                if image_infos[kind] is None
+                else {
+                    "url": image_infos[kind].url,
+                    "thumb_url": image_infos[kind].thumb_url,
+                    "uploaded_at": _iso_utc(image_infos[kind].uploaded_at),
+                    "uploaded_by": await _image_uploaded_by(
+                        session, image_infos[kind].uploaded_by_player_id
+                    ),
+                    "size_bytes": image_infos[kind].size_bytes,
+                    "width": image_dims[kind][0],
+                    "height": image_dims[kind][1],
+                }
+            )
+            for kind in _IMAGE_KINDS
+        },
     }
 
 
@@ -1366,6 +1467,114 @@ async def admin_nation_delete(
         len(province_ids),
     )
     return preview
+
+
+async def _load_nation_or_404(session: AsyncSession, nation_id: str) -> Nation:
+    """The nation row or 404 NATION_NOT_FOUND."""
+    nation = (
+        await session.execute(select(Nation).where(Nation.id == nation_id))
+    ).scalar_one_or_none()
+    if nation is None:
+        raise NationNotFoundError(nation_id)
+    return nation
+
+
+async def _nation_image_dto(
+    session: AsyncSession, nation: Nation, kind: str, info
+) -> dict:
+    """The delete-preview/delete answer of one nation picture (0.12.0
+    unit 8): the identity, the upload stamp, the uploader and the
+    «Что будет» consequence lines of mockup 18b — the data as it was
+    true at the moment of the call (or of the deletion)."""
+    return {
+        "nation_id": nation.id,
+        "short_name": nation.short_name,
+        "kind": kind,
+        "uploaded_at": _iso_utc(info.uploaded_at),
+        "uploaded_by": await _image_uploaded_by(
+            session, info.uploaded_by_player_id
+        ),
+        "consequences": [
+            {"code": "image_deleted", "text": _IMAGE_DELETE_CONSEQUENCES[kind]},
+            {"code": "audit_journal", "text": _IMAGE_DELETE_AUDIT_LINE},
+        ],
+    }
+
+
+@router.get("/nations/{nation_id}/images/{kind}/delete-preview")
+async def admin_nation_image_delete_preview(
+    nation_id: str,
+    kind: str,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    What deleting this nation's ``kind`` picture would do — read-only,
+    never commits (0.12.0 unit 8).
+
+    ``kind`` outside flag/portrait answers a bare 404; unknown nation
+    -> 404 NATION_NOT_FOUND; a nation without such a picture -> 404
+    IMAGE_NOT_FOUND.
+    """
+    if kind not in _IMAGE_KINDS:
+        raise HTTPException(status_code=404)
+    nation = await _load_nation_or_404(session, nation_id)
+    info = (await NationService.image_info(session, nation_id))[kind]
+    if info is None:
+        raise ImageNotFoundError(f"nation {nation_id} has no {kind} image")
+    return await _nation_image_dto(session, nation, kind, info)
+
+
+@router.post("/nations/{nation_id}/images/{kind}/delete")
+async def admin_nation_image_delete(
+    nation_id: str,
+    kind: str,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Delete one uploaded picture of a nation — irreversible; the empty
+    body needs no retyped confirmation (the confirmation lives in the
+    separate window of mockup 18b).
+
+    Same 404 cases as the preview. ONE transaction: the row deletion
+    inside NationService.delete_image, one ``nation_image_delete``
+    journal row (ids and the first 12 sha256 characters only, never
+    bytes), then the commit — plus a WARNING audit line. The answer is
+    the preview shape as it was true at the moment of deletion; a
+    second call finds no row and answers 404 IMAGE_NOT_FOUND without
+    touching the journal.
+    """
+    if kind not in _IMAGE_KINDS:
+        raise HTTPException(status_code=404)
+    nation = await _load_nation_or_404(session, nation_id)
+    removed = await NationService.delete_image(session, nation_id, kind)
+    if removed is None:
+        raise ImageNotFoundError(f"nation {nation_id} has no {kind} image")
+
+    answer = await _nation_image_dto(session, nation, kind, removed.info)
+    kind_word = "флаг" if kind == "flag" else "портрет"
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="nation_image_delete",
+        target_type="nation",
+        target_id=nation_id,
+        summary=f"Удалён {kind_word} государства «{nation.short_name}».",
+        details={
+            "nation_id": nation_id,
+            "kind": kind,
+            "sha256_prefix": removed.sha256[:12],
+        },
+    )
+    await session.commit()
+    logger.warning(
+        "admin_nation_image_delete admin_vk_user_id=%s nation_id=%s kind=%s",
+        admin.vk_user_id,
+        nation_id,
+        kind,
+    )
+    return answer
 
 
 @router.get("/overview")

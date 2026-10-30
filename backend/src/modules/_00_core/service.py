@@ -13,9 +13,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy import and_, delete, func, insert, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core import images
 from modules._00_core.color_policy import oklab_distance
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
@@ -24,14 +26,12 @@ from modules._00_core.exceptions import (
     CapitalRequiredError,
     ColorTakenError,
     ColorTooCloseError,
-    FlagInvalidError,
     FrequencyCapExceededError,
     LastProvinceError,
     NameTakenError,
     NationAlreadyExistsError,
     NationNotFoundError,
     PlayerNotFoundError,
-    PortraitInvalidError,
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
     ProvinceNotLandError,
@@ -54,6 +54,7 @@ from modules._00_core.hooks import (
 from modules._00_core.models import (
     GameClock,
     Nation,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -63,14 +64,12 @@ from modules._00_core.profile_rules import (
     validate_anthem_url,
     validate_capital_name,
     validate_description,
-    validate_flag_id,
     validate_gender,
     validate_history_url,
     validate_leader_bio,
     validate_leader_name,
     validate_leader_title,
     validate_motto,
-    validate_portrait_id,
     validate_short_name,
     validate_succession_type,
 )
@@ -143,8 +142,7 @@ class PlayerNationSummary:
     The player's nation as satellites need it (Spec 02_bot Part 1.3):
     display fields plus the province count — enough for digests and
     the "has nation" check. ``leader_name``/``leader_title`` may be
-    None for nations predating the profile migration. ``flag_id`` is
-    None for nations created before 0.9.0.
+    None for nations predating the profile migration.
     """
 
     nation_id: str
@@ -154,7 +152,6 @@ class PlayerNationSummary:
     province_count: int
     color_hex: str
     short_name: str
-    flag_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -185,9 +182,11 @@ class PlayerRegistryRow:
     nation_color: str | None
     # A nation's short_name is never NULL (migration 0012); None here
     # only means "the player owns no nation", like the other nation_*
-    # fields. flag_id is a catalog id (NULL for pre-0.9.0 nations).
+    # fields.
     nation_short_name: str
-    nation_flag_id: str | None = None
+    # The uploaded-flag content key (nation_images), like the other
+    # nation_* fields None when the player owns no nation.
+    nation_flag_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -195,8 +194,7 @@ class NationRegistryRow:
     """
     One nations-table row for module 03_registry (Spec 03_registry 1.4,
     Spec 00_core Appendix A1). ``short_name`` is never NULL (NOT NULL
-    since migration 0012); ``flag_id`` is None for nations created
-    before 0.9.0.
+    since migration 0012).
     """
 
     nation_id: str
@@ -206,10 +204,57 @@ class NationRegistryRow:
     created_at: datetime
     province_count: int
     short_name: str
-    flag_id: str | None = None
+    # The uploaded-flag content key (nation_images) — None for a
+    # nation that never uploaded a flag.
+    flag_sha256: str | None = None
 
 
 ColorStatus = Literal["OK", "TAKEN", "TOO_CLOSE"]
+
+
+@dataclass(frozen=True)
+class NationImageView:
+    """The result of ``NationService.replace_image`` — the new content
+    key and timestamp of the row after the replace."""
+
+    kind: str
+    sha256: str
+    uploaded_at: datetime
+
+
+@dataclass(frozen=True)
+class NationImageRefs:
+    """The public picture references of one nation (Spec Part 2
+    «Публичное представление картинок»): the sha256 content keys —
+    None for a picture the nation never uploaded. Satellites and the
+    nation DTOs turn them into URLs only via ``images.image_url``
+    (INV-16)."""
+
+    flag_sha256: str | None
+    portrait_sha256: str | None
+
+
+@dataclass(frozen=True)
+class NationImageInfo:
+    """One picture of a nation for the admin panel (Spec Part 2
+    «Картинки в панели»): ready URLs, the byte length of the stored
+    full WebP plus who uploaded it and when."""
+
+    url: str
+    thumb_url: str
+    uploaded_at: datetime
+    uploaded_by_player_id: str | None
+    size_bytes: int
+
+
+@dataclass(frozen=True)
+class RemovedNationImage:
+    """The result of ``NationService.delete_image`` — the picture's
+    description as it was just before the deletion plus its content
+    key for the admin journal (a prefix, never the bytes)."""
+
+    info: NationImageInfo
+    sha256: str
 
 
 @dataclass(frozen=True)
@@ -573,7 +618,10 @@ class PlayerService:
         """
         Every player joined to the nation they own (if any), ordered by
         (created_at, id) — the row-numbering order of Spec 03_registry
-        3.2. Read-only and never commits.
+        3.2. The nation's uploaded-flag sha rides on the same row via
+        the ``nation_images`` flag join — one query for the whole list,
+        never one per player (``uq_nation_images_nation_kind`` keeps the
+        join one-to-one). Read-only and never commits.
         """
         result = await session.execute(
             select(
@@ -586,9 +634,16 @@ class PlayerService:
                 Nation.name,
                 Nation.color_hex,
                 Nation.short_name,
-                Nation.flag_id,
+                NationImage.sha256,
             )
             .outerjoin(Nation, Nation.owner_player_id == Player.id)
+            .outerjoin(
+                NationImage,
+                and_(
+                    NationImage.nation_id == Nation.id,
+                    NationImage.kind == "flag",
+                ),
+            )
             .order_by(Player.created_at, Player.id)
         )
         return [
@@ -602,7 +657,7 @@ class PlayerService:
                 nation_name=row[6],
                 nation_color=row[7],
                 nation_short_name=row[8],
-                nation_flag_id=row[9],
+                nation_flag_sha256=row[9],
             )
             for row in result.all()
         ]
@@ -716,6 +771,22 @@ class GameClockService:
         )
 
 
+def _apply_image(
+    row: NationImage,
+    processed: images.ProcessedImage,
+    player_id: str,
+    uploaded_at: datetime,
+) -> None:
+    """Rewrite an existing nation_images row with the new processed
+    content — the previous bytes and hash are gone at flush."""
+    row.sha256 = processed.sha256
+    row.full_bytes = processed.full
+    row.thumb_bytes = processed.thumb
+    row.byte_size = processed.byte_size
+    row.uploaded_by_player_id = player_id
+    row.uploaded_at = uploaded_at
+
+
 async def _take_nations_lock(session: AsyncSession) -> None:
     """
     The nations advisory lock (INV-13): serializes the name/short-name/
@@ -799,8 +870,6 @@ class NationService:
         motto: str | None = None,
         description: str | None = None,
         leader_bio: str | None = None,
-        flag_id: str | None = None,
-        portrait_id: str | None = None,
         anthem_url: str | None = None,
     ) -> Nation:
         """
@@ -811,7 +880,7 @@ class NationService:
         player, run before any write) -> INV-1 -> descriptive fields in
         the fixed order (leader_name, leader_title, gender,
         succession_type, history_url, anthem_url, short_name, motto,
-        description, leader_bio, flag_id, portrait_id, capital_name —
+        description, leader_bio, capital_name —
         the first violation wins) -> the nations lock -> INV-2 for the
         name -> INV-11 for the short name -> the color decision
         (COLOR_TAKEN / COLOR_TOO_CLOSE) -> province existence ->
@@ -841,8 +910,6 @@ class NationService:
             motto: Optional motto; empty after normalization -> NULL.
             description: Optional description; empty -> NULL.
             leader_bio: Optional multi-line leader bio; empty -> NULL.
-            flag_id: Mandatory catalog flag id since 0.9.0 (INV-15).
-            portrait_id: Mandatory catalog portrait id since 0.9.0.
             anthem_url: Optional anthem link (soft check, Part 3);
                 unused since 0.9.0, removal is on the 00_core backlog.
 
@@ -885,15 +952,6 @@ class NationService:
         motto = validate_motto(motto, config)
         description = validate_description(description, config)
         leader_bio = validate_leader_bio(leader_bio, config)
-        flag_id = validate_flag_id(flag_id, config)
-        # Since 0.9.0 a new nation always has a flag and a portrait
-        # (20.10.2026); NULL is rejected only on create — legacy rows
-        # from before 0.9.0 keep their NULLs through PATCH.
-        if flag_id is None:
-            raise FlagInvalidError("a flag from the catalog is required")
-        portrait_id = validate_portrait_id(portrait_id, config)
-        if portrait_id is None:
-            raise PortraitInvalidError("a leader portrait from the catalog is required")
         capital_name = validate_capital_name(capital_name, config)
 
         # The lock covers name/short-name/color reads so concurrent
@@ -978,8 +1036,6 @@ class NationService:
             motto=motto,
             description=description,
             leader_bio=leader_bio,
-            flag_id=flag_id,
-            portrait_id=portrait_id,
             anthem_url=anthem_url,
             capital_province_id=capital_province_id,
             capital_name=capital_name,
@@ -1050,7 +1106,6 @@ class NationService:
             province_count=count_result.scalar_one(),
             color_hex=nation.color_hex,
             short_name=nation.short_name,
-            flag_id=nation.flag_id,
         )
 
     @staticmethod
@@ -1077,8 +1132,10 @@ class NationService:
         (created_turn, created_at, id) — the row-numbering order of
         Spec 03_registry 3.3. The count is a correlated subquery over
         provinces.nation_id; sea zones can never be owned
-        (ck_provinces_sea_unowned), so they need no special case.
-        Read-only and never commits.
+        (ck_provinces_sea_unowned), so they need no special case. The
+        uploaded-flag sha joins in the same query
+        (``uq_nation_images_nation_kind`` keeps it one-to-one) — never
+        one query per nation. Read-only and never commits.
         """
         province_count = (
             select(func.count())
@@ -1095,8 +1152,16 @@ class NationService:
                 Nation.created_at,
                 province_count,
                 Nation.short_name,
-                Nation.flag_id,
-            ).order_by(Nation.created_turn, Nation.created_at, Nation.id)
+                NationImage.sha256,
+            )
+            .outerjoin(
+                NationImage,
+                and_(
+                    NationImage.nation_id == Nation.id,
+                    NationImage.kind == "flag",
+                ),
+            )
+            .order_by(Nation.created_turn, Nation.created_at, Nation.id)
         )
         return [
             NationRegistryRow(
@@ -1107,7 +1172,7 @@ class NationService:
                 created_at=row[4],
                 province_count=row[5],
                 short_name=row[6],
-                flag_id=row[7],
+                flag_sha256=row[7],
             )
             for row in result.all()
         ]
@@ -1137,8 +1202,6 @@ class NationService:
         motto: str | None = None,
         description: str | None = None,
         leader_bio: str | None = None,
-        flag_id: str | None = None,
-        portrait_id: str | None = None,
         anthem_url: str | None = None,
         capital_name: str | None = None,
         *,
@@ -1152,7 +1215,7 @@ class NationService:
         whole update before anything is mutated. Mandatory fields can
         never be cleared: an empty (post-strip) value is a validation
         error, not a reset. Optional fields (motto, description,
-        leader_bio, flag_id, portrait_id, anthem_url) are cleared to
+        leader_bio, anthem_url) are cleared to
         NULL by an empty value. Provinces and the capital province are
         not changeable here (INV-14); ``capital_name`` may only be set
         on a nation that has a capital — a pre-0.8.0 nation without one
@@ -1208,8 +1271,6 @@ class NationService:
         new_motto = validate_motto(motto, config)
         new_description = validate_description(description, config)
         new_leader_bio = validate_leader_bio(leader_bio, config)
-        new_flag_id = validate_flag_id(flag_id, config)
-        new_portrait_id = validate_portrait_id(portrait_id, config)
         new_capital_name = (
             None
             if capital_name is None
@@ -1277,10 +1338,6 @@ class NationService:
             nation.description = new_description
         if leader_bio is not None:
             nation.leader_bio = new_leader_bio
-        if flag_id is not None:
-            nation.flag_id = new_flag_id
-        if portrait_id is not None:
-            nation.portrait_id = new_portrait_id
 
         return nation
 
@@ -1303,6 +1360,212 @@ class NationService:
         return await _evaluate_color(
             session, color_hex.upper(), config, exclude_nation_id
         )
+
+    @staticmethod
+    async def replace_image(
+        session: AsyncSession,
+        nation_id: str,
+        player_id: str,
+        kind: str,
+        processed: images.ProcessedImage,
+    ) -> NationImageView:
+        """
+        Insert or replace the nation's picture row of ``kind`` (INV-15).
+
+        Runs inside the caller's transaction and never commits: a
+        replacement rewrites the row, so the previous content is gone
+        immediately and its sha256 URL turns 404 on commit. Race-safe
+        under two concurrent uploads of the same kind: the unique key
+        (nation_id, kind) turns the loser's INSERT into an
+        IntegrityError, which is retried once as an UPDATE inside a
+        SAVEPOINT — portable between PostgreSQL and SQLite.
+        """
+        row = (
+            await session.execute(
+                select(NationImage).where(
+                    NationImage.nation_id == nation_id,
+                    NationImage.kind == kind,
+                )
+            )
+        ).scalar_one_or_none()
+        now = datetime.now(UTC)
+
+        if row is None:
+            try:
+                # INSERT through a SAVEPOINT (Core insert, not a pending
+                # ORM object — a rolled-back savepoint must not leave
+                # anything to retry): on the unique-key loss the
+                # transaction stays usable on both dialects.
+                async with session.begin_nested():
+                    await session.execute(
+                        insert(NationImage).values(
+                            nation_id=nation_id,
+                            kind=kind,
+                            sha256=processed.sha256,
+                            full_bytes=processed.full,
+                            thumb_bytes=processed.thumb,
+                            byte_size=processed.byte_size,
+                            uploaded_by_player_id=player_id,
+                            uploaded_at=now,
+                        )
+                    )
+            except IntegrityError:
+                # A concurrent upload of the same kind won the INSERT
+                # race; its committed row is now visible — update it
+                # instead of failing (INV-15 holds either way).
+                row = (
+                    await session.execute(
+                        select(NationImage).where(
+                            NationImage.nation_id == nation_id,
+                            NationImage.kind == kind,
+                        )
+                    )
+                ).scalar_one()
+                _apply_image(row, processed, player_id, now)
+        else:
+            _apply_image(row, processed, player_id, now)
+            await session.flush()
+
+        return NationImageView(
+            kind=kind, sha256=processed.sha256, uploaded_at=now
+        )
+
+    @staticmethod
+    async def image_refs(
+        session: AsyncSession, nation_ids: Iterable[str]
+    ) -> dict[str, NationImageRefs]:
+        """
+        The public picture references of the given nations — ONE query
+        for any number of ids (Spec Part 2 «Публичное представление
+        картинок», INV-16). Every requested id is present in the
+        result; a nation without pictures gets both fields None.
+        Read-only and never commits.
+        """
+        ids = list(dict.fromkeys(nation_ids))
+        refs = {
+            nation_id: NationImageRefs(
+                flag_sha256=None, portrait_sha256=None
+            )
+            for nation_id in ids
+        }
+        if not ids:
+            return refs
+        result = await session.execute(
+            select(NationImage.nation_id, NationImage.kind, NationImage.sha256)
+            .where(NationImage.nation_id.in_(ids))
+        )
+        for nation_id, kind, sha256 in result.all():
+            current = refs[nation_id]
+            if kind == "flag":
+                refs[nation_id] = NationImageRefs(
+                    flag_sha256=sha256,
+                    portrait_sha256=current.portrait_sha256,
+                )
+            else:
+                refs[nation_id] = NationImageRefs(
+                    flag_sha256=current.flag_sha256,
+                    portrait_sha256=sha256,
+                )
+        return refs
+
+    @staticmethod
+    async def image_info(
+        session: AsyncSession, nation_id: str
+    ) -> dict[str, NationImageInfo | None]:
+        """
+        The admin-panel description of the nation's pictures (Spec
+        Part 2 «Картинки в панели»): ``{"flag": …, "portrait": …}``
+        with ready URLs, the upload timestamp, the uploader and the
+        stored full variant's byte length — None for a kind the nation
+        never uploaded. The WebP bodies are never loaded into Python:
+        the length is computed in SQL (``octet_length``). Read-only
+        and never commits.
+        """
+        result = await session.execute(
+            select(
+                NationImage.kind,
+                NationImage.sha256,
+                NationImage.uploaded_by_player_id,
+                NationImage.uploaded_at,
+                func.octet_length(NationImage.full_bytes),
+            ).where(NationImage.nation_id == nation_id)
+        )
+        info: dict[str, NationImageInfo | None] = {
+            "flag": None,
+            "portrait": None,
+        }
+        for kind, sha256, uploaded_by, uploaded_at, size_bytes in result.all():
+            info[kind] = NationImageInfo(
+                url=images.image_url(sha256, "full"),
+                thumb_url=images.image_url(sha256, "thumb"),
+                uploaded_at=uploaded_at,
+                uploaded_by_player_id=uploaded_by,
+                size_bytes=size_bytes,
+            )
+        return info
+
+    @staticmethod
+    async def image_bytes(
+        session: AsyncSession, sha256: str, variant: str
+    ) -> bytes | None:
+        """
+        The stored WebP body of ``variant`` (``full`` | ``thumb``) of
+        any row carrying ``sha256`` — the read behind
+        GET /images/{sha256}/{variant}. Rows of different nations may
+        share one hash; the bytes are identical by construction, so
+        LIMIT 1 is enough. None when no row carries the hash.
+        Read-only and never commits.
+        """
+        column = (
+            NationImage.full_bytes
+            if variant == "full"
+            else NationImage.thumb_bytes
+        )
+        result = await session.execute(
+            select(column).where(NationImage.sha256 == sha256).limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def delete_image(
+        session: AsyncSession, nation_id: str, kind: str
+    ) -> RemovedNationImage | None:
+        """
+        Delete the nation's picture row of ``kind`` (INV-19 — the
+        administrator's directive removal; a player removes a picture
+        only by replacing it).
+
+        Runs inside the caller's transaction and never commits. On
+        commit the picture's sha256 URL starts answering 404 at once
+        for this nation — a different nation whose row carries the
+        identical file keeps its URL alive. Returns the description
+        that was true just before the deletion plus the content key
+        the audit journal needs; ``None`` when the nation has no such
+        picture.
+        """
+        row = (
+            await session.execute(
+                select(NationImage).where(
+                    NationImage.nation_id == nation_id,
+                    NationImage.kind == kind,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        removed = RemovedNationImage(
+            info=NationImageInfo(
+                url=images.image_url(row.sha256, "full"),
+                thumb_url=images.image_url(row.sha256, "thumb"),
+                uploaded_at=row.uploaded_at,
+                uploaded_by_player_id=row.uploaded_by_player_id,
+                size_bytes=len(row.full_bytes),
+            ),
+            sha256=row.sha256,
+        )
+        await session.delete(row)
+        await session.flush()
+        return removed
 
     @staticmethod
     async def delete(session: AsyncSession, nation_id: str) -> None:
@@ -1341,6 +1604,13 @@ class NationService:
         )
         for action in result.scalars().all():
             action.nation_id = None
+
+        # INV-19: remove the nation's uploaded pictures explicitly
+        # BEFORE the nations row — the FK cascade is only a PostgreSQL
+        # safety net; SQLite may run without enforced foreign keys.
+        await session.execute(
+            delete(NationImage).where(NationImage.nation_id == nation_id)
+        )
 
         # Delete the nation
         await session.delete(nation)

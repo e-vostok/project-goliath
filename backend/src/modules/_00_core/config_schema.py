@@ -27,9 +27,6 @@ _HOSTNAME_RE = re.compile(
 # Цвет в формате #RRGGBB (регистр не важен: сервис приводит к верхнему).
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-# Идентификатор готового флага или портрета (он же имя файла без расширения).
-_CATALOG_ID_RE = re.compile(r"^[a-z0-9_]{1,50}$")
-
 
 def _check_hosts(field: str, hosts: list[str]) -> list[str]:
     """Хосты: нижний регистр, без схемы, порта и пути, без дублей."""
@@ -360,28 +357,110 @@ class ColorSettings(BaseModel):
         return self
 
 
-class CatalogSettings(BaseModel):
-    flag_ids: list[str] = Field(
-        max_length=200,
-        description="Идентификаторы готовых флагов (имя файла без расширения).",
+class ImagesSettings(BaseModel):
+    """Картинки государства: размеры, пределы приёма и качество (0.12.0)."""
+
+    flag_width: int = Field(
+        ge=60,
+        le=2000,
+        description="Точная ширина флага после пережатия, пиксели.",
     )
-    portrait_ids: list[str] = Field(
-        max_length=200,
-        description="Идентификаторы готовых портретов правителя.",
+    flag_height: int = Field(
+        ge=60,
+        le=2000,
+        description="Точная высота флага после пережатия, пиксели.",
+    )
+    portrait_width: int = Field(
+        ge=60,
+        le=2000,
+        description="Точная ширина портрета после пережатия, пиксели.",
+    )
+    portrait_height: int = Field(
+        ge=60,
+        le=2000,
+        description="Точная высота портрета после пережатия, пиксели.",
+    )
+    flag_thumb_width: int = Field(
+        ge=16,
+        le=400,
+        description="Ширина миниатюры флага, пиксели.",
+    )
+    flag_thumb_height: int = Field(
+        ge=16,
+        le=400,
+        description="Высота миниатюры флага, пиксели.",
+    )
+    portrait_thumb_width: int = Field(
+        ge=16,
+        le=400,
+        description="Ширина миниатюры портрета, пиксели.",
+    )
+    portrait_thumb_height: int = Field(
+        ge=16,
+        le=400,
+        description="Высота миниатюры портрета, пиксели.",
+    )
+    webp_quality: int = Field(
+        ge=50,
+        le=100,
+        description="Качество выходного WebP (полный размер и миниатюра).",
+    )
+    max_upload_bytes: int = Field(
+        ge=100000,
+        le=20000000,
+        description="Жёсткая отсечка тела запроса загрузки, байты.",
+    )
+    max_pixels: int = Field(
+        ge=1000000,
+        le=100000000,
+        description="Предел числа пикселей источника (до распаковки).",
+    )
+    max_side: int = Field(
+        ge=1000,
+        le=20000,
+        description="Предел длинной стороны источника (до распаковки).",
     )
 
-    @field_validator("flag_ids", "portrait_ids")
-    @classmethod
-    def check_ids(cls, ids: list[str]) -> list[str]:
-        for item in ids:
-            if _CATALOG_ID_RE.match(item) is None:
-                raise ValueError(
-                    f"catalog: '{item}' не подходит: нужны строчная латиница, "
-                    "цифры и «_», длина 1–50"
-                )
-        if len(set(ids)) != len(ids):
-            raise ValueError("catalog: дубли недопустимы")
-        return ids
+    @model_validator(mode="after")
+    def check_geometry(self) -> Self:
+        """Перекрёстные правила раздела images (Spec, Часть 4)."""
+        if self.flag_width <= self.flag_height:
+            raise ValueError(
+                "flag_width обязан быть строго больше flag_height "
+                "(флаг горизонтален)"
+            )
+        if self.portrait_height <= self.portrait_width:
+            raise ValueError(
+                "portrait_height обязана быть строго больше portrait_width "
+                "(портрет вертикален)"
+            )
+        if self.flag_width * self.flag_thumb_height != (
+            self.flag_height * self.flag_thumb_width
+        ):
+            raise ValueError(
+                "flag_thumb_width/flag_thumb_height обязаны повторять "
+                "пропорцию flag_width/flag_height"
+            )
+        if self.portrait_width * self.portrait_thumb_height != (
+            self.portrait_height * self.portrait_thumb_width
+        ):
+            raise ValueError(
+                "portrait_thumb_width/portrait_thumb_height обязаны повторять "
+                "пропорцию portrait_width/portrait_height"
+            )
+        if (
+            self.flag_thumb_width > self.flag_width
+            or self.flag_thumb_height > self.flag_height
+        ):
+            raise ValueError("миниатюра флага не может быть больше полного размера")
+        if (
+            self.portrait_thumb_width > self.portrait_width
+            or self.portrait_thumb_height > self.portrait_height
+        ):
+            raise ValueError("миниатюра портрета не может быть больше полного размера")
+        if self.max_pixels > self.max_side * self.max_side:
+            raise ValueError("max_pixels не может превышать max_side * max_side")
+        return self
 
 
 class CalendarSettings(BaseModel):
@@ -426,7 +505,7 @@ class CoreConfig(BaseModel):
     admin_panel: AdminPanelSettings
     nation: NationSettings
     color: ColorSettings
-    catalog: CatalogSettings
+    images: ImagesSettings
     calendar: CalendarSettings
 
     @model_validator(mode="after")

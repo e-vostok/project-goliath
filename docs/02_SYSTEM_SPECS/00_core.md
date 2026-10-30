@@ -1,12 +1,14 @@
 ---
 module: 00_core
-spec_version: 1.4
+spec_version: 1.5
 bible_ref: docs/01_GAME_BIBLE/00_core.md
 ---
 
 # 02_SYSTEM_SPECS / 00_core
 
 > **Формат игровой даты (решение Project Owner 19.10.2026):** везде, где игроку показывается игровая дата, она пишется как «Месяц Год» (например, «Октябрь 2042»): название месяца с заглавной буквы в именительном падеже из `calendar.month_names`, год без ведущих нулей, без дня. Значение `game_date` в JSON остаётся ISO.
+> **Изменения 1.5 (27.10.2026, версия 0.12.0 «Изображения»):** каталог готовых флагов и портретов отменён (решение Project Owner 27.10.2026); картинки государства — необязательная загрузка игроком. Колонки `nations.flag_id`, `nations.portrait_id` и раздел конфига `catalog` удаляются; добавляется таблица `nation_images` (картинки хранятся в PostgreSQL), раздел конфига `images` (суточного предела загрузок нет — решение Project Owner 27.10.2026), эндпоинты загрузки и раздачи, правила INV-15, INV-16, INV-18, INV-19 переписаны или добавлены, ошибки `FLAG_INVALID` и `PORTRAIT_INVALID` заменены кодами `IMAGE_*`. Заглушки показывает клиент. Исследование — `docs/05_RESEARCH/images_0.12.0.md`.
+>
 > **Изменения 1.4 (20.10.2026, версия 0.9.0 «Единый интерфейс»):** игрок государство удалить не может (Game Bible 00_core, п. 3): эндпоинт `DELETE /api/v1/nations/me`, окно `ModalConfirmDeleteNation`, кнопка «Удалить» и тактильный отклик на удаление убираются из сервера и клиента в единице 8 версии 0.9.0; `NationService.delete` остаётся внутренней операцией сервиса (на неё опираются хук удаления игрока и сброс мира, Часть 4). Вид и поведение окон определяет `docs/02_SYSTEM_SPECS/00_core_ui.md`; Часть 5 остаётся описанием состава панелей, и при расхождении побеждает 00_core_ui. Карточка государства показывает провинции названиями (столичная первая), без номеров провинций и без пола лидера; блок лидера и вкладка регистрации называются «Глава государства». Номер хода: целевое правило Game Bible — первый ход игры имеет номер 1 (январь 2040); пока не выполнена строка Backlog `00_core` «Ход 0 не должен существовать», формулы и значения Части 4 (в том числе $N_{turn} = 0$ как январь 2040) остаются в силе.
 >
 > **Изменения 1.3 (17.10.2026, версия 0.8.0 «Регистрация 2.0»):** государство получает полный набор описательных сведений (краткое название, девиз, описание, флаг; пол, портрет, биография и способ смены лидера; ссылка на гимн; столица и её название) — одиннадцать новых колонок `nations`, одна миграция. Количество стартовых провинций — ровно пять (`min = max = 5`). Новое правило различимости цветов в пространстве OKLab (Часть 3), проверяется внутри транзакции под блокировкой. Каталог готовых флагов и портретов (идентификаторы в конфиге, файлы в репозитории). Новые инварианты INV-11…INV-17, порядок проверок при создании расширен, новые коды ошибок, два новых и один расширенный эндпоинт. Регистрация в интерфейсе — четыре вкладки вместо двух. Исправлены устаревшие значения Части 4: `calendar.months_per_turn` (в конфиге 1, а не 3), добавлены пропущенные ключи `tick.heartbeat_interval_seconds`, `tick.health_max_heartbeat_age_seconds`, `calendar.month_names`. Изменения за пределами `00_core` — Приложение A.
@@ -43,8 +45,6 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 | `motto`               | VARCHAR(100)  | NULLABLE (необязательное; пустое значение хранится как NULL)                 |
 | `description`         | VARCHAR(200)  | NULLABLE (необязательное)                                                    |
 | `leader_bio`          | VARCHAR(2000) | NULLABLE (необязательное)                                                    |
-| `flag_id`             | VARCHAR(50)   | NULLABLE; идентификатор из `catalog.flag_ids` (обязательное при создании с 0.9.0; NULL — осознанное исключение для государств, созданных до 0.9.0) |
-| `portrait_id`         | VARCHAR(50)   | NULLABLE; идентификатор из `catalog.portrait_ids` (обязательное при создании с 0.9.0; NULL — как у `flag_id`) |
 | `anthem_url`          | VARCHAR(2000) | NULLABLE (не используется с 0.9.0; колонка и поле DTO временно сохраняются — снятие в бэклоге) |
 | `capital_province_id` | INTEGER       | FK → `provinces.id`, `ON DELETE SET NULL`, NULLABLE (NULL — у государств, созданных до 0.8.0) |
 | `capital_name`        | VARCHAR(100)  | NULLABLE (NULL — как у `capital_province_id`)                                |
@@ -58,8 +58,9 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 - `name`, `short_name`, `leader_name`, `leader_title`, `motto`, `capital_name` — 100 (`le=100`);
 - `description` — 200 (`le=200`);
 - `leader_bio`, `history_url`, `anthem_url` — 2000 (`le=2000`);
-- `flag_id`, `portrait_id` — 50 (паттерн каталога `^[a-z0-9_]{1,50}$`);
 - `gender` и `succession_type` — набор значений фиксирован кодом (не баланс), в конфиг не выносится.
+
+**Миграция 0017** (версия 0.12.0, единица 4; номер — следующий свободный на момент ТЗ) удаляет колонки `nations.flag_id`, `nations.portrait_id` и `orders.nation_flag_id` (`04_orders`); тестовых государств и приказов на боевом сервере нет (подтверждено Project Owner 27.10.2026), переноса данных не требуется. Описание в этой Части 1 — состояние после миграции.
 
 **Миграция** (следующая после head `0010`, имя `0011_00_core_registration_2.py`) добавляет одиннадцать колонок (в SQLite — через `batch_alter_table`), уникальный индекс на `short_name` и внешний ключ `capital_province_id`; существующие данные не меняет. Между `nations` и `provinces` возникает циклическая ссылка (`provinces.nation_id` → `nations.id` и `nations.capital_province_id` → `provinces.id`): внешнему ключу столицы задаётся имя и `use_alter=True`; обе стороны NULLABLE. Порядок удаления государства не меняется: провинции освобождаются (INV-6), затем строка государства удаляется.
 
@@ -120,6 +121,24 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 
 Сервисы `modules/_00_core/admin_service.py` (оба работают в транзакции вызывающего, не коммитят): `AdminAuditService.record(...)` пишет строку журнала и в той же транзакции удаляет самые старые записи сверх `admin_panel.audit_log_max_rows`, `list_recent(limit, before_id)` отдаёт новейшие первыми с курсором `before_id`; `AdminGrantService.is_granted/grant/revoke` — `grant` идемпотентен, `revoke` отказывает администратору из `.env` (`ROOT_ADMIN_PROTECTED`) и последнему оставшемуся администратору — `.env` плюс таблица (`LAST_ADMIN`). `require_admin` (`core/admin/security.py`) принимает `.env` ИЛИ строку гранта, проверку по базе выполняет при каждом запросе — снятый администратор теряет доступ сразу. Сброс мира обе таблицы не трогает.
 
+### `nation_images` (версия 0.12.0, единица 5)
+
+Картинки государства: по одной строке на вид. Хранятся в PostgreSQL (решение исследования: попадают в `pg_dump`, удаляются вместе со строкой, не бывают «сиротами»).
+
+| Поле | Тип | Ограничения |
+| --- | --- | --- |
+| `id` | INTEGER | PK |
+| `nation_id` | UUID | FK → `nations.id`, `ON DELETE CASCADE` (страховка), NOT NULL |
+| `kind` | VARCHAR(10) | `flag` или `portrait` (CHECK), NOT NULL |
+| `sha256` | CHAR(64) | хэш полной картинки после пережатия; индекс, не уникальный; NOT NULL |
+| `full_bytes` | BYTEA | WebP полного размера, NOT NULL |
+| `thumb_bytes` | BYTEA | WebP миниатюры, NOT NULL |
+| `byte_size` | INTEGER | размер `full_bytes`, NOT NULL |
+| `uploaded_by_player_id` | UUID | FK → `players.id`, `ON DELETE SET NULL`, NULLABLE |
+| `uploaded_at` | TIMESTAMPTZ | NOT NULL; обновляется при замене |
+
+`UNIQUE (nation_id, kind)`: одна загрузка каждого вида; замена обновляет строку в той же транзакции, прежнее содержимое исчезает сразу, адрес прежней картинки начинает отвечать 404. Два государства с одинаковым файлом — две строки с одним `sha256`; удаление у одного не затрагивает другое. Классификация в `TABLE_COVERAGE`: `reset` (удаляется явно в `admin_reset` до `nations` и в `NationService.delete`; удаление игрока идёт через удаление государства). Миграция 0018 (следующая свободная) создаёт таблицу `nation_images`. Счётчика загрузок нет: игрок может заменять картинки сколько угодно, прежняя каждый раз удаляется.
+
 ### Константы кода (не баланс, в конфиг не выносятся)
 
 Файл `backend/src/modules/_00_core/nation_enums.py`:
@@ -129,9 +148,9 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 
 Русские подписи показывает клиент (Часть 5); сервер оперирует только кодами.
 
-### Каталог картинок
+### Картинки государства
 
-Файл `backend/src/modules/_00_core/catalog.py` — единственное место, знающее, как идентификатор превращается в адрес: `flag_url(flag_id) -> str | None` возвращает `/assets/nations/flags/<id>.png`, `portrait_url(portrait_id) -> str | None` — `/assets/nations/portraits/<id>.png`, для `None` возвращают `None`. Файлы лежат в `frontend/public/assets/nations/flags/<id>.png` и `.../portraits/<id>.png`. Идентификаторы перечислены в конфиге (`catalog.flag_ids`, `catalog.portrait_ids`). Сервер проверяет только принадлежность идентификатора списку; существование файла проверяет тест CI (INV-15).
+Файл `backend/src/modules/_00_core/images.py` — единственное место, которое знает, как картинка превращается в адрес и как она обрабатывается. `image_url(sha256, variant) -> str` возвращает `/api/v1/images/<sha256>/full` или `/api/v1/images/<sha256>/thumb`; для отсутствующей картинки функции представлений возвращают `None`. Приём и пережатие (проверка настоящего типа, ориентации и размера до распаковки, автоматическая обрезка по центру до пропорции, WebP, миниатюра, хэш) — функция этого же файла, она выполняется в пуле потоков под семафором на одну картинку. Файла `catalog.py` и каталога статических картинок `frontend/public/assets/nations/` больше нет (единица 4).
 
 ---
 
@@ -150,13 +169,15 @@ bible_ref: docs/01_GAME_BIBLE/00_core.md
 - **INV-9:** Проверки профильных полей выполняются в `service.py` (единый источник; коды ошибок — Часть 5). DTO только типизирует поля.
 - **INV-10:** На описательные сведения (кроме `short_name`) не накладывается уникальность; они не участвуют в расчётах Tick.
 - **INV-11:** `nations.short_name` уникален глобально (UNIQUE-констрейнт БД) и не может быть NULL (NOT NULL с миграции 0012). Сравнение — точное, после нормализации; различие регистра пока считается различием (бэклог). При создании краткое название обязательно.
-- **INV-12:** При создании обязательны: `short_name`, `gender`, `succession_type`, `capital_province_id`, `capital_name` — вместе с полями INV-7; с 0.9.0 также `flag_id` и `portrait_id` (пустое значение → `FLAG_INVALID`/`PORTRAIT_INVALID`; NULL у государств, созданных до 0.9.0, — осознанное исключение, PATCH его сохраняет). Необязательные поля (`motto`, `description`, `leader_bio`, `flag_id`, `portrait_id`, `anthem_url`) пустыми не хранятся: пустое значение после нормализации записывается как NULL.
+- **INV-12:** При создании обязательны: `short_name`, `gender`, `succession_type`, `capital_province_id`, `capital_name` — вместе с полями INV-7. Необязательные поля (`motto`, `description`, `leader_bio`, `anthem_url`) пустыми не хранятся: пустое значение после нормализации записывается как NULL.
 - **INV-13 (различимость цветов):** Цвет государства при создании и при смене проходит проверку Части 3 (расстояние OKLab до цветов других государств и до цветов карты) под транзакционной блокировкой, так что два одновременных похожих цвета не проходят оба. Цвет нормализуется к верхнему регистру до всех проверок. Государства, существовавшие до 0.8.0, задним числом не проверяются.
 - **INV-14 (столица):** `capital_province_id` при создании — одна из провинций, закрепляемых за этим государством; если не передан, равен первому элементу `province_ids` в том порядке, в котором список передан. Через PATCH не меняется; `capital_name` меняется. Состав провинций через PATCH не меняется. Модули, которые меняют владельца провинции, решают судьбу столицы по правилу админ-передачи (см. «Передача и вывод провинций администратором» ниже): переход столичной провинции требует обязательного выбора новой столицы из оставшихся провинций донора.
-- **INV-15 (каталог):** `flag_id` и `portrait_id` — NULL либо элемент соответствующего списка конфига; пустой список конфига означает «выбор невозможен». Файл каждого идентификатора обязан существовать в `frontend/public/assets/nations/` — это проверяет тест CI, а не сервер.
-- **INV-16:** Адреса картинок (`flag_url`, `portrait_url`) строятся только функциями `catalog.py`; ни сервисы, ни сателлиты не склеивают путь сами.
+- **INV-15 (картинки):** у государства не больше одной картинки каждого вида (`UNIQUE (nation_id, kind)`); картинки необязательны. Сервер не хранит выбор из каталога и не отдаёт каталога; отсутствие картинки означает «клиент показывает заглушку». Создание государства картинок не принимает: игрок загружает их после создания (отдельный запрос), поэтому сбой загрузки не отменяет регистрацию.
+- **INV-16:** адреса картинок строятся только функцией `images.image_url`; ни сервисы, ни сателлиты не склеивают путь сами. Сателлиты получают картинки государств только через публичное представление `NationService.image_refs`.
 - **INV-17 (одиночные тексты):** однострочные тексты не содержат символов категорий Unicode `Cc`/`Cf`; многострочная биография допускает единственный управляющий символ — перевод строки `\n`.
-- **Порядок проверок при создании:** INV-1 → поля сведений в фиксированном порядке (имя лидера, должность, пол, способ смены, ссылка на историю, ссылка на гимн, краткое название, девиз, описание, биография, флаг, портрет, название столицы; возвращается первая ошибка) → блокировка (PostgreSQL: `pg_advisory_xact_lock`, SQLite: не требуется) → INV-2 для названия → INV-11 для краткого названия → цвет (совпадение → `COLOR_TAKEN`; близость к цвету карты → `COLOR_TOO_CLOSE`; близость к цвету другого государства → `COLOR_TOO_CLOSE`) → существование провинций → свобода провинций → проверки сателлитов стадии `after_free` → количество провинций → проверки сателлитов стадии `after_count` → столица принадлежит выбранным провинциям (`CAPITAL_NOT_IN_PROVINCES`) → создание (точки расширения — §3.8).
+- **INV-18 (обработка):** сервер доверяет только содержимому файла: тип определяется по содержимому (разрешены JPEG, PNG, WebP), всё перекодируется в WebP стандартного размера, метаданные не переносятся, прозрачность сводится на белый фон; размер файла, число пикселей и сторона проверяются до распаковки. Окно может обрезать картинку заранее, но сервер этому не доверяет и всегда приводит к размеру сам.
+- **INV-19 (удаление):** картинку государства удаляет только заменяющая загрузка владельца или администратор через панель (журнал администратора обязателен); игрок удалить картинку без замены не может. Удаление государства, игрока и сброс мира удаляют картинки явным `delete`, не только каскадом.
+- **Порядок проверок при создании:** INV-1 → поля сведений в фиксированном порядке (имя лидера, должность, пол, способ смены, ссылка на историю, ссылка на гимн, краткое название, девиз, описание, биография, название столицы; возвращается первая ошибка) → блокировка (PostgreSQL: `pg_advisory_xact_lock`, SQLite: не требуется) → INV-2 для названия → INV-11 для краткого названия → цвет (совпадение → `COLOR_TAKEN`; близость к цвету карты → `COLOR_TOO_CLOSE`; близость к цвету другого государства → `COLOR_TOO_CLOSE`) → существование провинций → свобода провинций → проверки сателлитов стадии `after_free` → количество провинций → проверки сателлитов стадии `after_count` → столица принадлежит выбранным провинциям (`CAPITAL_NOT_IN_PROVINCES`) → создание (точки расширения — §3.8).
 - **Порядок проверок при изменении:** профильные поля (только переданные, в том же порядке) → блокировка → название → краткое название → цвет (только если новый цвет отличается от текущего; сравнение с остальными государствами, своё исключается) → запись.
 - **INV-TICK-ATOMICITY:** Весь тик — одна транзакция БД. Необработанное исключение в любом обработчике любой фазы → откат целиком; `current_turn` не увеличивается; все `scheduled_actions` хода остаются `PENDING` и обрабатываются повторно на следующей попытке. Запись в `tick_log` выполняется отдельным соединением/autocommit — вне транзакции тика, — иначе при откате пропадёт и диагностика сбоя.
 - **INV-FREQUENCY:** Проверка частоты акта — обязанность `00_core` (реализация), правило частоты — обязанность модуля-владельца (конфигурация). См. алгоритм в Части 3.
@@ -253,7 +274,7 @@ class TickPhase(IntEnum):
 
 **Журнал и права администратора (версия 0.11.0, единица 7).** `AdminRegistry.register_audit_actions(module_slug, {action_code: русская_метка})` — модуль владеет подписями своих действий журнала; неизвестный код показывается как есть. `GET /api/v1/admin/audit-log` (`require_admin`; `actor_vk_user_id`, `action`, `date_from`/`date_to` — даты в часовом поясе тика, `limit` 1..100 по умолчанию 50, курсор `before_id`) отвечает `{items, next_before_id}` новейшими первыми; `actor_name` — через хуки данных игрока (`null`, если игрок уже удалён). `GET /api/v1/admin/audit-log/filters` отдаёт разные значения актёров и действий для двух фильтров-выпадаек. `GET /api/v1/admin/admins` перечисляет env-администраторов и гранты (`source`, `granted_by_*`, `is_self`); `POST /api/v1/admin/admins` выдаёт права существующему игроку (404 неизвестному, идемпотентно), `POST /api/v1/admin/admins/{vk}/revoke` снимает — отказы 409 `CANNOT_REVOKE_SELF` (проверяется до сервиса), `ROOT_ADMIN_PROTECTED`, `LAST_ADMIN`. Каждая выдача и каждое снятие пишут по одной строке `admin.grant`/`admin.revoke` в транзакции запроса.
 
-**Государства в панели (версия 0.11.0, единица 8a).** `AdminRegistry.register_province_info(module_slug, info_fn, search_fn=None)` — хук `info_fn(session, province_ids)` возвращает `{province_id: {"name": str}}` именами хозяина данных, необязательный `search_fn(session, text)` — подходящие id провинций; падающий хук логируется, его сессия откатывается и хук пропускается. `01_map` регистрирует показные имена сухопутных провинций. `GET /api/v1/admin/provinces` (`require_admin`; `search` через хук, `free_only`, `limit` 1..100 по умолчанию 50, `offset`) отвечает `{items: [{id, name, nation_id, nation_short_name}], total}` — только LAND, сортировка в питоновском сравнении по имени и id. `GET /api/v1/admin/nations` (`require_admin`; `search` по полному и краткому названию, `limit`, `offset`) отвечает `{items, total}`: `id`, `short_name`, `name`, `flag_id`, `owner_vk_user_id`, `owner_name` (хуки данных игрока), `provinces_count`, `capital_name`; порядок по дате создания и id. `POST /api/v1/admin/nations` (`require_admin`) принимает `owner_vk_user_id`, поля государства и упорядоченные `province_ids` (первая — столица, если не пришёл `capital_province_id`) и вызывает неизменённый `NationService.create`: `flag_id`/`portrait_id` — первые записи `config.catalog`, `capital_name` — имя столицы из хука провинций; неизвестному владельцу — 404 `PLAYER_NOT_FOUND`, отказы сервиса сохраняют свой HTTP-код. Одна строка `nation.create` пишется в той же транзакции до коммита; отказ откатывает всё вместе с ней.
+**Государства в панели (версия 0.11.0, единица 8a).** `AdminRegistry.register_province_info(module_slug, info_fn, search_fn=None)` — хук `info_fn(session, province_ids)` возвращает `{province_id: {"name": str}}` именами хозяина данных, необязательный `search_fn(session, text)` — подходящие id провинций; падающий хук логируется, его сессия откатывается и хук пропускается. `01_map` регистрирует показные имена сухопутных провинций. `GET /api/v1/admin/provinces` (`require_admin`; `search` через хук, `free_only`, `limit` 1..100 по умолчанию 50, `offset`) отвечает `{items: [{id, name, nation_id, nation_short_name}], total}` — только LAND, сортировка в питоновском сравнении по имени и id. `GET /api/v1/admin/nations` (`require_admin`; `search` по полному и краткому названию, `limit`, `offset`) отвечает `{items, total}`: `id`, `short_name`, `name`, `flag_thumb_url`, `owner_vk_user_id`, `owner_name` (хуки данных игрока), `provinces_count`, `capital_name`; порядок по дате создания и id. `POST /api/v1/admin/nations` (`require_admin`) принимает `owner_vk_user_id`, поля государства и упорядоченные `province_ids` (первая — столица, если не пришёл `capital_province_id`) и вызывает неизменённый `NationService.create`: картинок нет (создание государства в панели картинок не принимает), `capital_name` — имя столицы из хука провинций; неизвестному владельцу — 404 `PLAYER_NOT_FOUND`, отказы сервиса сохраняют свой HTTP-код. Одна строка `nation.create` пишется в той же транзакции до коммита; отказ откатывает всё вместе с ней.
 
 **Правка государства в панели (версия 0.11.0, единица 8b).** `GET /api/v1/admin/nations/{nation_id}` (`require_admin`) отдаёт двенадцать правочных полей (`name`, `short_name`, `color_hex`, `motto`, `description`, `leader_name`, `leader_title`, `gender`, `succession_type`, `leader_bio`, `history_url`, `capital_name`) плюс `id`, `owner_vk_user_id`, `owner_name`, `capital_province_id`, `provinces_count`; неизвестному id — 404 `NATION_NOT_FOUND`. `PATCH /api/v1/admin/nations/{nation_id}` (`require_admin`; только те же двенадцать полей, все необязательные, `extra="forbid"`; пустое тело — 400 `NOTHING_TO_CHANGE`) вызывает неизменённый `NationService.update` — флаг, портрет, провинции и столичная провинция не меняются; отказы сервиса сохраняют свой HTTP-код, откатывают транзакцию и не пишут журнала. Одна строка `nation.update` («Правка государства») пишется в той же транзакции до коммита: сводка с русскими именами полей, `details` — только коды полей и идентификаторы, без текстов. `POST /api/v1/admin/nations/color-check` (`require_admin`; `color_hex`, необязательный `nation_id`) отвечает `{status}` из `NationService.color_status`, исключая переданное государство из сравнения; панель больше не вызывает игровой эндпоинт проверки цвета.
 
@@ -261,7 +282,11 @@ class TickPhase(IntEnum):
 
 **Передача и вывод провинций администратором (версия 0.11.0, единица 9a).** `ProvinceService.transfer(session, province_id, to_nation_id, *, new_capital_province_id=None, new_capital_name=None, confirm_seize=False, config)` — единая доменная операция «передать сухопутную провинцию государству или освободить её» (`to_nation_id=None`): работает в транзакции вызывающего под блокировкой nations, не коммитит и объявляет ровно один `OwnershipChange` через `notify_ownership_changed` (запись в журнал владения делает собственный слушатель `01_map`, INV-M7). Ограничения `min/max_provinces_per_nation` к администратору не применяются; порядок отказов: провинция существует и LAND (422 `PROVINCE_NOT_LAND` для морских узлов) → целевое государство существует (404 `NATION_NOT_FOUND`) → `ALREADY_OWNER` (уже у цели либо уже свободна при выводе) → `SEIZE_NOT_CONFIRMED` (занята чужим государством, `confirm_seize` не передан) → `LAST_PROVINCE` (у донора только эта провинция — государство удаляется вместо передачи) → столица донора: обязательный выбор новой из оставшихся провинций (`CAPITAL_REQUIRED`, `CAPITAL_NOT_IN_PROVINCES`, `CAPITAL_NAME_INVALID`); у донора без столицы (государство до 0.8.0) ничего не требуется. `GET /api/v1/admin/provinces/{id}/transfer-preview` (`require_admin`, только чтение; без `to_nation_id` — предпросмотр вывода) отвечает `{province {id, name}, from_nation {id, short_name, provinces_count, capital_province_id, capital_name} | null, to_nation {id, short_name, provinces_count} | null, seizes, capital_choice_needed, capital_candidates [{id, name}] (оставшиеся провинции донора по имени), donor_after, receiver_after, blocker (null | LAST_PROVINCE | ALREADY_OWNER)}`; имена — через хуки провинций, неизвестной провинции — 404 `PROVINCE_NOT_FOUND`. `POST /api/v1/admin/provinces/{id}/transfer` (`require_admin`; `{to_nation_id, confirm_seize=false, new_capital_province_id}`; название новой столицы берётся у выбранной провинции из хуков, иначе 422 `PROVINCE_NAME_UNKNOWN`) вызывает сервис и пишет одну строку `province.transfer` («Передача провинции») в той же транзакции до коммита: сводка — одна русская фраза, `details` — только идентификаторы и флаг `seized`; отказ откатывает всё и строки не пишет. Ответ: `province_id`, `previous_nation_id`, `new_nation_id`, `new_capital_province_id`.
 
-**Публичные представления для сателлитов.** Чтение чужих данных идёт только через открытые представления `service.py` — сателлит не обращается к таблицам `00_core` напрямую. `PlayerNationSummary` (`NationService.player_nation_summary`) несёт `short_name: str` и `flag_id: str | None` рядом с полным названием и цветом — этого достаточно, чтобы `04_orders` снимал свой снимок, не касаясь таблицы `nations`. `OwnedProvinceInfo` (`ProvinceService.list_current_owners`) несёт `nation_short_name: str` — живую строку владельца для текущего хода `GET /map/state` (версия 0.10.0, единица 4b).
+**Публичные представления для сателлитов.** Чтение чужих данных идёт только через открытые представления `service.py` — сателлит не обращается к таблицам `00_core` напрямую. `PlayerNationSummary` (`NationService.player_nation_summary`) несёт `short_name: str` и `flag_sha256: str | None` рядом с полным названием и цветом — этого достаточно, чтобы `04_orders` снимал свой снимок, не касаясь таблицы `nations`. `OwnedProvinceInfo` (`ProvinceService.list_current_owners`) несёт `nation_short_name: str` — живую строку владельца для текущего хода `GET /map/state` (версия 0.10.0, единица 4b).
+
+**Публичное представление картинок.** `NationService.image_refs(session, nation_ids) -> dict[UUID, NationImageRefs]`, где `NationImageRefs = { flag_sha256: str | None, portrait_sha256: str | None }`; сателлиты (`03_registry`, `04_orders`) берут картинки государств только так. Адрес строится `images.image_url`.
+
+**Картинки в панели (единицы 8–9).** Панель получает картинки через службу `00_core`: отдельного списка последних загрузок и раздела «Картинки» нет (решение Project Owner 27.10.2026; `GET /api/v1/admin/images` не создаётся); сведения о государстве `GET /api/v1/admin/nations/{nation_id}` получают блок `images` = `{"flag": <запись|null>, "portrait": <запись|null>}`, где запись — `{"url": str, "thumb_url": str, "uploaded_at": ISO datetime, "uploaded_by": {"vk_user_id": int, "name": str|null}|null}` (`uploaded_by` — null, когда игрока-загрузчика уже нет); запись дополнительно несёт `size_bytes` (длина полного WebP в базе, байты — считается в SQL, тело не читается) и `width`/`height` (целевой размер вида из раздела `images` конфига), а элементы `GET /api/v1/admin/nations` (+ ответ `POST`), `GET /api/v1/admin/provinces` и `GET /api/v1/admin/orders` (+ ответ `POST /judge`) несут `flag_thumb_url` — адрес миниатюры текущего флага через `images.image_url(..., "thumb")`, один вызов `image_refs` на страницу, null без флага (и у свободной провинции, и у приказа удалённого государства); удаление — по порядку «показать последствия → подтвердить → записать в журнал»: `GET /api/v1/admin/nations/{nation_id}/images/{kind}/delete-preview` и `POST /api/v1/admin/nations/{nation_id}/images/{kind}/delete` — оба отвечают `{"nation_id", "short_name", "kind", "uploaded_at", "uploaded_by" (та же форма), "consequences": [{"code": str, "text": str}, …]}`, delete — снимком на момент удаления, второй вызов отвечает 404 `IMAGE_NOT_FOUND` без записи в журнал; `kind` вне {flag, portrait} — 404, нет государства — `NATION_NOT_FOUND`, нет картинки — `IMAGE_NOT_FOUND`; код журнального действия `nation_image_delete` регистрируется через `AdminRegistry.register_audit_actions`, в журнал пишутся вид и первые 12 знаков `sha256`. Предпросмотр удаления государства (`register_nation_preview`) получает строку «удалятся загруженные картинки» (флаг, портрет), если они есть. Создание государства в панели не принимает картинок. Три места клиента панели, которые собирают путь флага сами (`NationsList.tsx`, `OrdersSection.tsx`, `ProvincesSection.tsx`), берут адрес из ответа сервера.
 
 ---
 
@@ -418,8 +443,14 @@ $$
 | `color.min_distance_reserved`              | float              | расстояние OKLab | 0.02      | 0.5          | **0.08**         |
 | `color.reserved`                           | list[{name, hex}]  | —                | 1 элемент | 20 элементов | **4 цвета карты** |
 | `color.palette`                            | list[str `#RRGGBB`]| —                | 1 элемент | 60 элементов | **36 цветов**    |
-| `catalog.flag_ids`                         | list[str]          | идентификаторы   | 0 элементов | 200 элементов | **[]** до Issue 11 |
-| `catalog.portrait_ids`                     | list[str]          | идентификаторы   | 0 элементов | 200 элементов | **[]** до Issue 11 |
+| `images.flag_width` / `images.flag_height` | int | пиксели | 60 / 60 | 2000 / 2000 | **600 / 400** |
+| `images.portrait_width` / `images.portrait_height` | int | пиксели | 60 / 60 | 2000 / 2000 | **600 / 800** |
+| `images.flag_thumb_width` / `images.flag_thumb_height` | int | пиксели | 16 / 16 | 400 / 400 | **96 / 64** |
+| `images.portrait_thumb_width` / `images.portrait_thumb_height` | int | пиксели | 16 / 16 | 400 / 400 | **120 / 160** |
+| `images.webp_quality` | int | — | 50 | 100 | **85** |
+| `images.max_upload_bytes` | int | байты | 100 000 | 20 000 000 | **5 242 880** |
+| `images.max_pixels` | int | пиксели | 1 000 000 | 100 000 000 | **25 000 000** |
+| `images.max_side` | int | пиксели | 1000 | 20 000 | **8000** |
 | `calendar.epoch_start_date`                | date (ISO 8601, день = 1) | —         | —         | —            | **"2040-01-01"** |
 | `calendar.months_per_turn`                 | int                | игровые месяцы   | 1         | 12           | **1**            |
 | `calendar.month_names`                     | list[str]          | названия         | ровно 12  | ровно 12     | январь … декабрь |
@@ -434,7 +465,7 @@ $$
 - Хосты в `history_url_allowed_hosts` и `anthem_url_allowed_hosts` — в нижнем регистре, без схемы, порта и пути, валидные имена хостов, без дублей.
 - Верхние границы `le` текстовых лимитов не больше длин колонок в БД (100 / 100 / 100 / 100 / 200 / 2000 / 2000 / 2000, см. Часть 1); это проверяет тест `test_configs_validity.py`.
 - `color.reserved[].hex` и `color.palette[]` — формата `#RRGGBB`; палитра без дублей (регистр не учитывается); любые два цвета палитры различимы не хуже `min_distance_nations`; любой цвет палитры различим с каждым цветом `color.reserved` не хуже `min_distance_reserved`.
-- `catalog.*_ids` — паттерн `^[a-z0-9_]{1,50}$`, без дублей, список может быть пустым.
+- `images`: флаг строго шире, чем выше (`flag_width > flag_height`), портрет строго выше, чем шире (`portrait_height > portrait_width`); миниатюра имеет ту же пропорцию, что полный размер (`flag_width × flag_thumb_height == flag_height × flag_thumb_width`, так же для портрета) и не больше полного размера; `max_pixels ≤ max_side × max_side`.
 - `tick.health_max_heartbeat_age_seconds > tick.retry_delay_seconds + tick.heartbeat_interval_seconds`.
 - Все ключи, кроме двух ключей `tick.heartbeat_*`, обязательны (значений по умолчанию в схеме нет): пропущенный ключ ломает запуск.
 
@@ -458,10 +489,20 @@ $$
 | PATCH  | `/api/v1/nations/me`       | Bearer            | `NationUpdateRequest`          | `NationDTO`         | 200 / 409 / 422     |
 | GET    | `/api/v1/provinces`        | Bearer            | `?ids=&free_only=`             | `List[ProvinceDTO]` | 200                 |
 | GET    | `/api/v1/game-clock`       | Bearer            | —                              | `GameClockDTO`      | 200                 |
+| PUT | `/api/v1/nations/me/images/{kind}` | Bearer | тело — файл | `NationImageDTO` | 200 / 404 / 413 / 415 / 422 |
+| GET | `/api/v1/images/{sha256}/{variant}` | **нет** | — | `image/webp` | 200 / 404 |
 
 `DELETE /api/v1/nations/me` отменён (Изменения 1.4) и снят в единице 8 версии 0.9.0 вместе с тестами и клиентским вызовом: игрок государство не удаляет; `NationService.delete` остаётся внутренней операцией сервиса (хук удаления игрока, сброс мира).
 
 `POST /api/v1/nations/color-check` — подсказка для интерфейса при вводе HEX: проверяет цвет теми же функциями Части 3, но без блокировки и без записи, поэтому ответ `OK` не гарантирует успех создания (окончательное решение принимает `POST /api/v1/nations` под блокировкой). Свой собственный цвет (если у игрока уже есть государство) из сравнения исключается. Неверный формат `color_hex` — стандартный 422.
+
+`kind` ∈ {`flag`, `portrait`}, `variant` ∈ {`full`, `thumb`}.
+
+**Загрузка (`PUT /api/v1/nations/me/images/{kind}`).** Тело запроса — сам файл (не multipart); `Content-Type` и расширение не учитываются. Порядок проверок: вход → у игрока есть государство (иначе 404 `NATION_NOT_FOUND`) → чтение тела с отсечкой по `images.max_upload_bytes` (иначе 413 `IMAGE_TOO_LARGE`) → тип по содержимому (не JPEG, PNG или WebP либо файл повреждён — 415 `IMAGE_UNSUPPORTED`) → число пикселей и сторона по заголовку, до распаковки (больше `images.max_pixels` или `images.max_side` — 413 `IMAGE_TOO_LARGE`) → ориентация по размеру после поворота по EXIF (флаг не шире, чем выше, либо портрет не выше, чем шире — 422 `IMAGE_ORIENTATION_INVALID`) → разбор в пуле потоков под семафором: обрезка по центру до пропорции, уменьшение до точного размера, WebP, миниатюра, `sha256` → одна транзакция: замена строки `nation_images` (прежнее содержимое исчезает сразу). Сервер число загрузок игрока не считает. Ответ `NationImageDTO = { kind: str, url: str, thumb_url: str }`. Квадратная картинка для флага не проходит (длина должна быть строго больше высоты). Для JPEG при разборе используется режим уменьшенной распаковки (`draft`), чтобы пик памяти не зависел от размера источника.
+
+**Раздача (`GET /api/v1/images/{sha256}/{variant}`).** Без входа (тег `<img>` не передаёт заголовок `Authorization`; содержимое видно всем игрокам). Ответ 200: `Content-Type: image/webp`, `Cache-Control: public, max-age=86400`, `ETag` = `sha256`, `X-Content-Type-Options: nosniff`. Если строки с таким хэшем нет — 404 с `Cache-Control: no-store`. Адрес по содержимому: замена или удаление картинки делает прежний адрес мёртвым, у зрителя картинка может оставаться в кэше не дольше суток.
+
+**Порядок в окне регистрации.** Окно сначала создаёт государство обычным `POST /api/v1/nations` (без картинок), затем отправляет выбранные картинки; сбой загрузки не отменяет регистрацию, игрок видит сообщение и может загрузить картинку позже в «Штабе» (щелчком по флагу или портрету). Картинки, выбранные при регистрации, хранятся в окне до создания государства и после него отправляются по одной; в форме правки текстовых данных блоков флага и портрета нет.
 
 ### Вход в панель администратора (версия 0.11.0, единица 4)
 
@@ -481,11 +522,11 @@ PlayerDTO         = { id: UUID, vk_user_id: int, created_at: datetime }
 NationDTO         = { id: UUID, owner_player_id: UUID, created_at: datetime,
                       name: str, short_name: str, color_hex: str,
                       motto: str | None, description: str | None,
-                      flag_id: str | None, flag_url: str | None,
+                      flag_url: str | None, flag_thumb_url: str | None,
                       province_ids: list[int],
                       capital_province_id: int | None, capital_name: str | None,
                       leader_name: str | None, gender: str | None, leader_title: str | None,
-                      leader_bio: str | None, portrait_id: str | None, portrait_url: str | None,
+                      leader_bio: str | None, portrait_url: str | None, portrait_thumb_url: str | None,
                       succession_type: str | None,
                       history_url: str | None, anthem_url: str | None,
                       level: int, judge_rating: int }   # level и judge_rating владельца — с версии 0.9.0 (единица 14)
@@ -494,11 +535,11 @@ NationDTO         = { id: UUID, owner_player_id: UUID, created_at: datetime,
 NationPublicDTO   = { id: UUID, created_at: datetime,
                       name: str, short_name: str, color_hex: str,
                       motto: str | None, description: str | None,
-                      flag_id: str | None, flag_url: str | None,
+                      flag_url: str | None, flag_thumb_url: str | None,
                       province_ids: list[int],
                       capital_province_id: int | None, capital_name: str | None,
                       leader_name: str | None, leader_title: str | None,
-                      leader_bio: str | None, portrait_id: str | None, portrait_url: str | None,
+                      leader_bio: str | None, portrait_url: str | None, portrait_thumb_url: str | None,
                       history_url: str | None,
                       level: int, judge_rating: int }
                       # публичные сведения о чужом государстве (Bible 00_core, п. 7, версия 0.9.0, единица 14).
@@ -506,20 +547,20 @@ NationPublicDTO   = { id: UUID, created_at: datetime,
                       # Тест: ключи ответа точно равны перечню выше. Неизвестный id → 404 NATION_NOT_FOUND.
                       # level и judge_rating — поля игрока-владельца (`players`), читаются в 00_core.
 NationCreateRequest = { name: str, short_name: str, color_hex: str,
-                        motto: str | None, description: str | None, flag_id: str | None,
+                        motto: str | None, description: str | None,
                         province_ids: list[int], capital_province_id: int | None, capital_name: str,
                         leader_name: str, gender: str, leader_title: str, leader_bio: str | None,
-                        portrait_id: str | None, succession_type: str,
+                        succession_type: str,
                         history_url: str, anthem_url: str | None }
 NationUpdateRequest = { name: str | None, short_name: str | None, color_hex: str | None,
-                        motto: str | None, description: str | None, flag_id: str | None,
+                        motto: str | None, description: str | None,
                         capital_name: str | None,
                         leader_name: str | None, gender: str | None, leader_title: str | None,
-                        leader_bio: str | None, portrait_id: str | None, succession_type: str | None,
+                        leader_bio: str | None, succession_type: str | None,
                         history_url: str | None, anthem_url: str | None }
                         # None/отсутствие = не менять; "" у необязательных = очистить; "" у обязательных = ошибка.
                         # province_ids и capital_province_id не объявлены (INV-14): лишние ключи игнорируются, как раньше.
-CatalogItemDTO    = { id: str, url: str }
+NationImageDTO    = { kind: str, url: str, thumb_url: str }
 NationRulesDTO    = { name_min_length: int, name_max_length: int,
                       short_name_min_length: int, short_name_max_length: int,
                       motto_max_length: int, description_max_length: int,
@@ -531,7 +572,8 @@ NationRulesDTO    = { name_min_length: int, name_max_length: int,
                       anthem_url_max_length: int, anthem_url_allowed_hosts: list[str],
                       min_provinces: int, max_provinces: int,
                       palette: list[str],
-                      flags: list[CatalogItemDTO], portraits: list[CatalogItemDTO],
+                      images: { flag_width: int, flag_height: int, portrait_width: int,
+                                portrait_height: int, max_upload_bytes: int },   # для подсказок в окне («картинка 600×400 вставляется без обрезки»)
                       genders: list[str], succession_types: list[str] }
                       # значения из конфига и кода, для подсказок и выбора в форме; пороги цвета клиенту не нужны
 ColorCheckRequest = { color_hex: str }
@@ -565,8 +607,10 @@ ErrorResponse      = { detail: str, code: str }
 | `MOTTO_INVALID` | 422 | девиз длиннее лимита или содержит недопустимые символы |
 | `DESCRIPTION_INVALID` | 422 | описание длиннее лимита или содержит недопустимые символы |
 | `LEADER_BIO_INVALID` | 422 | биография длиннее лимита или содержит недопустимые символы |
-| `FLAG_INVALID` | 422 | флаг не выбран (при создании обязателен) или идентификатор вне каталога |
-| `PORTRAIT_INVALID` | 422 | портрет не выбран (при создании обязателен) или идентификатор вне каталога |
+| `IMAGE_TOO_LARGE` | 413 | файл больше `images.max_upload_bytes` либо картинка больше `images.max_pixels` / `images.max_side` |
+| `IMAGE_UNSUPPORTED` | 415 | файл не JPEG, PNG или WebP либо повреждён |
+| `IMAGE_ORIENTATION_INVALID` | 422 | флаг не шире, чем выше, либо портрет не выше, чем шире |
+| `IMAGE_NOT_FOUND` | 404 | у государства нет такой картинки |
 | `HISTORY_URL_INVALID` | 422 | ссылка пуста, длиннее лимита или не проходит формат (`detail` называет причину) |
 | `ANTHEM_URL_INVALID` | 422 | ссылка на гимн длиннее лимита или не проходит проверку Части 3 |
 | `CAPITAL_NAME_INVALID` | 422 | название столицы пусто, вне границ длины или содержит недопустимые символы |
@@ -585,15 +629,15 @@ ErrorResponse      = { detail: str, code: str }
 
 - **Auth-gate** — невидимая, `ScreenSpinner` на время резолва `/auth/vk`.
 - **`PanelCreateNation` — контейнер из четырёх вкладок.** Номер текущей вкладки (1…4) и все введённые значения хранятся в контейнере: переключение вкладок их не теряет и ничего не отправляет на сервер. Черновик дополнительно запоминается в `sessionStorage` (обёртка `try/catch`, интерфейс обязан работать и без него) и стирается после успешной регистрации; на сервере черновики не хранятся.
-  - **Вкладка 1 «Основные данные и символика»:** `FormItem`(полное название, `Input`, счётчик длины), `FormItem`(краткое название, `Input`), `FormItem`(девиз, `Input`, необязательно), `FormItem`(описание, `Input`, необязательно), `FormItem`(цвет: сетка готовой палитры из `rules.palette` и поле ввода HEX; при вводе — запрос `POST /nations/color-check` с задержкой около 400 мс и подсказка: «цвет свободен» / «цвет занят» / «слишком похож на цвет другого государства или карты»), `FormItem`(флаг: сетка из `rules.flags`, обязательный — первый элемент каталога выбран заранее).
-  - **Вкладка 2 «Глава государства»:** `FormItem`(портрет: сетка из `rules.portraits`, обязательный — первый элемент каталога выбран заранее), `FormItem`(имя лидера), `FormItem`(пол — два варианта «мужской»/«женский»), `FormItem`(должность лидера), `FormItem`(биография, `Textarea`, необязательно, счётчик длины), способ смены лидера — четыре крупные кнопки-карточки с иконками и кратким описанием: «Демократические выборы» (`elections`), «Назначение игроком» (`appointment`), «Назначение по критериям» (`criteria`), «Наследование» (`inheritance`); под ними подпись «Пока без последствий в игре».
+  - **Вкладка 1 «Основные данные и символика»:** `FormItem`(полное название, `Input`, счётчик длины), `FormItem`(краткое название, `Input`), `FormItem`(девиз, `Input`, необязательно), `FormItem`(описание, `Input`, необязательно), `FormItem`(цвет: сетка готовой палитры из `rules.palette` и поле ввода HEX; при вводе — запрос `POST /nations/color-check` с задержкой около 400 мс и подсказка: «цвет свободен» / «цвет занят» / «слишком похож на цвет другого государства или карты»), `FormItem`(флаг: заглушка в цвете государства — кнопка с меткой «Загрузить», щелчок открывает выбор файла; рядом подсказка «картинка 600×400 вставляется без обрезки», числа — из `NationRulesDTO.images`; после выбора файла — окно предпросмотра результата обрезки по центру, выбранный файл хранится в окне до создания государства; необязательный; вид блока утверждает единица 3 по макетам 0.12.0).
+  - **Вкладка 2 «Глава государства»:** `FormItem`(портрет: заглушка-силуэт — кнопка с меткой «Загрузить», «600×800», предпросмотр и хранение файла — как у флага), `FormItem`(имя лидера), `FormItem`(пол — два варианта «мужской»/«женский»), `FormItem`(должность лидера), `FormItem`(биография, `Textarea`, необязательно, счётчик длины), способ смены лидера — четыре крупные кнопки-карточки с иконками и кратким описанием: «Демократические выборы» (`elections`), «Назначение игроком» (`appointment`), «Назначение по критериям» (`criteria`), «Наследование» (`inheritance`); под ними подпись «Пока без последствий в игре».
   - **Вкладка 3 «История»:** одно поле — `FormItem`(ссылка на статью ВКонтакте, `Input`, пометка «обязательно», подсказка формата `https://vk.com/@название-статьи`); поля гимна нет.
   - **Вкладка 4 «Территории»:** чипы выбранных провинций (порядок выбора сохраняется; чип снимается по одному) и кнопка «Выбрать на карте», открывающая `ProvincePicker` из `01_map` (`ModalPage` с картой: клик по свободной сухопутной провинции выбирает/снимает её, морские и занятые отказывают с подсказкой; «Готово» после `POST /map/starting-group/check`; выбрать можно ровно `rules.max_provinces` провинций, окно сообщает «выбрано N из 5» — число берётся из правил). Столица: правая кнопка мыши по выбранной провинции помечает её столицей, повторная по ней же — снимает отметку; столица одна; клиент пытается погасить стандартное контекстное меню (`preventDefault`), но не полагается на это; рядом с каждым чипом — видимая кнопка «Сделать столицей»/«Снять отметку». Если отметки нет, столицей считается первая выбранная провинция (клиент показывает это подписью). `FormItem`(название столицы, `Input`) подставляет название отмеченной (или первой) провинции, пока игрок не изменил его вручную; после правки игроком не перезаписывается.
   - Навигация: кнопки-стрелки «назад»/«вперёд» (`IconButton`, иконки `@vkontakte/icons`) и текст «Шаг N из 4», заголовки вкладок кликабельны. Если сервер вернул ошибку по полю другой вкладки или обязательное поле другой вкладки пусто, у вкладки отображается индикатор ошибки (например, VKUI `Badge`); вкладка автоматически не переключается.
-  - Кнопка подтверждения доступна на всех вкладках, неактивна, пока обязательные поля пусты; отправляется один `POST /api/v1/nations` с данными всех вкладок. Обязательные для клиента поля: полное и краткое название, цвет, флаг, имя, пол, должность, портрет, способ смены лидера, ссылка на историю, ровно нужное число провинций, название столицы.
-  - Сопоставление ошибок: `NAME_TAKEN`, `SHORT_NAME_TAKEN`, `SHORT_NAME_INVALID`, `MOTTO_INVALID`, `DESCRIPTION_INVALID`, `COLOR_TAKEN`, `COLOR_TOO_CLOSE`, `FLAG_INVALID` → вкладка 1; `LEADER_NAME_INVALID`, `GENDER_INVALID`, `LEADER_TITLE_INVALID`, `LEADER_BIO_INVALID`, `PORTRAIT_INVALID`, `SUCCESSION_INVALID` → вкладка 2; `HISTORY_URL_INVALID` → вкладка 3; `PROVINCE_*`, `STARTING_GROUP_NOT_CONNECTED`, `CAPITAL_NAME_INVALID`, `CAPITAL_NOT_IN_PROVINCES` → вкладка 4.
-  - Русские тексты ошибок (по `code`, словарь на клиенте): `NAME_TAKEN` — «Это название уже занято»; `SHORT_NAME_TAKEN` — «Это краткое название уже занято»; `COLOR_TAKEN` — «Этот цвет уже занят другим государством»; `COLOR_TOO_CLOSE` — «Цвет слишком похож на цвет другого государства или карты. Выберите другой»; `SHORT_NAME_INVALID` — «Краткое название: от N до M символов, без служебных символов» (числа из правил); аналогично для остальных `*_INVALID` — с названием поля и пределами; `FLAG_INVALID` — «Выберите флаг.»; `PORTRAIT_INVALID` — «Выберите портрет лидера.»; `CAPITAL_NOT_IN_PROVINCES` — «Столица должна быть одной из выбранных провинций».
-  - Лимиты и подсказки (длины, допустимые хосты, число провинций, палитра, каталоги) берутся из `GET /api/v1/nations/rules`, один запрос при открытии панели; числа в клиенте не дублируются.
+  - Кнопка подтверждения доступна на всех вкладках, неактивна, пока обязательные поля пусты; отправляется один `POST /api/v1/nations` с данными всех вкладок. Обязательные для клиента поля: полное и краткое название, цвет, имя, пол, должность, способ смены лидера, ссылка на историю, ровно нужное число провинций, название столицы.
+  - Сопоставление ошибок: `NAME_TAKEN`, `SHORT_NAME_TAKEN`, `SHORT_NAME_INVALID`, `MOTTO_INVALID`, `DESCRIPTION_INVALID`, `COLOR_TAKEN`, `COLOR_TOO_CLOSE` → вкладка 1; `LEADER_NAME_INVALID`, `GENDER_INVALID`, `LEADER_TITLE_INVALID`, `LEADER_BIO_INVALID`, `SUCCESSION_INVALID` → вкладка 2; `HISTORY_URL_INVALID` → вкладка 3; `PROVINCE_*`, `STARTING_GROUP_NOT_CONNECTED`, `CAPITAL_NAME_INVALID`, `CAPITAL_NOT_IN_PROVINCES` → вкладка 4.
+  - Русские тексты ошибок (по `code`, словарь на клиенте): `NAME_TAKEN` — «Это название уже занято»; `SHORT_NAME_TAKEN` — «Это краткое название уже занято»; `COLOR_TAKEN` — «Этот цвет уже занят другим государством»; `COLOR_TOO_CLOSE` — «Цвет слишком похож на цвет другого государства или карты. Выберите другой»; `SHORT_NAME_INVALID` — «Краткое название: от N до M символов, без служебных символов» (числа из правил); аналогично для остальных `*_INVALID` — с названием поля и пределами; `IMAGE_UNSUPPORTED` — «Это не картинка. Подойдут файлы JPEG, PNG и WebP.»; `IMAGE_TOO_LARGE` — «Файл больше {N} МБ. Сожмите картинку или выберите другую.» ({N} считается клиентом из `NationRulesDTO.images.max_upload_bytes`, в тексте число не зашивается); `IMAGE_ORIENTATION_INVALID` — для флага «Флаг должен быть горизонтальным: ширина больше высоты. Выберите другую картинку.», для портрета «Портрет должен быть вертикальным: высота больше ширины. Выберите другую картинку.» (квадратная картинка не проходит ни там, ни там); сбой сети — общая фраза «Ошибка сети — попробуйте ещё раз.»; `CAPITAL_NOT_IN_PROVINCES` — «Столица должна быть одной из выбранных провинций».
+  - Лимиты и подсказки (длины, допустимые хосты, число провинций, палитра, пределы загрузки картинок) берутся из `GET /api/v1/nations/rules`, один запрос при открытии панели; числа в клиенте не дублируются.
 - **`PanelNationHome`** — карточка государства: `Group` с `Header`(номер хода и игровая дата); флаг (если есть); полное и краткое название, девиз и описание (если есть), цветовой `Div`-свотч, провинции названиями (столичная первая, со звёздочкой; номера провинций не показываются; если название столицы отличается от названия провинции, показываются оба); блок «Глава государства»: портрет, имя, должность, биография (если есть), без подписей строк, пол не показывается; способ смены лидера с подписью «пока без последствий»; ссылка на историю (`<a target="_blank" rel="noopener noreferrer">`; у старых государств пустое значение показывается как «не указано»); `Button`(редактировать). Кнопки удаления государства нет (Изменения 1.4). Редактирование — одна форма с теми же полями, кроме провинций и отметки столицы (название столицы правится); отправляются только изменённые поля, пустые необязательные поля очищаются пустой строкой, незаполненные у старого государства поля не мешают сохранить остальное.
 - **`ModalConfirmDeleteNation`** — отменена (Изменения 1.4), удаляется из клиента в единице 8 версии 0.9.0.
 
@@ -607,9 +651,9 @@ ErrorResponse      = { detail: str, code: str }
 
 ## ПРИЛОЖЕНИЕ A: Изменения за пределами `00_core`
 
-- **A1. `03_registry`.** `NationRegistryRow` (результат `NationService.list_for_registry`) получает поля `short_name: str` (NOT NULL с миграции 0012) и `flag_id: str | None`. Источники `players` и `nations` строят ячейку `nation` как `cell_nation(name=short_name, color, flag_url=catalog.flag_url(flag_id))`. Spec `03_registry` (описание ячейки `nation`, строка про `flag_url = null`) обновляется Lead AI в Issue 16 отдельным файлом.
+- **A1. `03_registry`.** `NationRegistryRow` (результат `NationService.list_for_registry`) получает поля `short_name: str` (NOT NULL с миграции 0012) и `flag_sha256: str | None` (хэш загруженного флага, `None` — флага нет). Источники `players` и `nations` строят ячейку `nation` как `cell_nation(name=short_name, color, flag_url=images.image_url(flag_sha256, "thumb"))`. Spec `03_registry` (описание ячейки `nation`, строка про `flag_url = null`) обновляется Lead AI в Issue 16 отдельным файлом.
 - **A2. `01_map`.** `ProvincePicker` принимает и возвращает упорядоченный список (порядок выбора важен для столицы по умолчанию), поддерживает отметку столицы правой кнопкой и видимой кнопкой; исправляется дёрганье карты в окне выбора (бэклог `01_map`) — Issue 15.
-- **A3. Статические файлы.** Каталог `frontend/public/assets/nations/flags/` и `.../portraits/` (PNG), отдаются Caddy из `/srv` вместе с остальной статикой; до поступления картинок от Project Owner используется набор-заглушка (Issue 11).
-- **A4. Тесты и фабрики.** Фабрика государства создаёт ровно `max_provinces_per_nation` (5) провинций и заполняет новые обязательные поля; тесты, предполагавшие меньшее число провинций, обновляются; добавляются тесты порядка проверок, гонки цветов (две одновременные регистрации близких цветов — принята одна), миграции вверх/вниз на SQLite и PostgreSQL, сверки конфига с `01_map.yaml`, существования файлов каталога, векторов OKLab из Части 3.
+- **A3.** Статических картинок государств нет: загруженные картинки отдаёт приложение (`/api/v1/images/...`, Caddy проксирует `/api/*`); заглушки рисует клиент.
+- **A4. Тесты и фабрики.** Фабрика государства создаёт ровно `max_provinces_per_nation` (5) провинций и заполняет новые обязательные поля; тесты, предполагавшие меньшее число провинций, обновляются; добавляются тесты порядка проверок, гонки цветов (две одновременные регистрации близких цветов — принята одна), миграции вверх/вниз на SQLite и PostgreSQL, сверки конфига с `01_map.yaml`, раздела `images` и перекрёстных правил схемы (Часть 4), векторов OKLab из Части 3.
 - **A5. `main.py`.** Таблица соответствия кодов ошибок и статусов расширяется кодами Части 5.
 - **A6. Эксплуатация.** `m.vk.com` добавлен в допустимые хосты ссылки на историю по итогам NAT-0 (N7); формат ссылок ВК на музыку не подтверждён (N4), поэтому ссылка на гимн проверяется мягко.

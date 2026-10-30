@@ -224,6 +224,7 @@ def pg_clean(pg_schema: str) -> None:
     try:
         with engine.begin() as conn:
             conn.execute(sa.text("DELETE FROM map_ownership_log"))
+            conn.execute(sa.text("DELETE FROM nation_images"))
             conn.execute(sa.text("DELETE FROM provinces"))
             conn.execute(sa.text("DELETE FROM scheduled_actions"))
             conn.execute(sa.text("DELETE FROM nations"))

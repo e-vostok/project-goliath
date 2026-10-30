@@ -129,26 +129,27 @@ color:
     - "#97617D"
     - "#F2569C"
 
-catalog:
-  # Идентификаторы готовых флагов и портретов (латиница, цифры, «_»). Файл каждого
-  # идентификатора лежит в frontend/public/assets/nations/flags/<id>.png и
-  # portraits/<id>.png.
-  # placeholder set, to be replaced by the Project Owner's pictures
-  flag_ids:
-    - "flag_placeholder_1"
-    - "flag_placeholder_2"
-    - "flag_placeholder_3"
-    - "flag_placeholder_4"
-    - "flag_placeholder_5"
-    - "flag_placeholder_6"
-  # placeholder set, to be replaced by the Project Owner's pictures
-  portrait_ids:
-    - "portrait_placeholder_1"
-    - "portrait_placeholder_2"
-    - "portrait_placeholder_3"
-    - "portrait_placeholder_4"
-    - "portrait_placeholder_5"
-    - "portrait_placeholder_6"
+images:
+  # Картинки государства (версия 0.12.0, единица 5): точный размер флага после пережатия.
+  flag_width: 600
+  flag_height: 400
+  # Точный размер портрета после пережатия.
+  portrait_width: 600
+  portrait_height: 800
+  # Размер миниатюры флага (та же пропорция, что полный размер).
+  flag_thumb_width: 96
+  flag_thumb_height: 64
+  # Размер миниатюры портрета (та же пропорция, что полный размер).
+  portrait_thumb_width: 120
+  portrait_thumb_height: 160
+  # Качество выходного WebP для полного размера и миниатюры.
+  webp_quality: 85
+  # Жёсткая отсечка тела запроса загрузки, байты (5 МБ).
+  max_upload_bytes: 5242880
+  # Предел числа пикселей источника, проверяется по заголовку до распаковки.
+  max_pixels: 25000000
+  # Предел длинной стороны источника, проверяется по заголовку до распаковки.
+  max_side: 8000
 
 calendar:
   # Игровая дата = epoch_start_date + (номер хода × months_per_turn) календарных месяцев.

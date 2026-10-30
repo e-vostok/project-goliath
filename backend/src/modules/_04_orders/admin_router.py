@@ -41,11 +41,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.admin.registry import AdminRegistry
 from core.admin.security import require_admin
 from core.db import get_session
+from modules._00_core import images
 from modules._00_core.admin_service import AdminAuditService
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import PlayerNotFoundError
 from modules._00_core.models import Player
-from modules._00_core.service import PlayerService
+from modules._00_core.service import NationService, PlayerService
 from modules._00_core.tick_schedule import format_game_time
 from modules._02_bot.service import BotService
 from modules._04_orders.exceptions import OrderNotFoundError
@@ -97,19 +98,20 @@ def _list_item(
     names: dict[str, str],
     tz: str,
     now: datetime,
+    flag_thumb_url: str | None,
 ) -> dict:
     """One list item — the answer shape of GET / and POST /{n}/judge."""
     return {
         "number": order.number,
         "title": order.title,
         "author_nation_short_name": order.nation_short_name,
-        "author_nation_flag_id": order.nation_flag_id,
         "author_name": names.get(order.author_player_id),
         "judge_vk_user_id": judge_vk_user_id,
         "judge_name": names.get(order.judge_player_id),
         "status": _status_of(order),
         "deadline_at": format_game_time(order.deadline_at, tz),
         "overdue": is_overdue(order, now),
+        "flag_thumb_url": flag_thumb_url,
     }
 
 
@@ -208,6 +210,12 @@ async def list_orders(
         session,
         {order.judge_player_id for order in page if order.judge_player_id},
     )
+    # One image_refs for the whole page (0.12.0 unit 9): the author
+    # nation's CURRENT flag by order.nation_id — a deleted nation's
+    # snapshot id simply finds no row and lands null.
+    refs = await NationService.image_refs(
+        session, [order.nation_id for order in page]
+    )
     tz = _tick_timezone()
     now = datetime.now(UTC)
     return {
@@ -218,6 +226,9 @@ async def list_orders(
                 names=names,
                 tz=tz,
                 now=now,
+                flag_thumb_url=images.image_url(
+                    refs[order.nation_id].flag_sha256, "thumb"
+                ),
             )
             for order in page
         ],
@@ -385,12 +396,16 @@ async def assign_judge(
     )
     # The item is built before the commit: commit expires the ORM
     # attributes, so the answer is materialized while they are loaded.
+    refs = await NationService.image_refs(session, [outcome.order.nation_id])
     item = _list_item(
         outcome.order,
         judge_vk_user_id=body.judge_vk_user_id,
         names=names,
         tz=_tick_timezone(),
         now=datetime.now(UTC),
+        flag_thumb_url=images.image_url(
+            refs[outcome.order.nation_id].flag_sha256, "thumb"
+        ),
     )
     await session.commit()
     return item

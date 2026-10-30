@@ -24,7 +24,11 @@ from modules._03_registry.service import build_table
 from modules._03_registry.startup import startup_registry
 from modules._04_orders.service import OrderService
 from modules._04_orders.startup import register_orders_extensions
-from tests.fixtures.factories import make_order, utcnow
+from tests.fixtures.factories import (
+    make_nation_image,
+    make_order,
+    utcnow,
+)
 from tests.modules._04_orders.conftest import seed_author, seed_judge
 
 VALID_TITLE = "Приказ об обороне"
@@ -68,14 +72,14 @@ class TestOrdersSource:
             "verdict",
         }
         assert row.cells["number"] == 1
-        # Name and flag stay the SNAPSHOT (INV-O6); `id` is the live
+        # Name and colour stay the SNAPSHOT (INV-O6); `id` is the live
         # nation id — the nation exists, so the cell opens its
         # subscreen.
         assert row.cells["nation"] == {
             "id": nation.id,
             "name": nation.short_name,
             "color": "#336699",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
         }
         assert row.cells["title"] == {
             "text": VALID_TITLE,
@@ -166,7 +170,7 @@ class TestOrdersSource:
         self, test_db_session, orders_started
     ):
         """A deleted nation must not become a dead link: the cell keeps
-        the snapshot name and flag, plain, with ``id = null`` (INV-O6)."""
+        the snapshot name and colour, plain, with ``id = null`` (INV-O6)."""
         register_orders_extensions()
         startup_registry()
         nation = await _submit_one(test_db_session)
@@ -179,14 +183,50 @@ class TestOrdersSource:
             "id": None,
             "name": nation.short_name,
             "color": "#336699",
-            "flag_url": "/assets/nations/flags/flag_placeholder_1.png",
+            "flag_url": None,
+        }
+
+    async def test_nation_cell_flag_is_current_thumbnail(
+        self, test_db_session, orders_started
+    ):
+        """Spec «Флаг ... на момент показа» (0.12.0 unit 7): an order
+        submitted BEFORE the upload shows the thumbnail of the
+        nation's CURRENT flag; a deleted nation falls back to the
+        colour block — ``flag_url = null`` like a flag-less one."""
+        register_orders_extensions()
+        startup_registry()
+        nation = await _submit_one(test_db_session)
+
+        # Submitted before the upload: no flag yet.
+        built = await build_table(test_db_session, "orders")
+        assert built.rows[0].cells["nation"]["flag_url"] is None
+
+        sha = "cd" * 32
+        await make_nation_image(test_db_session, nation, sha256=sha)
+
+        # The SAME order now shows the current flag's thumbnail.
+        built = await build_table(test_db_session, "orders")
+        assert built.rows[0].cells["nation"]["flag_url"] == (
+            f"/api/v1/images/{sha}/thumb"
+        )
+
+        # A deleted nation loses the link AND the flag — the colour
+        # block, exactly like today.
+        await NationService.delete(test_db_session, nation_id=nation.id)
+        built = await build_table(test_db_session, "orders")
+        assert built.rows[0].cells["nation"] == {
+            "id": None,
+            "name": nation.short_name,
+            "color": "#336699",
+            "flag_url": None,
         }
 
     async def test_build_query_count_is_constant(
         self, test_db_session, test_db_engine, orders_started
     ):
-        """The existence check is one batched SELECT for the whole
-        table: orders SELECT + nations SELECT, independent of N."""
+        """One batched existence check plus one ``image_refs`` for the
+        whole table: orders SELECT + nation_images SELECT + nations
+        SELECT, independent of N."""
         register_orders_extensions()
         startup_registry()
         for i in range(5):
@@ -214,7 +254,7 @@ class TestOrdersSource:
                 _count,
             )
         assert built.total == 5
-        assert len(statements) == 2
+        assert len(statements) == 3
 
 
 class TestCoreConfigInjection:

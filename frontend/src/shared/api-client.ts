@@ -17,6 +17,7 @@ import type {
   AdminNationDeletePreviewDTO,
   AdminNationDetailDTO,
   AdminNationDTO,
+  AdminNationImageDeletePreviewDTO,
   AdminNationsDTO,
   AdminNationUpdateRequest,
   AdminOrderAssignJudgeRequest,
@@ -43,6 +44,7 @@ import type {
   GameClockDTO,
   NationCreateRequest,
   NationDTO,
+  NationImageDTO,
   NationPublicDTO,
   NationRulesDTO,
   NationUpdateRequest,
@@ -80,9 +82,15 @@ export class ApiError extends Error {
 }
 
 export interface ApiFetchOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** JSON-serialized request body. */
   body?: unknown;
+  /**
+   * A binary request body sent as-is (the image upload endpoint):
+   * bypasses JSON serialization and no Content-Type is set — the
+   * server decides by the file's bytes, not its declared type.
+   */
+  rawBody?: Blob;
   /** Short-lived Bearer JWT for the current session (never persisted). */
   token?: string;
   signal?: AbortSignal;
@@ -135,7 +143,11 @@ async function request(
       method: options.method ?? 'GET',
       headers,
       body:
-        options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        options.rawBody !== undefined
+          ? options.rawBody
+          : options.body !== undefined
+            ? JSON.stringify(options.body)
+            : undefined,
     }),
     options.signal,
   );
@@ -284,6 +296,25 @@ export const api = {
       token,
       signal,
     });
+  },
+
+  /**
+   * PUT /nations/me/images/{kind} — the file itself is the request
+   * body (no JSON, no multipart, no Content-Type); the server reads
+   * the bytes (Spec Part 5 «Загрузка»). Answers NationImageDTO;
+   * 413 IMAGE_TOO_LARGE, 415 IMAGE_UNSUPPORTED,
+   * 422 IMAGE_ORIENTATION_INVALID.
+   */
+  uploadNationImage(
+    token: string,
+    kind: 'flag' | 'portrait',
+    file: Blob,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<NationImageDTO>(
+      `/nations/me/images/${encodeURIComponent(kind)}`,
+      { method: 'PUT', rawBody: file, token, signal },
+    );
   },
 
   /** GET /provinces — optional id filter and/or free-only flag. */
@@ -575,6 +606,46 @@ export const api = {
         token,
         signal,
       },
+    );
+  },
+
+  /**
+   * GET /admin/nations/{id}/images/{kind}/delete-preview (0.12.0 unit
+   * 8) — what deleting the picture would do: the stamp, the uploader
+   * and the ready «Что будет» lines. 404 NATION_NOT_FOUND /
+   * IMAGE_NOT_FOUND.
+   */
+  adminNationImageDeletePreview(
+    token: string,
+    nationId: string,
+    kind: 'flag' | 'portrait',
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationImageDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(
+        nationId,
+      )}/images/${encodeURIComponent(kind)}/delete-preview`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/nations/{id}/images/{kind}/delete — irreversible;
+   * no retyped confirmation (it lives in the window). Returns the
+   * preview shape that was true at the moment of deletion; a second
+   * call answers 404 IMAGE_NOT_FOUND.
+   */
+  adminNationImageDelete(
+    token: string,
+    nationId: string,
+    kind: 'flag' | 'portrait',
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminNationImageDeletePreviewDTO>(
+      `/admin/nations/${encodeURIComponent(
+        nationId,
+      )}/images/${encodeURIComponent(kind)}/delete`,
+      { method: 'POST', body: {}, token, signal },
     );
   },
 

@@ -42,31 +42,30 @@ const ORDERS = {
       number: 12,
       title: 'Укрепление северных портов',
       author_nation_short_name: 'Синдикат',
-      author_nation_flag_id: 'flag_placeholder_1',
       author_name: 'Автор Синдиката',
       judge_vk_user_id: 777,
       judge_name: 'Дмитрий Соколов',
       status: 'AWAITING_VERDICT',
       deadline_at: '2026-10-26 00:00:00',
       overdue: false,
+      flag_thumb_url: '/api/v1/images/bb22/thumb',
     },
     {
       number: 13,
       title: 'Торговый договор с Лигой',
       author_nation_short_name: 'Союз',
-      author_nation_flag_id: 'flag_placeholder_2',
       author_name: 'Автор Союза',
       judge_vk_user_id: null,
       judge_name: null,
       status: 'NO_JUDGE',
       deadline_at: null,
       overdue: false,
+      flag_thumb_url: null,
     },
     {
       number: 14,
       title: 'Разведка побережья',
       author_nation_short_name: 'Лига',
-      author_nation_flag_id: null,
       author_name: 'Автор Лиги',
       judge_vk_user_id: 888,
       judge_name: 'Ольга Ветрова',
@@ -78,7 +77,6 @@ const ORDERS = {
       number: 11,
       title: 'Восстановление Выборга',
       author_nation_short_name: 'Лига',
-      author_nation_flag_id: 'flag_placeholder_3',
       author_name: 'Автор Лиги',
       judge_vk_user_id: 888,
       judge_name: 'Ольга Ветрова',
@@ -473,4 +471,23 @@ it('a server refusal shows its line inside the popup', async () => {
     'Автор приказа не может быть его судьёй',
   );
   expect(screen.getByTestId('judge-popup')).toBeInTheDocument();
+});
+
+it('the author cell shows the flag thumb or the stub (0.12.0 u9)', async () => {
+  allowSection();
+  await enterSection();
+
+  const withFlag = screen.getByTestId('order-row-12');
+  const img = withFlag.querySelector('img');
+  expect(img).toHaveAttribute('src', '/api/v1/images/bb22/thumb');
+  const without = screen.getByTestId('order-row-13');
+  expect(
+    without.querySelector('[aria-label="Заглушка флага"]'),
+  ).not.toBeNull();
+  fireEvent.error(img!);
+  await waitFor(() =>
+    expect(
+      withFlag.querySelector('[aria-label="Заглушка флага"]'),
+    ).not.toBeNull(),
+  );
 });
