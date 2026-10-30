@@ -243,6 +243,7 @@ export function CreateNationTabSymbols({
         <FieldMessage
           error={errors.color}
           hint={errors.color === undefined ? (colorHint ?? undefined) : undefined}
+          reserve
         />
       </div>
 

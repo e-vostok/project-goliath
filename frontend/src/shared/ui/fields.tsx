@@ -133,23 +133,53 @@ const messageRow: CSSProperties = {
  * The lines under a field (or under a group control like the palette
  * or a tile row — those have no input of their own): the error in
  * `danger` with a mark, then the hint in `ink-muted` small text.
+ *
+ * `reserve` is for fields whose line is written and cleared without a
+ * submit — the live colour check: the slot always holds its one line,
+ * so the window height never jumps when the text appears, changes or
+ * clears. A field error and the hint share the reserved slot — the
+ * error wins, the two never stack into two lines.
  */
 export function FieldMessage({
   error,
   hint,
+  reserve = false,
 }: {
   error?: string;
   hint?: string;
+  reserve?: boolean;
 }) {
+  const hasError = error !== undefined && error !== '';
+  const hasHint = hint !== undefined && hint !== '';
+  if (reserve) {
+    if (!hasError && !hasHint) {
+      // A ghost row keeps the slot's height without hard-coding pixels.
+      return (
+        <div aria-hidden="true" style={messageRow}>
+          {'\u00a0'}
+        </div>
+      );
+    }
+    return hasError ? (
+      <div style={{ ...messageRow, color: tokenVar('danger') }}>
+        <ErrorMark />
+        <span>{error}</span>
+      </div>
+    ) : (
+      <div style={{ ...messageRow, color: tokenVar('ink-muted') }}>
+        <span>{hint}</span>
+      </div>
+    );
+  }
   return (
     <>
-      {error !== undefined && error !== '' && (
+      {hasError && (
         <div style={{ ...messageRow, color: tokenVar('danger') }}>
           <ErrorMark />
           <span>{error}</span>
         </div>
       )}
-      {hint !== undefined && hint !== '' && (
+      {hasHint && (
         <div style={{ ...messageRow, color: tokenVar('ink-muted') }}>
           <span>{hint}</span>
         </div>
