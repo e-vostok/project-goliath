@@ -64,6 +64,7 @@ from core.db import get_session, get_session_context
 from core.security.jwt import issue_token
 from core.tick.orchestrator import TickOutcome
 from core.tick.scheduler import run_scheduled_tick
+from modules._00_core import images
 from modules._00_core.admin_service import (
     AdminAuditService,
     AdminGrantService,
@@ -672,6 +673,11 @@ async def list_provinces(
     )
     total = len(rows)
     page = rows[offset : offset + limit]
+    # One image_refs for the whole page (0.12.0 unit 9): the flag of
+    # the OWNING nation — a free province gets null.
+    refs = await NationService.image_refs(
+        session, [row.nation_id for row in page if row.nation_id is not None]
+    )
     return {
         "items": [
             {
@@ -679,6 +685,11 @@ async def list_provinces(
                 "name": info.get(row.id, {}).get("name"),
                 "nation_id": row.nation_id,
                 "nation_short_name": row.short_name,
+                "flag_thumb_url": (
+                    images.image_url(refs[row.nation_id].flag_sha256, "thumb")
+                    if row.nation_id is not None
+                    else None
+                ),
             }
             for row in page
         ],
@@ -968,6 +979,10 @@ async def list_nations(
     names = await _display_names_by_vk(
         session, {row.vk_user_id for row in rows}
     )
+    # One image_refs for the whole page (0.12.0 unit 9) — never per row.
+    refs = await NationService.image_refs(
+        session, [row.id for row in rows]
+    )
     return {
         "items": [
             {
@@ -978,6 +993,9 @@ async def list_nations(
                 "owner_name": names.get(row.vk_user_id),
                 "provinces_count": counts.get(row.id, 0),
                 "capital_name": row.capital_name,
+                "flag_thumb_url": images.image_url(
+                    refs[row.id].flag_sha256, "thumb"
+                ),
             }
             for row in rows
         ],
@@ -1065,6 +1083,7 @@ async def create_nation(
             "province_ids": body.province_ids,
         },
     )
+    refs = await NationService.image_refs(session, [nation.id])
     await session.commit()
     return {
         "id": nation.id,
@@ -1074,6 +1093,9 @@ async def create_nation(
         "owner_name": names.get(player.vk_user_id),
         "provinces_count": len(body.province_ids),
         "capital_name": nation.capital_name,
+        "flag_thumb_url": images.image_url(
+            refs[nation.id].flag_sha256, "thumb"
+        ),
     }
 
 
@@ -1167,6 +1189,18 @@ async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
     ).scalar_one()
     image_infos = await NationService.image_info(session, nation.id)
     names = await _display_names_by_vk(session, {owner.vk_user_id})
+    # The pipeline's target size of each kind (0.12.0 unit 9) — read
+    # through the config model, never hard-coded.
+    image_config = CoreConfig.from_yaml(
+        CoreConfig.get_default_config_path()
+    ).images
+    image_dims = {
+        "flag": (image_config.flag_width, image_config.flag_height),
+        "portrait": (
+            image_config.portrait_width,
+            image_config.portrait_height,
+        ),
+    }
     return {
         "id": nation.id,
         "owner_vk_user_id": owner.vk_user_id,
@@ -1185,6 +1219,9 @@ async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
                     "uploaded_by": await _image_uploaded_by(
                         session, image_infos[kind].uploaded_by_player_id
                     ),
+                    "size_bytes": image_infos[kind].size_bytes,
+                    "width": image_dims[kind][0],
+                    "height": image_dims[kind][1],
                 }
             )
             for kind in _IMAGE_KINDS

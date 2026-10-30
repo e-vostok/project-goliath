@@ -43,6 +43,7 @@ from modules._00_core.models import (
     NationImage,
     Player,
 )
+from modules._00_core.service import NationService
 from tests.core.admin.test_router import (
     ADMIN_VK_ID,
     BACKEND_DIR,
@@ -572,3 +573,172 @@ class TestNationDeletePreviewImagesLine:
             "code": "nation_images",
             "text": "удалятся загруженные картинки: флаг, портрет",
         }
+
+
+class TestAdminListFlagThumbs:
+    """``flag_thumb_url`` on the admin lists (0.12.0 unit 9): the
+    address is the CURRENT flag's ``/api/v1/images/<sha>/thumb`` —
+    one ``image_refs`` call per page, never per row."""
+
+    @pytest.mark.asyncio
+    async def test_nations_list_and_create_answer(
+        self, live_client, monkeypatch
+    ):
+        headers = await _admin_headers(live_client, monkeypatch)
+        nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
+        flag = await _upload(live_client, owner_headers, "flag")
+        thumb = flag["thumb_url"]
+        await _auth_headers(live_client, SECOND_VK_ID)
+        await _seed_nation(SECOND_VK_ID)  # a nation without a flag
+
+        calls = []
+        original = NationService.image_refs
+
+        async def counting(session, nation_ids):
+            calls.append(list(nation_ids))
+            return await original(session, nation_ids)
+
+        monkeypatch.setattr(NationService, "image_refs", counting)
+        response = await live_client.get(
+            "/api/v1/admin/nations", headers=headers
+        )
+        assert response.status_code == 200
+        assert len(calls) == 1  # one image_refs for the whole page
+
+        items = {item["id"]: item for item in response.json()["items"]}
+        assert items[nation["id"]]["flag_thumb_url"] == thumb
+        assert items[next(i for i in items if i != nation["id"])][
+            "flag_thumb_url"
+        ] is None
+
+        # POST /admin/nations answers the same item shape — a brand-new
+        # nation has no pictures, so the field is null.
+        await _auth_headers(live_client, 100000003)
+        created = await live_client.post(
+            "/api/v1/admin/nations",
+            headers=headers,
+            json={
+                "owner_vk_user_id": 100000003,
+                "name": "Третья Держава",
+                "short_name": "Третья",
+                "color_hex": "#226644",
+                "leader_name": VALID_PROFILE["leader_name"],
+                "leader_title": VALID_PROFILE["leader_title"],
+                "gender": VALID_PROFILE["gender"],
+                "succession_type": VALID_PROFILE["succession_type"],
+                "history_url": VALID_PROFILE["history_url"],
+                "motto": None,
+                "province_ids": [1009, 1010, 1011, 1012, 1013],
+            },
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["flag_thumb_url"] is None
+
+    @pytest.mark.asyncio
+    async def test_provinces_list_carries_owner_flag(
+        self, live_client, monkeypatch
+    ):
+        headers = await _admin_headers(live_client, monkeypatch)
+        nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
+        flag = await _upload(live_client, owner_headers, "flag")
+
+        calls = []
+        original = NationService.image_refs
+
+        async def counting(session, nation_ids):
+            calls.append(list(nation_ids))
+            return await original(session, nation_ids)
+
+        monkeypatch.setattr(NationService, "image_refs", counting)
+        response = await live_client.get(
+            "/api/v1/admin/provinces", headers=headers
+        )
+        assert response.status_code == 200
+        assert len(calls) == 1
+
+        items = response.json()["items"]
+        owned = [i for i in items if i["nation_id"] == nation["id"]]
+        free = [i for i in items if i["nation_id"] is None]
+        assert owned and free
+        assert all(i["flag_thumb_url"] == flag["thumb_url"] for i in owned)
+        assert all(i["flag_thumb_url"] is None for i in free)
+
+    @pytest.mark.asyncio
+    async def test_thumb_follows_replace_and_delete(
+        self, live_client, monkeypatch
+    ):
+        headers = await _admin_headers(live_client, monkeypatch)
+        nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
+        first = await _upload(live_client, owner_headers, "flag")
+        url = f"/api/v1/admin/nations/{nation['id']}"
+
+        async def current_thumb() -> str | None:
+            response = await live_client.get(
+                "/api/v1/admin/nations", headers=headers
+            )
+            return next(
+                i["flag_thumb_url"]
+                for i in response.json()["items"]
+                if i["id"] == nation["id"]
+            )
+
+        assert await current_thumb() == first["thumb_url"]
+
+        # A replacement upload moves the address to the new sha256.
+        second = await _upload(
+            live_client,
+            owner_headers,
+            "flag",
+            _png_bytes((1200, 800), color=(200, 30, 30)),
+        )
+        assert second["thumb_url"] != first["thumb_url"]
+        assert await current_thumb() == second["thumb_url"]
+
+        # The unit-8 deletion drops the field back to null.
+        deleted = await live_client.post(
+            _delete_url(nation["id"], "flag"), json={}, headers=headers
+        )
+        assert deleted.status_code == 200
+        assert await current_thumb() is None
+
+    @pytest.mark.asyncio
+    async def test_edit_entry_size_and_dimensions(
+        self, live_client, monkeypatch
+    ):
+        headers = await _admin_headers(live_client, monkeypatch)
+        nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
+        await _upload(live_client, owner_headers, "flag")
+        await _upload(live_client, owner_headers, "portrait")
+
+        response = await live_client.get(
+            f"/api/v1/admin/nations/{nation['id']}", headers=headers
+        )
+        entry = response.json()["images"]["flag"]
+        assert set(entry) == {
+            "url",
+            "thumb_url",
+            "uploaded_at",
+            "uploaded_by",
+            "size_bytes",
+            "width",
+            "height",
+        }
+        async with get_session_context() as session:
+            full_len = (
+                await session.execute(
+                    select(func.length(NationImage.full_bytes)).where(
+                        NationImage.nation_id == nation["id"],
+                        NationImage.kind == "flag",
+                    )
+                )
+            ).scalar_one()
+        # The real length of the stored full variant — no bytes loaded.
+        assert entry["size_bytes"] == full_len
+        # The pipeline's target sizes from the images config section.
+        assert (entry["width"], entry["height"]) == (600, 400)
+        portrait = response.json()["images"]["portrait"]
+        assert (portrait["width"], portrait["height"]) == (600, 800)

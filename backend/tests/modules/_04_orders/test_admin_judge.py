@@ -28,9 +28,12 @@ from modules._04_orders.exceptions import (
     OrderNotFoundError,
     OrderVerdictForbiddenError,
 )
+from modules._00_core.models import NationImage
+from modules._00_core.service import NationService
 from modules._04_orders.models import Order
 from modules._04_orders.service import OrderService
 from tests.fixtures.factories import (
+    make_nation_image,
     make_order,
     make_outbox_row,
     make_vk_profile,
@@ -789,3 +792,76 @@ class TestAdminOrdersApi:
         assert [item["number"] for item in new_queue.json()["items"]] == [
             order.number
         ]
+
+    async def test_list_and_judge_answer_carry_flag_thumb_url(
+        self, client, test_db_session, orders_started, monkeypatch
+    ):
+        """0.12.0 unit 9: the author nation's CURRENT flag by
+        order.nation_id — an order submitted before the upload shows
+        the flag after it, a deleted nation lands null; one
+        ``image_refs`` call per page."""
+        admin = await self._admin(test_db_session, monkeypatch)
+        author, nation = await seed_author(test_db_session, 910161)
+        judge = await seed_judge(test_db_session, 910162, nation=True)
+        # The order exists BEFORE the flag upload.
+        order = await make_order(
+            test_db_session, author, nation=nation, title="С флагом"
+        )
+        headers = bearer_headers(admin.id)
+
+        calls = []
+        original = NationService.image_refs
+
+        async def counting(session, nation_ids):
+            calls.append(list(nation_ids))
+            return await original(session, nation_ids)
+
+        monkeypatch.setattr(NationService, "image_refs", counting)
+
+        # No flag yet — null.
+        response = await client.get(ADMIN_URL, headers=headers)
+        assert response.status_code == 200
+        assert len(calls) == 1
+        item = next(
+            i for i in response.json()["items"] if i["number"] == order.number
+        )
+        assert item["flag_thumb_url"] is None
+
+        # The upload lands afterwards — the same order now carries it.
+        await make_nation_image(
+            test_db_session, nation, kind="flag", sha256="a" * 64
+        )
+        calls.clear()
+        response = await client.get(ADMIN_URL, headers=headers)
+        assert len(calls) == 1
+        item = next(
+            i for i in response.json()["items"] if i["number"] == order.number
+        )
+        assert item["flag_thumb_url"] == f"/api/v1/images/{'a' * 64}/thumb"
+
+        # POST /{n}/judge answers the same item shape.
+        assigned = await client.post(
+            f"{ADMIN_URL}/{order.number}/judge",
+            json={"judge_vk_user_id": judge.vk_user_id},
+            headers=headers,
+        )
+        assert assigned.status_code == 200
+        assert assigned.json()["flag_thumb_url"] == (
+            f"/api/v1/images/{'a' * 64}/thumb"
+        )
+
+        # The nation is gone — the snapshot id finds no row, null.
+        for row in (
+            await test_db_session.execute(
+                select(NationImage).where(NationImage.nation_id == nation.id)
+            )
+        ).scalars():
+            await test_db_session.delete(row)
+        await test_db_session.delete(nation)
+        await test_db_session.flush()
+
+        response = await client.get(ADMIN_URL, headers=headers)
+        item = next(
+            i for i in response.json()["items"] if i["number"] == order.number
+        )
+        assert item["flag_thumb_url"] is None
