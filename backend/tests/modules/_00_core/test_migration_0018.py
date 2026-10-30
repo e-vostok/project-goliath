@@ -104,9 +104,15 @@ def test_0018_creates_nation_images(tmp_path, monkeypatch):
         "flag" in (c["sqltext"] or "") and "portrait" in (c["sqltext"] or "")
         for c in schema["checks"]
     )
-    fks = {fk["name"]: (fk["referred_table"], fk["options"]) for fk in schema["fks"]}
-    assert fks["fk_nation_images_nation_id"][0] == "nations"
-    assert fks["fk_nation_images_uploaded_by_player_id"][0] == "players"
+    fks = {
+        fk["name"]: (fk["referred_table"], fk["options"].get("ondelete"))
+        for fk in schema["fks"]
+    }
+    assert fks["fk_nation_images_nation_id"] == ("nations", "CASCADE")
+    assert fks["fk_nation_images_uploaded_by_player_id"] == (
+        "players",
+        "SET NULL",
+    )
     assert "ix_nation_images_sha256" in schema["indexes"]
     # No other table was touched by the additive migration.
     assert schema["tables"] == before["tables"] | {TABLE}

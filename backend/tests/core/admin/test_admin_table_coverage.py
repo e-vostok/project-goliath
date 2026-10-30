@@ -262,18 +262,25 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
             owner=player, provinces=[], scheduled_actions=[]
         )
         session.add(nation)
-        session.add(
-            NationImage(
-                nation_id=nation.id,
-                kind="flag",
-                sha256="ab" * 32,
-                full_bytes=b"x",
-                thumb_bytes=b"y",
-                byte_size=1,
-                uploaded_by_player_id=player.id,
-                uploaded_at=datetime.now(UTC),
+        # The nations row must exist before the image rows: the unit of
+        # work does not order inserts of objects linked only by a raw FK
+        # value (no relationship), so a still-pending nation would let
+        # the nation_images INSERT run first and trip
+        # fk_nation_images_nation_id on PostgreSQL.
+        await session.flush()
+        for kind, sha in (("flag", "ab" * 32), ("portrait", "cd" * 32)):
+            session.add(
+                NationImage(
+                    nation_id=nation.id,
+                    kind=kind,
+                    sha256=sha,
+                    full_bytes=b"x",
+                    thumb_bytes=b"y",
+                    byte_size=1,
+                    uploaded_by_player_id=player.id,
+                    uploaded_at=datetime.now(UTC),
+                )
             )
-        )
         # nation=None: the factory would otherwise build a nested
         # nation (and its nested owner) with random, CHECK-invalid rows.
         session.add(ScheduledActionFactory.build(nation=None))

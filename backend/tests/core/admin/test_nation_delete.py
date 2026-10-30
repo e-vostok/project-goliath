@@ -14,6 +14,7 @@ through the ordinary player path.
 
 from __future__ import annotations
 
+import io
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -23,6 +24,7 @@ import pytest_asyncio
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
+from PIL import Image
 from sqlalchemy import func, select
 
 import modules._01_map.service as map_service_module
@@ -39,6 +41,7 @@ from modules._00_core.hooks import (
 from modules._00_core.models import (
     AdminAuditLog,
     Nation,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -187,6 +190,14 @@ def _preview_url(nation_id: str) -> str:
 
 def _delete_url(nation_id: str) -> str:
     return f"/api/v1/admin/nations/{nation_id}/delete"
+
+
+def _png_bytes(size: tuple[int, int], color=(10, 120, 200)) -> bytes:
+    """A real PNG the upload endpoint accepts (the test_nation_images.py
+    generator — Pillow, no binary fixtures)."""
+    buf = io.BytesIO()
+    Image.new("RGB", size, color).save(buf, "PNG")
+    return buf.getvalue()
 
 
 class TestNationDeleteAuthorization:
@@ -462,6 +473,90 @@ class TestNationDelete:
         )
         assert created["short_name"] == "NewR"
         assert created["id"] != nation["id"]
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_image_rows_and_keeps_shared_sha(
+        self, live_client, monkeypatch
+    ):
+        """INV-19 over the HTTP path: the nation's image rows die with
+        it; a second nation's row holding the identical file (same
+        sha256) is untouched and its URL still answers 200."""
+        headers = await _admin_headers(live_client, monkeypatch)
+        nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
+        owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
+        second_headers = await _auth_headers(live_client, SECOND_VK_ID)
+
+        # A second player-owned nation, straight into the live DB (the
+        # upload path only needs the owner link, not provinces).
+        second_nation_id = str(uuid.uuid4())
+        async with get_session_context() as session:
+            second_owner = (
+                await session.execute(
+                    select(Player).where(Player.vk_user_id == SECOND_VK_ID)
+                )
+            ).scalar_one()
+            session.add(
+                Nation(
+                    id=second_nation_id,
+                    owner_player_id=second_owner.id,
+                    name="Второе Государство",
+                    color_hex="#445566",
+                    leader_name=VALID_PROFILE["leader_name"],
+                    leader_title=VALID_PROFILE["leader_title"],
+                    history_url=VALID_PROFILE["history_url"],
+                    short_name="Second",
+                    gender=VALID_PROFILE["gender"],
+                    succession_type=VALID_PROFILE["succession_type"],
+                    capital_name="Mini Beta",
+                    created_at=datetime.now(UTC),
+                    created_turn=0,
+                )
+            )
+            await session.commit()
+
+        # Both nations upload the byte-identical flag — one sha256.
+        same_file = _png_bytes((1200, 800))
+        up_first = await live_client.put(
+            "/api/v1/nations/me/images/flag",
+            headers=owner_headers,
+            content=same_file,
+        )
+        up_second = await live_client.put(
+            "/api/v1/nations/me/images/flag",
+            headers=second_headers,
+            content=same_file,
+        )
+        assert up_first.status_code == 200 and up_second.status_code == 200
+        shared_url = up_first.json()["url"]
+        assert up_second.json()["url"] == shared_url
+
+        response = await live_client.post(
+            _delete_url(nation["id"]),
+            json={"confirm_short_name": nation["short_name"]},
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        async with get_session_context() as session:
+            doomed = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(NationImage)
+                    .where(NationImage.nation_id == nation["id"])
+                )
+            ).scalar_one()
+            assert doomed == 0
+            survivors = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(NationImage)
+                    .where(NationImage.nation_id == second_nation_id)
+                )
+            ).scalar_one()
+            assert survivors == 1
+
+        # The shared hash keeps answering through the survivor row.
+        assert (await live_client.get(shared_url)).status_code == 200
 
     @pytest.mark.asyncio
     async def test_confirmation_mismatch_422_changes_nothing(

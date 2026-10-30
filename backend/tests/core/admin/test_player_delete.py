@@ -18,7 +18,7 @@ import pytest_asyncio
 from alembic.config import Config
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 import modules._01_map.service as map_service_module
 from alembic import command
@@ -30,7 +30,7 @@ from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
 )
-from modules._00_core.models import Player, Province
+from modules._00_core.models import NationImage, Player, Province
 from tests.core.admin.test_router import (
     ADMIN_VK_ID,
     BACKEND_DIR,
@@ -42,6 +42,7 @@ from tests.core.admin.test_router import (
 from tests.fixtures.factories import (
     NationFactory,
     make_consent,
+    make_nation_image,
     make_order,
     make_outbox_row,
     make_vk_profile,
@@ -55,6 +56,7 @@ from tests.modules._00_core.test_router import (
 
 TARGET_VK_ID = 888111
 OTHER_ADMIN_VK_ID = 555999
+NEIGHBOUR_VK_ID = 888222
 
 
 @pytest_asyncio.fixture
@@ -283,6 +285,105 @@ class TestPlayerDelete:
         assert str(ADMIN_VK_ID) in message
         assert str(TARGET_VK_ID) in message
         assert "provinces_released" in message
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_the_nations_pictures(
+        self, live_client, monkeypatch
+    ):
+        """INV-19 over the player path: the nation's flag and portrait
+        die with the player — no nation_images rows remain and the old
+        URLs answer 404 no-store — while a second player's picture is
+        untouched."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
+        headers = await _auth_headers(live_client, ADMIN_VK_ID)
+        await _auth_headers(live_client, TARGET_VK_ID)
+        await _auth_headers(live_client, NEIGHBOUR_VK_ID)
+
+        flag_sha, portrait_sha, neighbour_sha = "ab" * 32, "cd" * 32, "ef" * 32
+        async with get_session_context() as session:
+            target = (
+                await session.execute(
+                    select(Player).where(Player.vk_user_id == TARGET_VK_ID)
+                )
+            ).scalar_one()
+            nation = NationFactory.build(
+                owner=target,
+                name="Цель",
+                color_hex="#112233",
+                provinces=[],
+                scheduled_actions=[],
+            )
+            session.add(nation)
+            # Flush before make_nation_image: objects linked only by a
+            # raw FK value get no unit-of-work ordering, and the
+            # nation_images INSERT would trip the nations FK on
+            # PostgreSQL.
+            await session.flush()
+            doomed_nation_id = nation.id
+            await make_nation_image(
+                session, nation, kind="flag", sha256=flag_sha,
+                uploaded_by=target,
+            )
+            await make_nation_image(
+                session, nation, kind="portrait", sha256=portrait_sha,
+                uploaded_by=target,
+            )
+            neighbour = (
+                await session.execute(
+                    select(Player).where(Player.vk_user_id == NEIGHBOUR_VK_ID)
+                )
+            ).scalar_one()
+            neighbour_nation = NationFactory.build(
+                owner=neighbour,
+                name="Сосед",
+                color_hex="#445566",
+                provinces=[],
+                scheduled_actions=[],
+            )
+            session.add(neighbour_nation)
+            await session.flush()
+            neighbour_nation_id = neighbour_nation.id
+            await make_nation_image(
+                session, neighbour_nation, kind="flag",
+                sha256=neighbour_sha, uploaded_by=neighbour,
+            )
+            await session.commit()
+
+        response = await live_client.post(
+            _delete_url(TARGET_VK_ID),
+            json={"confirm_vk_user_id": str(TARGET_VK_ID)},
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        async with get_session_context() as session:
+            doomed = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(NationImage)
+                    .where(NationImage.nation_id == doomed_nation_id)
+                )
+            ).scalar_one()
+            assert doomed == 0
+            survivors = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(NationImage)
+                    .where(NationImage.nation_id == neighbour_nation_id)
+                )
+            ).scalar_one()
+            assert survivors == 1
+
+        # The dead nation's URLs are gone — never cacheable again.
+        gone = await live_client.get(f"/api/v1/images/{flag_sha}/full")
+        assert gone.status_code == 404
+        assert gone.headers["cache-control"] == "no-store"
+        gone = await live_client.get(f"/api/v1/images/{portrait_sha}/full")
+        assert gone.status_code == 404
+        # The neighbour's picture still answers.
+        assert (
+            await live_client.get(f"/api/v1/images/{neighbour_sha}/full")
+        ).status_code == 200
 
     @pytest.mark.asyncio
     async def test_confirmation_mismatch_422(self, live_client, monkeypatch):
