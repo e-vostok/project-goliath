@@ -246,6 +246,16 @@ class NationImageInfo:
 
 
 @dataclass(frozen=True)
+class RemovedNationImage:
+    """The result of ``NationService.delete_image`` — the picture's
+    description as it was just before the deletion plus its content
+    key for the admin journal (a prefix, never the bytes)."""
+
+    info: NationImageInfo
+    sha256: str
+
+
+@dataclass(frozen=True)
 class ProvinceTransferResult:
     """
     Outcome of ``ProvinceService.transfer`` — ids only.
@@ -1504,6 +1514,46 @@ class NationService:
             select(column).where(NationImage.sha256 == sha256).limit(1)
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def delete_image(
+        session: AsyncSession, nation_id: str, kind: str
+    ) -> RemovedNationImage | None:
+        """
+        Delete the nation's picture row of ``kind`` (INV-19 — the
+        administrator's directive removal; a player removes a picture
+        only by replacing it).
+
+        Runs inside the caller's transaction and never commits. On
+        commit the picture's sha256 URL starts answering 404 at once
+        for this nation — a different nation whose row carries the
+        identical file keeps its URL alive. Returns the description
+        that was true just before the deletion plus the content key
+        the audit journal needs; ``None`` when the nation has no such
+        picture.
+        """
+        row = (
+            await session.execute(
+                select(NationImage).where(
+                    NationImage.nation_id == nation_id,
+                    NationImage.kind == kind,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        removed = RemovedNationImage(
+            info=NationImageInfo(
+                url=images.image_url(row.sha256, "full"),
+                thumb_url=images.image_url(row.sha256, "thumb"),
+                uploaded_at=row.uploaded_at,
+                uploaded_by_player_id=row.uploaded_by_player_id,
+            ),
+            sha256=row.sha256,
+        )
+        await session.delete(row)
+        await session.flush()
+        return removed
 
     @staticmethod
     async def delete(session: AsyncSession, nation_id: str) -> None:
