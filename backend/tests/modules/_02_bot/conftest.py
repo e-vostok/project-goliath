@@ -19,7 +19,12 @@ import pytest
 import modules._02_bot.registry as bot_registry
 import modules._02_bot.settings as bot_settings
 import modules._02_bot.signal as bot_signal
+import modules._02_bot.startup as bot_startup_module
 from core.admin.registry import AdminRegistry
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
 from modules._02_bot.config_schema import BotConfig
 from modules._02_bot.startup import startup_bot
 
@@ -32,6 +37,11 @@ def bot_isolation(monkeypatch):
     saved_views = AdminRegistry.get_state_view_hooks()
     saved_resets = AdminRegistry.get_reset_hooks()
     saved_previews = AdminRegistry.get_player_preview_hooks()
+    # startup_bot() also writes the 00_core extension points
+    # (02_bot.consent, 02_bot.nation_created, 02_bot.player_delete via
+    # register_bot_admin_hooks) and keeps the config it loaded.
+    saved_extensions = snapshot_extension_points()
+    saved_bot_config = bot_startup_module._bot_config
     monkeypatch.setattr(bot_settings, "_runtime_running", False)
     monkeypatch.setattr(bot_settings, "_misconfigured_logged", False)
     monkeypatch.setattr(bot_settings, "_app_id_warned", False)
@@ -48,6 +58,8 @@ def bot_isolation(monkeypatch):
     AdminRegistry._reset_hooks.update(saved_resets)
     AdminRegistry._player_preview_hooks.clear()
     AdminRegistry._player_preview_hooks.update(saved_previews)
+    restore_extension_points(saved_extensions)
+    bot_startup_module._bot_config = saved_bot_config
     bot_signal.install_wake_event(None)
 
 

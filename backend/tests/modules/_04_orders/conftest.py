@@ -25,6 +25,10 @@ import modules._04_orders.worker as orders_worker_module
 from core.admin.registry import AdminRegistry
 from core.db import get_session
 from main import app
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
 from modules._00_core.models import Nation, Player
 from modules._02_bot.startup import startup_bot
 from modules._04_orders.startup import (
@@ -58,6 +62,9 @@ def orders_isolation(monkeypatch):
     # register_orders_extensions() writes into the bot registry —
     # snapshot and restore it like the rest of the process globals.
     saved_types = bot_registry.get_notification_types()
+    # The module's admin hooks also register a player-delete extension
+    # point (04_orders.player_delete) — snapshot it too.
+    saved_extensions = snapshot_extension_points()
     monkeypatch.setattr(orders_startup_module, "_orders_config", None)
     monkeypatch.setattr(orders_startup_module, "_orders_allowed_hosts", None)
     monkeypatch.setattr(registry_startup_module, "_registry_config", None)
@@ -87,6 +94,7 @@ def orders_isolation(monkeypatch):
     bot_registry.clear_registry()
     for key, variables in saved_types.items():
         bot_registry.register_notification_type(key, variables)
+    restore_extension_points(saved_extensions)
 
 
 @pytest.fixture
