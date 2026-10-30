@@ -194,7 +194,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Project Goliath API",
     description="Backend for turn-based strategy game",
-    version="0.11.7",
+    version="0.11.8",
     lifespan=lifespan,
 )
 
@@ -249,6 +249,7 @@ _ERROR_CODE_STATUS = {
     "IMAGE_TOO_LARGE": 413,
     "IMAGE_UNSUPPORTED": 415,
     "IMAGE_ORIENTATION_INVALID": 422,
+    "IMAGE_NOT_FOUND": 404,
     "CAPITAL_NAME_INVALID": 422,
     "CAPITAL_NOT_IN_PROVINCES": 422,
     "PROVINCE_NOT_LAND": 422,

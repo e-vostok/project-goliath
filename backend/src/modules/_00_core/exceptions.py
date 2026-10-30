@@ -322,6 +322,13 @@ class ImageOrientationInvalidError(CoreDomainError):
         )
 
 
+class ImageNotFoundError(CoreDomainError):
+    """Raised when the nation has no uploaded picture of the asked kind."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Image not found: {reason}", "IMAGE_NOT_FOUND")
+
+
 class FrequencyCapExceededError(CoreDomainError):
     """Raised when an action frequency cap is exceeded."""
 
