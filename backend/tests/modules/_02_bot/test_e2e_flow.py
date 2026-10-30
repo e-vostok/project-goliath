@@ -32,6 +32,10 @@ from core.tick.orchestrator import TickOrchestrator, TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.admin_hooks import register_admin_hooks
 from modules._00_core.calendar import compute_game_date, format_game_date
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Nation, Province
 from modules._00_core.tick_handler import finalize_tick
@@ -905,6 +909,7 @@ async def test_e8_world_reset_preserves_consents(
     test_db_session,
     fake_vk_runtime,
     monkeypatch,
+    request,
 ):
     """T16/INV-B14: the production reset path empties the queue and
     zeroes last_digest_turn while consents and the event journal
@@ -941,11 +946,36 @@ async def test_e8_world_reset_preserves_consents(
     assert len(await _digest_rows(test_db_engine)) == 1
 
     # The production reset: registered in lifespan order, executed
-    # reversed (dependents first, 00_core last).
+    # reversed (dependents first, 00_core last). Snapshotted and
+    # restored like the live_client fixtures so the borrowed wiring
+    # never leaks into the rest of the suite.
+    saved_extensions = snapshot_extension_points()
+    saved_admin = {
+        name: dict(getattr(AdminRegistry, name))
+        for name in (
+            "_reset_hooks",
+            "_state_view_hooks",
+            "_player_preview_hooks",
+            "_nation_preview_hooks",
+            "_overview_hooks",
+            "_player_info_hooks",
+            "_province_info_hooks",
+            "_audit_action_hooks",
+        )
+    }
     AdminRegistry.clear_handlers()
     register_admin_hooks()  # 00_core
     AdminRegistry.register_reset("01_map", reset_ownership_log)
     register_bot_admin_hooks()  # 02_bot
+
+    def _restore_wiring() -> None:
+        for name, hooks in saved_admin.items():
+            registry = getattr(AdminRegistry, name)
+            registry.clear()
+            registry.update(hooks)
+        restore_extension_points(saved_extensions)
+
+    request.addfinalizer(_restore_wiring)
 
     resp = await client.post(
         RESET_URL,
