@@ -10,6 +10,7 @@
 
 import type { NationDTO } from '../../../../shared/types';
 import { SPACING } from '../../../../shared/ui';
+import type { NationImageEditor } from '../imageEditor';
 import { DescriptionBlock } from './DescriptionBlock';
 import { LeaderBlock } from './LeaderBlock';
 import { NationCardHeader } from './NationCardHeader';
@@ -18,13 +19,20 @@ import { TerritoryBlock } from './TerritoryBlock';
 export function NationCard({
   nation,
   onEdit,
+  imageEditor,
 }: {
   nation: NationDTO;
   onEdit: () => void;
+  /** Own «Штаб» only — turns flag and portrait into upload controls. */
+  imageEditor?: NationImageEditor;
 }) {
   return (
     <>
-      <NationCardHeader nation={nation} onEdit={onEdit} />
+      <NationCardHeader
+        nation={nation}
+        onEdit={onEdit}
+        imageEditor={imageEditor}
+      />
       <div
         data-testid="nation-card-row"
         style={{
@@ -34,7 +42,7 @@ export function NationCard({
           alignItems: 'start',
         }}
       >
-        <LeaderBlock nation={nation} />
+        <LeaderBlock nation={nation} imageEditor={imageEditor} />
         <TerritoryBlock nation={nation} />
       </div>
       <DescriptionBlock nation={nation} />

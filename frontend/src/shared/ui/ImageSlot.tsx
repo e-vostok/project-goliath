@@ -155,7 +155,19 @@ export function ImageSlot({
       }}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
+      onFocus={(event) => {
+        // «Фокус клавиатуры» (UI Spec, элемент 13): the ring is for
+        // keyboard focus only — a mouse click must not light it.
+        // jsdom may not know the pseudo-class; a throw counts as
+        // keyboard focus.
+        let keyboard = true;
+        try {
+          keyboard = event.currentTarget.matches(':focus-visible');
+        } catch {
+          keyboard = true;
+        }
+        setFocused(keyboard);
+      }}
       onBlur={() => setFocused(false)}
       style={{
         position: 'relative',

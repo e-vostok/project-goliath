@@ -11,7 +11,7 @@
  * submit (the server decides at POST /nations).
  */
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon16Done } from '@vkontakte/icons';
 
 import { api } from '../../../shared/api-client';
@@ -63,7 +63,8 @@ export function CreateNationTabSymbols({
   rules,
   errors,
   onFieldChange,
-}: RegistrationTabProps) {
+  imageSlot,
+}: RegistrationTabProps & { imageSlot?: ReactNode }) {
   const { token } = useSession();
   const normalizedColor = normalizeColorHex(form.color);
   const colorIsValid = isValidColorHex(form.color);
@@ -244,6 +245,14 @@ export function CreateNationTabSymbols({
           hint={errors.color === undefined ? (colorHint ?? undefined) : undefined}
         />
       </div>
+
+      {/* 0.12.0 board 13 — the optional flag block closes the tab. */}
+      {imageSlot !== undefined && (
+        <div data-testid="form-item-flag" style={{ marginTop: 16 }}>
+          <FieldLabel label="Флаг" />
+          {imageSlot}
+        </div>
+      )}
     </>
   );
 }

@@ -141,6 +141,30 @@ describe('NationSubscreen — content (direct link, no router state)', () => {
     expect(screen.queryByText(/наследован|выборы/i)).toBeNull();
   });
 
+  it('the flag and portrait stay read-only — no button around the pictures (0.12.0 unit 6b)', async () => {
+    registerDefaultHandlers();
+    registerNation({
+      ...NATION,
+      flag_url: '/api/v1/images/flaghash/full',
+      flag_thumb_url: '/api/v1/images/flaghash/thumb',
+      portrait_url: '/api/v1/images/porthash/full',
+      portrait_thumb_url: '/api/v1/images/porthash/thumb',
+    });
+    renderSubscreen({});
+
+    // The pictures show…
+    const flag = await screen.findByRole('img', { name: 'Флаг Новгород' });
+    const portrait = screen.getByRole('img', {
+      name: 'Портрет лидера Новгород',
+    });
+    // …but another player's pictures are not clickable (element 13).
+    expect(flag.closest('button')).toBeNull();
+    expect(portrait.closest('button')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Загрузить/ }),
+    ).toBeNull();
+  });
+
   it('opens the map through «Показать на карте» with the capital id', async () => {
     const user = userEvent.setup();
     const onShowOnMap = vi.fn();
