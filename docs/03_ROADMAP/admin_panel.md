@@ -51,6 +51,13 @@ reset/state-hook одной строкой, без переделки панел
   `GET/POST /admin/players/{vk_user_id}/delete-preview|delete` с запретами
   self/admin и retype-подтверждением; секция «Удаление игрока» в блоке «Админ».
 
+### Расширение v0.13.0: «Анкеты»
+
+Контракт — `docs/02_SYSTEM_SPECS/00_core_applications.md`, разд. 7 и 10; план — `docs/04_VERSIONS/0.13.0.md`.
+
+- [ ] **Issue panel-13a: подраздел «Анкеты»** (единица 9) — в разделе «Государства» список анкет (по умолчанию «в рассмотрении», переключатель «Все»); строка — ссылка, по щелчку открывается окно анкеты в Mini App, где администратор принимает или возвращает анкету; плитка «Анкеты» в состоянии мира; записи журнала `application.accept`, `application.auto_accept`, `application.return`, `application.image_delete`.
+- [ ] **Issue panel-13b: «требует внимания»** (единицы 5 и 9) — хук `AdminRegistry.register_attention`, `GET /admin/attention`, подсветка щита в «Штабе»; первые источники — анкеты в рассмотрении и приказы без судьи.
+
 ## Backlog & Tech Debt
 
 - Reset не трогает players — отдельное удаление игрока появилось в Issue 7; обсудить, нужен ли ещё флаг «полный сброс».
