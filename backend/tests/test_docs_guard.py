@@ -101,3 +101,30 @@ def test_docs_guard_detects_missing_reference(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "G8" in result.stdout
     assert "definitely_missing_spec_file.md" in result.stdout
+
+
+def test_docs_guard_g1_measures_lf_normalized_size(tmp_path: Path) -> None:
+    """A CRLF working tree must not trip the byte budget (PROC-3).
+
+    git autocrlf rewrites LF blobs to CRLF on Windows, inflating
+    ``st_size`` by one byte per line; G1 measures the LF-normalized
+    size so the same checkout answers identically on every OS.
+    """
+    make_copy(tmp_path)
+
+    rel = "docs/03_ROADMAP/map_pipeline.md"
+    target = tmp_path / rel
+    lf_bytes = target.read_bytes().replace(b"\r\n", b"\n")
+
+    # Shrink the copy's budget so raw CRLF size is over but LF is under.
+    budget_path = tmp_path / "tools/docs_budget.json"
+    budget = json.loads(budget_path.read_text(encoding="utf-8"))
+    budget["max_bytes"][rel] = len(lf_bytes) + 5
+    budget_path.write_text(json.dumps(budget, ensure_ascii=False), encoding="utf-8")
+
+    target.write_bytes(lf_bytes.replace(b"\n", b"\r\n"))
+    assert target.stat().st_size > budget["max_bytes"][rel]
+    assert len(lf_bytes) <= budget["max_bytes"][rel]
+
+    result = run_guard(tmp_path)
+    assert "G1" not in result.stdout
