@@ -1,0 +1,89 @@
+<!doctype html><html lang="ru" data-theme="light"><head><meta charset="utf-8"><title>22b_panel_ankety_vse</title><style>
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Regular.woff2');font-weight:400}
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Medium.woff2');font-weight:500}
+@font-face{font-family:'JetBrains Mono';src:url('../../0.10.0/fonts/JetBrainsMono-Regular.woff2');font-weight:400}
+:root{--ground:#edeef0;--surface:#ffffff;--raised:#ffffff;--inset:#f0f2f5;--line:#dce1e6;--ink:#000000;--muted:#626d7a;--faint:#818c99;--action:#447bba;--link:#2a5885;--signal:#e3b04b;--onsignal:#241a06;--signalink:#7a5200;--danger:#b83232;--positive:#2a7230;--warnbg:#fff2d6;--edge:rgba(0,0,0,0.15);--popup:0 8px 24px rgba(0,0,0,0.18);--tip:0 4px 12px rgba(0,0,0,0.16);--dim:rgba(0,0,0,0.45);--onaction:#ffffff;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Roboto','Helvetica Neue',arial,sans-serif;font-size:14px;line-height:20px}
+a{color:inherit;text-decoration:none}
+h1,h2,h3,p{margin:0}
+.win{width:910px;background:var(--ground);position:relative}
+.wide{width:1280px;background:var(--ground);position:relative}
+.top{height:48px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 16px;gap:24px}
+.logo{display:block;width:38px;height:38px;border-radius:6px;background:#555}
+.wm{font-family:'Big Shoulders Display','Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:800;font-size:24px;line-height:28px;letter-spacing:.1em}
+.nav{display:flex;gap:4px;height:100%;flex-grow:1}
+.nav a{display:flex;align-items:center;padding:0 12px;height:100%;color:var(--muted);border-bottom:2px solid transparent}
+.nav a.on{color:var(--ink);border-bottom-color:var(--action)}
+.turn{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;background:var(--signal);color:var(--onsignal);padding:4px 8px;border-radius:4px}
+.ico{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0;color:var(--muted)}
+.ico.hl{color:var(--signalink);background:rgba(227,176,75,.16);position:relative}
+.ico.hl:after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:99px;background:var(--signal);box-shadow:0 0 0 2px var(--surface)}
+.sub{background:var(--raised);border-bottom:1px solid var(--line);border-left:4px solid var(--action);height:48px;display:flex;align-items:center;gap:12px;padding:0 16px 0 12px}
+.main{padding:16px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border-radius:12px;padding:16px}
+.lab{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.cap{font-size:12px;line-height:16px;color:var(--muted)}
+.dis{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500}
+.h1{display:flex;align-items:center;gap:8px;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:24px;line-height:28px;letter-spacing:.06em;text-transform:uppercase}
+.h2{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:18px;line-height:22px;letter-spacing:.06em;text-transform:uppercase}
+.h2 .rule{flex-grow:1;height:1px;background:var(--line);margin-left:4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 16px;border-radius:8px;background:var(--inset);color:var(--ink);white-space:nowrap}
+.btn.p{background:var(--action);color:var(--onaction)}
+.btn.d{background:var(--danger);color:var(--onaction)}
+.btn.do{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.btn.sm{height:32px;padding:0 12px}
+.btn.off{opacity:.45}
+.fld .l{display:flex;justify-content:space-between;margin-bottom:4px}
+.in{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:0 12px;border-radius:8px;background:var(--inset);border:1px solid var(--faint);overflow:hidden;white-space:nowrap}
+.in.area{align-items:flex-start;padding:8px 12px;white-space:normal;min-height:96px}
+.in.err{border-color:var(--danger)}
+.chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:4px;background:var(--inset)}
+.chip.cap1{color:var(--signalink)}
+.steps{background:var(--surface);border-radius:12px;display:flex;overflow:hidden}
+.steps>div{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;padding:10px;border-bottom:2px solid transparent;color:var(--muted)}
+.steps>div.on{border-bottom-color:var(--action);color:var(--ink)}
+.steps .n{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;border:1px solid var(--faint);color:var(--muted)}
+.steps .on .n{background:var(--action);color:var(--onaction);border:0}
+.steps .done .n{background:var(--inset);color:var(--ink);border:0}
+.thumb{display:block;overflow:hidden;box-shadow:0 0 0 1px var(--edge);flex-shrink:0}
+.plate{display:flex;gap:12px;border-radius:12px;padding:12px 16px;background:var(--warnbg);color:var(--ink)}
+.plate.neutral{background:var(--surface);border:1px solid var(--line)}
+.plate svg{flex-shrink:0;margin-top:2px}
+.dim{position:absolute;left:0;top:0;right:0;bottom:0;background:var(--dim)}
+.pop{position:absolute;background:var(--raised);border-radius:12px;box-shadow:var(--popup);overflow:hidden}
+.pop .hd{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 12px 16px;border-bottom:1px solid var(--line)}
+.pop .bd{padding:16px;display:flex;flex-direction:column;gap:12px}
+.pop .ft{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+.tip{position:absolute;background:var(--raised);border-radius:8px;box-shadow:var(--tip);padding:8px 12px;z-index:5}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;padding:2px 10px;border-radius:999px;background:var(--inset);color:var(--ink)}
+.pill.sig{background:rgba(227,176,75,.18);color:var(--signalink)}
+.pill.ok{color:var(--positive)}
+.pill.bad{color:var(--danger)}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px}
+.kv .k{color:var(--muted)}
+.close{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--inset)}
+.grow{flex-grow:1;min-width:0}
+.row{display:flex;align-items:center;gap:12px}
+.g2{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.link{color:var(--link)}
+
+.body{display:flex;align-items:stretch}
+.side{width:232px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:4px}
+.side a{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:8px;color:var(--muted)}
+.side a.on{background:var(--inset);color:var(--ink)}
+.side a.on svg{stroke:var(--signal)}
+.pmain{flex-grow:1;min-width:0;padding:24px;display:flex;flex-direction:column;gap:16px}
+.seg{display:inline-flex;gap:4px;background:var(--inset);border-radius:8px;padding:2px}
+.seg span{display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:6px;color:var(--muted);white-space:nowrap}
+.seg span.on{background:var(--surface);color:var(--ink)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 12px;border-bottom:1px solid var(--line)}
+td{height:52px;padding:4px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.tile{background:var(--inset);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.fig{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:22px;line-height:28px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--signal);color:var(--onsignal);font-family:'JetBrains Mono',monospace;font-size:12px}
+</style></head><body><div class="wide" style="min-height:780px"><header class="top" style="gap:16px"><span class="logo" style="width:32px;height:32px"></span><span class="wm" style="font-size:20px">PAX ATOMICA</span><span style="width:1px;height:24px;background:var(--line)"></span><span class="lab" style="color:var(--signalink)">Пульт · панель администратора</span><span class="grow"></span><span class="cap">Сеанс: ещё 24 мин</span><span class="turn">ХОД 1 · ЯНВАРЬ 2040</span><span class="ico"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M12.6 9.8A5.4 5.4 0 0 1 6.2 3.4a5.4 5.4 0 1 0 6.4 6.4z"/></svg></span><a href="#" class="btn  sm">Выйти</a></header><div class="body" style="min-height:732px"><nav class="side"><span class="lab" style="margin:12px 12px 4px">Разделы</span><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>Ход и мир</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><circle cx="6" cy="5.5" r="2.5"/><path d="M1.8 13c.4-2.4 2.2-3.8 4.2-3.8s3.8 1.4 4.2 3.8"/><path d="M10.5 3.4a2.4 2.4 0 0 1 0 4.2M12.5 9.6c1 .6 1.7 1.7 1.9 3.4"/></svg>Игроки</a><a href="#" class="on"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3.5 14V2.5M3.5 3h8l-1.6 2.8L11.5 8.5h-8"/></svg>Государства<span class="badge" style="margin-left:auto">2</span></a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M8 14.5s4.5-4.2 4.5-7.7a4.5 4.5 0 0 0-9 0c0 3.5 4.5 7.7 4.5 7.7z"/><circle cx="8" cy="6.8" r="1.6"/></svg>Провинции</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3.8 1.8h5.7l3 3.1v9.3H3.8z"/><path d="M9.5 1.8v3.1h3M6 8.2h4.5M6 10.8h4.5"/></svg>Приказы</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M8 1.8l5 1.8v4.2c0 3-2.2 5-5 6.4-2.8-1.4-5-3.4-5-6.4V3.6z"/><path d="M5.8 8l1.7 1.7L10.5 6.4"/></svg>Администраторы</a><a href="#" class=""><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke-width="2.2"/></svg>Журнал</a><span class="grow"></span><span class="cap" style="padding:0 12px">Каждое действие пишется в журнал.</span></nav><main class="pmain"><div class="cap row" style="gap:8px"><a class="link" href="#">Государства</a><span>/</span><span style="color:var(--ink)">Анкеты</span></div><h1 class="h1"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="var(--signalink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3.5 14V2.5M3.5 3h8l-1.6 2.8L11.5 8.5h-8"/></svg>Государства</h1><div class="row"><div class="seg"><span class="">Государства</span><span class="on">Анкеты <span class="badge">2</span></span></div><span class="grow"></span><div class="seg"><span>В рассмотрении</span><span class="on">Все</span></div></div><section class="card" style="padding:8px 4px"><table><tr><th>Анкета</th><th>Игрок</th><th>Отправлена</th><th>Решение</th><th>Рецензент</th><th></th></tr><tr><td><div class="row" style="gap:10px"><span class="thumb" style="width:36px;height:24px;border-radius:3px"><svg width="36" height="24" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" style="display:block"><rect width="600" height="400" fill="#1f3b63"/><path d="M0 400L600 0V110L170 400z" fill="#e8a33d"/><path d="M150 70l24 74 78 0-63 46 24 74-63-46-63 46 24-74-63-46 78 0z" fill="#f2f2f2" transform="translate(-10,0)"/></svg></span><div><a href="#" class="link">Северный Синдикат <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--link)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M9 2.5h4.5V7M13.5 2.5L7 9M11 9.5v3.5H3V5h3.5"/></svg></a><div class="cap">Синдикат · 5 провинций</div></div></div></td><td>Иван Петров</td><td>31 окт, 14:20<div class=cap>отправка №2</div></td><td></td><td><span class="pill sig">вам</span></td><td style="text-align:right"><a href="#" class="btn  sm">Открыть</a></td></tr><tr><td><div class="row" style="gap:10px"><span class="thumb" style="width:36px;height:24px;border-radius:3px"><svg width="36" height="24" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" style="display:block"><rect width="600" height="400" fill="#1f3b63"/><path d="M0 400L600 0V110L170 400z" fill="#e8a33d"/><path d="M150 70l24 74 78 0-63 46 24 74-63-46-63 46 24-74-63-46 78 0z" fill="#f2f2f2" transform="translate(-10,0)"/></svg></span><div><a href="#" class="link">Республика Нордланд <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--link)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M9 2.5h4.5V7M13.5 2.5L7 9M11 9.5v3.5H3V5h3.5"/></svg></a><div class="cap">Нордланд · 5 провинций</div></div></div></td><td>Мария Орлова</td><td>31 окт, 11:05</td><td><span class="pill ok">Принята</span></td><td>Анна Кузнецова</td><td style="text-align:right"><a href="#" class="btn  sm">Открыть</a></td></tr><tr><td><div class="row" style="gap:10px"><span class="thumb" style="width:36px;height:24px;border-radius:3px"><svg width="36" height="24" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" style="display:block"><rect width="600" height="400" fill="#1f3b63"/><path d="M0 400L600 0V110L170 400z" fill="#e8a33d"/><path d="M150 70l24 74 78 0-63 46 24 74-63-46-63 46 24-74-63-46 78 0z" fill="#f2f2f2" transform="translate(-10,0)"/></svg></span><div><a href="#" class="link">Дунайская Лига <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--link)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M9 2.5h4.5V7M13.5 2.5L7 9M11 9.5v3.5H3V5h3.5"/></svg></a><div class="cap">Лига · 5 провинций</div></div></div></td><td>Пётр Громов</td><td>31 окт, 09:40</td><td><span class="pill ok">Принята автоматически</span></td><td>вы</td><td style="text-align:right"><a href="#" class="btn  sm">Открыть</a></td></tr><tr><td><div class="row" style="gap:10px"><span class="thumb" style="width:36px;height:24px;border-radius:3px"><svg width="36" height="24" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" style="display:block"><rect width="600" height="400" fill="#1f3b63"/><path d="M0 400L600 0V110L170 400z" fill="#e8a33d"/><path d="M150 70l24 74 78 0-63 46 24 74-63-46-63 46 24-74-63-46 78 0z" fill="#f2f2f2" transform="translate(-10,0)"/></svg></span><div><a href="#" class="link">Остров Тихий <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--link)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M9 2.5h4.5V7M13.5 2.5L7 9M11 9.5v3.5H3V5h3.5"/></svg></a><div class="cap">Тихий · 5 провинций</div></div></div></td><td>Олег Седов</td><td>30 окт, 22:15<div class=cap>отправка №3</div></td><td><span class="pill bad">Возвращена</span></td><td>Анна Кузнецова</td><td style="text-align:right"><a href="#" class="btn  sm">Открыть</a></td></tr><tr><td><div class="row" style="gap:10px"><span class="thumb" style="width:36px;height:24px;border-radius:3px"><svg width="36" height="24" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" style="display:block"><rect width="600" height="400" fill="#1f3b63"/><path d="M0 400L600 0V110L170 400z" fill="#e8a33d"/><path d="M150 70l24 74 78 0-63 46 24 74-63-46-63 46 24-74-63-46 78 0z" fill="#f2f2f2" transform="translate(-10,0)"/></svg></span><div><a href="#" class="link">Союз Кальмар <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--link)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M9 2.5h4.5V7M13.5 2.5L7 9M11 9.5v3.5H3V5h3.5"/></svg></a><div class="cap">Кальмар · 5 провинций</div></div></div></td><td>Юлия Белова</td><td>30 окт, 20:02</td><td><span class="pill ">Отозвана игроком</span></td><td>вы</td><td style="text-align:right"><a href="#" class="btn  sm">Открыть</a></td></tr></table></section></main></div></div></body></html>
