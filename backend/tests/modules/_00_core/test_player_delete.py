@@ -33,6 +33,9 @@ from modules._00_core.hooks import (
 )
 from modules._00_core.models import (
     Nation,
+    NationApplication,
+    NationApplicationProvince,
+    NationImage,
     Player,
     Province,
     ScheduledAction,
@@ -152,6 +155,54 @@ async def _seed(session: AsyncSession) -> dict:
     await make_vk_profile(session, target)
     await make_vk_profile(session, other)
 
+    # A live application of the target with a province pick and an
+    # uploaded picture — the deletion must remove all three rows
+    # (0.13.0 unit 4); the bystander's application survives.
+    target_application = NationApplication(
+        id=str(uuid.uuid4()),
+        owner_player_id=target.id,
+        status="DRAFT",
+        name="Target App",
+        short_name="TApp",
+        color_hex="#0C7CF4",
+        submissions=0,
+        created_at=utcnow(),
+        updated_at=utcnow(),
+    )
+    other_application = NationApplication(
+        id=str(uuid.uuid4()),
+        owner_player_id=other.id,
+        status="DRAFT",
+        name="Other App",
+        short_name="OApp",
+        color_hex="#2B2DB0",
+        submissions=0,
+        created_at=utcnow(),
+        updated_at=utcnow(),
+    )
+    session.add_all([target_application, other_application])
+    await session.flush()
+    session.add(
+        NationApplicationProvince(
+            application_id=target_application.id,
+            province_id=3001,
+            position=0,
+            is_reserved=False,
+        )
+    )
+    session.add(
+        NationImage(
+            application_id=target_application.id,
+            kind="flag",
+            sha256="ee" * 32,
+            full_bytes=b"x",
+            thumb_bytes=b"y",
+            byte_size=1,
+            uploaded_by_player_id=target.id,
+            uploaded_at=utcnow(),
+        )
+    )
+
     authored = await make_order(session, target, nation=target_nation)
     judged_open = await make_order(session, other, nation=other_nation, judge=target)
     judged_decided = await make_order(
@@ -177,6 +228,8 @@ async def _seed(session: AsyncSession) -> dict:
         "judged_open_order_id": judged_open.id,
         "judged_decided_order_id": judged_decided.id,
         "other_order_id": other_order.id,
+        "target_application_id": target_application.id,
+        "other_application_id": other_application.id,
     }
 
 
@@ -276,6 +329,34 @@ class TestPlayerDelete:
             assert released.reminder_at is None
             assert released.reminder_sent_at is None
 
+            # The target's application, its province picks and its
+            # pictures are gone with the player.
+            assert (
+                await _count(
+                    session,
+                    NationApplication,
+                    NationApplication.id == ids["target_application_id"],
+                )
+                == 0
+            )
+            assert (
+                await _count(
+                    session,
+                    NationApplicationProvince,
+                    NationApplicationProvince.application_id
+                    == ids["target_application_id"],
+                )
+                == 0
+            )
+            assert (
+                await _count(
+                    session,
+                    NationImage,
+                    NationImage.application_id == ids["target_application_id"],
+                )
+                == 0
+            )
+
             # The bystander's rows are all untouched.
             assert await _count(session, Player, Player.id == ids["other_id"]) == 1
             assert (
@@ -301,6 +382,14 @@ class TestPlayerDelete:
             )
             other_order = await session.get(Order, ids["other_order_id"])
             assert other_order is not None
+            assert (
+                await _count(
+                    session,
+                    NationApplication,
+                    NationApplication.id == ids["other_application_id"],
+                )
+                == 1
+            )
 
     @pytest.mark.asyncio
     async def test_hook_failure_rolls_back_everything(

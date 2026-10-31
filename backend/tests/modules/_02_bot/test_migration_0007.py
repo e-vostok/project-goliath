@@ -199,6 +199,8 @@ class TestDowngradeRoundTrip:
         assert after == before - BOT_TABLES - {
             "orders",
             "nation_images",
+            "nation_applications",
+            "nation_application_provinces",
             "registry_vk_profiles",
             "registry_player_numbers",
             "registry_number_counter",

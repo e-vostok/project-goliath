@@ -29,9 +29,22 @@ from modules._00_core.exceptions import (
     ImageTooLargeError,
     NationNotFoundError,
 )
-from modules._00_core.models import GameClock, Nation, Player, Province
+from modules._00_core.application_service import ApplicationService
+from modules._00_core.exceptions import ApplicationNotFoundError
+from modules._00_core.models import (
+    GameClock,
+    Nation,
+    NationApplication,
+    NationApplicationProvince,
+    Player,
+    Province,
+)
 from modules._00_core.nation_enums import GENDERS, SUCCESSION_TYPES
 from modules._00_core.schemas import (
+    ApplicationDTO,
+    ApplicationImageDTO,
+    ApplicationProvinceDTO,
+    ApplicationRulesDTO,
     AuthResponseDTO,
     ColorCheckDTO,
     ColorCheckRequest,
@@ -227,6 +240,10 @@ async def get_nation_rules(
         ),
         genders=list(GENDERS),
         succession_types=list(SUCCESSION_TYPES),
+        application=ApplicationRulesDTO(
+            review_hours=CORE_CONFIG.applications.review_hours,
+            comment_max_length=CORE_CONFIG.applications.comment_max_length,
+        ),
     )
 
 
@@ -348,7 +365,16 @@ async def list_provinces(
     if ids:
         stmt = stmt.where(Province.id.in_(ids))
     if free_only:
-        stmt = stmt.where(Province.nation_id.is_(None))
+        # APP-1: unowned means neither owned nor reserved by a PENDING
+        # application — the map picker must not offer a reserved cell.
+        stmt = stmt.where(
+            Province.nation_id.is_(None),
+            Province.id.notin_(
+                select(NationApplicationProvince.province_id).where(
+                    NationApplicationProvince.is_reserved.is_(True)
+                )
+            ),
+        )
     result = await session.execute(stmt)
     return [
         ProvinceDTO(id=p.id, nation_id=p.nation_id, kind=p.kind)
@@ -491,6 +517,217 @@ async def get_nation_image(
     if _etag_matches(if_none_match, f'"{sha256}"'):
         return Response(status_code=304, headers=headers)
     return Response(content=body, media_type="image/webp", headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# Nation applications («анкеты», 0.13.0 unit 4): the player's draft /
+# review flow of Spec applications §8.
+# ---------------------------------------------------------------------------
+
+
+async def _province_display_names(
+    session: AsyncSession, province_ids: list[int]
+) -> dict[int, str]:
+    """{province_id: display name} via the registered province-info
+    hooks — the same merge the admin pickers use; a failing hook is
+    skipped, unknown ids fall back to the bare number."""
+    from core.admin.registry import AdminRegistry
+
+    names: dict[int, str] = {}
+    for slug, (info_fn, _) in AdminRegistry.get_province_info_hooks().items():
+        try:
+            columns = await info_fn(session, province_ids)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "province-info hook failed for '%s'", slug
+            )
+            await session.rollback()
+            continue
+        for province_id, fields in (columns or {}).items():
+            if fields.get("name") is not None:
+                names[province_id] = fields["name"]
+    return names
+
+
+async def _application_dto(
+    session: AsyncSession, application: NationApplication
+) -> ApplicationDTO:
+    """Assemble the player's ApplicationDTO: profile fields, review
+    state, provinces capital-first with display names, picture URLs
+    through ``images.image_url`` (INV-16)."""
+    rows = (
+        await session.execute(
+            select(NationApplicationProvince)
+            .where(
+                NationApplicationProvince.application_id == application.id
+            )
+            .order_by(NationApplicationProvince.position)
+        )
+    ).scalars().all()
+    names = await _province_display_names(
+        session, [row.province_id for row in rows]
+    )
+    provinces = [
+        ApplicationProvinceDTO(
+            id=row.province_id,
+            name=names.get(row.province_id, str(row.province_id)),
+            is_capital=row.province_id == application.capital_province_id,
+        )
+        for row in sorted(
+            rows,
+            key=lambda row: (
+                row.province_id != application.capital_province_id,
+                row.position,
+            ),
+        )
+    ]
+    refs = await ApplicationService.image_refs(session, application.id)
+    return ApplicationDTO(
+        status=application.status,
+        draft_reason=application.draft_reason,
+        return_comment=application.return_comment,
+        review_deadline_at=application.review_deadline_at,
+        submissions=application.submissions,
+        name=application.name,
+        short_name=application.short_name,
+        color_hex=application.color_hex,
+        motto=application.motto,
+        description=application.description,
+        leader_name=application.leader_name,
+        leader_title=application.leader_title,
+        gender=application.gender,
+        succession_type=application.succession_type,
+        leader_bio=application.leader_bio,
+        history_url=application.history_url,
+        capital_province_id=application.capital_province_id,
+        capital_name=application.capital_name,
+        provinces=provinces,
+        images={
+            kind: (
+                None
+                if refs[kind] is None
+                else ApplicationImageDTO(
+                    url=images.image_url(refs[kind], "full"),
+                    thumb_url=images.image_url(refs[kind], "thumb"),
+                )
+            )
+            for kind in ("flag", "portrait")
+        },
+    )
+
+
+async def _get_own_application(
+    session: AsyncSession, player: Player
+) -> NationApplication:
+    """The player's live application or 404 APPLICATION_NOT_FOUND."""
+    application = await ApplicationService.get_me(session, player.id)
+    if application is None:
+        raise ApplicationNotFoundError(player.id)
+    return application
+
+
+@router.get("/applications/me", response_model=ApplicationDTO)
+async def get_application_me(
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> ApplicationDTO:
+    """Return the player's live application (404 when none exists)."""
+    application = await _get_own_application(session, player)
+    return await _application_dto(session, application)
+
+
+@router.put("/applications/me", response_model=ApplicationDTO)
+async def put_application_me(
+    body: NationCreateRequest,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> ApplicationDTO:
+    """Save the player's draft application — the same field set as
+    nation creation; occupancy of names, colour and provinces is not
+    checked until submit (Spec §4)."""
+    application = await ApplicationService.save_draft(
+        session,
+        player.id,
+        CORE_CONFIG,
+        name=body.name,
+        short_name=body.short_name,
+        color_hex=body.color_hex,
+        province_ids=body.province_ids,
+        capital_province_id=body.capital_province_id,
+        capital_name=body.capital_name,
+        leader_name=body.leader_name,
+        leader_title=body.leader_title,
+        history_url=body.history_url,
+        gender=body.gender,
+        succession_type=body.succession_type,
+        motto=body.motto,
+        description=body.description,
+        leader_bio=body.leader_bio,
+        anthem_url=body.anthem_url,
+    )
+    await session.commit()
+    return await _application_dto(session, application)
+
+
+@router.put("/applications/me/images/{kind}", response_model=NationImageDTO)
+async def put_application_image(
+    kind: str,
+    request: Request,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> NationImageDTO:
+    """Upload the draft's flag/portrait — the same pipeline as the
+    nation upload, with the application as the picture's owner.
+    DRAFT only (Spec §2): a PENDING application answers 409."""
+    if kind not in _IMAGE_KINDS:
+        raise HTTPException(status_code=404)
+
+    application = await _get_own_application(session, player)
+    application_id = application.id
+    player_id = player.id
+    # Release the read transaction before the body is read — same
+    # pool-friendly shape as the nation upload.
+    await session.commit()
+
+    raw = await _read_upload_body(request, CORE_CONFIG.images.max_upload_bytes)
+    processed = await images.process_image_async(raw, kind, CORE_CONFIG.images)
+
+    # ONE write transaction: the application may have changed while
+    # the file was processed — the DRAFT check repeats inside.
+    view = await ApplicationService.upload_image(
+        session, application_id, player_id, kind, processed
+    )
+    await session.commit()
+    return NationImageDTO(
+        kind=kind,
+        url=images.image_url(view.sha256, "full"),
+        thumb_url=images.image_url(view.sha256, "thumb"),
+    )
+
+
+@router.post("/applications/me/submit", response_model=ApplicationDTO)
+async def post_application_submit(
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> ApplicationDTO:
+    """Submit the draft for review — reserves names, colour and
+    provinces until the decision (APP-1)."""
+    application = await ApplicationService.submit(session, player.id, CORE_CONFIG)
+    await session.commit()
+    return await _application_dto(session, application)
+
+
+@router.post("/applications/me/cancel", response_model=ApplicationDTO)
+async def post_application_cancel(
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> ApplicationDTO:
+    """Withdraw a PENDING application back to an editable draft."""
+    application = await ApplicationService.cancel(session, player.id)
+    await session.commit()
+    return await _application_dto(session, application)
 
 
 def _etag_matches(if_none_match: str | None, etag: str) -> bool:

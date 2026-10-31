@@ -27,6 +27,7 @@ pattern: real lifespan, migrated DB, real JWTs (Anti-Mock Guard).
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 import pytest
@@ -53,6 +54,8 @@ from modules._00_core.hooks import (
 )
 from modules._00_core.models import (
     Nation,
+    NationApplication,
+    NationApplicationProvince,
     NationImage,
     ScheduledAction,
     TickLog,
@@ -99,6 +102,8 @@ TABLE_COVERAGE: dict[str, object] = {
     # -- emptied by the world reset (asserted empty below) -----------
     "nations": "reset",
     "nation_images": "reset",
+    "nation_applications": "reset",
+    "nation_application_provinces": "reset",
     "scheduled_actions": "reset",
     "tick_log": "reset",
     "map_ownership_log": "reset",
@@ -283,6 +288,29 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
         # nation (and its nested owner) with random, CHECK-invalid rows.
         session.add(ScheduledActionFactory.build(nation=None))
         session.add(TickLogFactory.build())
+        # A live application with one province pick — the reset must
+        # wipe both application tables (0.13.0 unit 4).
+        application = NationApplication(
+            id=str(uuid.uuid4()),
+            owner_player_id=player.id,
+            status="DRAFT",
+            name="Resetland",
+            short_name="Resetland",
+            color_hex="#0C7CF4",
+            submissions=0,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        session.add(application)
+        await session.flush()
+        session.add(
+            NationApplicationProvince(
+                application_id=application.id,
+                province_id=map_mini_node_ids()[0],
+                position=0,
+                is_reserved=False,
+            )
+        )
         session.add(
             MapOwnershipLog(
                 province_id=map_mini_node_ids()[0],
@@ -304,6 +332,8 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
     reset_tables = {
         "nations": Nation,
         "nation_images": NationImage,
+        "nation_applications": NationApplication,
+        "nation_application_provinces": NationApplicationProvince,
         "scheduled_actions": ScheduledAction,
         "tick_log": TickLog,
         "map_ownership_log": MapOwnershipLog,

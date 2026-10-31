@@ -100,6 +100,11 @@ def _base_config() -> dict:
             "max_pixels": 25000000,
             "max_side": 8000,
         },
+        "applications": {
+            "review_hours": 24,
+            "comment_max_length": 300,
+            "worker_interval_seconds": 60,
+        },
         "calendar": {
             "epoch_start_date": "2040-01-01",
             "months_per_turn": 1,
@@ -197,6 +202,9 @@ def test_valid_config_loads():
     assert config.images.max_upload_bytes == 5242880
     assert config.images.max_pixels == 25000000
     assert config.images.max_side == 8000
+    assert config.applications.review_hours == 24
+    assert config.applications.comment_max_length == 300
+    assert config.applications.worker_interval_seconds == 60
     assert str(config.calendar.epoch_start_date) == "2040-01-01"
     assert config.calendar.months_per_turn == 1
     assert config.calendar.month_names[0] == "январь"
@@ -229,6 +237,17 @@ def test_text_bounds_do_not_exceed_column_lengths():
             f"nation.{column_name}: config bound {bound} exceeds the "
             f"column length {columns[column_name].type.length}"
         )
+
+
+def test_comment_max_length_fits_return_comment_column():
+    """Spec applications §9: ``applications.comment_max_length`` must
+    fit ``nation_applications.return_comment`` — a valid comment stores
+    without a new migration."""
+    from modules._00_core.models import NationApplication
+
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    column = NationApplication.__table__.columns["return_comment"]
+    assert config.applications.comment_max_length <= column.type.length
 
 
 def test_map_color_hexes_are_all_reserved():

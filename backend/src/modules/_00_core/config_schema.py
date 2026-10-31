@@ -462,6 +462,29 @@ class ImagesSettings(BaseModel):
         return self
 
 
+class ApplicationsSettings(BaseModel):
+    """Параметры рассмотрения анкет (0.13.0, Spec applications §9)."""
+
+    review_hours: int = Field(
+        ge=1,
+        le=168,
+        description="Срок рассмотрения анкеты с момента отправки, часы "
+        "(после него — автоприём).",
+    )
+    comment_max_length: int = Field(
+        ge=10,
+        le=1000,
+        description="Максимальная длина комментария возврата анкеты, "
+        "символы (не больше длины колонки return_comment).",
+    )
+    worker_interval_seconds: int = Field(
+        ge=10,
+        le=600,
+        description="Период фоновой задачи анкет (автоприём и "
+        "назначение рецензента), секунды.",
+    )
+
+
 class CalendarSettings(BaseModel):
     epoch_start_date: date
     months_per_turn: int = Field(
@@ -506,6 +529,7 @@ class CoreConfig(BaseModel):
     color: ColorSettings
     images: ImagesSettings
     calendar: CalendarSettings
+    applications: ApplicationsSettings
 
     @model_validator(mode="after")
     def check_health_threshold(self) -> Self:
