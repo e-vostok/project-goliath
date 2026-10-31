@@ -25,6 +25,10 @@ from core.db import get_session
 from core.security.jwt import issue_token
 from main import app
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.hooks import (
+    restore_extension_points,
+    snapshot_extension_points,
+)
 from modules._00_core.models import Nation, Player
 from modules._03_registry.config_schema import RegistryConfig
 from modules._03_registry.startup import startup_registry
@@ -43,6 +47,9 @@ def registry_isolation(monkeypatch):
     saved_previews = AdminRegistry.get_player_preview_hooks()
     saved_player_infos = AdminRegistry.get_player_info_hooks()
     saved_province_infos = AdminRegistry.get_province_info_hooks()
+    # The module's admin hooks also register a player-delete extension
+    # point (03_registry.player_delete) — snapshot it too.
+    saved_extensions = snapshot_extension_points()
     monkeypatch.setattr(startup_module, "_registry_config", None)
     monkeypatch.setattr(startup_module, "_core_config", None)
     # The real config now lists the ``orders`` table — its source is
@@ -73,6 +80,7 @@ def registry_isolation(monkeypatch):
     AdminRegistry._player_info_hooks.update(saved_player_infos)
     AdminRegistry._province_info_hooks.clear()
     AdminRegistry._province_info_hooks.update(saved_province_infos)
+    restore_extension_points(saved_extensions)
 
 
 @pytest.fixture
