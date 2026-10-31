@@ -162,6 +162,58 @@ class NationCreateRequest(BaseModel):
         return _validate_nation_name(value)
 
 
+class ApplicationImageDTO(BaseModel):
+    """One uploaded picture of an application (Spec applications §8)."""
+
+    url: str
+    thumb_url: str
+
+
+class ApplicationProvinceDTO(BaseModel):
+    """One picked province of an application — display name through
+    the province-info hooks (falls back to the bare id)."""
+
+    id: int
+    name: str
+    is_capital: bool
+
+
+class ApplicationDTO(BaseModel):
+    """
+    The player's own application («анкета», Spec applications §8):
+    every profile field plus the review state. ``provinces`` arrives
+    capital-first, then in pick order.
+    """
+
+    status: Literal["DRAFT", "PENDING", "ACCEPTED"]
+    draft_reason: str | None
+    return_comment: str | None
+    review_deadline_at: datetime | None
+    submissions: int
+    name: str
+    short_name: str
+    color_hex: str
+    motto: str | None
+    description: str | None
+    leader_name: str | None
+    leader_title: str | None
+    gender: str | None
+    succession_type: str | None
+    leader_bio: str | None
+    history_url: str | None
+    capital_province_id: int | None
+    capital_name: str | None
+    provinces: list[ApplicationProvinceDTO]
+    images: dict[str, ApplicationImageDTO | None]
+
+
+class ApplicationRulesDTO(BaseModel):
+    """The applications block of GET /nations/rules (Spec §8)."""
+
+    review_hours: int
+    comment_max_length: int
+
+
 class NationRulesImagesDTO(BaseModel):
     """The upload limits the nation form needs for its image hints
     (Spec Part 5): the exact output sizes and the body cutoff."""
@@ -233,6 +285,7 @@ class NationRulesDTO(BaseModel):
     images: NationRulesImagesDTO
     genders: list[str]
     succession_types: list[str]
+    application: ApplicationRulesDTO
 
 
 class ColorCheckRequest(BaseModel):

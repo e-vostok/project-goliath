@@ -35,6 +35,7 @@ from modules._00_core.exceptions import (
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
     ProvinceNotLandError,
+    ProvinceReservedError,
     ProvinceTakenError,
     RetiredProvinceHistoryError,
     RetiredProvinceOwnedError,
@@ -54,6 +55,8 @@ from modules._00_core.hooks import (
 from modules._00_core.models import (
     GameClock,
     Nation,
+    NationApplication,
+    NationApplicationProvince,
     NationImage,
     Player,
     Province,
@@ -496,6 +499,11 @@ class ProvinceService:
         if previous_nation_id == to_nation_id:
             raise AlreadyOwnerError(province_id)
 
+        # APP-1: a province reserved by a PENDING application never
+        # moves — the administrator respects the reserve too.
+        if await _reserved_province_ids(session, [province_id]):
+            raise ProvinceReservedError(province_id)
+
         donor = None
         donor_province_ids: list[int] = []
         if previous_nation_id is not None:
@@ -715,6 +723,13 @@ class PlayerService:
         if nation is not None:
             await NationService.delete(session, nation.id)
 
+        # The player's applications and their pictures go with them
+        # (00_core's own tables — deleted inline like the nation, not
+        # through the satellite hook chain).
+        from modules._00_core.application_service import ApplicationService
+
+        await ApplicationService.delete_for_player(session, player_id)
+
         for hook in get_player_delete_hooks().values():
             await hook(session, player_id)
 
@@ -805,20 +820,32 @@ async def _evaluate_color(
     color_hex: str,
     config: CoreConfig,
     exclude_nation_id: str | None = None,
+    exclude_application_id: str | None = None,
 ) -> ColorStatus:
     """
     The Part 3 color decision (INV-13), on an uppercase input: exact
-    match against another nation's color -> TAKEN; distance below
+    match against another nation's color or a PENDING application's
+    reserved color (APP-1) -> TAKEN; distance below
     ``min_distance_reserved`` to a map color -> TOO_CLOSE; distance
-    below ``min_distance_nations`` to another nation's color ->
-    TOO_CLOSE; otherwise OK. Threshold equality passes (strict less).
-    ``exclude_nation_id`` drops one nation from both comparisons.
+    below ``min_distance_nations`` to another nation's or reserved
+    color -> TOO_CLOSE; otherwise OK. Threshold equality passes
+    (strict less). ``exclude_nation_id``/``exclude_application_id``
+    drop one row from the nation/application comparisons.
     """
     stmt = select(Nation.color_hex)
     if exclude_nation_id is not None:
         stmt = stmt.where(Nation.id != exclude_nation_id)
     result = await session.execute(stmt)
-    taken = result.scalars().all()
+    taken = list(result.scalars().all())
+
+    pending_stmt = select(NationApplication.color_hex).where(
+        NationApplication.status == "PENDING"
+    )
+    if exclude_application_id is not None:
+        pending_stmt = pending_stmt.where(
+            NationApplication.id != exclude_application_id
+        )
+    taken += list((await session.execute(pending_stmt)).scalars().all())
 
     for existing in taken:
         if existing.upper() == color_hex:
@@ -832,14 +859,109 @@ async def _evaluate_color(
     return "OK"
 
 
+async def _check_name_free(
+    session: AsyncSession,
+    name: str,
+    exclude_application_id: str | None = None,
+) -> None:
+    """INV-2 + APP-1: the name must be held by no nation and no PENDING
+    application (``exclude_application_id`` drops one application's own
+    reserve — used by the accept path)."""
+    result = await session.execute(select(Nation).where(Nation.name == name))
+    if result.scalar_one_or_none() is not None:
+        raise NameTakenError(name)
+    stmt = select(NationApplication.id).where(
+        NationApplication.name == name,
+        NationApplication.status == "PENDING",
+    )
+    if exclude_application_id is not None:
+        stmt = stmt.where(NationApplication.id != exclude_application_id)
+    if (await session.execute(stmt)).scalar_one_or_none() is not None:
+        raise NameTakenError(name)
+
+
+async def _check_short_name_free(
+    session: AsyncSession,
+    short_name: str,
+    exclude_application_id: str | None = None,
+) -> None:
+    """INV-11 + APP-1: the short name must be held by no nation and no
+    PENDING application."""
+    result = await session.execute(
+        select(Nation).where(Nation.short_name == short_name)
+    )
+    if result.scalar_one_or_none() is not None:
+        raise ShortNameTakenError(short_name)
+    stmt = select(NationApplication.id).where(
+        NationApplication.short_name == short_name,
+        NationApplication.status == "PENDING",
+    )
+    if exclude_application_id is not None:
+        stmt = stmt.where(NationApplication.id != exclude_application_id)
+    if (await session.execute(stmt)).scalar_one_or_none() is not None:
+        raise ShortNameTakenError(short_name)
+
+
+async def _reserved_province_ids(
+    session: AsyncSession, province_ids: Iterable[int]
+) -> set[int]:
+    """The subset of ``province_ids`` currently reserved by PENDING
+    applications (APP-1). Read-only."""
+    ids = set(province_ids)
+    if not ids:
+        return set()
+    result = await session.execute(
+        select(NationApplicationProvince.province_id).where(
+            NationApplicationProvince.province_id.in_(ids),
+            NationApplicationProvince.is_reserved.is_(True),
+        )
+    )
+    return set(result.scalars().all())
+
+
+async def _load_available_provinces(
+    session: AsyncSession, province_ids: Iterable[int]
+) -> list[Province]:
+    """
+    Load the province set for a registration check: every id must
+    exist, be unowned and not reserved by a PENDING application
+    (APP-1). Raises ProvinceNotFoundError on the first missing id,
+    ProvinceTakenError on the first owned-or-reserved one — the same
+    order and codes NationService.create used before the reserve.
+    """
+    ids = list(province_ids)
+    result = await session.execute(
+        select(Province).where(Province.id.in_(ids))
+    )
+    provinces = result.scalars().all()
+
+    found_ids = {p.id for p in provinces}
+    missing_ids = set(ids) - found_ids
+    if missing_ids:
+        raise ProvinceNotFoundError(missing_ids.pop())
+
+    for province in provinces:
+        if province.nation_id is not None:
+            raise ProvinceTakenError(province.id)
+
+    reserved = await _reserved_province_ids(session, found_ids)
+    if reserved:
+        raise ProvinceTakenError(sorted(reserved)[0])
+
+    return provinces
+
+
 async def _check_color_or_raise(
     session: AsyncSession,
     color_hex: str,
     config: CoreConfig,
     exclude_nation_id: str | None = None,
+    exclude_application_id: str | None = None,
 ) -> None:
     """Raise the domain error matching the color decision."""
-    status = await _evaluate_color(session, color_hex, config, exclude_nation_id)
+    status = await _evaluate_color(
+        session, color_hex, config, exclude_nation_id, exclude_application_id
+    )
     if status == "TAKEN":
         raise ColorTakenError(color_hex)
     if status == "TOO_CLOSE":
@@ -956,39 +1078,21 @@ class NationService:
         # registrations cannot interleave check and insert (INV-13).
         await _take_nations_lock(session)
 
-        # INV-2: Check if name is already taken (normalized by strip).
+        # INV-2 (+ APP-1): the name must be free of nations and of
+        # PENDING applications (normalized by strip).
         name = name.strip()
-        result = await session.execute(select(Nation).where(Nation.name == name))
-        if result.scalar_one_or_none() is not None:
-            raise NameTakenError(name)
+        await _check_name_free(session, name)
 
-        # INV-11: Check if the short name is already taken.
-        result = await session.execute(
-            select(Nation).where(Nation.short_name == short_name)
-        )
-        if result.scalar_one_or_none() is not None:
-            raise ShortNameTakenError(short_name)
+        # INV-11 (+ APP-1): Check if the short name is already taken.
+        await _check_short_name_free(session, short_name)
 
         # INV-13: uppercase normalization before every color check.
         color_hex = color_hex.upper()
         await _check_color_or_raise(session, color_hex, config)
 
-        # Fetch all provinces to validate they exist and are free
-        result = await session.execute(
-            select(Province).where(Province.id.in_(province_ids))
-        )
-        provinces = result.scalars().all()
-
-        # Check for missing provinces
-        found_ids = {p.id for p in provinces}
-        missing_ids = set(province_ids) - found_ids
-        if missing_ids:
-            raise ProvinceNotFoundError(missing_ids.pop())
-
-        # Check for already-owned provinces
-        for province in provinces:
-            if province.nation_id is not None:
-                raise ProvinceTakenError(province.id)
+        # Fetch all provinces to validate they exist and are free —
+        # free means unowned AND unreserved (APP-1).
+        provinces = await _load_available_provinces(session, province_ids)
 
         # Stage "after_free": satellite checks that need a loaded,
         # existing, free province set (Spec 01_map Part 5 order).

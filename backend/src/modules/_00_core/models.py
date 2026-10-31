@@ -16,6 +16,7 @@ from sqlalchemy import (
     CHAR,
     JSON,
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -27,6 +28,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import (
     Enum as SQLEnum,
@@ -330,29 +332,233 @@ class AdminAuditLog(Base):
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class NationImage(Base):
-    """One uploaded picture of a nation (0.12.0 unit 5, Spec Part 1).
+class NationApplication(Base):
+    """One nation-registration application («анкета», 0.13.0 unit 4).
 
-    One row per (nation_id, kind) — a nation has at most one flag and
-    one portrait (INV-15); a replacement upload rewrites the row in the
+    A player without a nation keeps at most one LIVE application —
+    ``DRAFT`` (editable, reserves nothing) or ``PENDING`` (under
+    review; reserves its provinces, colour, full and short name for
+    every other path, APP-1). ``ACCEPTED`` rows are snapshots kept for
+    history and never block a new application after the nation is
+    gone. The liveness/uniqueness rules are pinned by the partial
+    unique indexes below — a draft does not collide with its own
+    pending-era values, a second live row can never exist.
+    """
+
+    __tablename__ = "nation_applications"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    owner_player_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("players.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Profile fields — the same types and requiredness as ``nations``;
+    # save_draft writes every mandatory field after the same format
+    # checks NationService.create runs (INV-9).
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    short_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    color_hex: Mapped[str] = mapped_column(CHAR(7), nullable=False)
+    motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    leader_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    leader_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    succession_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    leader_bio: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    history_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    capital_province_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "provinces.id",
+            name="fk_nation_applications_capital_province_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    capital_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Why the row sits in DRAFT: 'returned' (admin), 'cancelled'
+    # (player), 'failed' (auto-accept could not create the nation).
+    draft_reason: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    return_comment: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    submissions: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    review_deadline_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reviewer_player_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "players.id",
+            name="fk_nation_applications_reviewer_player_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    reviewer_assigned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # A snapshot like admin_grants.granted_by_vk_user_id — the decision
+    # history survives the deciding admin; no FK by design.
+    decided_by_player_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    auto_accepted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    accepted_nation_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "nations.id",
+            name="fk_nation_applications_accepted_nation_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    province_rows: Mapped[list[NationApplicationProvince]] = relationship(
+        back_populates="application", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('DRAFT', 'PENDING', 'ACCEPTED')",
+            name="ck_nation_applications_status",
+        ),
+        CheckConstraint(
+            "draft_reason IS NULL OR "
+            "draft_reason IN ('returned', 'cancelled', 'failed')",
+            name="ck_nation_applications_draft_reason",
+        ),
+        # One live (DRAFT|PENDING) application per player — an ACCEPTED
+        # row never blocks a fresh application (Spec APP, §1).
+        Index(
+            "uq_nation_applications_owner_live",
+            "owner_player_id",
+            unique=True,
+            sqlite_where=text("status IN ('DRAFT', 'PENDING')"),
+            postgresql_where=text("status IN ('DRAFT', 'PENDING')"),
+        ),
+        # A PENDING row reserves its name, short name and colour.
+        Index(
+            "uq_nation_applications_pending_name",
+            "name",
+            unique=True,
+            sqlite_where=text("status = 'PENDING'"),
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+        Index(
+            "uq_nation_applications_pending_short_name",
+            "short_name",
+            unique=True,
+            sqlite_where=text("status = 'PENDING'"),
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+        Index(
+            "uq_nation_applications_pending_color_hex",
+            "color_hex",
+            unique=True,
+            sqlite_where=text("status = 'PENDING'"),
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+    )
+
+
+class NationApplicationProvince(Base):
+    """One province picked in an application, in selection order.
+
+    ``is_reserved`` is true exactly while the application sits in
+    ``PENDING`` (the service owns the flag — drafts never reserve);
+    the partial unique index makes a province reservable by a single
+    application at a time (APP-1).
+    """
+
+    __tablename__ = "nation_application_provinces"
+
+    application_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey(
+            "nation_applications.id",
+            name="fk_nation_application_provinces_application_id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    province_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey(
+            "provinces.id", name="fk_nation_application_provinces_province_id"
+        ),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_reserved: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+
+    application: Mapped[NationApplication] = relationship(
+        back_populates="province_rows"
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_nation_application_provinces_reserved",
+            "province_id",
+            unique=True,
+            sqlite_where=text("is_reserved"),
+            postgresql_where=text("is_reserved"),
+        ),
+    )
+
+
+class NationImage(Base):
+    """One uploaded picture of a nation or an application (0.12.0 unit
+    5 extended by 0.13.0 unit 4, Spec Part 1 + Spec applications §1).
+
+    One row per (owner, kind) — an owner has at most one flag and one
+    portrait (INV-15); a replacement upload rewrites the row in the
     same transaction, so the previous content is gone immediately and
     its sha256-addressed URL turns 404. Both WebP variants live in the
     row itself; ``sha256`` is the content key of ``full_bytes`` and is
-    shared freely between rows of different nations with the same file.
+    shared freely between rows of different owners with the same file.
 
-    The CASCADE FK is only a PostgreSQL safety net: NationService.delete
-    and the world reset remove these rows with an explicit DELETE
-    before touching nations (INV-19) — SQLite test schemas may run
-    without enforced foreign keys.
+    The owner is exactly one of ``nation_id`` / ``application_id``
+    (migration 0019, ``ck_nation_images_one_owner``): an application's
+    pictures flip to the nation at acceptance. Both CASCADE FKs are
+    only a PostgreSQL safety net: the services and the world reset
+    remove these rows with an explicit DELETE before touching the
+    owners (INV-19) — SQLite test schemas may run without enforced
+    foreign keys.
     """
 
     __tablename__ = "nation_images"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    nation_id: Mapped[str] = mapped_column(
+    nation_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("nations.id", name="fk_nation_images_nation_id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+    )
+    application_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "nation_applications.id",
+            name="fk_nation_images_application_id",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
     )
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -374,6 +580,13 @@ class NationImage(Base):
 
     __table_args__ = (
         UniqueConstraint("nation_id", "kind", name="uq_nation_images_nation_kind"),
+        UniqueConstraint(
+            "application_id", "kind", name="uq_nation_images_application_kind"
+        ),
         CheckConstraint("kind IN ('flag', 'portrait')", name="ck_nation_images_kind"),
+        CheckConstraint(
+            "(nation_id IS NULL) <> (application_id IS NULL)",
+            name="ck_nation_images_one_owner",
+        ),
         Index("ix_nation_images_sha256", "sha256"),
     )
