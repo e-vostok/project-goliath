@@ -30,6 +30,7 @@ from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
 )
+from modules._00_core.models import Player
 from tests.core.admin.test_router import (
     ADMIN_VK_ID,
     BACKEND_DIR,

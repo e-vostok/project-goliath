@@ -673,8 +673,6 @@ class TestAdminListFlagThumbs:
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
         first = await _upload(live_client, owner_headers, "flag")
-        url = f"/api/v1/admin/nations/{nation['id']}"
-
         async def current_thumb() -> str | None:
             response = await live_client.get(
                 "/api/v1/admin/nations", headers=headers

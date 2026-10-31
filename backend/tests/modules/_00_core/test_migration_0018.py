@@ -60,7 +60,10 @@ def _schema(url: str) -> dict:
                     else set()
                 ),
                 "uniques": (
-                    {u["name"]: u["column_names"] for u in insp.get_unique_constraints(TABLE)}
+                    {
+                        u["name"]: u["column_names"]
+                        for u in insp.get_unique_constraints(TABLE)
+                    }
                     if TABLE in insp.get_table_names()
                     else {}
                 ),

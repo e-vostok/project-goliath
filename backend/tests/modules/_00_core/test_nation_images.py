@@ -18,7 +18,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
-from sqlalchemy import event, func, select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -29,7 +29,7 @@ from core.db import Base, get_session
 from main import app
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.images import ProcessedImage
-from modules._00_core.models import NationImage, Player
+from modules._00_core.models import NationImage
 from modules._00_core.service import (
     NationImageInfo,
     NationService,

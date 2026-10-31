@@ -120,7 +120,11 @@ async def seed_nation(
         # VALID_PROFILE's constant would collide.
         short_name=short_name
         or name[: CORE_CONFIG.nation.short_name_max_length],
-        **({} if legacy else {k: v for k, v in VALID_PROFILE.items() if k != "short_name"}),
+        **(
+            {}
+            if legacy
+            else {k: v for k, v in VALID_PROFILE.items() if k != "short_name"}
+        ),
         created_at=datetime.now(UTC),
         created_turn=0,
     )
