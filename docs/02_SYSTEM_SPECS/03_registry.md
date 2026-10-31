@@ -102,7 +102,6 @@ class NationRegistryRow:
 PlayerService.list_for_registry(session) -> list[PlayerRegistryRow]   # порядок: created_at, id
 NationService.list_for_registry(session) -> list[NationRegistryRow]   # порядок: created_turn, created_at, id
 ```
-
 `province_count` считается как число строк `provinces` с `nation_id = nation.id` (морская зона не может иметь владельца: `ck_provinces_sea_unowned`). Игровую дату считает существующая `compute_game_date(turn, CoreConfig)`; зону и календарь Реестр берёт из `CoreConfig`, загруженного тем же `CoreConfig.get_default_config_path()`, что и `router.py` ядра.
 
 `NationService.create` записывает `created_turn` = `game_clock.current_turn` той же транзакции (через существующий `_current_turn(session)`), как `OwnershipChange.turn`. `NationService.update` поле не меняет (INV-R9).
@@ -143,7 +142,6 @@ OK          --ВК вернул deactivated или не вернул--> UNAVAILA
 UNAVAILABLE --ВК вернул пользователя без deactivated--> OK
 любой       --сбой запроса--> без изменения status; next_attempt_at = now + failure_retry_minutes
 ```
-
 После любого ответа ВК (успешного или `UNAVAILABLE`): `fetched_at = now`, `next_attempt_at = now + ttl_hours`. Имена и фото в состоянии `UNAVAILABLE` не перезаписываются данными ответа.
 
 ### 2.4. Фоновая задача профилей
@@ -236,11 +234,11 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
 | `index`, `integer`, `gauge` | целое число или `null` |
 | `text` | строка или `null` |
 | `date` | `{"text": str, "key": int}` или `null` |
-| `datetime` | `{"date": "дд.мм.гггг", "time": "чч:мм", "key": int, "day": int, "mark": null \| "overdue"}` или `null`; пустая ячейка — все четыре поля `null`, `mark` сохраняется (просроченный этап без момента времени) |
+| `datetime` | `{"date": "дд.мм.гггг", "time": "чч:мм", "key": int, "day": int, "mark": null / "overdue"}` или `null`; пустая ячейка — все четыре поля `null`, `mark` сохраняется (просроченный этап без момента времени) |
 | `action_text` | `{"text": str, "action": "<обработчик>:<аргумент>"}` или `null` |
-| `person` | `{"name": str, "avatar_url": str \| null, "is_fallback": bool}` |
-| `flag` | `{"color": "#RRGGBB", "image_url": str \| null}` |
-| `nation` | `{"id": str \| null, "name": str, "color": "#RRGGBB", "flag_url": str \| null}` или `null` |
+| `person` | `{"name": str, "avatar_url": str / null, "is_fallback": bool}` |
+| `flag` | `{"color": "#RRGGBB", "image_url": str / null}` |
+| `nation` | `{"id": str / null, "name": str, "color": "#RRGGBB", "flag_url": str / null}` или `null` |
 
 Форма точная: лишних ключей в ячейке нет, `cell_matches` проверяет набор ключей целиком. `date`/`time` ячейки `datetime` — текст в зоне `tz` (конструктор берёт зону параметром, источники передают `tick.tick_timezone`); `key` — Unix-секунды момента для сортировки; `day` — целые сутки от 1970-01-01 в той же зоне для фильтра `date_range`. Наивный `datetime` читается как UTC (соглашение хранения). `action` — строка вида `"order:12"`: клиент вызывает обработчик, зарегистрированный под именем до двоеточия, с остатком как аргументом (5.5).
 
@@ -339,7 +337,6 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
   ]
 }
 ```
-
 Поля `source` (таблицы и столбцов) клиенту не отдаются. `Cache-Control: no-cache`.
 
 ### 5.2. `GET /api/v1/registry/tables/{table_id}` — строки таблицы
@@ -363,7 +360,6 @@ $$key = D_{msk} - \text{1970-01-01}\quad(\text{в сутках})$$
   ]
 }
 ```
-
 Коды ошибок: `REGISTRY_TABLE_NOT_FOUND` — `404`; `REGISTRY_PROVIDER_FAILED` — `500`. Состав `cells` — столбцы таблицы из конфига, формы ячеек — 3.6. `Cache-Control: no-store`.
 
 ### 5.3. Что не меняется
@@ -428,7 +424,6 @@ DTO и эндпоинты `00_core`, `01_map`, `02_bot` не меняются. �
   "nation": {"id": "3f2a…", "name": "СКВГ", "color": "#C0392B", "flag_url": "/api/v1/images/3b1f…e9/thumb"}
 }
 ```
-
 Состав — ровно ячейки строки `p<N>` таблицы «Игроки» и ничего сверх (INV-R2): `person` — ячейка `player`, `joined` — ячейка `joined`, `level`, `judge_rating`, `nation` — ячейка `nation` (`null` у игрока без государства; `name` — краткое название). Ни `player_id`, ни `vk_user_id`, ни статуса и отметок профиля ВК в ответе нет. Ячейки строит тот же код источника `players` (`_player_row`), поэтому ответ и строка таблицы совпадают всегда. Пробуждение задачи профилей — правило 2.4, применённое к этому одному игроку. `Cache-Control: no-store`.
 
 Клиентская половина (версия 0.10.0, единица 8b): подэкран «Игрок» внутри Реестра потребляет этот маршрут и ничего больше — состав экрана и правила показа описаны в UI Spec 9.7 (`docs/02_SYSTEM_SPECS/00_core_ui.md`).
@@ -464,7 +459,6 @@ def register_table_source(
 # cell_flag(color: str, image_url: str | None) -> dict
 # cell_nation(name: str, color: str, flag_url: str | None = None, nation_id: str | None = None) -> dict
 ```
-
 Источник читает только публичные функции своего модуля и не пишет в БД. Новый вид данных в существующей таблице: модуль-владелец добавляет ключ в `provides` своего источника (для встроенных `players` и `nations` — в `_03_registry`), затем столбец с этим `source` добавляется в конфиг.
 
 ---
