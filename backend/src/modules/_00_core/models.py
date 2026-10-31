@@ -124,9 +124,7 @@ class Nation(Base):
     # mandatory field (INV-12) and stores emptied optional fields as NULL.
     # short_name is the exception: NOT NULL and UNIQUE since migration
     # 0012 (0.10.0 unit 4a) — every nation has a short name.
-    short_name: Mapped[str] = mapped_column(
-        String(100), nullable=False, unique=True
-    )
+    short_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
     succession_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -298,9 +296,7 @@ class AdminGrant(Base):
     player_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("players.id"), nullable=False, unique=True
     )
-    granted_by_vk_user_id: Mapped[int | None] = mapped_column(
-        BigInteger, nullable=True
-    )
+    granted_by_vk_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -355,9 +351,7 @@ class NationImage(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     nation_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey(
-            "nations.id", name="fk_nation_images_nation_id", ondelete="CASCADE"
-        ),
+        ForeignKey("nations.id", name="fk_nation_images_nation_id", ondelete="CASCADE"),
         nullable=False,
     )
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -379,11 +373,7 @@ class NationImage(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "nation_id", "kind", name="uq_nation_images_nation_kind"
-        ),
-        CheckConstraint(
-            "kind IN ('flag', 'portrait')", name="ck_nation_images_kind"
-        ),
+        UniqueConstraint("nation_id", "kind", name="uq_nation_images_nation_kind"),
+        CheckConstraint("kind IN ('flag', 'portrait')", name="ck_nation_images_kind"),
         Index("ix_nation_images_sha256", "sha256"),
     )

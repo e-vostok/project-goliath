@@ -120,9 +120,7 @@ _TZ_DISPLAY_NAMES = {"Europe/Moscow": "Москва"}
 
 
 def _tz_display_name(tz_name: str) -> str:
-    return _TZ_DISPLAY_NAMES.get(
-        tz_name, tz_name.rsplit("/", 1)[-1].replace("_", " ")
-    )
+    return _TZ_DISPLAY_NAMES.get(tz_name, tz_name.rsplit("/", 1)[-1].replace("_", " "))
 
 
 def _genitive_month(name: str) -> str:

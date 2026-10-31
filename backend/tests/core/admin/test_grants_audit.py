@@ -214,9 +214,7 @@ class TestAdminGrants:
         assert response.json()["code"] == "ADMIN_REQUIRED"
 
     @pytest.mark.asyncio
-    async def test_revoke_refuses_root_admin(
-        self, test_db_session, monkeypatch
-    ):
+    async def test_revoke_refuses_root_admin(self, test_db_session, monkeypatch):
         """A player whose vk id sits in ADMIN_VK_USER_IDS is refused —
         env admins can only be removed by editing the environment."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(GRANTED_VK_ID))
@@ -229,9 +227,7 @@ class TestAdminGrants:
             await AdminGrantService.revoke(test_db_session, player.id)
 
         assert exc_info.value.code == "ROOT_ADMIN_PROTECTED"
-        assert await AdminGrantService.is_granted(
-            test_db_session, GRANTED_VK_ID
-        )
+        assert await AdminGrantService.is_granted(test_db_session, GRANTED_VK_ID)
 
     @pytest.mark.asyncio
     async def test_revoke_refuses_last_admin(self, test_db_session):
@@ -239,12 +235,8 @@ class TestAdminGrants:
         unrevokable; a non-last grant revokes normally."""
         player_a = await seed_player(test_db_session, vk_user_id=1001)
         player_b = await seed_player(test_db_session, vk_user_id=1002)
-        await AdminGrantService.grant(
-            test_db_session, player_a.id, by_vk_user_id=1
-        )
-        await AdminGrantService.grant(
-            test_db_session, player_b.id, by_vk_user_id=1
-        )
+        await AdminGrantService.grant(test_db_session, player_a.id, by_vk_user_id=1)
+        await AdminGrantService.grant(test_db_session, player_b.id, by_vk_user_id=1)
 
         # player_b still holds a grant — the world keeps an admin.
         await AdminGrantService.revoke(test_db_session, player_a.id)
@@ -289,9 +281,7 @@ class TestAdminAuditLog:
         assert [row.id for row in older] == [first.id]
 
     @pytest.mark.asyncio
-    async def test_tick_run_audit_survives_state_reset(
-        self, live_client, monkeypatch
-    ):
+    async def test_tick_run_audit_survives_state_reset(self, live_client, monkeypatch):
         """POST /tick/run writes a journal row; POST /state/reset does
         not wipe admin_audit_log — the tick entry survives and the
         reset records its own row."""
@@ -303,10 +293,14 @@ class TestAdminAuditLog:
 
         async with get_session_context() as session:
             rows = (
-                await session.execute(
-                    select(AdminAuditLog).order_by(AdminAuditLog.id)
+                (
+                    await session.execute(
+                        select(AdminAuditLog).order_by(AdminAuditLog.id)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert [row.action for row in rows] == ["tick.run"]
             assert rows[0].actor_vk_user_id == ADMIN_VK_ID
 
@@ -317,10 +311,14 @@ class TestAdminAuditLog:
 
         async with get_session_context() as session:
             rows = (
-                await session.execute(
-                    select(AdminAuditLog).order_by(AdminAuditLog.id)
+                (
+                    await session.execute(
+                        select(AdminAuditLog).order_by(AdminAuditLog.id)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert [row.action for row in rows] == ["tick.run", "world.reset"]
             assert all(row.actor_vk_user_id == ADMIN_VK_ID for row in rows)
 
@@ -361,9 +359,7 @@ class TestAdminAuditRetention:
         assert kept[0].id == rows[-1].id
 
     @pytest.mark.asyncio
-    async def test_trim_rolls_back_with_the_caller(
-        self, test_db_session, monkeypatch
-    ):
+    async def test_trim_rolls_back_with_the_caller(self, test_db_session, monkeypatch):
         """The trim lands in the CALLER's transaction: the rows it
         deleted come back on rollback, together with the new row
         itself."""
@@ -431,10 +427,14 @@ class TestAdminAuditRetention:
         assert delete.status_code == 200, delete.text
         async with get_session_context() as session:
             rows = (
-                await session.execute(
-                    select(AdminAuditLog).order_by(AdminAuditLog.id)
+                (
+                    await session.execute(
+                        select(AdminAuditLog).order_by(AdminAuditLog.id)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert [row.action for row in rows] == [
                 "tick.run",
                 "tick.run",
@@ -450,10 +450,14 @@ class TestAdminAuditRetention:
         assert reset.status_code == 200, reset.text
         async with get_session_context() as session:
             rows = (
-                await session.execute(
-                    select(AdminAuditLog).order_by(AdminAuditLog.id)
+                (
+                    await session.execute(
+                        select(AdminAuditLog).order_by(AdminAuditLog.id)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert [row.action for row in rows] == [
                 "tick.run",
                 "player.delete",

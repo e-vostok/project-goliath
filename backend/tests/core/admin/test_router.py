@@ -462,9 +462,7 @@ class TestAdminOverview:
         assert by_key["turn"]["value"] == "0 · январь 2040"
         assert by_key["tick_timezone"]["value"] == "Москва"
         assert by_key["players"]["value"] == "1"  # the admin login
-        assert (
-            by_key["provinces_occupied"]["value"] == f"0 из {MINI_NODE_COUNT}"
-        )
+        assert by_key["provinces_occupied"]["value"] == f"0 из {MINI_NODE_COUNT}"
         assert by_key["admins"]["value"] == "1"  # the env allowlist entry
 
     @pytest.mark.asyncio

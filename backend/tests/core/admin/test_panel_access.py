@@ -191,9 +191,7 @@ class TestPanelEntry:
         first = await live_client.post("/api/v1/admin/session", json={"token": token})
         assert first.status_code == 200
 
-        second = await live_client.post(
-            "/api/v1/admin/session", json={"token": token}
-        )
+        second = await live_client.post("/api/v1/admin/session", json={"token": token})
 
         assert second.status_code == 401
         assert second.json()["code"] == "PANEL_LINK_INVALID"
@@ -220,9 +218,7 @@ class TestPanelEntry:
         assert exchange.json()["code"] == "PANEL_LINK_INVALID"
 
     @pytest.mark.asyncio
-    async def test_non_admin_gets_403_on_panel_link(
-        self, live_client, monkeypatch
-    ):
+    async def test_non_admin_gets_403_on_panel_link(self, live_client, monkeypatch):
         """panel-link is gated by require_admin like every admin route."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _auth_headers(live_client, USER_VK_ID)
@@ -242,9 +238,7 @@ class TestPanelEntry:
         headers = await _auth_headers(live_client, USER_VK_ID)
         player_id = await _player_id_of(USER_VK_ID)
         async with get_session_context() as session:
-            await AdminGrantService.grant(
-                session, player_id, by_vk_user_id=ADMIN_VK_ID
-            )
+            await AdminGrantService.grant(session, player_id, by_vk_user_id=ADMIN_VK_ID)
             await session.commit()
 
         token = await _issue_link(live_client, headers)
@@ -259,9 +253,7 @@ class TestPanelEntry:
         assert exchange.status_code == 403
         assert exchange.json()["code"] == "ADMIN_REQUIRED"
 
-        retry = await live_client.post(
-            "/api/v1/admin/session", json={"token": token}
-        )
+        retry = await live_client.post("/api/v1/admin/session", json={"token": token})
         assert retry.status_code == 401
         assert retry.json()["code"] == "PANEL_LINK_INVALID"
 
@@ -280,9 +272,7 @@ class TestPanelEntry:
         assert token not in (entry.player_id, entry.expires_at, entry.used)
 
     @pytest.mark.asyncio
-    async def test_per_player_cap_drops_oldest_link(
-        self, live_client, monkeypatch
-    ):
+    async def test_per_player_cap_drops_oldest_link(self, live_client, monkeypatch):
         """Issuing above max_pending_links_per_player kills the oldest
         pending link; the newest still redeems."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
@@ -316,12 +306,16 @@ class TestPanelEntry:
         assert bad.status_code == 401
         async with get_session_context() as session:
             rows = (
-                await session.execute(
-                    select(AdminAuditLog).where(
-                        AdminAuditLog.action == "panel.login"
+                (
+                    await session.execute(
+                        select(AdminAuditLog).where(
+                            AdminAuditLog.action == "panel.login"
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert rows == []
 
         token = await _issue_link(live_client, headers)
@@ -330,12 +324,16 @@ class TestPanelEntry:
 
         async with get_session_context() as session:
             rows = (
-                await session.execute(
-                    select(AdminAuditLog).where(
-                        AdminAuditLog.action == "panel.login"
+                (
+                    await session.execute(
+                        select(AdminAuditLog).where(
+                            AdminAuditLog.action == "panel.login"
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert len(rows) == 1
         row = rows[0]
         assert row.actor_vk_user_id == ADMIN_VK_ID
@@ -343,9 +341,7 @@ class TestPanelEntry:
         assert token not in str(row.details or {})
 
     @pytest.mark.asyncio
-    async def test_both_responses_carry_no_store(
-        self, live_client, monkeypatch
-    ):
+    async def test_both_responses_carry_no_store(self, live_client, monkeypatch):
         """panel-link and session answers must never be cached."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _auth_headers(live_client, ADMIN_VK_ID)

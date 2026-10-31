@@ -151,9 +151,7 @@ def _player_row(
                     row.nation_short_name,
                     row.nation_color,
                     nation_id=row.nation_id,
-                    flag_url=images.image_url(
-                        row.nation_flag_sha256, "thumb"
-                    ),
+                    flag_url=images.image_url(row.nation_flag_sha256, "thumb"),
                 )
                 if row.nation_id is not None
                 else None
@@ -185,9 +183,7 @@ async def load_player(session: AsyncSession, number: int) -> RegistryRow:
 
     numbers = await ensure_player_numbers(session)
     rows = await PlayerService.list_for_registry(session)
-    row = next(
-        (r for r in rows if numbers.get(r.player_id) == number), None
-    )
+    row = next((r for r in rows if numbers.get(r.player_id) == number), None)
     if row is None:
         raise RegistryPlayerNotFoundError(number)
 
@@ -199,9 +195,7 @@ async def load_player(session: AsyncSession, number: int) -> RegistryRow:
     if profile is None or aware_utc(profile.next_attempt_at) <= datetime.now(UTC):
         request_wake()
 
-    return _player_row(
-        row, profile, number, get_registry_config(), get_core_config()
-    )
+    return _player_row(row, profile, number, get_registry_config(), get_core_config())
 
 
 async def load_nations(session: AsyncSession) -> list[RegistryRow]:

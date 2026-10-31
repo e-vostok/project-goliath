@@ -258,9 +258,7 @@ async def test_reset_empties_every_reset_table(live_client, monkeypatch):
         player = PlayerFactory.build(vk_user_id=999001, nations=[])
         session.add(player)
         await session.flush()
-        nation = NationFactory.build(
-            owner=player, provinces=[], scheduled_actions=[]
-        )
+        nation = NationFactory.build(owner=player, provinces=[], scheduled_actions=[])
         session.add(nation)
         # The nations row must exist before the image rows: the unit of
         # work does not order inserts of objects linked only by a raw FK

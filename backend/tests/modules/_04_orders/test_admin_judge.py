@@ -63,10 +63,10 @@ async def _pending_count(session, player_id: str) -> int:
 
 async def _audit_rows(session):
     return (
-        await session.execute(
-            select(AdminAuditLog).order_by(AdminAuditLog.id)
-        )
-    ).scalars().all()
+        (await session.execute(select(AdminAuditLog).order_by(AdminAuditLog.id)))
+        .scalars()
+        .all()
+    )
 
 
 class TestAdminAssignJudge:
@@ -120,9 +120,7 @@ class TestAdminAssignJudge:
         distribution of a sibling order did."""
         async with session_factory() as session:
             author, nation = await seed_author(session, 910011)
-            judge = await seed_judge(
-                session, 910012, nation=True, consent="ALLOWED"
-            )
+            judge = await seed_judge(session, 910012, nation=True, consent="ALLOWED")
             order = await make_order(session, author, nation=nation)
             waiting = await make_order(session, author, nation=nation)
             await session.commit()
@@ -152,12 +150,8 @@ class TestAdminAssignJudge:
             # sibling order (their composition follows 02_bot's config).
             rows = (await session.execute(select(BotOutbox))).scalars().all()
             assert rows
-            assert all(
-                f":{order_id}" not in row.event_key for row in rows
-            )
-            assert any(
-                f":{waiting_id}" in row.event_key for row in rows
-            )
+            assert all(f":{order_id}" not in row.event_key for row in rows)
+            assert any(f":{waiting_id}" in row.event_key for row in rows)
 
     async def test_reassign_cancels_queued_rows_and_silences_reminder(
         self, session_factory, orders_bot_started
@@ -178,9 +172,7 @@ class TestAdminAssignJudge:
             other_judge = await seed_judge(
                 session, 910024, nation=True, consent="ALLOWED"
             )
-            order = await make_order(
-                session, author, nation=nation, judge=old_judge
-            )
+            order = await make_order(session, author, nation=nation, judge=old_judge)
             other_order = await make_order(
                 session,
                 author,
@@ -231,6 +223,7 @@ class TestAdminAssignJudge:
         assert outcome.cancelled_outbox_rows == 2
 
         async with session_factory() as session:
+
             async def status_of(row_id):
                 row = await session.get(BotOutbox, row_id)
                 return row.status, row.drop_reason
@@ -248,12 +241,14 @@ class TestAdminAssignJudge:
         assert stats.reminders_sent == 0
         async with session_factory() as session:
             rows = (
-                await session.execute(
-                    select(BotOutbox).where(
-                        BotOutbox.player_id == new_judge_id
+                (
+                    await session.execute(
+                        select(BotOutbox).where(BotOutbox.player_id == new_judge_id)
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert rows == []
             assert all(
                 row.status == "DROPPED"
@@ -263,7 +258,9 @@ class TestAdminAssignJudge:
                             BotOutbox.event_key.like(f"%:{order_id}")
                         )
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
 
     async def test_decided_order_refused_before_author_check(
@@ -302,9 +299,7 @@ class TestAdminAssignJudge:
     async def test_same_judge_refused(self, test_db_session, orders_started):
         author, nation = await seed_author(test_db_session, 910051)
         judge = await seed_judge(test_db_session, 910052, nation=True)
-        order = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        order = await make_order(test_db_session, author, nation=nation, judge=judge)
         with pytest.raises(OrderJudgeAlreadyAssignedError) as refused:
             await OrderService.admin_assign_judge(
                 test_db_session, order.number, judge.id
@@ -314,9 +309,7 @@ class TestAdminAssignJudge:
     async def test_unknown_order_refused(self, test_db_session, orders_started):
         judge = await seed_judge(test_db_session, 910061, nation=True)
         with pytest.raises(OrderNotFoundError):
-            await OrderService.admin_assign_judge(
-                test_db_session, 999, judge.id
-            )
+            await OrderService.admin_assign_judge(test_db_session, 999, judge.id)
 
     async def test_threshold_limit_and_reachability_do_not_apply(
         self, test_db_session, orders_started
@@ -333,22 +326,14 @@ class TestAdminAssignJudge:
         busy = await seed_judge(test_db_session, 910073, nation=True)
         ghost = await seed_judge(test_db_session, 910074)
         for _ in range(config.judge.max_pending_verdicts):
-            await make_order(
-                test_db_session, author, nation=nation, judge=busy
-            )
+            await make_order(test_db_session, author, nation=nation, judge=busy)
         one = await make_order(test_db_session, author, nation=nation)
         two = await make_order(test_db_session, author, nation=nation)
         three = await make_order(test_db_session, author, nation=nation)
 
-        await OrderService.admin_assign_judge(
-            test_db_session, one.number, weak.id
-        )
-        await OrderService.admin_assign_judge(
-            test_db_session, two.number, busy.id
-        )
-        await OrderService.admin_assign_judge(
-            test_db_session, three.number, ghost.id
-        )
+        await OrderService.admin_assign_judge(test_db_session, one.number, weak.id)
+        await OrderService.admin_assign_judge(test_db_session, two.number, busy.id)
+        await OrderService.admin_assign_judge(test_db_session, three.number, ghost.id)
 
         for order, judge in ((one, weak), (two, busy), (three, ghost)):
             await test_db_session.refresh(order)
@@ -394,9 +379,7 @@ class TestAdminAssignJudge:
         )
         assert view.verdict_title == verdict["title"]
 
-    async def test_load_counters_follow_the_rows(
-        self, test_db_session, orders_started
-    ):
+    async def test_load_counters_follow_the_rows(self, test_db_session, orders_started):
         """Judge load is derived from the rows, not a counter: the
         reassigned order leaves the old judge's queue and count and
         joins the new one's — nothing else is recomputed."""
@@ -417,9 +400,7 @@ class TestAdminAssignJudge:
         assert await _pending_count(test_db_session, old_judge.id) == 0
         assert await _pending_count(test_db_session, new_judge.id) == 1
         assert (
-            await OrderService.list_assigned(
-                test_db_session, player_id=old_judge.id
-            )
+            await OrderService.list_assigned(test_db_session, player_id=old_judge.id)
             == []
         )
         assert [
@@ -496,23 +477,17 @@ class TestAdminOrdersApi:
                 ADMIN_URL, params={"status": status}, headers=headers
             )
             assert filtered.status_code == 200
-            assert {
-                item["number"] for item in filtered.json()["items"]
-            } == expected
+            assert {item["number"] for item in filtered.json()["items"]} == expected
 
         # Search matches a number exactly or a title substring.
         by_number = await client.get(
             ADMIN_URL, params={"search": str(waiting.number)}, headers=headers
         )
-        assert [i["number"] for i in by_number.json()["items"]] == [
-            waiting.number
-        ]
+        assert [i["number"] for i in by_number.json()["items"]] == [waiting.number]
         by_title = await client.get(
             ADMIN_URL, params={"search": "столе"}, headers=headers
         )
-        assert [i["number"] for i in by_title.json()["items"]] == [
-            assigned.number
-        ]
+        assert [i["number"] for i in by_title.json()["items"]] == [assigned.number]
 
         page = await client.get(
             ADMIN_URL,
@@ -521,9 +496,7 @@ class TestAdminOrdersApi:
         )
         assert page.status_code == 200
         assert page.json()["total"] == 3
-        assert [i["number"] for i in page.json()["items"]] == [
-            assigned.number
-        ]
+        assert [i["number"] for i in page.json()["items"]] == [assigned.number]
 
     async def test_preview_blockers_and_warnings(
         self, client, test_db_session, orders_started, monkeypatch
@@ -544,9 +517,7 @@ class TestAdminOrdersApi:
         )
         busy = await seed_judge(test_db_session, 910115, nation=True)
         for _ in range(config.judge.max_pending_verdicts):
-            await make_order(
-                test_db_session, author, nation=nation, judge=busy
-            )
+            await make_order(test_db_session, author, nation=nation, judge=busy)
         order = await make_order(test_db_session, author, nation=nation)
         headers = bearer_headers(admin.id)
 
@@ -577,9 +548,7 @@ class TestAdminOrdersApi:
         limit = [w for w in warnings if w["code"] == "JUDGE_AT_PENDING_LIMIT"]
         assert limit and str(config.judge.max_pending_verdicts) in limit[0]["text"]
 
-        judged = await make_order(
-            test_db_session, author, nation=nation, judge=clean
-        )
+        judged = await make_order(test_db_session, author, nation=nation, judge=clean)
         decided = await make_order(
             test_db_session,
             author,
@@ -675,8 +644,7 @@ class TestAdminOrdersApi:
         assert first.details["judge_player_id"] == new_judge.id
         assert first.details["previous_judge_player_id"] is None
         assert second.summary == (
-            f"Судья приказа № {judged.number} заменён: "
-            "Дмитрий Соколов → Ольга Ветрова."
+            f"Судья приказа № {judged.number} заменён: Дмитрий Соколов → Ольга Ветрова."
         )
         assert second.details["previous_judge_player_id"] == old_judge.id
 
@@ -699,9 +667,7 @@ class TestAdminOrdersApi:
             verdict_at=datetime.now(UTC),
             submitted_at=datetime.now(UTC) - timedelta(hours=1),
         )
-        judged = await make_order(
-            test_db_session, author, nation=nation, judge=judge
-        )
+        judged = await make_order(test_db_session, author, nation=nation, judge=judge)
         fresh = await make_order(test_db_session, author, nation=nation)
         headers = bearer_headers(admin.id)
 
@@ -788,9 +754,7 @@ class TestAdminOrdersApi:
             f"{ORDERS_URL}/assigned", headers=bearer_headers(new_judge.id)
         )
         assert old_queue.json()["items"] == []
-        assert [item["number"] for item in new_queue.json()["items"]] == [
-            order.number
-        ]
+        assert [item["number"] for item in new_queue.json()["items"]] == [order.number]
 
     async def test_list_and_judge_answer_carry_flag_thumb_url(
         self, client, test_db_session, orders_started, monkeypatch
@@ -821,21 +785,15 @@ class TestAdminOrdersApi:
         response = await client.get(ADMIN_URL, headers=headers)
         assert response.status_code == 200
         assert len(calls) == 1
-        item = next(
-            i for i in response.json()["items"] if i["number"] == order.number
-        )
+        item = next(i for i in response.json()["items"] if i["number"] == order.number)
         assert item["flag_thumb_url"] is None
 
         # The upload lands afterwards — the same order now carries it.
-        await make_nation_image(
-            test_db_session, nation, kind="flag", sha256="a" * 64
-        )
+        await make_nation_image(test_db_session, nation, kind="flag", sha256="a" * 64)
         calls.clear()
         response = await client.get(ADMIN_URL, headers=headers)
         assert len(calls) == 1
-        item = next(
-            i for i in response.json()["items"] if i["number"] == order.number
-        )
+        item = next(i for i in response.json()["items"] if i["number"] == order.number)
         assert item["flag_thumb_url"] == f"/api/v1/images/{'a' * 64}/thumb"
 
         # POST /{n}/judge answers the same item shape.
@@ -845,9 +803,7 @@ class TestAdminOrdersApi:
             headers=headers,
         )
         assert assigned.status_code == 200
-        assert assigned.json()["flag_thumb_url"] == (
-            f"/api/v1/images/{'a' * 64}/thumb"
-        )
+        assert assigned.json()["flag_thumb_url"] == (f"/api/v1/images/{'a' * 64}/thumb")
 
         # The nation is gone — the snapshot id finds no row, null.
         for row in (
@@ -860,7 +816,5 @@ class TestAdminOrdersApi:
         await test_db_session.flush()
 
         response = await client.get(ADMIN_URL, headers=headers)
-        item = next(
-            i for i in response.json()["items"] if i["number"] == order.number
-        )
+        item = next(i for i in response.json()["items"] if i["number"] == order.number)
         assert item["flag_thumb_url"] is None

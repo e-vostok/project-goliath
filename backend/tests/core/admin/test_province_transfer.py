@@ -170,9 +170,7 @@ async def _seed_nation(
     nation_id = str(uuid.uuid4())
     async with get_session_context() as session:
         owner = (
-            await session.execute(
-                select(Player).where(Player.vk_user_id == vk_user_id)
-            )
+            await session.execute(select(Player).where(Player.vk_user_id == vk_user_id))
         ).scalar_one()
         session.add(
             Nation(
@@ -225,9 +223,7 @@ class TestTransferAuthorization:
     """Both endpoints obey require_admin like every admin route."""
 
     @pytest.mark.asyncio
-    async def test_non_admin_gets_403_on_both_endpoints(
-        self, live_client, monkeypatch
-    ):
+    async def test_non_admin_gets_403_on_both_endpoints(self, live_client, monkeypatch):
         await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         user_headers = await _auth_headers(live_client, SECOND_VK_ID)
@@ -250,9 +246,7 @@ class TestTransferPreview:
     """GET /api/v1/admin/provinces/{id}/transfer-preview."""
 
     @pytest.mark.asyncio
-    async def test_free_province_to_nation_shape(
-        self, live_client, monkeypatch
-    ):
+    async def test_free_province_to_nation_shape(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
 
@@ -309,9 +303,7 @@ class TestTransferPreview:
         assert body["blocker"] is None
 
     @pytest.mark.asyncio
-    async def test_capital_preview_offers_remaining(
-        self, live_client, monkeypatch
-    ):
+    async def test_capital_preview_offers_remaining(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         await _create_nation_as_player(live_client, OWNER_VK_ID)
 
@@ -355,9 +347,7 @@ class TestTransferPreview:
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
 
         # Transferring to the current owner.
-        owned = await live_client.get(
-            _preview_url(1001, nation["id"]), headers=headers
-        )
+        owned = await live_client.get(_preview_url(1001, nation["id"]), headers=headers)
         assert owned.status_code == 200
         assert owned.json()["blocker"] == "ALREADY_OWNER"
 
@@ -390,9 +380,7 @@ class TestTransfer:
     """POST /api/v1/admin/provinces/{id}/transfer."""
 
     @pytest.mark.asyncio
-    async def test_free_to_nation_writes_one_audit_row(
-        self, live_client, monkeypatch
-    ):
+    async def test_free_to_nation_writes_one_audit_row(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
 
@@ -412,9 +400,7 @@ class TestTransfer:
         }
 
         async with get_session_context() as session:
-            assert (
-                await session.get(Province, 1006)
-            ).nation_id == nation["id"]
+            assert (await session.get(Province, 1006)).nation_id == nation["id"]
             # The map's own listener wrote the journal entry.
             journal = list(
                 (
@@ -437,8 +423,7 @@ class TestTransfer:
         assert row.target_type == "province"
         assert row.target_id == "1006"
         assert row.summary == (
-            "Свободная провинция «Mini Zeta» передана "
-            "государству «Testland»."
+            "Свободная провинция «Mini Zeta» передана государству «Testland»."
         )
         assert row.details == {
             "province_id": 1006,
@@ -489,9 +474,7 @@ class TestTransfer:
         assert rows[0].details["seized"] is True
 
     @pytest.mark.asyncio
-    async def test_release_writes_one_audit_row(
-        self, live_client, monkeypatch
-    ):
+    async def test_release_writes_one_audit_row(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
 
@@ -509,15 +492,12 @@ class TestTransfer:
         rows = await _audit_rows(action="province.transfer")
         assert len(rows) == 1
         assert rows[0].summary == (
-            "Провинция «Mini Beta» выведена из-под "
-            "государства «Testland»."
+            "Провинция «Mini Beta» выведена из-под государства «Testland»."
         )
         assert rows[0].details["seized"] is False
 
     @pytest.mark.asyncio
-    async def test_capital_move_requires_and_updates(
-        self, live_client, monkeypatch
-    ):
+    async def test_capital_move_requires_and_updates(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         await _create_nation_as_player(live_client, OWNER_VK_ID)
 
@@ -566,9 +546,7 @@ class TestTransfer:
         assert rows[0].details["new_capital_province_id"] == 1002
 
     @pytest.mark.asyncio
-    async def test_capital_name_unknown_hook_422(
-        self, live_client, monkeypatch
-    ):
+    async def test_capital_name_unknown_hook_422(self, live_client, monkeypatch):
         """A replacement capital whose name no province-info hook knows
         is refused 422 PROVINCE_NAME_UNKNOWN."""
         headers = await _admin_headers(live_client, monkeypatch)
@@ -584,9 +562,7 @@ class TestTransfer:
         assert response.json()["code"] == "PROVINCE_NAME_UNKNOWN"
 
     @pytest.mark.asyncio
-    async def test_last_province_refused_writes_nothing(
-        self, live_client, monkeypatch
-    ):
+    async def test_last_province_refused_writes_nothing(self, live_client, monkeypatch):
         await _auth_headers(live_client, OWNER_VK_ID)
         nation_id = await _seed_nation(
             OWNER_VK_ID,
@@ -606,13 +582,9 @@ class TestTransfer:
         assert response.json()["code"] == "LAST_PROVINCE"
 
         async with get_session_context() as session:
-            assert (
-                await session.get(Province, 1001)
-            ).nation_id == nation_id
+            assert (await session.get(Province, 1001)).nation_id == nation_id
             journal_count = (
-                await session.execute(
-                    select(func.count()).select_from(MapOwnershipLog)
-                )
+                await session.execute(select(func.count()).select_from(MapOwnershipLog))
             ).scalar_one()
             assert journal_count == 0
         assert len(await _audit_rows()) == audit_before

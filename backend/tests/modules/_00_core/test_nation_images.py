@@ -183,9 +183,7 @@ class TestPutImage:
         assert gone.status_code == 404
         assert gone.headers["cache-control"] == "no-store"
 
-    async def test_flag_and_portrait_are_independent(
-        self, client, test_db_session
-    ):
+    async def test_flag_and_portrait_are_independent(self, client, test_db_session):
         """One row per kind: uploading both kinds yields two rows and
         replacing the flag leaves the portrait untouched."""
         player = await seed_player(test_db_session)
@@ -263,9 +261,7 @@ class TestPutImage:
         assert resp.json()["code"] == "IMAGE_UNSUPPORTED"
 
     @pytest.mark.parametrize("size", [(400, 600), (600, 600)])
-    async def test_vertical_or_square_flag_is_422(
-        self, client, test_db_session, size
-    ):
+    async def test_vertical_or_square_flag_is_422(self, client, test_db_session, size):
         """A flag must be strictly wider than tall — vertical and
         square sources are both rejected."""
         player = await seed_player(test_db_session)
@@ -323,12 +319,8 @@ class TestPutImage:
         assert up_first.status_code == 200 and up_second.status_code == 200
         shared_url = up_first.json()["url"]
         assert up_second.json()["url"] == shared_url
-        assert len(
-            await _rows(test_db_session, first.id, "flag")
-        ) == 1
-        assert len(
-            await _rows(test_db_session, second.id, "flag")
-        ) == 1
+        assert len(await _rows(test_db_session, first.id, "flag")) == 1
+        assert len(await _rows(test_db_session, second.id, "flag")) == 1
 
         replaced = await client.put(
             "/api/v1/nations/me/images/flag",
@@ -339,9 +331,7 @@ class TestPutImage:
         # The shared hash survives through the second nation's row.
         assert (await client.get(shared_url)).status_code == 200
 
-    async def test_nation_dto_carries_the_four_urls(
-        self, client, test_db_session
-    ):
+    async def test_nation_dto_carries_the_four_urls(self, client, test_db_session):
         """GET /nations/me reports all four picture fields: null before
         any upload, the live URLs after both uploads."""
         player = await seed_player(test_db_session)
@@ -406,9 +396,7 @@ class TestGetImage:
 class TestImageServiceViews:
     """NationService public views (service level, real DB)."""
 
-    async def test_image_refs_every_id_one_query(
-        self, test_db_session, test_db_engine
-    ):
+    async def test_image_refs_every_id_one_query(self, test_db_session, test_db_engine):
         """Every requested id is present (None for missing pictures)
         and exactly one SELECT serves any number of ids."""
         owner = await seed_player(test_db_session, vk_user_id=111)
@@ -439,9 +427,7 @@ class TestImageServiceViews:
             test_db_session, [nation.id, bare.id, ghost_id]
         )
 
-        selects = [
-            s for s in statements if s.lstrip().upper().startswith("SELECT")
-        ]
+        selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
         assert len(selects) == 1, selects
         assert set(refs) == {nation.id, bare.id, ghost_id}
         assert refs[nation.id].flag_sha256 == "ab" * 32
@@ -476,9 +462,7 @@ class TestImageServiceViews:
         assert flag.uploaded_by_player_id == player.id
         assert info["portrait"] is None
 
-    async def test_nation_delete_removes_its_image_rows(
-        self, test_db_session
-    ):
+    async def test_nation_delete_removes_its_image_rows(self, test_db_session):
         """INV-19: deleting a nation removes its image rows explicitly;
         another nation's row with the same hash survives (and its URL
         still resolves through image_bytes)."""
@@ -495,8 +479,10 @@ class TestImageServiceViews:
             short_name="SV",
         )
         shared = ProcessedImage(
-            full=b"shared-full", thumb=b"shared-thumb",
-            sha256="ef" * 32, byte_size=11,
+            full=b"shared-full",
+            thumb=b"shared-thumb",
+            sha256="ef" * 32,
+            byte_size=11,
         )
         await NationService.replace_image(
             test_db_session, first.id, first_player.id, "flag", shared
@@ -511,9 +497,7 @@ class TestImageServiceViews:
         survivors = await _rows(test_db_session, second.id, "flag")
         assert len(survivors) == 1
         assert (
-            await NationService.image_bytes(
-                test_db_session, shared.sha256, "full"
-            )
+            await NationService.image_bytes(test_db_session, shared.sha256, "full")
             == b"shared-full"
         )
 

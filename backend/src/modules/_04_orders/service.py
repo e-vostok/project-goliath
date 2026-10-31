@@ -335,9 +335,7 @@ class OrderService:
                     existing,
                     now=now,
                     viewer_player_id=player_id,
-                    nation_flag_sha256=await _flag_sha256(
-                        session, existing.nation_id
-                    ),
+                    nation_flag_sha256=await _flag_sha256(session, existing.nation_id),
                 ),
                 False,
             )
@@ -487,9 +485,7 @@ class OrderService:
             ).order_by(Order.number.desc())
         )
         rows = result.all()
-        refs = await NationService.image_refs(
-            session, [row[1] for row in rows]
-        )
+        refs = await NationService.image_refs(session, [row[1] for row in rows])
         return [
             RegistryOrderView(
                 number=row[0],
@@ -1017,9 +1013,7 @@ class OrderService:
         for _attempt in range(3):
             # 2. The order exists.
             order = (
-                await session.execute(
-                    select(Order).where(Order.number == number)
-                )
+                await session.execute(select(Order).where(Order.number == number))
             ).scalar_one_or_none()
             if order is None:
                 raise OrderNotFoundError(number)
@@ -1053,10 +1047,8 @@ class OrderService:
                 .values(
                     judge_player_id=judge_player_id,
                     distributed_at=moment,
-                    deadline_at=moment
-                    + timedelta(seconds=judge.deadline_seconds),
-                    reminder_at=moment
-                    + timedelta(seconds=judge.reminder_seconds),
+                    deadline_at=moment + timedelta(seconds=judge.deadline_seconds),
+                    reminder_at=moment + timedelta(seconds=judge.reminder_seconds),
                     # On purpose (Project Owner: no bot messages at
                     # all): marks the reminder handled so the worker's
                     # sweep never tells the new judge.

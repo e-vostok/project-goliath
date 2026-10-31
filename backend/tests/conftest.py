@@ -125,8 +125,7 @@ def _snapshot_process_state() -> dict:
     return {
         "extensions": snapshot_extension_points(),
         "admin": {
-            name: dict(getattr(AdminRegistry, name))
-            for name in _ADMIN_DICT_NAMES
+            name: dict(getattr(AdminRegistry, name)) for name in _ADMIN_DICT_NAMES
         },
         "tick_handlers": {
             phase: list(handlers)
@@ -217,9 +216,7 @@ def _restore_process_state(saved: dict) -> None:
     bot_signal._wake_event = saved["bot_wake"]
     registry_module.clear_registry()
     for source in saved["registry_sources"].values():
-        registry_module.register_table_source(
-            source.key, source.provides, source.load
-        )
+        registry_module.register_table_source(source.key, source.provides, source.load)
     (
         registry_startup._registry_config,
         registry_startup._core_config,
@@ -253,6 +250,7 @@ def _process_state_baseline() -> dict:
     global _BASELINE
     if _BASELINE is None:
         import main  # noqa: F401 — the app import fills what it fills
+
         _BASELINE = _snapshot_process_state()
     return _BASELINE
 

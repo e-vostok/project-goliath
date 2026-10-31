@@ -194,14 +194,10 @@ class TestAdminProvinces:
     """GET /api/v1/admin/provinces — the unit-8a picker."""
 
     @pytest.mark.asyncio
-    async def test_lists_land_with_names_sorted(
-        self, live_client, monkeypatch
-    ):
+    async def test_lists_land_with_names_sorted(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
 
-        response = await live_client.get(
-            "/api/v1/admin/provinces", headers=headers
-        )
+        response = await live_client.get("/api/v1/admin/provinces", headers=headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -226,13 +222,18 @@ class TestAdminProvinces:
         assert response.status_code == 200
         assert data["total"] == 8
         assert {item["id"] for item in data["items"]} == {
-            1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013
+            1006,
+            1007,
+            1008,
+            1009,
+            1010,
+            1011,
+            1012,
+            1013,
         }
         # Without the filter the owned rows expose their owner.
         full = await live_client.get("/api/v1/admin/provinces", headers=headers)
-        owned = [
-            item for item in full.json()["items"] if item["nation_id"] is not None
-        ]
+        owned = [item for item in full.json()["items"] if item["nation_id"] is not None]
         assert len(owned) == 5
         assert all(item["nation_short_name"] == "Testland" for item in owned)
 
@@ -253,9 +254,7 @@ class TestAdminProvinces:
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(self, live_client):
         headers = await _auth_headers(live_client, OWNER_VK_ID)
-        response = await live_client.get(
-            "/api/v1/admin/provinces", headers=headers
-        )
+        response = await live_client.get("/api/v1/admin/provinces", headers=headers)
         assert response.status_code == 403
 
 
@@ -325,9 +324,7 @@ class TestAdminNationsList:
             "/api/v1/admin/nations?limit=1&offset=1", headers=headers
         )
         assert len(page2.json()["items"]) == 1
-        assert (
-            page.json()["items"][0]["id"] != page2.json()["items"][0]["id"]
-        )
+        assert page.json()["items"][0]["id"] != page2.json()["items"][0]["id"]
 
         hit = await live_client.get(
             "/api/v1/admin/nations?search=alpha", headers=headers
@@ -341,9 +338,7 @@ class TestAdminNationsList:
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(self, live_client):
         headers = await _auth_headers(live_client, OWNER_VK_ID)
-        response = await live_client.get(
-            "/api/v1/admin/nations", headers=headers
-        )
+        response = await live_client.get("/api/v1/admin/nations", headers=headers)
         assert response.status_code == 403
 
 
@@ -351,9 +346,7 @@ class TestAdminNationCreate:
     """POST /api/v1/admin/nations — NationService.create, unchanged."""
 
     @pytest.mark.asyncio
-    async def test_creates_nation_and_audit_row(
-        self, live_client, monkeypatch
-    ):
+    async def test_creates_nation_and_audit_row(self, live_client, monkeypatch):
         await _auth_headers(live_client, OWNER_VK_ID)  # the owner exists
         headers = await _admin_headers(live_client, monkeypatch)
 
@@ -374,17 +367,19 @@ class TestAdminNationCreate:
 
         async with get_session_context() as session:
             nation = (
-                await session.execute(
-                    select(Nation).where(Nation.id == data["id"])
-                )
+                await session.execute(select(Nation).where(Nation.id == data["id"]))
             ).scalar_one()
             assert nation.capital_province_id == STARTING_GROUP[0]
             assert nation.capital_name == "Mini Alpha"
             owned = (
-                await session.execute(
-                    select(Province.id).where(Province.nation_id == nation.id)
+                (
+                    await session.execute(
+                        select(Province.id).where(Province.nation_id == nation.id)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert sorted(owned) == sorted(STARTING_GROUP)
 
         rows = await _audit_rows(action="nation.create")
@@ -400,9 +395,7 @@ class TestAdminNationCreate:
         assert row.details["province_ids"] == list(STARTING_GROUP)
 
     @pytest.mark.asyncio
-    async def test_explicit_capital_uses_its_name(
-        self, live_client, monkeypatch
-    ):
+    async def test_explicit_capital_uses_its_name(self, live_client, monkeypatch):
         await _auth_headers(live_client, OWNER_VK_ID)
         headers = await _admin_headers(live_client, monkeypatch)
 
@@ -442,9 +435,7 @@ class TestAdminNationCreate:
 
     @pytest.mark.asyncio
     async def test_name_taken(self, live_client, monkeypatch):
-        await _create_nation_as_player(
-            live_client, OWNER_VK_ID, name="Occupied Land"
-        )
+        await _create_nation_as_player(live_client, OWNER_VK_ID, name="Occupied Land")
         await _auth_headers(live_client, SECOND_VK_ID)
         headers = await _admin_headers(live_client, monkeypatch)
         nations_before = await _nations_count()
@@ -462,9 +453,7 @@ class TestAdminNationCreate:
 
     @pytest.mark.asyncio
     async def test_short_name_taken(self, live_client, monkeypatch):
-        await _create_nation_as_player(
-            live_client, OWNER_VK_ID, short_name="TakenSN"
-        )
+        await _create_nation_as_player(live_client, OWNER_VK_ID, short_name="TakenSN")
         await _auth_headers(live_client, SECOND_VK_ID)
         headers = await _admin_headers(live_client, monkeypatch)
         nations_before = await _nations_count()
@@ -534,9 +523,7 @@ class TestAdminNationCreate:
         assert await _audit_rows(action="nation.create") == []
 
     @pytest.mark.asyncio
-    async def test_capital_not_among_provinces(
-        self, live_client, monkeypatch
-    ):
+    async def test_capital_not_among_provinces(self, live_client, monkeypatch):
         await _auth_headers(live_client, OWNER_VK_ID)
         headers = await _admin_headers(live_client, monkeypatch)
 
@@ -576,9 +563,7 @@ class TestAdminNationCreate:
         assert response.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_duplicate_province_ids_rejected(
-        self, live_client, monkeypatch
-    ):
+    async def test_duplicate_province_ids_rejected(self, live_client, monkeypatch):
         """Unit-8b fix to 8a: a repeated id must not pass the count
         check — the request model answers 422 before the service."""
         await _auth_headers(live_client, OWNER_VK_ID)
@@ -587,9 +572,7 @@ class TestAdminNationCreate:
         response = await live_client.post(
             "/api/v1/admin/nations",
             headers=headers,
-            json=_create_body(
-                OWNER_VK_ID, province_ids=[1001, 1002, 1003, 1004, 1004]
-            ),
+            json=_create_body(OWNER_VK_ID, province_ids=[1001, 1002, 1003, 1004, 1004]),
         )
 
         assert response.status_code == 422
@@ -602,9 +585,7 @@ async def _seed_nation(vk_user_id: int, **overrides) -> str:
     mini map cannot host a second 5-province group). Returns its id."""
     async with get_session_context() as session:
         owner = (
-            await session.execute(
-                select(Player).where(Player.vk_user_id == vk_user_id)
-            )
+            await session.execute(select(Player).where(Player.vk_user_id == vk_user_id))
         ).scalar_one()
         nation = Nation(
             id=str(uuid.uuid4()),
@@ -697,9 +678,7 @@ class TestAdminNationUpdate:
     """PATCH /api/v1/admin/nations/{id} — NationService.update + audit."""
 
     @pytest.mark.asyncio
-    async def test_updates_only_sent_fields_and_audits(
-        self, live_client, monkeypatch
-    ):
+    async def test_updates_only_sent_fields_and_audits(self, live_client, monkeypatch):
         created = await _create_nation_as_player(live_client, OWNER_VK_ID)
         headers = await _admin_headers(live_client, monkeypatch)
         before = await _nation_row(created["id"])
@@ -758,9 +737,7 @@ class TestAdminNationUpdate:
         assert "Renamed Realm" not in str(row.details)
 
     @pytest.mark.asyncio
-    async def test_clearing_optional_field(
-        self, live_client, monkeypatch
-    ):
+    async def test_clearing_optional_field(self, live_client, monkeypatch):
         """An empty string clears an optional field to NULL (INV-8) —
         and the journal still names the field."""
         created = await _create_nation_as_player(
@@ -871,9 +848,7 @@ class TestAdminNationUpdate:
         assert await _audit_rows(action="nation.update") == []
 
     @pytest.mark.asyncio
-    async def test_empty_body_nothing_to_change(
-        self, live_client, monkeypatch
-    ):
+    async def test_empty_body_nothing_to_change(self, live_client, monkeypatch):
         created = await _create_nation_as_player(live_client, OWNER_VK_ID)
         headers = await _admin_headers(live_client, monkeypatch)
 
@@ -914,9 +889,7 @@ class TestAdminNationColorCheck:
     """POST /api/v1/admin/nations/color-check — the panel's own probe."""
 
     @pytest.mark.asyncio
-    async def test_own_colour_ok_with_nation_id(
-        self, live_client, monkeypatch
-    ):
+    async def test_own_colour_ok_with_nation_id(self, live_client, monkeypatch):
         created = await _create_nation_as_player(live_client, OWNER_VK_ID)
         headers = await _admin_headers(live_client, monkeypatch)
 

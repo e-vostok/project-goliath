@@ -161,9 +161,7 @@ async def _player_row_by_vk(session: AsyncSession, vk_user_id: int):
 
 
 def _tick_timezone() -> str:
-    return CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).tick.tick_timezone
+    return CoreConfig.from_yaml(CoreConfig.get_default_config_path()).tick.tick_timezone
 
 
 @router.get("")
@@ -213,9 +211,7 @@ async def list_orders(
     # One image_refs for the whole page (0.12.0 unit 9): the author
     # nation's CURRENT flag by order.nation_id — a deleted nation's
     # snapshot id simply finds no row and lands null.
-    refs = await NationService.image_refs(
-        session, [order.nation_id for order in page]
-    )
+    refs = await NationService.image_refs(session, [order.nation_id for order in page])
     tz = _tick_timezone()
     now = datetime.now(UTC)
     return {
@@ -363,9 +359,7 @@ async def assign_judge(
         session, {order.author_player_id, order.judge_player_id, new_row.player_id}
     )
 
-    outcome = await OrderService.admin_assign_judge(
-        session, number, new_row.player_id
-    )
+    outcome = await OrderService.admin_assign_judge(session, number, new_row.player_id)
     previous_judge_id = outcome.previous_judge_player_id
 
     new_name = names.get(new_row.player_id) or str(body.judge_vk_user_id)
@@ -381,10 +375,7 @@ async def assign_judge(
             await PlayerService.vk_user_ids(session, {previous_judge_id})
         ).get(previous_judge_id)
         previous_name = names.get(previous_judge_id) or str(previous_vk)
-        summary = (
-            f"Судья приказа № {number} заменён: "
-            f"{previous_name} → {new_name}."
-        )
+        summary = f"Судья приказа № {number} заменён: {previous_name} → {new_name}."
     await AdminAuditService.record(
         session,
         actor_vk_user_id=admin.vk_user_id,

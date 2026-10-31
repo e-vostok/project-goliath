@@ -118,8 +118,7 @@ async def seed_nation(
         # to a unique value derived from the nation's name: the column
         # is UNIQUE (INV-11), so seeding two nations with
         # VALID_PROFILE's constant would collide.
-        short_name=short_name
-        or name[: CORE_CONFIG.nation.short_name_max_length],
+        short_name=short_name or name[: CORE_CONFIG.nation.short_name_max_length],
         **(
             {}
             if legacy
@@ -686,9 +685,7 @@ class TestNationPublic:
         ):
             assert key not in body
 
-    async def test_unknown_and_malformed_id_are_404(
-        self, client, test_db_session
-    ):
+    async def test_unknown_and_malformed_id_are_404(self, client, test_db_session):
         """An unknown UUID and a non-UUID string answer the same
         404 NATION_NOT_FOUND — a malformed id is never a 422."""
         viewer = await seed_player(test_db_session)
@@ -712,9 +709,7 @@ class TestNationPublic:
         await seed_provinces(test_db_session, [1001])
         nation = await seed_nation(test_db_session, owner, province_ids=[1001])
 
-        me = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(owner.id)
-        )
+        me = await client.get("/api/v1/nations/me", headers=bearer_headers(owner.id))
         assert me.status_code == 200
         assert me.json()["level"] == owner.level
         assert me.json()["judge_rating"] == owner.judge_rating
@@ -724,9 +719,7 @@ class TestNationPublic:
         owner.judge_rating = 42
         await test_db_session.flush()
 
-        me = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(owner.id)
-        )
+        me = await client.get("/api/v1/nations/me", headers=bearer_headers(owner.id))
         assert me.json()["level"] == 7
         assert me.json()["judge_rating"] == 42
 
@@ -753,8 +746,7 @@ class TestNationPublic:
         rules = await client.get("/api/v1/nations/rules", headers=headers)
         assert rules.status_code == 200
         assert (
-            rules.json()["max_provinces"]
-            == CORE_CONFIG.nation.max_provinces_per_nation
+            rules.json()["max_provinces"] == CORE_CONFIG.nation.max_provinces_per_nation
         )
 
         color = await client.post(
@@ -787,9 +779,7 @@ class TestNationPublic:
         provinces = await client.get(
             "/api/v1/provinces", headers=bearer_headers(viewer.id)
         )
-        owned = sorted(
-            p["id"] for p in provinces.json() if p["nation_id"] == nation.id
-        )
+        owned = sorted(p["id"] for p in provinces.json() if p["nation_id"] == nation.id)
         assert resp.json()["province_ids"] == owned
 
 
@@ -899,9 +889,7 @@ class TestNationProfileEndpoints:
         assert resp.status_code == 422
 
         nation = await seed_nation(test_db_session, player, province_ids=[1001])
-        me = await client.get(
-            "/api/v1/nations/me", headers=bearer_headers(player.id)
-        )
+        me = await client.get("/api/v1/nations/me", headers=bearer_headers(player.id))
         assert me.status_code == 200
         assert me.json()["short_name"] == nation.short_name
         assert me.json()["short_name"] != ""
