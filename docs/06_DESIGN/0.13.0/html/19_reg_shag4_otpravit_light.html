@@ -1,0 +1,89 @@
+<!doctype html><html lang="ru" data-theme="light"><head><meta charset="utf-8"><title>19_reg_shag4_otpravit</title><style>
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Regular.woff2');font-weight:400}
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Medium.woff2');font-weight:500}
+@font-face{font-family:'JetBrains Mono';src:url('../../0.10.0/fonts/JetBrainsMono-Regular.woff2');font-weight:400}
+:root{--ground:#edeef0;--surface:#ffffff;--raised:#ffffff;--inset:#f0f2f5;--line:#dce1e6;--ink:#000000;--muted:#626d7a;--faint:#818c99;--action:#447bba;--link:#2a5885;--signal:#e3b04b;--onsignal:#241a06;--signalink:#7a5200;--danger:#b83232;--positive:#2a7230;--warnbg:#fff2d6;--edge:rgba(0,0,0,0.15);--popup:0 8px 24px rgba(0,0,0,0.18);--tip:0 4px 12px rgba(0,0,0,0.16);--dim:rgba(0,0,0,0.45);--onaction:#ffffff;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Roboto','Helvetica Neue',arial,sans-serif;font-size:14px;line-height:20px}
+a{color:inherit;text-decoration:none}
+h1,h2,h3,p{margin:0}
+.win{width:910px;background:var(--ground);position:relative}
+.wide{width:1280px;background:var(--ground);position:relative}
+.top{height:48px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 16px;gap:24px}
+.logo{display:block;width:38px;height:38px;border-radius:6px;background:#555}
+.wm{font-family:'Big Shoulders Display','Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:800;font-size:24px;line-height:28px;letter-spacing:.1em}
+.nav{display:flex;gap:4px;height:100%;flex-grow:1}
+.nav a{display:flex;align-items:center;padding:0 12px;height:100%;color:var(--muted);border-bottom:2px solid transparent}
+.nav a.on{color:var(--ink);border-bottom-color:var(--action)}
+.turn{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;background:var(--signal);color:var(--onsignal);padding:4px 8px;border-radius:4px}
+.ico{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0;color:var(--muted)}
+.ico.hl{color:var(--signalink);background:rgba(227,176,75,.16);position:relative}
+.ico.hl:after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:99px;background:var(--signal);box-shadow:0 0 0 2px var(--surface)}
+.sub{background:var(--raised);border-bottom:1px solid var(--line);border-left:4px solid var(--action);height:48px;display:flex;align-items:center;gap:12px;padding:0 16px 0 12px}
+.main{padding:16px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border-radius:12px;padding:16px}
+.lab{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.cap{font-size:12px;line-height:16px;color:var(--muted)}
+.dis{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500}
+.h1{display:flex;align-items:center;gap:8px;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:24px;line-height:28px;letter-spacing:.06em;text-transform:uppercase}
+.h2{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:18px;line-height:22px;letter-spacing:.06em;text-transform:uppercase}
+.h2 .rule{flex-grow:1;height:1px;background:var(--line);margin-left:4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 16px;border-radius:8px;background:var(--inset);color:var(--ink);white-space:nowrap}
+.btn.p{background:var(--action);color:var(--onaction)}
+.btn.d{background:var(--danger);color:var(--onaction)}
+.btn.do{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.btn.sm{height:32px;padding:0 12px}
+.btn.off{opacity:.45}
+.fld .l{display:flex;justify-content:space-between;margin-bottom:4px}
+.in{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:0 12px;border-radius:8px;background:var(--inset);border:1px solid var(--faint);overflow:hidden;white-space:nowrap}
+.in.area{align-items:flex-start;padding:8px 12px;white-space:normal;min-height:96px}
+.in.err{border-color:var(--danger)}
+.chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:4px;background:var(--inset)}
+.chip.cap1{color:var(--signalink)}
+.steps{background:var(--surface);border-radius:12px;display:flex;overflow:hidden}
+.steps>div{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;padding:10px;border-bottom:2px solid transparent;color:var(--muted)}
+.steps>div.on{border-bottom-color:var(--action);color:var(--ink)}
+.steps .n{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;border:1px solid var(--faint);color:var(--muted)}
+.steps .on .n{background:var(--action);color:var(--onaction);border:0}
+.steps .done .n{background:var(--inset);color:var(--ink);border:0}
+.thumb{display:block;overflow:hidden;box-shadow:0 0 0 1px var(--edge);flex-shrink:0}
+.plate{display:flex;gap:12px;border-radius:12px;padding:12px 16px;background:var(--warnbg);color:var(--ink)}
+.plate.neutral{background:var(--surface);border:1px solid var(--line)}
+.plate svg{flex-shrink:0;margin-top:2px}
+.dim{position:absolute;left:0;top:0;right:0;bottom:0;background:var(--dim)}
+.pop{position:absolute;background:var(--raised);border-radius:12px;box-shadow:var(--popup);overflow:hidden}
+.pop .hd{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 12px 16px;border-bottom:1px solid var(--line)}
+.pop .bd{padding:16px;display:flex;flex-direction:column;gap:12px}
+.pop .ft{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+.tip{position:absolute;background:var(--raised);border-radius:8px;box-shadow:var(--tip);padding:8px 12px;z-index:5}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;padding:2px 10px;border-radius:999px;background:var(--inset);color:var(--ink)}
+.pill.sig{background:rgba(227,176,75,.18);color:var(--signalink)}
+.pill.ok{color:var(--positive)}
+.pill.bad{color:var(--danger)}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px}
+.kv .k{color:var(--muted)}
+.close{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--inset)}
+.grow{flex-grow:1;min-width:0}
+.row{display:flex;align-items:center;gap:12px}
+.g2{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.link{color:var(--link)}
+
+.body{display:flex;align-items:stretch}
+.side{width:232px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:4px}
+.side a{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:8px;color:var(--muted)}
+.side a.on{background:var(--inset);color:var(--ink)}
+.side a.on svg{stroke:var(--signal)}
+.pmain{flex-grow:1;min-width:0;padding:24px;display:flex;flex-direction:column;gap:16px}
+.seg{display:inline-flex;gap:4px;background:var(--inset);border-radius:8px;padding:2px}
+.seg span{display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:6px;color:var(--muted);white-space:nowrap}
+.seg span.on{background:var(--surface);color:var(--ink)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 12px;border-bottom:1px solid var(--line)}
+td{height:52px;padding:4px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.tile{background:var(--inset);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.fig{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:22px;line-height:28px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--signal);color:var(--onsignal);font-family:'JetBrains Mono',monospace;font-size:12px}
+</style></head><body><div class="win" style="min-height:560px"><header class="top"><div class="row" style="gap:10px"><span class="logo"></span><span class="wm">PAX ATOMICA</span></div><nav class="nav"><a href="#" class="on">Штаб</a><a href="#" class="">Реестр</a><a href="#" class="">Карта</a></nav><span class="turn">ХОД 1 · ЯНВАРЬ 2040</span><span class="ico" style="margin-left:-8px"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M12.6 9.8A5.4 5.4 0 0 1 6.2 3.4a5.4 5.4 0 1 0 6.4 6.4z"/></svg></span></header><main class="main"><div class="row" style="justify-content:space-between;align-items:baseline"><h1 class="h1"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="var(--signalink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3.5 14V2.5M3.5 3h8l-1.6 2.8L11.5 8.5h-8"/></svg>Создание государства</h1><span class="mono cap">ШАГ 4 ИЗ 4</span></div><div class="steps"><div class="done"><span class="n">1</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Основные данные и символика</span></div><div class="done"><span class="n">2</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Глава государства</span></div><div class="done"><span class="n">3</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">История</span></div><div class="on"><span class="n">4</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Территории</span></div></div><section class="card"><h2 class="h2"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="var(--signalink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M1.8 3.8l4.1-1.5 4.2 1.5 4.1-1.5v9.9l-4.1 1.5-4.2-1.5-4.1 1.5z"/><path d="M5.9 2.3v9.9M10.1 3.8v9.9"/></svg>Территории<span class="rule"></span><span class=mono style=color:var(--muted);font-size:13px>5 из 5</span></h2><div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:12px"><span class="chip cap1">★ Стокгольм<span style="color:var(--muted)"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3 3l10 10M13 3L3 13"/></svg></span></span><span class="chip ">Вестерос<span style="color:var(--muted)"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3 3l10 10M13 3L3 13"/></svg></span></span><span class="chip ">Евле<span style="color:var(--muted)"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3 3l10 10M13 3L3 13"/></svg></span></span><span class="chip ">Эребру<span style="color:var(--muted)"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3 3l10 10M13 3L3 13"/></svg></span></span><span class="chip ">Эскильстюна<span style="color:var(--muted)"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M3 3l10 10M13 3L3 13"/></svg></span></span><span style="width:8px"></span><a href="#" class="btn "><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M8 14.5s4.5-4.2 4.5-7.7a4.5 4.5 0 0 0-9 0c0 3.5 4.5 7.7 4.5 7.7z"/><circle cx="8" cy="6.8" r="1.6"/></svg>Выбрать на карте</a></div><div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px"><div class="fld"><div class="lab l"><span>НАЗВАНИЕ СТОЛИЦЫ *</span><span class="mono" style="font-size:11px">9 из 40</span></div><div class="in  "><span>Стокгольм</span></div></div><div class="plate neutral" style="padding:10px 12px;align-items:flex-start"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--signalink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg><span class="cap" style="color:var(--ink)">После отправки провинции, цвет и оба названия закрепляются за вами на сутки.</span></div></div></section><div class="row" style="padding-top:4px"><a href="#" class="btn "><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M10 3L5 8l5 5"/></svg>Назад</a><span class="grow"></span><span class="cap" style="margin-right:12px;max-width:380px;text-align:right">Анкета уйдёт на рассмотрение администратору. Править её после отправки нельзя, можно только отменить.</span><a href="#" class="btn p">Отправить анкету</a></div></main></div></body></html>
