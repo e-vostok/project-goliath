@@ -87,7 +87,7 @@ def g1(root: Path, budget: dict, out: list[str]) -> None:
             out.append(f"G1 {rel}: no budget entry")
         elif not p.is_file():
             out.append(f"G1 {rel}: file missing")
-        elif (size := p.stat().st_size) > mb[rel]:
+        elif (size := len(p.read_bytes().replace(b"\r\n", b"\n"))) > mb[rel]:
             out.append(f"G1 {rel}: {size} bytes > budget {mb[rel]}")
 
 
