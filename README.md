@@ -10,7 +10,7 @@ Codename: Project Goliath
 
 ## Статус
 
-- Версия: **v0.7.0** (последний тег `v*`)
+- Версия: **v0.12.0** (последний тег `v*`)
 - Стек: FastAPI + SQLAlchemy + PostgreSQL · React 18 + TypeScript + Vite + VKUI
 
 ## Структура репозитория
