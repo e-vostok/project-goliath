@@ -240,7 +240,7 @@ check_tree_readable() {
 
 checkout_ref() {
   local target
-  git fetch --tags --prune origin
+  git fetch --tags --force --prune origin
   if ! target="$(resolve_ref "$REF")"; then
     deploy_fail "неизвестный ref '$REF' — нет ни тега, ни ветки с таким именем на GitHub."
   fi

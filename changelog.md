@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 - Process: lighter test tiers, one PR per unit, versions only in release PRs; docs drift guard
+- `deploy.sh` обновляет теги принудительно — переставленные теги выпусков больше не обрывают выкладку.
 
 ## [0.12.0] - 2026-10-31 — Изображения
 
