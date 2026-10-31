@@ -164,9 +164,7 @@ async def _seed_nation(vk_user_id: int) -> str:
     nation_id = str(uuid.uuid4())
     async with get_session_context() as session:
         owner = (
-            await session.execute(
-                select(Player).where(Player.vk_user_id == vk_user_id)
-            )
+            await session.execute(select(Player).where(Player.vk_user_id == vk_user_id))
         ).scalar_one()
         session.add(
             Nation(
@@ -222,9 +220,7 @@ class TestNationImageEditBlock:
     """The ``images`` block of GET/PATCH /admin/nations/{id}."""
 
     @pytest.mark.asyncio
-    async def test_edit_data_shows_nulls_then_entries(
-        self, live_client, monkeypatch
-    ):
+    async def test_edit_data_shows_nulls_then_entries(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
@@ -243,9 +239,7 @@ class TestNationImageEditBlock:
                     select(Player).where(Player.vk_user_id == OWNER_VK_ID)
                 )
             ).scalar_one()
-            await make_vk_profile(
-                session, owner, first_name="Иван", last_name="Петров"
-            )
+            await make_vk_profile(session, owner, first_name="Иван", last_name="Петров")
             await session.commit()
         flag = await _upload(live_client, owner_headers, "flag")
 
@@ -310,9 +304,7 @@ class TestNationImageDeletePreview:
             },
             {
                 "code": "audit_journal",
-                "text": (
-                    "в журнал попадёт запись «Удаление картинки государства»"
-                ),
+                "text": ("в журнал попадёт запись «Удаление картинки государства»"),
             },
         ]
 
@@ -350,9 +342,7 @@ class TestNationImageDelete:
         flag = await _upload(live_client, owner_headers, "flag")
         portrait = await _upload(live_client, owner_headers, "portrait")
         preview = (
-            await live_client.get(
-                _preview_url(nation["id"], "flag"), headers=headers
-            )
+            await live_client.get(_preview_url(nation["id"], "flag"), headers=headers)
         ).json()
 
         with caplog.at_level(logging.WARNING, logger="core.admin.router"):
@@ -400,9 +390,7 @@ class TestNationImageDelete:
             assert row.actor_vk_user_id == ADMIN_VK_ID
             assert row.target_type == "nation"
             assert row.target_id == nation["id"]
-            assert row.summary == (
-                f"Удалён флаг государства «{nation['short_name']}»."
-            )
+            assert row.summary == (f"Удалён флаг государства «{nation['short_name']}».")
             sha256 = flag["url"].split("/")[-2]
             assert row.details == {
                 "nation_id": nation["id"],
@@ -413,9 +401,7 @@ class TestNationImageDelete:
 
         # One WARNING audit line naming the admin, the nation, the kind.
         audit = [
-            r
-            for r in caplog.records
-            if "admin_nation_image_delete" in r.getMessage()
+            r for r in caplog.records if "admin_nation_image_delete" in r.getMessage()
         ]
         assert len(audit) == 1
         assert audit[0].levelno == logging.WARNING
@@ -478,9 +464,7 @@ class TestNationImageDeleteGuards:
     """Auth and 404 cases of both new endpoints."""
 
     @pytest.mark.asyncio
-    async def test_non_admin_gets_403_on_both_endpoints(
-        self, live_client, monkeypatch
-    ):
+    async def test_non_admin_gets_403_on_both_endpoints(self, live_client, monkeypatch):
         await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         user_headers = await _auth_headers(live_client, SECOND_VK_ID)
@@ -497,9 +481,7 @@ class TestNationImageDeleteGuards:
             assert response.json()["code"] == "ADMIN_REQUIRED"
 
     @pytest.mark.asyncio
-    async def test_unknown_nation_wrong_kind_no_picture(
-        self, live_client, monkeypatch
-    ):
+    async def test_unknown_nation_wrong_kind_no_picture(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
 
@@ -543,9 +525,7 @@ class TestNationDeletePreviewImagesLine:
     """The nation delete-preview gains the pictures line (0.12.0 unit 8)."""
 
     @pytest.mark.asyncio
-    async def test_line_only_when_pictures_exist(
-        self, live_client, monkeypatch
-    ):
+    async def test_line_only_when_pictures_exist(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
@@ -554,9 +534,9 @@ class TestNationDeletePreviewImagesLine:
         # No pictures — no nation_images consequence.
         response = await live_client.get(url, headers=headers)
         assert response.status_code == 200
-        assert [
-            c["code"] for c in response.json()["consequences"]
-        ] == ["ownership_journal"]
+        assert [c["code"] for c in response.json()["consequences"]] == [
+            "ownership_journal"
+        ]
 
         # One picture — the line names just that kind.
         await _upload(live_client, owner_headers, "flag")
@@ -581,9 +561,7 @@ class TestAdminListFlagThumbs:
     one ``image_refs`` call per page, never per row."""
 
     @pytest.mark.asyncio
-    async def test_nations_list_and_create_answer(
-        self, live_client, monkeypatch
-    ):
+    async def test_nations_list_and_create_answer(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
@@ -600,17 +578,15 @@ class TestAdminListFlagThumbs:
             return await original(session, nation_ids)
 
         monkeypatch.setattr(NationService, "image_refs", counting)
-        response = await live_client.get(
-            "/api/v1/admin/nations", headers=headers
-        )
+        response = await live_client.get("/api/v1/admin/nations", headers=headers)
         assert response.status_code == 200
         assert len(calls) == 1  # one image_refs for the whole page
 
         items = {item["id"]: item for item in response.json()["items"]}
         assert items[nation["id"]]["flag_thumb_url"] == thumb
-        assert items[next(i for i in items if i != nation["id"])][
-            "flag_thumb_url"
-        ] is None
+        assert (
+            items[next(i for i in items if i != nation["id"])]["flag_thumb_url"] is None
+        )
 
         # POST /admin/nations answers the same item shape — a brand-new
         # nation has no pictures, so the field is null.
@@ -636,9 +612,7 @@ class TestAdminListFlagThumbs:
         assert created.json()["flag_thumb_url"] is None
 
     @pytest.mark.asyncio
-    async def test_provinces_list_carries_owner_flag(
-        self, live_client, monkeypatch
-    ):
+    async def test_provinces_list_carries_owner_flag(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
@@ -652,9 +626,7 @@ class TestAdminListFlagThumbs:
             return await original(session, nation_ids)
 
         monkeypatch.setattr(NationService, "image_refs", counting)
-        response = await live_client.get(
-            "/api/v1/admin/provinces", headers=headers
-        )
+        response = await live_client.get("/api/v1/admin/provinces", headers=headers)
         assert response.status_code == 200
         assert len(calls) == 1
 
@@ -666,17 +638,14 @@ class TestAdminListFlagThumbs:
         assert all(i["flag_thumb_url"] is None for i in free)
 
     @pytest.mark.asyncio
-    async def test_thumb_follows_replace_and_delete(
-        self, live_client, monkeypatch
-    ):
+    async def test_thumb_follows_replace_and_delete(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         owner_headers = await _auth_headers(live_client, OWNER_VK_ID)
         first = await _upload(live_client, owner_headers, "flag")
+
         async def current_thumb() -> str | None:
-            response = await live_client.get(
-                "/api/v1/admin/nations", headers=headers
-            )
+            response = await live_client.get("/api/v1/admin/nations", headers=headers)
             return next(
                 i["flag_thumb_url"]
                 for i in response.json()["items"]
@@ -703,9 +672,7 @@ class TestAdminListFlagThumbs:
         assert await current_thumb() is None
 
     @pytest.mark.asyncio
-    async def test_edit_entry_size_and_dimensions(
-        self, live_client, monkeypatch
-    ):
+    async def test_edit_entry_size_and_dimensions(self, live_client, monkeypatch):
         headers = await _admin_headers(live_client, monkeypatch)
         nation = await _create_nation_as_player(live_client, OWNER_VK_ID)
         owner_headers = await _auth_headers(live_client, OWNER_VK_ID)

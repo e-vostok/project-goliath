@@ -232,9 +232,7 @@ class TestPlayersList:
             nation={"name": "Новгород", "short_name": "НВГ"},
             vk_name=("Борис", "Иванов"),
         )
-        await _seed_player(
-            770011, created_at=datetime(2026, 3, 2, tzinfo=UTC)
-        )
+        await _seed_player(770011, created_at=datetime(2026, 3, 2, tzinfo=UTC))
 
         body = await _items(live_client, headers)
 
@@ -328,9 +326,7 @@ class TestPlayersSearch:
         assert [item["vk_user_id"] for item in body["items"]] == [770050]
 
     @pytest.mark.asyncio
-    async def test_failing_info_hook_is_skipped(
-        self, live_client, monkeypatch, caplog
-    ):
+    async def test_failing_info_hook_is_skipped(self, live_client, monkeypatch, caplog):
         """A broken player-info hook is logged and dropped — the list
         still answers with the surviving modules' columns."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))

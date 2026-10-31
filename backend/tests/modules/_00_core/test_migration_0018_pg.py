@@ -81,10 +81,7 @@ def _schema(url: str) -> dict:
                     else {}
                 ),
                 "checks": (
-                    {
-                        c["name"]
-                        for c in insp.get_check_constraints(TABLE)
-                    }
+                    {c["name"] for c in insp.get_check_constraints(TABLE)}
                     if TABLE in insp.get_table_names()
                     else set()
                 ),
@@ -100,10 +97,7 @@ def _schema(url: str) -> dict:
                     else {}
                 ),
                 "indexes": (
-                    {
-                        i["name"]: i["unique"]
-                        for i in insp.get_indexes(TABLE)
-                    }
+                    {i["name"]: i["unique"] for i in insp.get_indexes(TABLE)}
                     if TABLE in insp.get_table_names()
                     else {}
                 ),

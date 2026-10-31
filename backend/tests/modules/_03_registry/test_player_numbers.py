@@ -69,9 +69,7 @@ class TestEnsurePlayerNumbers:
         ).scalar_one()
         assert counter.last_number == 2
 
-    async def test_counter_row_created_when_schema_has_none(
-        self, test_db_session
-    ):
+    async def test_counter_row_created_when_schema_has_none(self, test_db_session):
         """Metadata-built schemas (no migration 0016) have no counter
         row — ensure seeds it from the highest issued number."""
         await seed_player(test_db_session, 510201, created_at=T0)
@@ -105,9 +103,7 @@ class TestEnsurePlayerNumbers:
         await ensure_player_numbers(test_db_session)
         other = await seed_player(test_db_session, 510402, created_at=T0)
 
-        test_db_session.add(
-            RegistryPlayerNumber(player_id=other.id, number=1)
-        )
+        test_db_session.add(RegistryPlayerNumber(player_id=other.id, number=1))
         with pytest.raises(IntegrityError):
             await test_db_session.flush()
         await test_db_session.rollback()

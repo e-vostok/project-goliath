@@ -76,16 +76,12 @@ def _player_dto(player: Player) -> PlayerDTO:
     )
 
 
-async def _nation_with_owner(
-    session: AsyncSession, nation_id: str
-) -> Nation | None:
+async def _nation_with_owner(session: AsyncSession, nation_id: str) -> Nation | None:
     """Fetch a nation together with its owner Player in one JOIN query —
     the owner's ``level``/``judge_rating`` ride the same row, so neither
     DTO issues per-field fetches."""
     result = await session.execute(
-        select(Nation)
-        .options(joinedload(Nation.owner))
-        .where(Nation.id == nation_id)
+        select(Nation).options(joinedload(Nation.owner)).where(Nation.id == nation_id)
     )
     return result.unique().scalar_one_or_none()
 
@@ -118,9 +114,7 @@ def _nation_public_fields(
         "leader_title": nation.leader_title,
         "leader_bio": nation.leader_bio,
         "portrait_url": images.image_url(image_refs.portrait_sha256, "full"),
-        "portrait_thumb_url": images.image_url(
-            image_refs.portrait_sha256, "thumb"
-        ),
+        "portrait_thumb_url": images.image_url(image_refs.portrait_sha256, "thumb"),
         "history_url": nation.history_url,
         "level": nation.owner.level,
         "judge_rating": nation.owner.judge_rating,
@@ -418,9 +412,7 @@ async def _read_upload_body(request: Request, limit: int) -> bytes:
     async for chunk in request.stream():
         body += chunk
         if len(body) > limit:
-            raise ImageTooLargeError(
-                f"body exceeds images.max_upload_bytes={limit}"
-            )
+            raise ImageTooLargeError(f"body exceeds images.max_upload_bytes={limit}")
     return bytes(body)
 
 
@@ -484,10 +476,7 @@ async def get_nation_image(
     Anything that is not a 64-hex hash and a known variant is a 404 with
     ``no-store`` — the same response a deleted/replaced picture gets.
     """
-    if (
-        _IMAGE_SHA256_RE.fullmatch(sha256) is None
-        or variant not in _IMAGE_VARIANTS
-    ):
+    if _IMAGE_SHA256_RE.fullmatch(sha256) is None or variant not in _IMAGE_VARIANTS:
         return Response(status_code=404, headers=_IMAGE_NOSTORE_HEADERS)
 
     body = await NationService.image_bytes(session, sha256, variant)

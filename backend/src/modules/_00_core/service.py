@@ -544,9 +544,7 @@ class ProvinceService:
                     prev_nation_id=previous_nation_id,
                     new_nation_id=to_nation_id,
                     new_name=target.name if target is not None else None,
-                    new_short_name=(
-                        target.short_name if target is not None else None
-                    ),
+                    new_short_name=(target.short_name if target is not None else None),
                     new_color=target.color_hex if target is not None else None,
                     turn=turn,
                 )
@@ -1426,9 +1424,7 @@ class NationService:
             _apply_image(row, processed, player_id, now)
             await session.flush()
 
-        return NationImageView(
-            kind=kind, sha256=processed.sha256, uploaded_at=now
-        )
+        return NationImageView(kind=kind, sha256=processed.sha256, uploaded_at=now)
 
     @staticmethod
     async def image_refs(
@@ -1443,16 +1439,15 @@ class NationService:
         """
         ids = list(dict.fromkeys(nation_ids))
         refs = {
-            nation_id: NationImageRefs(
-                flag_sha256=None, portrait_sha256=None
-            )
+            nation_id: NationImageRefs(flag_sha256=None, portrait_sha256=None)
             for nation_id in ids
         }
         if not ids:
             return refs
         result = await session.execute(
-            select(NationImage.nation_id, NationImage.kind, NationImage.sha256)
-            .where(NationImage.nation_id.in_(ids))
+            select(NationImage.nation_id, NationImage.kind, NationImage.sha256).where(
+                NationImage.nation_id.in_(ids)
+            )
         )
         for nation_id, kind, sha256 in result.all():
             current = refs[nation_id]
@@ -1517,9 +1512,7 @@ class NationService:
         Read-only and never commits.
         """
         column = (
-            NationImage.full_bytes
-            if variant == "full"
-            else NationImage.thumb_bytes
+            NationImage.full_bytes if variant == "full" else NationImage.thumb_bytes
         )
         result = await session.execute(
             select(column).where(NationImage.sha256 == sha256).limit(1)

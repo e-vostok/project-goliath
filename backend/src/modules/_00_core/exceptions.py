@@ -224,8 +224,7 @@ class LastProvinceError(CoreDomainError):
 
     def __init__(self, nation_id: str):
         super().__init__(
-            f"Nation {nation_id} owns only this province — "
-            "delete the nation instead",
+            f"Nation {nation_id} owns only this province — delete the nation instead",
             "LAST_PROVINCE",
         )
 

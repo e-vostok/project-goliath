@@ -287,9 +287,7 @@ class TestPlayerDelete:
         assert "provinces_released" in message
 
     @pytest.mark.asyncio
-    async def test_delete_removes_the_nations_pictures(
-        self, live_client, monkeypatch
-    ):
+    async def test_delete_removes_the_nations_pictures(self, live_client, monkeypatch):
         """INV-19 over the player path: the nation's flag and portrait
         die with the player — no nation_images rows remain and the old
         URLs answer 404 no-store — while a second player's picture is
@@ -321,11 +319,17 @@ class TestPlayerDelete:
             await session.flush()
             doomed_nation_id = nation.id
             await make_nation_image(
-                session, nation, kind="flag", sha256=flag_sha,
+                session,
+                nation,
+                kind="flag",
+                sha256=flag_sha,
                 uploaded_by=target,
             )
             await make_nation_image(
-                session, nation, kind="portrait", sha256=portrait_sha,
+                session,
+                nation,
+                kind="portrait",
+                sha256=portrait_sha,
                 uploaded_by=target,
             )
             neighbour = (
@@ -344,8 +348,11 @@ class TestPlayerDelete:
             await session.flush()
             neighbour_nation_id = neighbour_nation.id
             await make_nation_image(
-                session, neighbour_nation, kind="flag",
-                sha256=neighbour_sha, uploaded_by=neighbour,
+                session,
+                neighbour_nation,
+                kind="flag",
+                sha256=neighbour_sha,
+                uploaded_by=neighbour,
             )
             await session.commit()
 

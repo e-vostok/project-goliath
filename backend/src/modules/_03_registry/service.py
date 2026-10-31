@@ -321,9 +321,7 @@ async def admin_display_names(
     return names
 
 
-async def admin_search_player_ids(
-    session: AsyncSession, text: str
-) -> set[str]:
+async def admin_search_player_ids(session: AsyncSession, text: str) -> set[str]:
     """
     Player ids whose cached OK VK profile's ``first_name last_name``
     contains ``text`` (case-insensitive substring) — the module's

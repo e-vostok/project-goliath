@@ -425,9 +425,7 @@ class TestProvinceNames:
         etag = first.headers["etag"]
         assert etag.startswith('"') and etag.endswith('"')
 
-        second = await client.get(
-            NAMES_URL, headers={**headers, "If-None-Match": etag}
-        )
+        second = await client.get(NAMES_URL, headers={**headers, "If-None-Match": etag})
         assert second.status_code == 304
         assert second.content == b""
         assert second.headers["etag"] == etag
@@ -445,9 +443,9 @@ class TestProvinceNames:
         """A config-only edit moves the manifest tag but not this one —
         names carry no rules, so a config save must not force ~5 KB."""
         player = await seed_player(map_db_session)
-        etag = (
-            await client.get(NAMES_URL, headers=bearer_headers(player.id))
-        ).headers["etag"]
+        etag = (await client.get(NAMES_URL, headers=bearer_headers(player.id))).headers[
+            "etag"
+        ]
         changed = config.model_copy(
             update={"colors": config.colors.model_copy(update={"hover": "#EEEEEE"})}
         )

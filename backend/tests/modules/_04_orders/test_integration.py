@@ -398,6 +398,4 @@ class TestNationFlagAtShowTime:
 
         detail = await orders_client.get(f"{ORDERS_URL}/1", headers=headers)
         assert detail.status_code == 200
-        assert detail.json()["nation"]["flag_url"] == (
-            f"/api/v1/images/{sha}/thumb"
-        )
+        assert detail.json()["nation"]["flag_url"] == (f"/api/v1/images/{sha}/thumb")

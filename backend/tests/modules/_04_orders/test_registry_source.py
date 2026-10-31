@@ -113,9 +113,7 @@ class TestOrdersSource:
         orders_table = await build_table(test_db_session, "orders")
         nations_table = await build_table(test_db_session, "nations")
 
-        option_names = [
-            row.cells["name"]["name"] for row in nations_table.rows
-        ]
+        option_names = [row.cells["name"]["name"] for row in nations_table.rows]
         cell = orders_table.rows[0].cells["nation"]
         assert cell["name"] == nation.short_name
         assert cell["name"] in option_names

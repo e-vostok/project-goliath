@@ -426,8 +426,7 @@ class ImagesSettings(BaseModel):
         """Перекрёстные правила раздела images (Spec, Часть 4)."""
         if self.flag_width <= self.flag_height:
             raise ValueError(
-                "flag_width обязан быть строго больше flag_height "
-                "(флаг горизонтален)"
+                "flag_width обязан быть строго больше flag_height (флаг горизонтален)"
             )
         if self.portrait_height <= self.portrait_width:
             raise ValueError(
