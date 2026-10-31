@@ -96,23 +96,11 @@ from modules._00_core.service import (
     ProvinceService,
 )
 from modules._00_core.tick_schedule import format_game_time
-from modules._03_registry.startup import get_core_config
 
 logger = logging.getLogger(__name__)
 
 TICK_LOG_DEFAULT_LIMIT = 20
-
 TICK_LOG_MAX_LIMIT = 100
-
-
-def _load_core_config() -> CoreConfig:
-    """The lifespan-loaded CoreConfig; falls back to a YAML read when the
-    registry startup has not run (direct-function tests)."""
-    try:
-        return get_core_config()
-    except RuntimeError:
-        return _load_core_config()
-
 
 router = APIRouter(prefix="/api/v1/admin")
 
@@ -591,7 +579,7 @@ async def list_players(
 
     # The admin set is the env allowlist plus the granted players' vk
     # ids — the same union the overview tile and AdminGrantService use.
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     granted_vk_ids = (
         await session.execute(
             select(Player.vk_user_id).join(
@@ -835,7 +823,7 @@ async def admin_province_transfer(
     ``previous_nation_id``, ``new_nation_id``,
     ``new_capital_province_id``.
     """
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
     new_capital_name = None
     if body.new_capital_province_id is not None:
@@ -1010,7 +998,7 @@ async def create_nation(
     everything back and writes nothing.
     """
     player = await _load_player_by_vk_id(session, body.owner_vk_user_id)
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
     # The capital: the explicit pick, else the first province sent —
     # the same default NationService.create applies internally.
@@ -1092,7 +1080,7 @@ async def admin_nation_color_check(
     ``NationService.color_status`` the player's form consults, with
     ``nation_id`` excluding the edited nation itself. Read-only.
     """
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     return {
         "status": await NationService.color_status(
             session,
@@ -1169,7 +1157,7 @@ async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
     names = await _display_names_by_vk(session, {owner.vk_user_id})
     # The pipeline's target size of each kind (0.12.0 unit 9) — read
     # through the config model, never hard-coded.
-    image_config = _load_core_config().images
+    image_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).images
     image_dims = {
         "flag": (image_config.flag_width, image_config.flag_height),
         "portrait": (
@@ -1259,7 +1247,7 @@ async def update_nation(
                 "code": "NOTHING_TO_CHANGE",
             },
         )
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     nation = await NationService.update(
         session,
         nation_id=nation_id,
@@ -1580,7 +1568,7 @@ async def admin_tick_log(
     Times are 'YYYY-MM-DD HH:MM:SS' display strings in
     tick.tick_timezone; storage stays UTC.
     """
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     result = await session.execute(
         select(TickLog).order_by(TickLog.id.desc()).limit(limit)
     )
@@ -1640,7 +1628,7 @@ async def admin_tick_run(
         details={"ok": ok, "current_turn": clock.current_turn},
     )
     await session.commit()
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     return {
         "ok": ok,
         "current_turn": clock.current_turn,
@@ -1875,7 +1863,7 @@ async def admin_audit_log(
     player deletion). ``action_label`` comes from the modules'
     audit-action registrations; an unregistered code stays raw.
     """
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     rows = await AdminAuditService.list_recent(
         session,
         limit + 1,
@@ -1946,7 +1934,7 @@ async def admin_list_admins(
     its ``granted_by_name`` resolves only while that vk id is still a
     player. ``is_self`` lets the panel grey out the caller's own row.
     """
-    config = _load_core_config()
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     env_ids = _admin_vk_user_ids()
     grant_rows = (
         await session.execute(
@@ -2102,7 +2090,7 @@ async def admin_panel_link(
     itself, never in logs. The client sends it to the panel tab inside
     the URL fragment, so it reaches neither server logs nor Referer.
     """
-    settings = _load_core_config().admin_panel
+    settings = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).admin_panel
     token = panel_access.store.issue(
         admin.id,
         ttl_seconds=settings.link_ttl_seconds,
@@ -2145,7 +2133,7 @@ async def admin_panel_session(
         )
         return _no_store_error(403, "ADMIN_REQUIRED", "Admin privileges required")
 
-    settings = _load_core_config().admin_panel
+    settings = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).admin_panel
     await AdminAuditService.record(
         session,
         actor_vk_user_id=player.vk_user_id,
