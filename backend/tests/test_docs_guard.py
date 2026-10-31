@@ -27,7 +27,7 @@ REQUIRED_DIRS = [
 
 
 def run_guard(root: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603  # fixed argv on repo tooling, no untrusted input
         [sys.executable, str(GUARD), "--root", str(root)],
         capture_output=True,
         text=True,
@@ -57,7 +57,10 @@ def test_docs_guard_detects_injected_duplicate(tmp_path: Path) -> None:
     assert len(line.strip()) >= 120
     for rel in ("docs/03_ROADMAP/00_core.md", "docs/03_ROADMAP/01_map.md"):
         target = tmp_path / rel
-        target.write_text(target.read_text(encoding="utf-8") + "\n" + line + "\n", encoding="utf-8")
+        target.write_text(
+            target.read_text(encoding="utf-8") + "\n" + line + "\n",
+            encoding="utf-8",
+        )
 
     result = run_guard(tmp_path)
     assert result.returncode == 1

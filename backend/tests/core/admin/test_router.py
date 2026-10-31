@@ -519,7 +519,9 @@ class TestAdminTickLog:
             expected_date = format_game_date(
                 compute_game_date(row["turn_number"], CORE_CONFIG), CORE_CONFIG
             )
-            assert row["turn_label"] == f"{row['turn_number']} · {expected_date.lower()}"
+            assert row["turn_label"] == (
+                f"{row['turn_number']} · {expected_date.lower()}"
+            )
 
     @pytest.mark.asyncio
     async def test_rows_render_game_timezone_times(self, live_client, monkeypatch):

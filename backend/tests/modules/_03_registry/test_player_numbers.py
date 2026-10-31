@@ -50,7 +50,9 @@ class TestEnsurePlayerNumbers:
         self, test_db_session
     ):
         # Deliberately seed newest-first so insertion order ≠ order.
-        p2 = await seed_player(test_db_session, 510101, created_at=T0 + timedelta(hours=1))
+        p2 = await seed_player(
+            test_db_session, 510101, created_at=T0 + timedelta(hours=1)
+        )
         p1 = await seed_player(test_db_session, 510102, created_at=T0)
 
         numbers = await ensure_player_numbers(test_db_session)
@@ -99,7 +101,7 @@ class TestEnsurePlayerNumbers:
     async def test_issue_to_deleted_player_cannot_duplicate(self, test_db_session):
         """The unique constraint is the second line of defence — a
         manual duplicate insert must fail at the database."""
-        player = await seed_player(test_db_session, 510401, created_at=T0)
+        await seed_player(test_db_session, 510401, created_at=T0)
         await ensure_player_numbers(test_db_session)
         other = await seed_player(test_db_session, 510402, created_at=T0)
 
@@ -118,8 +120,12 @@ class TestNumbersSurviveDeletion:
         self, client, test_db_session, registry_started
     ):
         p1 = await seed_player(test_db_session, 511001, created_at=T0)
-        p2 = await seed_player(test_db_session, 511002, created_at=T0 + timedelta(hours=1))
-        p3 = await seed_player(test_db_session, 511003, created_at=T0 + timedelta(hours=2))
+        p2 = await seed_player(
+            test_db_session, 511002, created_at=T0 + timedelta(hours=1)
+        )
+        p3 = await seed_player(
+            test_db_session, 511003, created_at=T0 + timedelta(hours=2)
+        )
         await ensure_player_numbers(test_db_session)
 
         await PlayerService.delete_player(test_db_session, p2.id)
@@ -140,14 +146,18 @@ class TestNumbersSurviveDeletion:
         assert resp.json()["code"] == "REGISTRY_PLAYER_NOT_FOUND"
 
         # A brand-new player gets 4 — the freed 2 is never reused.
-        p4 = await seed_player(test_db_session, 511004, created_at=T0 + timedelta(hours=3))
+        p4 = await seed_player(
+            test_db_session, 511004, created_at=T0 + timedelta(hours=3)
+        )
         numbers = await ensure_player_numbers(test_db_session)
         assert numbers[p4.id] == 4
 
         # Deleting the newest player then adding another: same rule.
         await PlayerService.delete_player(test_db_session, p4.id)
         await test_db_session.commit()
-        p5 = await seed_player(test_db_session, 511005, created_at=T0 + timedelta(hours=4))
+        p5 = await seed_player(
+            test_db_session, 511005, created_at=T0 + timedelta(hours=4)
+        )
         numbers = await ensure_player_numbers(test_db_session)
         assert numbers[p5.id] == 5
         counter = (
@@ -182,7 +192,7 @@ class TestStoredNumberInCells:
     async def test_fallback_name_and_row_key_use_stored_number(
         self, test_db_session, registry_started
     ):
-        player = await seed_player(test_db_session, 512001, created_at=T0)
+        await seed_player(test_db_session, 512001, created_at=T0)
         # Pre-issue a deliberately non-sequential number via the counter.
         test_db_session.add(RegistryNumberCounter(id=1, last_number=40))
         await test_db_session.flush()
@@ -202,12 +212,16 @@ class TestStoredNumberInCells:
         self, client, test_db_session, registry_started
     ):
         p1 = await seed_player(test_db_session, 512101, created_at=T0)
-        p2 = await seed_player(test_db_session, 512102, created_at=T0 + timedelta(hours=1))
+        p2 = await seed_player(
+            test_db_session, 512102, created_at=T0 + timedelta(hours=1)
+        )
         await ensure_player_numbers(test_db_session)
         await PlayerService.delete_player(test_db_session, p1.id)
         await test_db_session.commit()
 
-        table = await client.get("/api/v1/registry/tables/players", headers=bearer_headers(p2.id))
+        table = await client.get(
+            "/api/v1/registry/tables/players", headers=bearer_headers(p2.id)
+        )
         rows = table.json()["rows"]
         assert [r["key"] for r in rows] == ["p2"]
 
@@ -223,7 +237,9 @@ class TestAdminIntegration:
         self, test_db_session, registry_started
     ):
         p1 = await seed_player(test_db_session, 513001, created_at=T0)
-        p2 = await seed_player(test_db_session, 513002, created_at=T0 + timedelta(hours=1))
+        p2 = await seed_player(
+            test_db_session, 513002, created_at=T0 + timedelta(hours=1)
+        )
         await ensure_player_numbers(test_db_session)
 
         info = await registry_player_info(test_db_session, [p1.id, p2.id])

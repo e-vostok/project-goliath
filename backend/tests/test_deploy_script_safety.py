@@ -37,7 +37,9 @@ def test_deploy_sh_calls_prune_once_after_smoke_check() -> None:
     text = DEPLOY_SH.read_text(encoding="utf-8")
     main_body = text[text.index("main() {") :]
     calls = main_body.count("prune_build_cache")
-    assert calls == 1, f"prune_build_cache must be called exactly once in main(), got {calls}"
+    assert calls == 1, (
+        f"prune_build_cache must be called exactly once in main(), got {calls}"
+    )
     assert main_body.index("smoke_check") < main_body.index("prune_build_cache"), (
         "prune_build_cache must run after smoke_check"
     )

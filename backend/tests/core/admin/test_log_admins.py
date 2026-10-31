@@ -28,7 +28,6 @@ from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator
 from main import _ERROR_CODE_STATUS, app
 from modules._00_core.admin_service import (
-    AdminAuditService,
     AdminGrantService,
 )
 from modules._00_core.config_schema import CoreConfig
