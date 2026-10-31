@@ -40,6 +40,7 @@ from modules._02_bot.models import BotConsent, BotOutbox, BotState
 from modules._02_bot.registry import get_deadline_audience_providers
 from modules._02_bot.service import BotService
 from modules._02_bot.signal import request_wake
+from modules._03_registry.startup import get_core_config
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,15 @@ SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 _DIGEST_TYPE = "TICK_DIGEST"
 _DEADLINE_TYPE = "DEADLINE_WARNING"
+
+
+def _load_core_config() -> CoreConfig:
+    """The lifespan-loaded CoreConfig; falls back to a YAML read when the
+    registry startup has not run (direct-function tests)."""
+    try:
+        return get_core_config()
+    except RuntimeError:
+        return _load_core_config()
 
 
 async def digest_watcher_step(
@@ -62,7 +72,7 @@ async def digest_watcher_step(
         return
     turn = snapshot.current_turn
 
-    core_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    core_config = _load_core_config()
     enqueued_any = False
     async with session_factory() as session:
         async with session.begin():

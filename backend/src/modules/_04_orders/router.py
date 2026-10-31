@@ -25,6 +25,7 @@ from core.security.dependencies import get_current_player
 from modules._00_core import images
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Player
+from modules._03_registry.startup import get_core_config
 from modules._04_orders.dto import (
     AssignedOrderDTO,
     AssignedOrdersDTO,
@@ -41,6 +42,16 @@ from modules._04_orders.service import (
     OrderService,
 )
 from modules._04_orders.worker import request_orders_wake
+
+
+def _load_core_config() -> CoreConfig:
+    """The lifespan-loaded CoreConfig; falls back to a YAML read when the
+    registry startup has not run (direct-function tests)."""
+    try:
+        return get_core_config()
+    except RuntimeError:
+        return _load_core_config()
+
 
 router = APIRouter(prefix="/api/v1/orders")
 
@@ -85,7 +96,7 @@ def _detail_dto(view: OrderDetailView) -> OrderDetailDTO:
 
 def _deadline_text(moment: datetime) -> str:
     """``DD.MM.YYYY HH:MM`` in tick.tick_timezone (Spec 5.2)."""
-    tz = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).tick.tick_timezone
+    tz = _load_core_config().tick.tick_timezone
     # Naive datetimes are read as UTC (SQLite returns naive values even
     # for timezone=True columns — the same convention as admin_hooks).
     if moment.tzinfo is None:

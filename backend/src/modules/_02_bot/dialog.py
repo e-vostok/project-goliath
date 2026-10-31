@@ -33,10 +33,20 @@ from modules._02_bot.config_schema import BotConfig
 from modules._02_bot.events import CallbackEvent, MessageNew
 from modules._02_bot.models import BotConsent, BotVkEvent
 from modules._02_bot.service import BotService
+from modules._03_registry.startup import get_core_config
 
 logger = logging.getLogger(__name__)
 
 DialogCommand = Literal["start", "status", "help"]
+
+
+def _load_core_config() -> CoreConfig:
+    """The lifespan-loaded CoreConfig; falls back to a YAML read when the
+    registry startup has not run (direct-function tests)."""
+    try:
+        return get_core_config()
+    except RuntimeError:
+        return _load_core_config()
 
 
 async def handle_event(
@@ -235,7 +245,7 @@ async def _status_variables(session: AsyncSession, nation) -> dict[str, str | in
     the leader fields (``turn``/``game_date``/``next_tick_time`` come
     from ``game_clock`` through the same helpers).
     """
-    core_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    core_config = _load_core_config()
     snapshot = await GameClockService.snapshot(session)
     turn = snapshot.current_turn if snapshot is not None else 0
     next_tick_time = (
