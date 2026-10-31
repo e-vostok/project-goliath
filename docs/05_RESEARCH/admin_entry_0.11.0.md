@@ -36,7 +36,7 @@
 в документации отдаёт 404, а в `RequestPropsMap` официального пакета
 `@vkontakte/vk-bridge` такого события отсутствует (проверено в типах
 установленной версии 2.15.12 —
-`frontend/node_modules/@vkontakte/vk-bridge/dist/types/src/types/data.d.ts`).
+frontend/node_modules/@vkontakte/vk-bridge/dist/types/src/types/data.d.ts).
 Ближайший по названию метод — `VKWebAppOpenApp` — открывает другое
 мини-приложение по `app_id`, а не произвольную ссылку. Метода
 «открыть внешнюю ссылку» в VK Bridge на веб-платформе нет вообще —
@@ -260,7 +260,7 @@ Bearer Mini App нельзя вставлять в URL новой вкладки
 SPA-fallback `try_files {path} /index.html` (это и позволяет работать
 `admin-probe.html` из `frontend/public/`). Варианты:
 
-- **Отдельный статический файл** `frontend/public/admin/index.html` —
+- **Отдельный статический файл** frontend/public/admin/index.html —
   ноль сборки, но панель из 12 юнитов быстро упрётся в ручной JS.
   Также `/admin` без расширения сейчас попадёт в fallback на Mini App —
   понадобится `try_files {path} {path}/index.html /index.html`

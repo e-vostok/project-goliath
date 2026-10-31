@@ -23,9 +23,9 @@
 ## Границы затрагиваемых директорий
 
 - `backend/src/core/` — новое: `db.py`, `security/jwt.py`, `security/vk_signature.py`, `tick/orchestrator.py`, `config/loader.py`
-- `backend/src/modules/00_core/` — новое: `models.py`, `service.py`, `tick_handler.py`, `router.py`, `schemas.py`, `config_schema.py`
+- `backend/src/modules/_00_core/` — новое: `models.py`, `service.py`, `tick_handler.py`, `router.py`, `schemas.py`, `config_schema.py`
 - `backend/tests/fixtures/` — новое: фабрики `Player`, `Nation`, `Province`
-- `backend/tests/modules/00_core/` — новое
+- `backend/tests/modules/_00_core/` — новое
 - `configs/00_core.yaml` — уже создан (Шаг 2)
 - `frontend/src/shared/` — новое: базовый API-клиент, типы токена/ошибок
 - `frontend/src/app/` — правка: интеграция auth-gate в `AppShell`
@@ -49,14 +49,14 @@
 - `configs/00_core.yaml` — правка (новые разделы `color`, `catalog`, новые ключи `nation.*`)
 - `backend/tests/` — правка и новое: `test_configs_validity.py` (сверка с `01_map.yaml`, файлы каталога), фабрики в `fixtures/` (ровно 5 провинций, новые поля), тесты в `modules/_00_core/`
 - `backend/src/modules/_03_registry/` — правка: источники `players`/`nations` (краткое название, флаг)
-- `frontend/public/assets/nations/` — новое: `flags/`, `portraits/`
+- каталог картинок государства — новое: `flags/`, `portraits/`
 - `frontend/src/shared/` — правка: `types.ts`, `api-client.ts`
 - `frontend/src/modules/00_core/` — правка и новое: `PanelCreateNation` (контейнер), четыре компонента вкладок, `PanelNationHome`, хуки
 - `frontend/src/modules/01_map/` — правка: `ProvincePicker` (упорядоченный выбор, столица, исправление дёрганья карты)
 
 ## Issues
 
-- [x] **Issue 1: Data Layer & Config-Safe** — Модели SQLAlchemy (`Player`, `Nation`, `Province`, `ScheduledAction`, `GameClock`, `TickLog`) в `backend/src/modules/00_core/models.py`; Alembic-миграция начальной схемы; сид-скрипт таблицы `provinces` (временный плейсхолдер `id=1..100`, `nation_id=NULL` — см. открытый вопрос выше); `config_schema.py` (готов с Шага 2) подключён к загрузке при старте `main.py`; тест `test_configs_validity.py`. **Результат:** полный набор корневых таблиц ядра существует в БД, баланс валидируется до старта сервера, констрейнты `UNIQUE(owner_player_id)` / `UNIQUE(name)` / `UNIQUE(color_hex)` подтверждены тестом на реальной тестовой БД (INV-1, INV-2).
+- [x] **Issue 1: Data Layer & Config-Safe** — Модели SQLAlchemy (`Player`, `Nation`, `Province`, `ScheduledAction`, `GameClock`, `TickLog`) в `backend/src/modules/_00_core/models.py`; Alembic-миграция начальной схемы; сид-скрипт таблицы `provinces` (временный плейсхолдер `id=1..100`, `nation_id=NULL` — см. открытый вопрос выше); `config_schema.py` (готов с Шага 2) подключён к загрузке при старте `main.py`; тест `test_configs_validity.py`. **Результат:** полный набор корневых таблиц ядра существует в БД, баланс валидируется до старта сервера, констрейнты `UNIQUE(owner_player_id)` / `UNIQUE(name)` / `UNIQUE(color_hex)` подтверждены тестом на реальной тестовой БД (INV-1, INV-2).
 
 - [x] **Issue 2: Domain Simulation & Tick DAG** — `PlayerService` (get-or-create по `vk_user_id`); `NationService` (атомарные create/update/delete с проверкой уникальности и резервированием провинций, INV-3, INV-6); `ScheduledActionService` (постановка в очередь + алгоритм проверки частоты из Части 3 Спека); `TickOrchestrator` в `backend/src/core/tick/orchestrator.py` — генерик-раннер по перечислению `TickPhase`, точка регистрации обработчиков для будущих модулей, `finalize_tick()` (инкремент `current_turn`, пересчёт календаря, запись `tick_log` вне основной транзакции — INV-TICK-ATOMICITY). **Результат:** доменная логика государства и очереди действий работает и покрыта тестами на реальной БД без моков; тик-движок проходит полный цикл (даже без единого зарегистрированного модуля-фазы) и корректно откатывается при симулированном исключении в обработчике.
 

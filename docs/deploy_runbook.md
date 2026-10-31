@@ -16,12 +16,11 @@
 
 Зачем: чтобы понимать, из чего состоит игра на сервере и где искать файлы.
 
-```
+```text
 Интернет → https://ваш-домен.ru → caddy (порты 80/443)
                                    ├── /        → статика фронтенда
                                    └── /api/*   → backend:8000 → db (PostgreSQL)
 ```
-
 Стек поднимается одной командой `docker compose` из файла
 `docker-compose.prod.yml`. Четыре сервиса:
 
@@ -63,7 +62,6 @@ sudo chown -R deploy:deploy /home/deploy/.ssh
 sudo chmod 700 /home/deploy/.ssh
 sudo chmod 600 /home/deploy/.ssh/authorized_keys
 ```
-
 Откройте **второе** окно терминала и проверьте, что вход работает:
 `ssh deploy@<IP-сервера>`. Только после успешного входа продолжайте.
 
@@ -73,7 +71,6 @@ sudo chmod 600 /home/deploy/.ssh/authorized_keys
 printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\n' | sudo tee /etc/ssh/sshd_config.d/60-goliath.conf
 sudo systemctl reload ssh
 ```
-
 ### 2.3. Файрвол (открыть только 22, 80, 443)
 
 ```bash
@@ -82,7 +79,6 @@ sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw enable
 ```
-
 На вопрос отвечайте `y`. Проверка: `sudo ufw status`.
 
 ### 2.4. Файл подкачки 2 ГБ и умеренный swappiness
@@ -99,7 +95,6 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 printf 'vm.swappiness=10\n' | sudo tee /etc/sysctl.d/90-goliath.conf
 sudo sysctl --system
 ```
-
 Проверка: `free -h` — в строке Swap должно быть около 2Gi.
 
 ### 2.5. Автоматические обновления безопасности
@@ -109,21 +104,18 @@ sudo apt-get update
 sudo apt-get install -y unattended-upgrades
 printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades
 ```
-
 ### 2.6. Docker
 
 ```bash
 sudo apt-get install -y docker.io docker-compose-v2 docker-buildx
 sudo usermod -aG docker deploy
 ```
-
 Перелогиньтесь под `deploy` (выйдите и зайдите снова), затем проверьте:
 
 ```bash
 docker version
 docker compose version
 ```
-
 Обе команды должны отвечать версиями без `sudo` и без ошибок.
 
 ### 2.7. Папка проекта и клон репозитория
@@ -133,14 +125,12 @@ sudo mkdir -p /opt/goliath
 sudo chown deploy:deploy /opt/goliath
 exit   # выйти из-под root/ubuntu, если ещё там
 ```
-
 Дальше — только под `deploy`:
 
 ```bash
 git clone https://github.com/e-vostok/project-goliath /opt/goliath
 cd /opt/goliath
 ```
-
 ---
 
 ## 3. Боевой `.env`
@@ -154,7 +144,6 @@ cp .env.prod.example .env
 chmod 600 .env
 nano .env
 ```
-
 Что вписать (в `nano`: редактируете, затем `Ctrl+O`, Enter, `Ctrl+X`):
 
 | Ключ | Откуда взять |
@@ -198,7 +187,6 @@ cd /opt/goliath
 ./deploy/deploy.sh --check     # только проверки; исправьте, если ругается
 ./deploy/deploy.sh             # сам деплой
 ```
-
 Первый запуск долгий: скачиваются и собираются образы (ориентир —
 5–15 минут). Ничего не прерывайте.
 
@@ -248,7 +236,6 @@ cd /opt/goliath
 cd /opt/goliath
 ./deploy/deploy.sh --ref v0.5.0
 ```
-
 - Без `--ref` ставится последний `main`: `./deploy/deploy.sh`.
 - **Запретное окно:** с 23:55 до 00:10 по Москве скрипт откажется
   работать — в это время идёт суточный ход, и деплой мог бы его
@@ -289,7 +276,6 @@ export COMPOSE_FILE=docker-compose.prod.yml
 docker compose run --rm --no-deps backend python -m src.modules._01_map.retired_report
 # → печатает отчёт по базе, последняя строка — вердикт (читаем ниже)
 ```
-
 Как читать вердикт:
 
 - `ГОТОВО: запуск пройдёт, будет удалено N строк` — база готова к
@@ -320,7 +306,6 @@ cd /opt/goliath
 git checkout --detach <предыдущий-коммит>   # скрипт печатал его как PREV_SHA
 docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 ```
-
 Проверка: `https://ваш-домен.ru/api/v1/health` → `{"status":"ok"}`.
 
 ### 7.2. Откат базы из преддеплойного бэкапа
@@ -345,7 +330,6 @@ cat "$DUMP" | docker compose -f docker-compose.prod.yml --env-file .env \
   exec -T db pg_restore -U "$PGU" -d "$PGD" --no-owner --exit-on-error
 docker compose -f docker-compose.prod.yml --env-file .env up -d backend
 ```
-
 Проверка: health → ok, затем зайдите в игру и убедитесь, что мир
 выглядит как до обновления.
 
@@ -363,7 +347,6 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d backend
 timedatectl      # посмотрите строку "Time zone"
 crontab -e
 ```
-
 Вставьте в конец две строки из `deploy/cron.example`. Если сервер в
 UTC — как есть (21:30 UTC = 00:30 МСК). Если в другом поясе —
 пересчитайте час, чтобы бэкап шёл около 00:30 по Москве.
@@ -387,7 +370,6 @@ UTC — как есть (21:30 UTC = 00:30 МСК). Если в другом п�
    ```powershell
    .\age-keygen.exe -o goliath-backup-key.txt
    ```
-
 3. Программа напечатает публичный ключ вида `age1...` — он же будет
    в первой строке файла. Публичный ключ понадобится на сервере.
 4. Сам файл `goliath-backup-key.txt` — это приватный ключ. Сохраните
@@ -403,7 +385,6 @@ UTC — как есть (21:30 UTC = 00:30 МСК). Если в другом п�
 sudo apt-get install -y age rclone    # если ещё не установлены
 rclone config
 ```
-
 Дальше по шагам мастера: `n` (new remote) → имя, например
 `goliath-backup` → тип `S3` → провайдер вашего хранилища → ключи
 доступа и endpoint → остальное можно пропускать Enter'ом → `q`.
@@ -416,7 +397,6 @@ mkdir -p ~/.config/goliath
 nano ~/.config/goliath/backup.env
 chmod 600 ~/.config/goliath/backup.env
 ```
-
 Содержимое (подставьте своё):
 
 ```dotenv
@@ -424,14 +404,12 @@ BACKUP_AGE_RECIPIENT=age1публичный_ключ_из_п_8.2
 BACKUP_RCLONE_REMOTE=goliath-backup:имя-бакета
 BACKUP_OFFSITE_KEEP_DAYS=30
 ```
-
 ### 8.5. Первый запуск вручную и репетиция
 
 ```bash
 cd /opt/goliath
 ./deploy/backup.sh --tag daily
 ```
-
 Успех: строка «Бэкап завершён: локальная копия + внешняя». Если внешняя
 копия не настроена — скрипт громко предупредит и завершится кодом 2.
 
@@ -440,7 +418,6 @@ cd /opt/goliath
 ```bash
 ./deploy/restore_check.sh        # проверит самый свежий дамп -> PASS
 ```
-
 Раз в месяц она и так запускается по cron (вторая строка), но после
 настройки прогоните вручную.
 
@@ -460,7 +437,6 @@ cd /opt/goliath
    rclone lsl goliath-backup:имя-бакета        # выберите самый свежий файл
    rclone copy goliath-backup:имя-бакета/goliath-daily-XXXX.dump.age ~/
    ```
-
 3. Перекиньте файл `goliath-daily-XXXX.dump.age` на свой компьютер
    (например, через WinSCP).
 4. На **вашем компьютере** расшифруйте (в папке с `age.exe`):
@@ -468,7 +444,6 @@ cd /opt/goliath
    ```powershell
    .\age.exe -d -i goliath-backup-key.txt -o goliath.dump goliath-daily-XXXX.dump.age
    ```
-
 5. Загрузите `goliath.dump` обратно на сервер (WinSCP, в `/home/deploy/`).
 6. Дальше — как в п. 7.2: остановите backend, пересоздайте базу,
    `pg_restore` из файла `~/goliath.dump`, запустите backend.
@@ -512,7 +487,6 @@ cd /opt/goliath
    ```bash
    find . -path ./.git -prune -o ! -name .env -exec chmod go+rX {} +
    ```
-
    Команда открывает чтение всем файлам репозитория, но не трогает
    `.env` (он обязан оставаться `-rw-------`) и папку `.git`.
 2. Запустите деплой заново: `bash deploy/deploy.sh`.
@@ -529,7 +503,6 @@ docker system df
 docker builder prune -a -f --filter until=72h | tail -n 1  # кэш сборки — см. раздел 14.1
 ls -lt ~/backups/daily | head  # старые дампы чистятся сами (хранятся 14)
 ```
-
 **Посмотреть логи любого сервиса:**
 
 ```bash
@@ -539,13 +512,11 @@ docker compose -f docker-compose.prod.yml --env-file .env logs --tail=100 db
 docker compose -f docker-compose.prod.yml --env-file .env logs --tail=100 caddy
 docker compose -f docker-compose.prod.yml --env-file .env logs migrate
 ```
-
 **Узнать статус контейнеров:**
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env ps
 ```
-
 **Бэкап по cron не отработал:** `tail ~/backups/cron.log` и
 `tail ~/backups/backup.log` — там причина на русском.
 
@@ -590,7 +561,6 @@ cd backend
 uv pip compile pyproject.toml --upgrade --python-version 3.12 --python-platform x86_64-manylinux_2_28 -o requirements.lock
 uv pip compile pyproject.toml --extra dev --upgrade --python-version 3.12 --python-platform x86_64-manylinux_2_28 -o requirements-dev.lock
 ```
-
 Флаг `--upgrade` поднимает все пакеты до самых свежих версий,
 разрешённых рамками в `pyproject.toml`. Если нужно обновить только
 одну библиотеку — сначала поднимите её нижнюю границу в
@@ -634,7 +604,6 @@ uv pip compile pyproject.toml --extra dev --upgrade --python-version 3.12 --pyth
 cd /opt/goliath
 docker compose -f docker-compose.prod.yml --env-file .env up -d backend
 ```
-
 Именно `up -d`, не `restart`: только так контейнер подхватывает новые
 значения `.env`. Пересборка не нужна — переменные читаются при старте.
 
@@ -787,7 +756,6 @@ cd /opt/goliath && bash deploy/disk_report.sh
 #   бэкапов, 20 самых тяжёлых папок и файлов, журнал системы, /var/log,
 #   кэш apt. Занимает несколько минут — не прерывайте.
 ```
-
 Строки `needs sudo: ...` означают, что раздел пропущен — ему нужны права
 root. Чтобы получить полный отчёт, сначала выполните `sudo -v` (спросит
 ваш пароль один раз) и запустите скрипт снова.
@@ -809,10 +777,8 @@ docker system df                                          # измерить: с
 docker builder prune -a -f --filter until=72h | tail -n 1 # почистить кэш сборки старше 72 часов
 df -h /                                                   # проверить, сколько стало свободно
 ```
-
 **Никогда не выполняйте `docker system prune` и любые команды с
 `--volumes`** — они могут удалить том базы данных `goliath_pgdata`.
 
 После очистки первая сборка идёт медленнее обычного — кэш собирается
 заново. Работающий сайт и база данных не затрагиваются.
-
