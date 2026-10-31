@@ -70,9 +70,7 @@ class AdminRegistry:
     _nation_preview_hooks: dict[str, NationPreviewHook] = {}
     _overview_hooks: dict[str, OverviewHook] = {}
     # slug -> (info_fn, search_fn|None); the search half is optional.
-    _player_info_hooks: dict[
-        str, tuple[PlayerInfoHook, PlayerSearchHook | None]
-    ] = {}
+    _player_info_hooks: dict[str, tuple[PlayerInfoHook, PlayerSearchHook | None]] = {}
     # slug -> (info_fn, search_fn|None) — the province twin of the
     # player-info pair.
     _province_info_hooks: dict[
@@ -227,9 +225,7 @@ class AdminRegistry:
                 f"Player-info hook already registered for module '{module_slug}'"
             )
         cls._player_info_hooks[module_slug] = (info_fn, search_fn)
-        logger.info(
-            f"Registered admin player-info hook for module '{module_slug}'"
-        )
+        logger.info(f"Registered admin player-info hook for module '{module_slug}'")
 
     @classmethod
     def register_province_info(
@@ -261,14 +257,10 @@ class AdminRegistry:
                 f"Province-info hook already registered for module '{module_slug}'"
             )
         cls._province_info_hooks[module_slug] = (info_fn, search_fn)
-        logger.info(
-            f"Registered admin province-info hook for module '{module_slug}'"
-        )
+        logger.info(f"Registered admin province-info hook for module '{module_slug}'")
 
     @classmethod
-    def register_audit_actions(
-        cls, module_slug: str, actions: dict[str, str]
-    ) -> None:
+    def register_audit_actions(cls, module_slug: str, actions: dict[str, str]) -> None:
         """
         Register the Russian labels of a module's audit action codes.
 
@@ -288,9 +280,7 @@ class AdminRegistry:
                 f"Audit actions already registered for module '{module_slug}'"
             )
         cls._audit_action_hooks[module_slug] = dict(actions)
-        logger.info(
-            f"Registered admin audit actions for module '{module_slug}'"
-        )
+        logger.info(f"Registered admin audit actions for module '{module_slug}'")
 
     @classmethod
     def get_reset_hooks(cls) -> dict[str, ResetHook]:
@@ -335,8 +325,7 @@ class AdminRegistry:
     def get_audit_action_hooks(cls) -> dict[str, dict[str, str]]:
         """All {slug: {action_code: label}} maps in registration order."""
         return {
-            slug: dict(actions)
-            for slug, actions in cls._audit_action_hooks.items()
+            slug: dict(actions) for slug, actions in cls._audit_action_hooks.items()
         }
 
     @classmethod

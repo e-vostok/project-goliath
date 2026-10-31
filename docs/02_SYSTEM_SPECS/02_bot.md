@@ -49,7 +49,7 @@
 | `event_key` | VARCHAR(120) | NOT NULL. Ключ события для защиты от дубля |
 | `priority` | VARCHAR(8) | NOT NULL, `CHECK (priority IN ('critical','normal'))` |
 | `counts_toward_cap` | BOOLEAN | NOT NULL. Копия правила типа на момент постановки |
-| `payload` | JSON | NOT NULL. Для `NOTIFICATION` — словарь переменных шаблона. Для `REPLY` — `{"template": "<имя из dialog.texts>", "vars": {…}, "keyboard": "AUTO"|"HELP"}`: `AUTO` — постоянная клавиатура `MEMBER`/`GUEST` по состоянию игрока в момент отправки, `HELP` — инлайн-клавиатура ссылок «Помощи» (п. 5.5) |
+| `payload` | JSON | NOT NULL. Для `NOTIFICATION` — словарь переменных шаблона. Для `REPLY` — `{"template": "<имя из dialog.texts>", "vars": {…}, "keyboard": "AUTO"/"HELP"}`: `AUTO` — постоянная клавиатура `MEMBER`/`GUEST` по состоянию игрока в момент отправки, `HELP` — инлайн-клавиатура ссылок «Помощи» (п. 5.5) |
 | `status` | VARCHAR(8) | NOT NULL, default `'PENDING'`, `CHECK (status IN ('PENDING','LEASED','SENT','EXPIRED','DROPPED','FAILED'))` |
 | `drop_reason` | VARCHAR(24) | NULL. Для `DROPPED`/`FAILED`: `NO_CONSENT`, `NO_NATION`, `BLOCKED`, `TEMPLATE_ERROR`, `BAD_REQUEST`, `TOO_LONG`, `ATTEMPTS_EXHAUSTED`, `RESET` |
 | `created_at` | TIMESTAMPTZ | NOT NULL |
@@ -102,7 +102,6 @@ erDiagram
     bot_vk_events }o..o| players : "vk_user_id (логически)"
     bot_state
 ```
-
 ### 1.3. Что модуль читает у других (только публичные функции сервисов 00_core)
 
 | Данные | Для чего |
@@ -166,7 +165,6 @@ stateDiagram-v2
     ALLOWED --> DENIED: message_deny / ошибки 900,901,902,1021 / проверка = 0
     DENIED --> ALLOWED: message_allow / проверка = 1
 ```
-
 Правила:
 
 - Источники в порядке доверия: ответ `isMessagesFromGroupAllowed` (`VK_CHECK`) ≥ событие Callback (`VK_EVENT`) ≥ ошибка отправки. Побеждает последняя запись; расхождение со временем лечит сверка (п. 3.7).
@@ -191,7 +189,6 @@ stateDiagram-v2
     LEASED --> DROPPED: 100,900,901,902,911,914,1021
     PENDING --> FAILED: attempts > max_attempts
 ```
-
 Терминальные состояния: `SENT`, `EXPIRED`, `DROPPED`, `FAILED`. Завершённые строки удаляются через `sender.purge_after_days`.
 
 ### 2.5. Фоновые задачи и порядок запуска
@@ -513,7 +510,7 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 | `labels.*` (6 подписей: `status`, `help`, `register_nation`, `rules`, `regulations`, `contact_admin`) | str | 1–40 символов (предел подписи кнопки ВК, V9) | см. файл |
 | `texts.*` (6 текстов: `start_guest`, `start_member`, `status`, `help`, `plate`, `nation_created`) | str | шаблон (п. 4.9) | см. файл |
 | `help.allowed_hosts` | list[str] | 1–10 хостов в нижнем регистре, без схемы, порта и пути | `vk.com`, `vk.ru` |
-| `help.rules_url`, `help.regulations_url`, `help.admin_contact_url` | str\|null | `https://`, хост из `allowed_hosts`, ≤ 300 символов; `null` — кнопка скрыта | правила и контакт заданы владельцем, `regulations_url = null` (см. файл) |
+| `help.rules_url`, `help.regulations_url`, `help.admin_contact_url` | str/null | `https://`, хост из `allowed_hosts`, ≤ 300 символов; `null` — кнопка скрыта | правила и контакт заданы владельцем, `regulations_url = null` (см. файл) |
 
 ### 4.8. `types.<КЛЮЧ>` (каталог)
 
@@ -524,16 +521,16 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 | Ключ | Тип | Диапазон / правило |
 | :-- | :-- | :-- |
 | `enabled` | bool | выключенный тип не создаёт сообщений |
-| `priority` | `critical`\|`normal` | `critical`: нет потолка, склейки и выдержки |
+| `priority` | `critical`/`normal` | `critical`: нет потолка, склейки и выдержки |
 | `requires_consent` | bool | — |
 | `requires_nation` | bool | сообщение только владельцу государства; при `false` проверка государства (п. 3.1 шаг 4, п. 3.2 шаг 6) не выполняется |
 | `counts_toward_cap` | bool | требует `line_text`; для `critical` запрещено |
 | `ttl_minutes` | int | 1–10080; `hold_seconds < ttl·60` |
 | `hold_seconds` | int | 0–3600 |
-| `merge` | `never`\|`over_cap`\|`always` | не `never` ⇒ нужен `batch_text`; `over_cap` ⇒ `max_per_window ≥ 2` |
+| `merge` | `never`/`over_cap`/`always` | не `never` ⇒ нужен `batch_text`; `over_cap` ⇒ `max_per_window ≥ 2` |
 | `max_per_window` | int | 0–100; 0 — без лимита |
 | `window_minutes` | int | 1–10080 |
-| `text` / `batch_text` / `line_text` | str / str\|null / str\|null | шаблоны (п. 4.9) |
+| `text` / `batch_text` / `line_text` | str / str/null / str/null | шаблоны (п. 4.9) |
 
 Стартовые значения типов — см. файл (числа Bible подтверждены Project Owner: потолок 8, сроки годности 6/24/48/48 ч, депеши 3 в час).
 
@@ -561,7 +558,6 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 ```json
 { "type": "message_new", "group_id": 123456, "secret": "…", "event_id": "…", "v": "5.199", "object": { … } }
 ```
-
 Порядок проверок и ответы (все ответы — `text/plain`):
 
 | Шаг | Условие | Ответ |
@@ -599,7 +595,6 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
   "consent_poll_timeout_seconds": 90
 }
 ```
-
 | Поле | Значение |
 | :-- | :-- |
 | `enabled` | бот активен (`READY`/`RUNNING`); `false` ⇒ клиент скрывает все элементы уведомлений |
@@ -712,7 +707,6 @@ def register_notification_type(key: str, variables: frozenset[str]) -> None: ...
 def register_deadline_audience(provider: Callable[[AsyncSession, int], Awaitable[set[str]]]) -> None: ...
 def register_bot_hooks(config: BotConfig) -> None: ...   # идемпотентно; вызывается из lifespan
 ```
-
 Правила для продюсера:
 
 1. Вызывать **в той же транзакции**, что и событие; результат можно игнорировать — никакие значения не требуют реакции.
@@ -757,7 +751,7 @@ def register_bot_hooks(config: BotConfig) -> None: ...   # идемпотент�
 | T12 | Критическая тревога опережает ожидающие сводки в партии и не учитывается в потолке |
 | T13 | Callback: `confirmation` отдаёт строку; неверный `secret`/`group_id` → 403; повтор `event_id` → без повторной обработки; бот выключен → 404; `message_allow` создаёт игрока и даёт `ALLOWED` (в том числе `DENIED → ALLOWED`), `message_deny` → `DENIED`; `message_new` согласие не меняет |
 | T14 | Диалог: «Начать» (`{"command":"start"}`) и первое обращение → приветствие (гость / игрок); свободный текст и неизвестный `payload` → плашка, вторая в пределах паузы → тишина; «Помощь», «Статус» для гостя и игрока; клавиатура ответа соответствует состоянию (`GUEST`/`MEMBER`) |
-| T15 | Очистка значений: `[id1|x]`, управляющие и невидимые символы, длина — в отправленном тексте их нет |
+| T15 | Очистка значений: [id1&#124;x], управляющие и невидимые символы, длина — в отправленном тексте их нет |
 | T16 | Сброс мира: очередь пуста, `last_digest_turn=0`, согласия на месте |
 | T17 | Выключенный бот: `enqueue` ничего не пишет; задачи не запускаются; `/api/v1/health` отвечает как раньше |
 | T18 | Падение ВК (все запросы с ошибкой) на время хода: ход проходит, `game_clock` увеличен, `/health` зелёный |

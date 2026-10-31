@@ -109,9 +109,7 @@ def _encode_webp(img: Image.Image, quality: int) -> bytes:
     return out.getvalue()
 
 
-def process_image(
-    raw: bytes, kind: str, config: ImagesSettings
-) -> ProcessedImage:
+def process_image(raw: bytes, kind: str, config: ImagesSettings) -> ProcessedImage:
     """Проверка и пережатие загруженного файла (синхронно, CPU-bound).
 
     Порядок проверок — Spec, абзац «Загрузка»: тип по содержимому →
@@ -249,6 +247,5 @@ def check_image_support() -> None:
     missing = [codec for codec in _REQUIRED_CODECS if not features.check(codec)]
     if missing:
         raise RuntimeError(
-            "Pillow was built without required image codecs: "
-            + ", ".join(missing)
+            "Pillow was built without required image codecs: " + ", ".join(missing)
         )

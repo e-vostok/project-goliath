@@ -73,7 +73,10 @@ def _schema(url: str) -> dict:
                     else set()
                 ),
                 "uniques": (
-                    {u["name"]: u["column_names"] for u in insp.get_unique_constraints(TABLE)}
+                    {
+                        u["name"]: u["column_names"]
+                        for u in insp.get_unique_constraints(TABLE)
+                    }
                     if TABLE in insp.get_table_names()
                     else {}
                 ),
@@ -84,17 +87,17 @@ def _schema(url: str) -> dict:
                 ),
                 "fks": (
                     {
-                        fk["name"]: (fk["referred_table"], fk["options"].get("ondelete"))
+                        fk["name"]: (
+                            fk["referred_table"],
+                            fk["options"].get("ondelete"),
+                        )
                         for fk in insp.get_foreign_keys(TABLE)
                     }
                     if TABLE in insp.get_table_names()
                     else {}
                 ),
                 "indexes": (
-                    {
-                        i["name"]: i["unique"]
-                        for i in insp.get_indexes(TABLE)
-                    }
+                    {i["name"]: i["unique"] for i in insp.get_indexes(TABLE)}
                     if TABLE in insp.get_table_names()
                     else {}
                 ),

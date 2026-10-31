@@ -89,11 +89,7 @@ def _make_province_info(map_service: MapService):
         names live in memory; unknown ids are skipped.
         """
         names = map_service.display_names()
-        return {
-            pid: {"name": names[pid]}
-            for pid in province_ids
-            if pid in names
-        }
+        return {pid: {"name": names[pid]} for pid in province_ids if pid in names}
 
     return info
 

@@ -7,44 +7,47 @@ edit by hand**.
 
 ## HIDE
 
-```
-backend/requirements-dev.lock — lockfile
-backend/requirements.lock — lockfile
-data/map/borders.json — file over 64 KB
-data/map/geometry.json — file over 64 KB
-data/map/manifest.json — file over 64 KB
-data/map/preview/*.png — binary media
-data/map/source/map.svg — file over 64 KB
-docs/04_VERSIONS/_TEMPLATE.md — version doc outside the two highest
-frontend/package-lock.json — lockfile
-frontend/public/assets/fonts/*.woff2 — binary media
-frontend/public/assets/map/*.webp — binary media
-tools/map_pipeline/reference/*.png — binary media
-tools/map_pipeline/reference/borders_layout_b.json — file over 64 KB
-tools/map_pipeline/reference/borders_preview.html — file over 64 KB
-tools/map_pipeline/reference/borders_report.json — file over 64 KB
-tools/map_pipeline/reference/diag_strait_candidates.tsv — file over 64 KB
-tools/map_pipeline/reference/names_table.xlsx — file over 64 KB
-```
+- `backend/requirements-dev.lock` — lockfile
+- `backend/requirements.lock` — lockfile
+- `data/map/borders.json` — file over 64 KB
+- `data/map/geometry.json` — file over 64 KB
+- `data/map/manifest.json` — file over 64 KB
+- `data/map/preview/*.png` — binary media
+- `data/map/source/map.svg` — file over 64 KB
+- `docs/04_VERSIONS/0.10.0.md` — version doc outside the two highest
+- `docs/04_VERSIONS/0.7.0.md` — version doc outside the two highest
+- `docs/04_VERSIONS/0.8.0.md` — version doc outside the two highest
+- `docs/04_VERSIONS/0.9.0.md` — version doc outside the two highest
+- `docs/04_VERSIONS/_TEMPLATE.md` — version doc outside the two highest
+- `frontend/package-lock.json` — lockfile
+- `frontend/public/*.ico` — binary media
+- `frontend/public/assets/brand/*.png` — binary media
+- `frontend/public/assets/brand/*.webp` — binary media
+- `frontend/public/assets/fonts/*.woff2` — binary media
+- `frontend/public/assets/map/*.webp` — binary media
+- `tools/map_pipeline/reference/*.png` — binary media
+- `tools/map_pipeline/reference/borders_layout_b.json` — file over 64 KB
+- `tools/map_pipeline/reference/borders_preview.html` — file over 64 KB
+- `tools/map_pipeline/reference/borders_report.json` — file over 64 KB
+- `tools/map_pipeline/reference/diag_strait_candidates.tsv` — file over 64 KB
+- `tools/map_pipeline/reference/names_table.xlsx` — file over 64 KB
 
 ## NEVER HIDE
 
-```
-README.md
-RUNNING.md
-changelog.md
-docs/PROJECT_STATE.md
-docs/development_workflow.md
-docs/devin_rules.md
-docs/prompts_templates.md
-docs/01_GAME_BIBLE/**
-docs/02_SYSTEM_SPECS/**
-docs/03_ROADMAP/**
-docs/06_DESIGN/**
-configs/**
-backend/src/**
-backend/tests/**
-frontend/src/**
-docs/04_VERSIONS/0.7.0.md
-docs/04_VERSIONS/0.8.0.md
-```
+- `README.md`
+- `RUNNING.md`
+- `changelog.md`
+- `docs/PROJECT_STATE.md`
+- `docs/development_workflow.md`
+- `docs/devin_rules.md`
+- `docs/prompts_templates.md`
+- `docs/01_GAME_BIBLE/**`
+- `docs/02_SYSTEM_SPECS/**`
+- `docs/03_ROADMAP/**`
+- `docs/06_DESIGN/**`
+- `configs/**`
+- `backend/src/**`
+- `backend/tests/**`
+- `frontend/src/**`
+- `docs/04_VERSIONS/0.11.0.md`
+- `docs/04_VERSIONS/0.12.0.md`

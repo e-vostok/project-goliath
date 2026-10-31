@@ -28,7 +28,6 @@ from core.db import get_session_context
 from core.tick.orchestrator import TickOrchestrator
 from main import _ERROR_CODE_STATUS, app
 from modules._00_core.admin_service import (
-    AdminAuditService,
     AdminGrantService,
 )
 from modules._00_core.config_schema import CoreConfig
@@ -189,10 +188,10 @@ async def _seed_audit_row(
 async def _audit_actions() -> list[str]:
     async with get_session_context() as session:
         rows = (
-            await session.execute(
-                select(AdminAuditLog).order_by(AdminAuditLog.id)
-            )
-        ).scalars().all()
+            (await session.execute(select(AdminAuditLog).order_by(AdminAuditLog.id)))
+            .scalars()
+            .all()
+        )
         return [row.action for row in rows]
 
 
@@ -230,9 +229,7 @@ class TestAuditLogEndpoint:
     """Paging, filters, labels and actor names of GET /audit-log."""
 
     @pytest.mark.asyncio
-    async def test_pages_with_before_id_and_filters(
-        self, live_client, monkeypatch
-    ):
+    async def test_pages_with_before_id_and_filters(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
         rows = []
@@ -276,9 +273,7 @@ class TestAuditLogEndpoint:
             live_client, headers, AUDIT_URL, actor_vk_user_id=GRANTED_VK_ID
         )
         assert [item["action"] for item in by_actor["items"]] == ["world.reset"]
-        by_action = await _get(
-            live_client, headers, AUDIT_URL, action="player.delete"
-        )
+        by_action = await _get(live_client, headers, AUDIT_URL, action="player.delete")
         assert [item["id"] for item in by_action["items"]] == [rows[2].id]
         item = by_action["items"][0]
         assert item["target_type"] == "player"
@@ -286,9 +281,7 @@ class TestAuditLogEndpoint:
         assert item["summary"] == "Запись 2."
 
     @pytest.mark.asyncio
-    async def test_date_filters_use_tick_timezone(
-        self, live_client, monkeypatch
-    ):
+    async def test_date_filters_use_tick_timezone(self, live_client, monkeypatch):
         """date_from/date_to are local calendar dates in the tick
         timezone (Europe/Moscow), not UTC dates."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
@@ -321,18 +314,10 @@ class TestAuditLogEndpoint:
             "tick.run",
             "world.reset",
         }
-        until_20th = await _get(
-            live_client, headers, AUDIT_URL, date_to="2026-10-20"
-        )
-        assert {item["action"] for item in until_20th["items"]} == {
-            "player.delete"
-        }
-        from_21st = await _get(
-            live_client, headers, AUDIT_URL, date_from="2026-10-21"
-        )
-        assert "player.delete" not in {
-            item["action"] for item in from_21st["items"]
-        }
+        until_20th = await _get(live_client, headers, AUDIT_URL, date_to="2026-10-20")
+        assert {item["action"] for item in until_20th["items"]} == {"player.delete"}
+        from_21st = await _get(live_client, headers, AUDIT_URL, date_from="2026-10-21")
+        assert "player.delete" not in {item["action"] for item in from_21st["items"]}
 
     @pytest.mark.asyncio
     async def test_action_label_from_hook_and_unknown_stays_raw(
@@ -353,18 +338,11 @@ class TestAuditLogEndpoint:
         assert labels["unknown.code"] == "unknown.code"
         # And the codes 00_core owns arrive translated as well.
         assert AdminRegistry.get_audit_action_labels()["tick.run"] == "Запуск хода"
-        assert (
-            AdminRegistry.get_audit_action_labels()["admin.grant"] == "Выдача прав"
-        )
-        assert (
-            AdminRegistry.get_audit_action_labels()["admin.revoke"]
-            == "Снятие прав"
-        )
+        assert AdminRegistry.get_audit_action_labels()["admin.grant"] == "Выдача прав"
+        assert AdminRegistry.get_audit_action_labels()["admin.revoke"] == "Снятие прав"
 
     @pytest.mark.asyncio
-    async def test_actor_name_only_while_player_exists(
-        self, live_client, monkeypatch
-    ):
+    async def test_actor_name_only_while_player_exists(self, live_client, monkeypatch):
         """actor_name is the hook-provided display name; a vk id with no
         living player (journal survives deletion) answers null."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
@@ -380,9 +358,7 @@ class TestAuditLogEndpoint:
         assert names[999000] is None
 
     @pytest.mark.asyncio
-    async def test_filters_endpoint_distinct_values(
-        self, live_client, monkeypatch
-    ):
+    async def test_filters_endpoint_distinct_values(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
         await _seed_player(GRANTED_VK_ID, vk_name=("Ольга", "Ветрова"))
@@ -402,9 +378,7 @@ class TestAuditLogEndpoint:
         }
 
     @pytest.mark.asyncio
-    async def test_retention_limit_in_answer(
-        self, live_client, monkeypatch
-    ):
+    async def test_retention_limit_in_answer(self, live_client, monkeypatch):
         """The answer carries the current ``audit_log_max_rows`` next
         to ``items``/``next_before_id`` — the «Журнал» caption under
         the table prints it."""
@@ -424,12 +398,8 @@ class TestAdminsEndpoint:
     """GET /admins and the grant/revoke endpoints."""
 
     @pytest.mark.asyncio
-    async def test_lists_env_and_granted_admins(
-        self, live_client, monkeypatch
-    ):
-        monkeypatch.setenv(
-            "ADMIN_VK_USER_IDS", f"{ADMIN_VK_ID},{ENV_ADMIN_VK_ID}"
-        )
+    async def test_lists_env_and_granted_admins(self, live_client, monkeypatch):
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", f"{ADMIN_VK_ID},{ENV_ADMIN_VK_ID}")
         headers = await _admin_headers(live_client)
         # The caller is the env admin ADMIN_VK_ID (a player, no profile);
         # the granted player gets a VK profile for display_name.
@@ -463,9 +433,7 @@ class TestAdminsEndpoint:
         datetime.strptime(grant_row["granted_at"], "%Y-%m-%d %H:%M:%S")
 
     @pytest.mark.asyncio
-    async def test_grant_then_revoke_controls_access(
-        self, live_client, monkeypatch
-    ):
+    async def test_grant_then_revoke_controls_access(self, live_client, monkeypatch):
         """POST /admins makes a plain player pass require_admin;
         /revoke removes the access at once (the DB is re-read)."""
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
@@ -473,9 +441,7 @@ class TestAdminsEndpoint:
         await _seed_player(GRANTEE_VK_ID)
         grantee_headers = await _auth_headers(live_client, GRANTEE_VK_ID)
 
-        probe = await live_client.get(
-            "/api/v1/admin/me", headers=grantee_headers
-        )
+        probe = await live_client.get("/api/v1/admin/me", headers=grantee_headers)
         assert probe.status_code == 403
 
         grant = await live_client.post(
@@ -484,24 +450,18 @@ class TestAdminsEndpoint:
         assert grant.status_code == 200, grant.text
         assert grant.json() == {"granted": GRANTEE_VK_ID}
 
-        probe = await live_client.get(
-            "/api/v1/admin/me", headers=grantee_headers
-        )
+        probe = await live_client.get("/api/v1/admin/me", headers=grantee_headers)
         assert probe.status_code == 200
 
         revoke = await live_client.post(
             f"{ADMINS_URL}/{GRANTEE_VK_ID}/revoke", headers=headers
         )
         assert revoke.status_code == 200, revoke.text
-        probe = await live_client.get(
-            "/api/v1/admin/me", headers=grantee_headers
-        )
+        probe = await live_client.get("/api/v1/admin/me", headers=grantee_headers)
         assert probe.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_grant_idempotent_and_404_for_unknown(
-        self, live_client, monkeypatch
-    ):
+    async def test_grant_idempotent_and_404_for_unknown(self, live_client, monkeypatch):
         monkeypatch.setenv("ADMIN_VK_USER_IDS", str(ADMIN_VK_ID))
         headers = await _admin_headers(live_client)
         await _seed_player(GRANTEE_VK_ID)
@@ -522,14 +482,10 @@ class TestAdminsEndpoint:
         assert missing.json()["code"] == "PLAYER_NOT_FOUND"
 
     @pytest.mark.asyncio
-    async def test_revoke_refusals_map_to_409(
-        self, live_client, monkeypatch
-    ):
+    async def test_revoke_refusals_map_to_409(self, live_client, monkeypatch):
         """env admin -> ROOT_ADMIN_PROTECTED; the caller themselves ->
         CANNOT_REVOKE_SELF; LAST_ADMIN maps to 409 like the others."""
-        monkeypatch.setenv(
-            "ADMIN_VK_USER_IDS", f"{ADMIN_VK_ID},{ENV_ADMIN_VK_ID}"
-        )
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", f"{ADMIN_VK_ID},{ENV_ADMIN_VK_ID}")
         headers = await _admin_headers(live_client)
         await _seed_player(ENV_ADMIN_VK_ID)
 

@@ -71,12 +71,8 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
                 "nation": cell_nation(
                     row.nation_short_name,
                     row.nation_color,
-                    nation_id=(
-                        row.nation_id if row.nation_id in existing else None
-                    ),
-                    flag_url=images.image_url(
-                        row.nation_flag_sha256, "thumb"
-                    ),
+                    nation_id=(row.nation_id if row.nation_id in existing else None),
+                    flag_url=images.image_url(row.nation_flag_sha256, "thumb"),
                 ),
                 "title": cell_action_text(text=row.title, action=f"order:{row.number}"),
                 "submitted": cell_datetime(row.submitted_at, tz),

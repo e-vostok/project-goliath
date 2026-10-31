@@ -32,11 +32,11 @@ from core.tick.orchestrator import TickOrchestrator, TickOutcome
 from core.tick.scheduler import run_scheduled_tick
 from modules._00_core.admin_hooks import register_admin_hooks
 from modules._00_core.calendar import compute_game_date, format_game_date
+from modules._00_core.config_schema import CoreConfig
 from modules._00_core.hooks import (
     restore_extension_points,
     snapshot_extension_points,
 )
-from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import GameClock, Nation, Province
 from modules._00_core.tick_handler import finalize_tick
 from modules._00_core.tick_schedule import format_game_time

@@ -462,9 +462,7 @@ class TestAdminOverview:
         assert by_key["turn"]["value"] == "0 · январь 2040"
         assert by_key["tick_timezone"]["value"] == "Москва"
         assert by_key["players"]["value"] == "1"  # the admin login
-        assert (
-            by_key["provinces_occupied"]["value"] == f"0 из {MINI_NODE_COUNT}"
-        )
+        assert by_key["provinces_occupied"]["value"] == f"0 из {MINI_NODE_COUNT}"
         assert by_key["admins"]["value"] == "1"  # the env allowlist entry
 
     @pytest.mark.asyncio
@@ -519,7 +517,9 @@ class TestAdminTickLog:
             expected_date = format_game_date(
                 compute_game_date(row["turn_number"], CORE_CONFIG), CORE_CONFIG
             )
-            assert row["turn_label"] == f"{row['turn_number']} · {expected_date.lower()}"
+            assert row["turn_label"] == (
+                f"{row['turn_number']} · {expected_date.lower()}"
+            )
 
     @pytest.mark.asyncio
     async def test_rows_render_game_timezone_times(self, live_client, monkeypatch):

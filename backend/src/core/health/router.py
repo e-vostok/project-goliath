@@ -14,13 +14,24 @@ from fastapi.responses import JSONResponse
 
 from core.health import checks
 from modules._00_core.config_schema import CoreConfig
+from modules._03_registry.startup import get_core_config
+
+
+def _load_core_config() -> CoreConfig:
+    """The lifespan-loaded CoreConfig; falls back to a YAML read when the
+    registry startup has not run (direct-function tests)."""
+    try:
+        return get_core_config()
+    except RuntimeError:
+        return CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+
 
 router = APIRouter(prefix="/api/v1")
 
 
 @router.get("/health")
 async def api_health() -> JSONResponse:
-    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    config = _load_core_config()
     database = await checks.database_status()
     scheduler = checks.scheduler_status(config.tick.health_max_heartbeat_age_seconds)
     healthy = database == "ok" and scheduler == "ok"

@@ -147,7 +147,6 @@ stateDiagram-v2
     DISTRIBUTED --> VERDICT: write_verdict (назначенный судья, вердикта нет)
     VERDICT --> [*]
 ```
-
 Ортогональные признаки: `overdue` (срок вышел, вердикта нет) и `reminder_sent_at` (напоминание обработано). Обратных переходов нет.
 
 ### 2.3. Фоновая задача
@@ -263,7 +262,6 @@ class JudgeCandidate:
 JudgeSelector = Callable[[str, Sequence[JudgeCandidate], JudgeSettings], str | None]
 def select_judge_v1(author_player_id, candidates, settings) -> str | None: ...
 ```
-
 `select_judge_v1` — чистая детерминированная функция (3.3), заменяемая без изменения остального кода: сервис получает селектор через единственную точку подстановки (`distribution.judge_selector`).
 
 Правила проверки полей (`rules.py` модуля): `validate_title`, `validate_summary` — обрезка краевых пробелов, длины из `limits`; запрещены символы категорий управляющих (`Cc`, кроме перевода строки в краткой сути), форматирующих (`Cf`), суррогатов (`Cs`), частного использования (`Co`) и неназначенных (`Cn`); в названии переводы строки запрещены; в краткой сути переводы строки нормализуются к `\n`. `validate_article_url` — обёртка общей функции из D7. Пустое после обрезки значение — ошибка.
@@ -428,7 +426,6 @@ AssignedOrderDTO = {
 }
 AssignedOrdersDTO = { items: list[AssignedOrderDTO] }    # все приказы текущего игрока без вердикта
 ```
-
 В DTO нет полей судьи, его идентификатора, профиля и ВК-идентификатора (INV-O5). `AssignedOrdersDTO` возвращает только приказы текущего игрока без вердикта, по возрастанию срока.
 
 ### 5.3. Коды ошибок
@@ -491,7 +488,6 @@ register_table_source(
     load=load_orders_rows,          # опирается на OrderService.list_for_registry
 )
 ```
-
 Ключ строки — `o<number>`. Ячейки (формы — Spec Реестра 3.6 после расширения):
 
 - `number` — целое.
@@ -512,7 +508,6 @@ cell_datetime(moment: datetime | None, tz: str, mark: str | None = None) -> dict
 cell_action_text(text: str, action: str) -> dict          # {"text": ..., "action": "order:12"}
 cell_nation(name: str, color: str, flag_url: str | None = None, nation_id: str | None = None) -> dict
 ```
-
 Сортировка `datetime` — по `key` (пустые в конец, как для других типов); фильтры столбца `datetime` — `date_range` (по `day`) и `presence`; поиск и фильтр `text` для `action_text` — по `text`.
 
 **Описание таблицы в конфиге Реестра** — Приложение D.
@@ -597,7 +592,6 @@ types:
     batch_text: null
     line_text: null
 ```
-
 Переменные типов (регистрируются `register_notification_type`): `ORDER_JUDGE_ASSIGNED` — `order_number`, `nation_name`, `order_link`; `ORDER_JUDGE_REMINDER` — `order_number`, `hours_left`, `order_link`; `ORDER_DISTRIBUTED` — `order_number`, `order_link`; `ORDER_VERDICT_READY` — `order_number`, `order_link`. Ключи событий детерминированы: `order_assigned:<id>`, `order_distributed:<id>`, `order_reminder:<id>`, `order_verdict:<id>`. Название государства — единственный игровой текст в сообщении: оно называет отправителя (как у депеш) и проходит стандартную очистку бота. Если `BotService.app_link` вернул `None` (нет `VK_APP_ID`), уведомление не ставится, один раз пишется WARNING `order_notification_skipped_no_app_id`. Гарантия: сообщения содержат номер приказа и в тексте подсказку «Реестр → Приказы», поэтому если переход по ссылке не передаст хэш в приложение (Приложение F), судья найдёт приказ по номеру.
 
 ---
@@ -621,7 +615,6 @@ types:
       - {id: distributed, title: "Распределение", type: datetime, source: distributed, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
       - {id: verdict, title: "Вердикт", type: datetime, source: verdict, width_px: 136, sortable: true, filters: [date_range, presence], searchable: false, stub: false}
 ```
-
 ---
 
 ## ПРИЛОЖЕНИЕ F: Факты внешних систем (ORD-0, выполнено 15.10.2026, PR #111)

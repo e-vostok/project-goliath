@@ -407,21 +407,15 @@ class ProvinceTransferRequest(BaseModel):
 
 
 def _tick_log_dict(row: TickLog, config: CoreConfig) -> dict:
-    game_date = format_game_date(
-        compute_game_date(row.turn_number, config), config
-    )
+    game_date = format_game_date(compute_game_date(row.turn_number, config), config)
     return {
         "id": row.id,
         "turn_number": row.turn_number,
         # «1 · январь 2040» — the same derived game date the game clock
         # shows, in lowercase like the approved panel mockup.
         "turn_label": f"{row.turn_number} · {game_date.lower()}",
-        "started_at": format_game_time(
-            row.started_at, config.tick.tick_timezone
-        ),
-        "finished_at": format_game_time(
-            row.finished_at, config.tick.tick_timezone
-        ),
+        "started_at": format_game_time(row.started_at, config.tick.tick_timezone),
+        "finished_at": format_game_time(row.finished_at, config.tick.tick_timezone),
         "status": row.status.value,
         "error_message": row.error_message,
     }
@@ -644,9 +638,7 @@ async def list_provinces(
             try:
                 found = await search_fn(session, text)
             except Exception:
-                logger.exception(
-                    "Admin province-search hook failed for '%s'", slug
-                )
+                logger.exception("Admin province-search hook failed for '%s'", slug)
                 await session.rollback()
                 continue
             hook_province_ids.update(found or set())
@@ -759,10 +751,7 @@ async def admin_province_transfer_preview(
     remaining_ids = [pid for pid in donor_province_ids if pid != province_id]
     info = await _collect_province_info(session, [province_id, *remaining_ids])
     candidates = sorted(
-        (
-            {"id": pid, "name": info.get(pid, {}).get("name")}
-            for pid in remaining_ids
-        ),
+        ({"id": pid, "name": info.get(pid, {}).get("name")} for pid in remaining_ids),
         key=lambda item: ((item["name"] or "").casefold(), item["id"]),
     )
 
@@ -803,12 +792,8 @@ async def admin_province_transfer_preview(
             donor is not None and donor.capital_province_id == province_id
         ),
         "capital_candidates": candidates,
-        "donor_after": (
-            None if donor is None else len(donor_province_ids) - 1
-        ),
-        "receiver_after": (
-            None if to_nation is None else receiver_count + 1
-        ),
+        "donor_after": (None if donor is None else len(donor_province_ids) - 1),
+        "receiver_after": (None if to_nation is None else receiver_count + 1),
         "blocker": blocker,
     }
 
@@ -845,9 +830,9 @@ async def admin_province_transfer(
         capital_info = await _collect_province_info(
             session, [body.new_capital_province_id]
         )
-        new_capital_name = capital_info.get(
-            body.new_capital_province_id, {}
-        ).get("name")
+        new_capital_name = capital_info.get(body.new_capital_province_id, {}).get(
+            "name"
+        )
         if new_capital_name is None:
             raise ProvinceNameUnknownError(body.new_capital_province_id)
 
@@ -865,9 +850,7 @@ async def admin_province_transfer(
     # the hooks (falling back to the bare id — the journal must write
     # regardless), the nations' own short names for the state labels.
     info = await _collect_province_info(session, [province_id])
-    province_subject = (
-        info.get(province_id, {}).get("name") or str(province_id)
-    )
+    province_subject = info.get(province_id, {}).get("name") or str(province_id)
     short_names: dict[str, str] = {}
     for nation_id in (result.previous_nation_id, result.new_nation_id):
         if nation_id is not None:
@@ -893,10 +876,7 @@ async def admin_province_transfer(
     if result.new_capital_province_id is not None:
         summary += f" Новая столица — «{new_capital_name}»."
 
-    seized = (
-        result.previous_nation_id is not None
-        and result.new_nation_id is not None
-    )
+    seized = result.previous_nation_id is not None and result.new_nation_id is not None
     await AdminAuditService.record(
         session,
         actor_vk_user_id=admin.vk_user_id,
@@ -959,8 +939,7 @@ async def list_nations(
         rows_all = [
             row
             for row in rows_all
-            if lowered in row.name.casefold()
-            or lowered in row.short_name.casefold()
+            if lowered in row.name.casefold() or lowered in row.short_name.casefold()
         ]
     total = len(rows_all)
     rows = rows_all[offset : offset + limit]
@@ -976,13 +955,9 @@ async def list_nations(
         ).all()
         counts = {nation_id: count for nation_id, count in pairs}
 
-    names = await _display_names_by_vk(
-        session, {row.vk_user_id for row in rows}
-    )
+    names = await _display_names_by_vk(session, {row.vk_user_id for row in rows})
     # One image_refs for the whole page (0.12.0 unit 9) — never per row.
-    refs = await NationService.image_refs(
-        session, [row.id for row in rows]
-    )
+    refs = await NationService.image_refs(session, [row.id for row in rows])
     return {
         "items": [
             {
@@ -993,9 +968,7 @@ async def list_nations(
                 "owner_name": names.get(row.vk_user_id),
                 "provinces_count": counts.get(row.id, 0),
                 "capital_name": row.capital_name,
-                "flag_thumb_url": images.image_url(
-                    refs[row.id].flag_sha256, "thumb"
-                ),
+                "flag_thumb_url": images.image_url(refs[row.id].flag_sha256, "thumb"),
             }
             for row in rows
         ],
@@ -1072,8 +1045,7 @@ async def create_nation(
         target_type="nation",
         target_id=nation.id,
         summary=(
-            f"Создано государство «{nation.short_name}» для игрока "
-            f"{owner_subject}."
+            f"Создано государство «{nation.short_name}» для игрока {owner_subject}."
         ),
         details={
             "nation_id": nation.id,
@@ -1093,9 +1065,7 @@ async def create_nation(
         "owner_name": names.get(player.vk_user_id),
         "provinces_count": len(body.province_ids),
         "capital_name": nation.capital_name,
-        "flag_thumb_url": images.image_url(
-            refs[nation.id].flag_sha256, "thumb"
-        ),
+        "flag_thumb_url": images.image_url(refs[nation.id].flag_sha256, "thumb"),
     }
 
 
@@ -1139,9 +1109,7 @@ _IMAGE_DELETE_CONSEQUENCES = {
         "этот портрет, тоже появится заглушка"
     ),
 }
-_IMAGE_DELETE_AUDIT_LINE = (
-    "в журнал попадёт запись «Удаление картинки государства»"
-)
+_IMAGE_DELETE_AUDIT_LINE = "в журнал попадёт запись «Удаление картинки государства»"
 
 
 def _iso_utc(moment: datetime) -> str:
@@ -1176,9 +1144,7 @@ async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
     ``images`` block of the nation's uploaded pictures (0.12.0 unit
     8) — one entry per kind or null for a kind never uploaded."""
     owner = (
-        await session.execute(
-            select(Player).where(Player.id == nation.owner_player_id)
-        )
+        await session.execute(select(Player).where(Player.id == nation.owner_player_id))
     ).scalar_one()
     provinces_count = (
         await session.execute(
@@ -1191,9 +1157,7 @@ async def _nation_edit_dto(session: AsyncSession, nation: Nation) -> dict:
     names = await _display_names_by_vk(session, {owner.vk_user_id})
     # The pipeline's target size of each kind (0.12.0 unit 9) — read
     # through the config model, never hard-coded.
-    image_config = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).images
+    image_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).images
     image_dims = {
         "flag": (image_config.flag_width, image_config.flag_height),
         "portrait": (
@@ -1330,9 +1294,7 @@ async def _nation_delete_preview(session: AsyncSession, nation: Nation) -> dict:
     never commits.
     """
     owner = (
-        await session.execute(
-            select(Player).where(Player.id == nation.owner_player_id)
-        )
+        await session.execute(select(Player).where(Player.id == nation.owner_player_id))
     ).scalar_one()
     province_ids = list(
         (
@@ -1343,10 +1305,7 @@ async def _nation_delete_preview(session: AsyncSession, nation: Nation) -> dict:
     )
     info = await _collect_province_info(session, province_ids)
     provinces = sorted(
-        (
-            {"id": pid, "name": info.get(pid, {}).get("name")}
-            for pid in province_ids
-        ),
+        ({"id": pid, "name": info.get(pid, {}).get("name")} for pid in province_ids),
         key=lambda item: ((item["name"] or "").casefold(), item["id"]),
     )
     names = await _display_names_by_vk(session, {owner.vk_user_id})
@@ -1422,9 +1381,7 @@ async def admin_nation_delete(
         raise ConfirmationMismatchError()
 
     owner = (
-        await session.execute(
-            select(Player).where(Player.id == nation.owner_player_id)
-        )
+        await session.execute(select(Player).where(Player.id == nation.owner_player_id))
     ).scalar_one()
     owner_subject = await _admin_subject(session, owner)
     # Snapshot the values the audit row and the answer need — the
@@ -1491,9 +1448,7 @@ async def _nation_image_dto(
         "short_name": nation.short_name,
         "kind": kind,
         "uploaded_at": _iso_utc(info.uploaded_at),
-        "uploaded_by": await _image_uploaded_by(
-            session, info.uploaded_by_player_id
-        ),
+        "uploaded_by": await _image_uploaded_by(session, info.uploaded_by_player_id),
         "consequences": [
             {"code": "image_deleted", "text": _IMAGE_DELETE_CONSEQUENCES[kind]},
             {"code": "audit_journal", "text": _IMAGE_DELETE_AUDIT_LINE},
@@ -1677,13 +1632,9 @@ async def admin_tick_run(
     return {
         "ok": ok,
         "current_turn": clock.current_turn,
-        "next_tick_at": format_game_time(
-            clock.next_tick_at, config.tick.tick_timezone
-        ),
+        "next_tick_at": format_game_time(clock.next_tick_at, config.tick.tick_timezone),
         "tick_log": (
-            _tick_log_dict(latest_log, config)
-            if latest_log is not None
-            else None
+            _tick_log_dict(latest_log, config) if latest_log is not None else None
         ),
     }
 
@@ -1925,9 +1876,7 @@ async def admin_audit_log(
     )
     items = rows[:limit]
     labels = AdminRegistry.get_audit_action_labels()
-    names = await _display_names_by_vk(
-        session, {row.actor_vk_user_id for row in items}
-    )
+    names = await _display_names_by_vk(session, {row.actor_vk_user_id for row in items})
     return {
         "items": [
             {
@@ -1966,12 +1915,9 @@ async def admin_audit_log_filters(
     labels = AdminRegistry.get_audit_action_labels()
     names = await _display_names_by_vk(session, set(actors))
     return {
-        "actors": [
-            {"vk_user_id": vk, "display_name": names.get(vk)} for vk in actors
-        ],
+        "actors": [{"vk_user_id": vk, "display_name": names.get(vk)} for vk in actors],
         "actions": [
-            {"action": code, "action_label": labels.get(code, code)}
-            for code in actions
+            {"action": code, "action_label": labels.get(code, code)} for code in actions
         ],
     }
 
@@ -2040,9 +1986,7 @@ async def admin_list_admins(
     return items
 
 
-async def _admin_subject(
-    session: AsyncSession, player: Player
-) -> str:
+async def _admin_subject(session: AsyncSession, player: Player) -> str:
     """The audit-summary name of a player: its display name or the vk id."""
     names = await _display_names_by_vk(session, {player.vk_user_id})
     return names.get(player.vk_user_id, str(player.vk_user_id))
@@ -2063,9 +2007,7 @@ async def admin_grant_admin(
     """
     player = await _load_player_by_vk_id(session, body.vk_user_id)
     already = await AdminGrantService.is_granted(session, player.vk_user_id)
-    await AdminGrantService.grant(
-        session, player.id, by_vk_user_id=admin.vk_user_id
-    )
+    await AdminGrantService.grant(session, player.id, by_vk_user_id=admin.vk_user_id)
     if not already:
         await AdminAuditService.record(
             session,
@@ -2148,9 +2090,7 @@ async def admin_panel_link(
     itself, never in logs. The client sends it to the panel tab inside
     the URL fragment, so it reaches neither server logs nor Referer.
     """
-    settings = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).admin_panel
+    settings = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).admin_panel
     token = panel_access.store.issue(
         admin.id,
         ttl_seconds=settings.link_ttl_seconds,
@@ -2193,9 +2133,7 @@ async def admin_panel_session(
         )
         return _no_store_error(403, "ADMIN_REQUIRED", "Admin privileges required")
 
-    settings = CoreConfig.from_yaml(
-        CoreConfig.get_default_config_path()
-    ).admin_panel
+    settings = CoreConfig.from_yaml(CoreConfig.get_default_config_path()).admin_panel
     await AdminAuditService.record(
         session,
         actor_vk_user_id=player.vk_user_id,

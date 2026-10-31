@@ -128,7 +128,7 @@ def test_ensure_runs_under_advisory_lock_pg(wiped_pg, monkeypatch):
     """On the postgresql dialect ensure takes the module advisory lock
     and two racing calls still produce unique numbers."""
     _upgrade(wiped_pg, "head", monkeypatch)
-    ids = _seed_players(wiped_pg)
+    _seed_players(wiped_pg)
 
     engine = create_async_engine(wiped_pg)
     maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

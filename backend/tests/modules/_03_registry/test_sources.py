@@ -289,9 +289,7 @@ class TestNationFlagCells:
         nation = await seed_nation(
             test_db_session, owner, "Замена", "#223344", created_turn=0
         )
-        old = await make_nation_image(
-            test_db_session, nation, sha256="cd" * 32
-        )
+        old = await make_nation_image(test_db_session, nation, sha256="cd" * 32)
         old.sha256 = "ef" * 32
         await test_db_session.flush()
 
@@ -310,12 +308,13 @@ class TestNationFlagCells:
                 test_db_session, 504200 + i, created_at=T0.replace(hour=i)
             )
             nation = await seed_nation(
-                test_db_session, owner, f"Строка {i}", f"#00{i:04d}",
+                test_db_session,
+                owner,
+                f"Строка {i}",
+                f"#00{i:04d}",
                 created_turn=i,
             )
-            await make_nation_image(
-                test_db_session, nation, sha256=f"{i:064x}"
-            )
+            await make_nation_image(test_db_session, nation, sha256=f"{i:064x}")
 
         statements: list[str] = []
 

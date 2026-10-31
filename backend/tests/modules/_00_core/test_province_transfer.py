@@ -131,9 +131,7 @@ class TestTransferBasics:
         journal = list(
             (
                 await test_db_session.execute(
-                    select(MapOwnershipLog).where(
-                        MapOwnershipLog.province_id == 1001
-                    )
+                    select(MapOwnershipLog).where(MapOwnershipLog.province_id == 1001)
                 )
             ).scalars()
         )
@@ -161,9 +159,7 @@ class TestTransferBasics:
         journal = list(
             (
                 await test_db_session.execute(
-                    select(MapOwnershipLog).where(
-                        MapOwnershipLog.province_id == 1001
-                    )
+                    select(MapOwnershipLog).where(MapOwnershipLog.province_id == 1001)
                 )
             ).scalars()
         )
@@ -211,18 +207,14 @@ class TestTransferBasics:
                 test_db_session, 1001, nation.id, config=CONFIG
             )
         with pytest.raises(AlreadyOwnerError):
-            await ProvinceService.transfer(
-                test_db_session, 1005, None, config=CONFIG
-            )
+            await ProvinceService.transfer(test_db_session, 1005, None, config=CONFIG)
 
     @pytest.mark.asyncio
     async def test_no_min_max_bound(self, test_db_session):
         """The admin is not bound by min/max_provinces_per_nation: a
         5-province nation may end with 6 and a 5-province donor with 4."""
         await _make_provinces(test_db_session, list(range(1001, 1012)))
-        donor = await _make_nation(
-            test_db_session, [1001, 1002, 1003, 1004, 1005]
-        )
+        donor = await _make_nation(test_db_session, [1001, 1002, 1003, 1004, 1005])
         receiver = await _make_nation(
             test_db_session,
             [1006, 1007, 1008, 1009, 1010],
@@ -237,9 +229,7 @@ class TestTransferBasics:
         )
         assert len(await _province_ids_of(test_db_session, receiver.id)) == 6
         # Donor: 5 -> 4 (below min_provinces_per_nation = 5).
-        await ProvinceService.transfer(
-            test_db_session, 1001, None, config=CONFIG
-        )
+        await ProvinceService.transfer(test_db_session, 1001, None, config=CONFIG)
         assert len(await _province_ids_of(test_db_session, donor.id)) == 4
 
 
@@ -247,9 +237,7 @@ class TestLastProvince:
     """The donor's last province can never leave (409 LAST_PROVINCE)."""
 
     @pytest.mark.asyncio
-    async def test_last_province_refused_release_and_transfer(
-        self, test_db_session
-    ):
+    async def test_last_province_refused_release_and_transfer(self, test_db_session):
         await _make_provinces(test_db_session, [1001, 1002, 1003])
         donor = await _make_nation(test_db_session, [1001])
         receiver = await _make_nation(
@@ -270,9 +258,7 @@ class TestLastProvince:
                     config=CONFIG,
                 )
             # Nothing changed: ownership and the journal are untouched.
-            assert (
-                await test_db_session.get(Province, 1001)
-            ).nation_id == donor.id
+            assert (await test_db_session.get(Province, 1001)).nation_id == donor.id
             journal_count = (
                 await test_db_session.execute(
                     select(func.count()).select_from(MapOwnershipLog)
@@ -285,27 +271,17 @@ class TestCapitalRule:
     """Moving the donor's capital forces a replacement (INV-14)."""
 
     @pytest.mark.asyncio
-    async def test_capital_move_without_replacement_refused(
-        self, test_db_session
-    ):
+    async def test_capital_move_without_replacement_refused(self, test_db_session):
         await _make_provinces(test_db_session, [1001, 1002])
-        await _make_nation(
-            test_db_session, [1001, 1002], capital_province_id=1001
-        )
+        await _make_nation(test_db_session, [1001, 1002], capital_province_id=1001)
 
         with pytest.raises(CapitalRequiredError):
-            await ProvinceService.transfer(
-                test_db_session, 1001, None, config=CONFIG
-            )
+            await ProvinceService.transfer(test_db_session, 1001, None, config=CONFIG)
 
     @pytest.mark.asyncio
-    async def test_capital_move_with_wrong_replacement_refused(
-        self, test_db_session
-    ):
+    async def test_capital_move_with_wrong_replacement_refused(self, test_db_session):
         await _make_provinces(test_db_session, [1001, 1002, 1003])
-        await _make_nation(
-            test_db_session, [1001, 1002], capital_province_id=1001
-        )
+        await _make_nation(test_db_session, [1001, 1002], capital_province_id=1001)
 
         # 1003 is not one of the donor's remaining provinces.
         with pytest.raises(CapitalNotInProvincesError):
@@ -319,9 +295,7 @@ class TestCapitalRule:
             )
 
     @pytest.mark.asyncio
-    async def test_capital_move_updates_capital_fields(
-        self, test_db_session
-    ):
+    async def test_capital_move_updates_capital_fields(self, test_db_session):
         await _make_provinces(test_db_session, [1001, 1002])
         donor = await _make_nation(
             test_db_session, [1001, 1002], capital_province_id=1001
@@ -343,9 +317,7 @@ class TestCapitalRule:
     @pytest.mark.asyncio
     async def test_capital_name_validated(self, test_db_session):
         await _make_provinces(test_db_session, [1001, 1002])
-        await _make_nation(
-            test_db_session, [1001, 1002], capital_province_id=1001
-        )
+        await _make_nation(test_db_session, [1001, 1002], capital_province_id=1001)
 
         with pytest.raises(CapitalNameInvalidError):
             await ProvinceService.transfer(
@@ -358,9 +330,7 @@ class TestCapitalRule:
             )
 
     @pytest.mark.asyncio
-    async def test_donor_without_capital_moves_freely(
-        self, test_db_session
-    ):
+    async def test_donor_without_capital_moves_freely(self, test_db_session):
         """A pre-0.8.0 nation with no capital province is left as is."""
         await _make_provinces(test_db_session, [1001, 1002])
         donor = await _make_nation(
@@ -398,9 +368,7 @@ class TestRefusalsAndJournal:
             )
 
     @pytest.mark.asyncio
-    async def test_journal_gains_exactly_one_entry_with_turn(
-        self, test_db_session
-    ):
+    async def test_journal_gains_exactly_one_entry_with_turn(self, test_db_session):
         register_ownership_listener("test.journal", _journal_listener)
         test_db_session.add(
             GameClock(
@@ -439,9 +407,7 @@ class TestRefusalsAndJournal:
         assert entry.turn_number == 7
 
     @pytest.mark.asyncio
-    async def test_failing_listener_rolls_everything_back(
-        self, test_db_session
-    ):
+    async def test_failing_listener_rolls_everything_back(self, test_db_session):
         await _make_provinces(test_db_session, [1001, 1002])
         donor = await _make_nation(
             test_db_session, [1001, 1002], capital_province_id=1001

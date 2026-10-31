@@ -157,9 +157,7 @@ class TestScenarioA:
         }
         assert "flag" not in n1["cells"]
         assert n1["cells"]["formed"] == {
-            "text": format_game_date(
-                compute_game_date(0, CORE_CONFIG), CORE_CONFIG
-            ),
+            "text": format_game_date(compute_game_date(0, CORE_CONFIG), CORE_CONFIG),
             "key": 0,
         }
         assert n1["cells"]["provinces"] == 5
@@ -172,9 +170,7 @@ class TestScenarioA:
             "flag_url": None,
         }
         assert n2["cells"]["formed"] == {
-            "text": format_game_date(
-                compute_game_date(1, CORE_CONFIG), CORE_CONFIG
-            ),
+            "text": format_game_date(compute_game_date(1, CORE_CONFIG), CORE_CONFIG),
             "key": 1,
         }
         assert n2["cells"]["provinces"] == 5
