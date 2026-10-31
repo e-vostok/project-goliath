@@ -23,7 +23,7 @@ def _load_core_config() -> CoreConfig:
     try:
         return get_core_config()
     except RuntimeError:
-        return _load_core_config()
+        return CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 
 router = APIRouter(prefix="/api/v1")
