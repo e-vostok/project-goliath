@@ -48,6 +48,15 @@ def test_deploy_sh_calls_prune_once_after_smoke_check() -> None:
     )
 
 
+def test_deploy_sh_fetches_tags_with_force() -> None:
+    text = DEPLOY_SH.read_text(encoding="utf-8")
+    assert "git fetch --tags --force --prune origin" in text, (
+        "checkout_ref must fetch tags with --force: release tags are "
+        "re-pointed when history is compacted, and a plain fetch aborts "
+        "with 'would clobber existing tag' (0.13.0 unit 1)"
+    )
+
+
 def test_no_dangerous_prune_in_deploy_scripts() -> None:
     for script in _scripts():
         text = script.read_text(encoding="utf-8")
