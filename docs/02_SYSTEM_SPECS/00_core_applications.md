@@ -65,9 +65,9 @@ stateDiagram-v2
 
 ## 4. Порядок операций
 
-**Сохранение черновика** (`PUT /applications/me`, тело — те же поля, что `NationCreateRequest`): игрок без государства → состояние `DRAFT` или анкеты нет (иначе 409 `APPLICATION_NOT_EDITABLE`) → проверки формата и длин всех профильных полей в порядке создания государства (INV-9) → запись. Занятость названий, цвета и провинций здесь не проверяется.
+**Сохранение черновика** (`PUT /applications/me`, тело — те же поля, что `NationCreateRequest`): игрок без государства → состояние `DRAFT` или анкеты нет (иначе 409 `APPLICATION_NOT_EDITABLE`) → проверки формата и длин всех профильных полей в порядке создания государства (INV-9) → выбранные провинции существуют (иначе `PROVINCE_NOT_FOUND`) → запись. Занятость названий, цвета и провинций здесь не проверяется.
 
-**Отправка** (`POST /applications/me/submit`): `DRAFT` → блокировка → повторные проверки формата → названия и краткое название против государств и других `PENDING` (`NAME_TAKEN`, `SHORT_NAME_TAKEN`) → цвет (`COLOR_TAKEN`, `COLOR_TOO_CLOSE`: против государств, цветов карты и цветов других `PENDING`) → провинции: существуют, свободны и не зарезервированы (`PROVINCE_TAKEN`), `after_free`, число, `after_count`, столица → `PENDING`, `is_reserved = true`, `submitted_at`, `review_deadline_at`, `submissions + 1`, очистка `draft_reason` и `return_comment`, выбор рецензента (разд. 5) → событие `SUBMITTED`.
+**Отправка** (`POST /applications/me/submit`): у игрока нет государства (иначе 409 `NATION_ALREADY_EXISTS`) → проверки спутников стадии `before_all`, как у `NationService.create` (согласие на сообщения бота, Spec `02_bot`, 3.10) → `DRAFT` → блокировка → повторные проверки формата → названия и краткое название против государств и других `PENDING` (`NAME_TAKEN`, `SHORT_NAME_TAKEN`) → цвет (`COLOR_TAKEN`, `COLOR_TOO_CLOSE`: против государств, цветов карты и цветов других `PENDING`) → провинции: существуют, свободны и не зарезервированы (`PROVINCE_TAKEN`), `after_free`, число, `after_count`, столица → `PENDING`, `is_reserved = true`, `submitted_at`, `review_deadline_at`, `submissions + 1`, очистка `draft_reason` и `return_comment`, выбор рецензента (разд. 5) → событие `SUBMITTED`.
 
 **Отмена** (`POST /applications/me/cancel`): `PENDING` → `DRAFT`, `draft_reason = cancelled`, резерв снят, срок обнулён, событие `CANCELLED`.
 

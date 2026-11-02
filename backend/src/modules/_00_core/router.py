@@ -8,6 +8,7 @@ launch-params signatures.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Annotated
@@ -69,6 +70,7 @@ from modules._00_core.service import (
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 router = APIRouter(prefix="/api/v1")
+logger = logging.getLogger(__name__)
 
 
 class GameClockNotFoundError(CoreDomainError):
@@ -538,12 +540,7 @@ async def _province_display_names(
         try:
             columns = await info_fn(session, province_ids)
         except Exception:
-            import logging
-
-            logging.getLogger(__name__).exception(
-                "province-info hook failed for '%s'", slug
-            )
-            await session.rollback()
+            logger.exception("province-info hook failed for '%s'", slug)
             continue
         for province_id, fields in (columns or {}).items():
             if fields.get("name") is not None:

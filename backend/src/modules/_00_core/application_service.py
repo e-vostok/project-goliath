@@ -33,12 +33,14 @@ from modules._00_core.exceptions import (
     CapitalNotInProvincesError,
     NationAlreadyExistsError,
     ProvinceCountOutOfRangeError,
+    ProvinceNotFoundError,
 )
 from modules._00_core.hooks import (
     STAGE_AFTER_COUNT,
     STAGE_AFTER_FREE,
     ApplicationEvent,
     run_application_listeners,
+    run_before_all_checks,
     run_registration_checks,
 )
 from modules._00_core.models import (
@@ -46,6 +48,7 @@ from modules._00_core.models import (
     NationApplication,
     NationApplicationProvince,
     NationImage,
+    Province,
 )
 from modules._00_core.profile_rules import (
     validate_anthem_url,
@@ -196,6 +199,23 @@ class ApplicationService:
         # Dedupe keeps the first pick of each province; position is the
         # order of first occurrence in the sent list.
         ordered_ids = list(dict.fromkeys(province_ids))
+        # Spec §4: the picked provinces must exist — a dangling id is
+        # PROVINCE_NOT_FOUND, never a foreign-key 500 on PostgreSQL or
+        # a silent bad row on SQLite.
+        ids_to_check = set(ordered_ids)
+        if capital_province_id is not None:
+            ids_to_check.add(capital_province_id)
+        if ids_to_check:
+            found = set(
+                (
+                    await session.execute(
+                        select(Province.id).where(Province.id.in_(ids_to_check))
+                    )
+                ).scalars()
+            )
+            missing = ids_to_check - found
+            if missing:
+                raise ProvinceNotFoundError(sorted(missing)[0])
         if capital_province_id is None and ordered_ids:
             capital_province_id = ordered_ids[0]
 
@@ -350,18 +370,39 @@ class ApplicationService:
         """
         Send the DRAFT application for review (Spec §4).
 
-        Order under the nations lock: re-run the profile format checks
-        -> name/short name against nations and other PENDING
-        applications -> colour against nations, map colours and other
-        PENDING -> provinces exist, free and unreserved -> after_free
-        -> province count -> after_count -> capital membership ->
-        PENDING write (is_reserved=true on every picked province,
-        submitted_at, review_deadline_at, submissions+1, draft_reason
-        and return_comment cleared, reviewer NULL — unit 5 picks one)
-        -> the SUBMITTED event. The caller commits.
+        Order: the player must not already own a nation (an
+        administrator may have created one after the draft was saved)
+        -> the satellite ``before_all`` checks, exactly as
+        ``NationService.create`` runs them (bot consent, Spec 02_bot
+        3.10) -> the live application must sit in DRAFT -> the nations
+        lock -> re-run the profile format checks -> name/short name
+        against nations and other PENDING applications -> colour
+        against nations, map colours and other PENDING -> provinces
+        exist, free and unreserved -> after_free -> province count ->
+        after_count -> capital membership -> PENDING write
+        (is_reserved=true on every picked province, submitted_at,
+        review_deadline_at, submissions+1, draft_reason and
+        return_comment cleared, reviewer NULL — unit 5 picks one) ->
+        the SUBMITTED event. The caller commits.
         """
+        result = await session.execute(
+            select(Nation.id).where(Nation.owner_player_id == player_id)
+        )
+        if result.scalar_one_or_none() is not None:
+            raise NationAlreadyExistsError(player_id)
+
+        await run_before_all_checks(session, player_id)
+
+        application = await _live_application(session, player_id)
+        if application is None:
+            raise ApplicationNotFoundError(player_id)
+        if application.status != "DRAFT":
+            raise ApplicationNotEditableError(application.status)
+
         await _take_nations_lock(session)
 
+        # Re-read under the lock: a concurrent submit may already have
+        # flipped this application to PENDING.
         application = await _live_application(session, player_id)
         if application is None:
             raise ApplicationNotFoundError(player_id)
