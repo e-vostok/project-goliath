@@ -420,6 +420,11 @@ class TestWorkerPass:
 
         assert "ACCEPTED" in events
         assert "RETURNED" in events
+        # The only SUBMITTED events are the two submits — the worker's
+        # reviewer assignment fires ASSIGNED, never a second SUBMITTED
+        # (the unit-6 bot listener would message the applicant twice).
+        assert events.count("SUBMITTED") == 2
+        assert "ASSIGNED" not in events
 
 
 class TestAdminRoutes:

@@ -1137,9 +1137,9 @@ class ApplicationService:
         One conditional reviewer assignment inside the caller's
         transaction under a SAVEPOINT (Spec §5–§6): the row is claimed
         only while still PENDING and reviewer-less, so a racing
-        decision wins it (rowcount 0 = lost). A fresh SUBMITTED event
-        carries the assigned reviewer — the applicant's copy is for
-        the listeners to deduplicate.
+        decision wins it (rowcount 0 = lost). The ASSIGNED event
+        (distinct from the submit's SUBMITTED) carries the new
+        reviewer — the applicant already got his SUBMITTED.
         """
         if session.bind.dialect.name == "sqlite":
             await session.execute(delete(NationApplication).where(false()))
@@ -1170,7 +1170,7 @@ class ApplicationService:
             await run_application_listeners(
                 session,
                 ApplicationEvent(
-                    kind="SUBMITTED",
+                    kind="ASSIGNED",
                     application_id=application_id,
                     owner_player_id=application.owner_player_id,
                     reviewer_player_id=reviewer_id,
