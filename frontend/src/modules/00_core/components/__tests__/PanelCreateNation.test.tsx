@@ -1298,3 +1298,36 @@ describe('PanelCreateNation — the server draft (0.13.0 unit 7a)', () => {
     expect(submitButton()).toBeEnabled();
   });
 });
+
+describe('PanelCreateNation — the state changed elsewhere (audit of PR 267)', () => {
+  it('a 409 APPLICATION_NOT_EDITABLE refreshes the application — no banner', async () => {
+    // The draft went PENDING in another window/device: instead of the
+    // generic banner the shell refetches and moves to «Анкета».
+    server.use(
+      http.put('*/api/v1/applications/me', () =>
+        HttpResponse.json(
+          {
+            detail: 'Application is not editable',
+            code: 'APPLICATION_NOT_EDITABLE',
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const onRefresh = vi.fn();
+    const onSubmitted = vi.fn();
+    seedRegistrationDraft();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <PanelCreateNation onSubmitted={onSubmitted} onRefresh={onRefresh} />,
+    );
+    await goToTab(user, 4);
+    await user.click(submitButton());
+
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText('Не удалось отправить анкету'),
+    ).not.toBeInTheDocument();
+  });
+});

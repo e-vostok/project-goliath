@@ -12,8 +12,9 @@
  * pending application the route falls back to the default panel.
  */
 
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { render } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import {
   createHashRouter,
@@ -364,5 +365,165 @@ describe('AppShell — the application window replaces «Штаб»', () => {
     expect(await screen.findByText('Testia')).toBeInTheDocument();
     expect(tab('Штаб')).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('tab', { name: 'Анкета' })).toBeNull();
+  });
+});
+
+describe('AppShell — audit of PR 267', () => {
+  it('acceptance flips to «Штаб» without ever rendering the empty registration', async () => {
+    // PENDING, next poll answers 404 and /nations/me now answers a
+    // nation — the shell must hold the loading cell until the refetch
+    // resolves: the empty PanelCreateNation never mounts, not even
+    // for a frame.
+    let appLive = true;
+    let nationLive = false;
+    window.location.hash = '#/';
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => {
+      for (const el of document.querySelectorAll('[data-testid]')) {
+        const id = el.getAttribute('data-testid');
+        if (id !== null && !seen.includes(id)) {
+          seen.push(id);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    renderApp(() => {
+      server.use(
+        http.get('*/api/v1/applications/me', () =>
+          appLive
+            ? HttpResponse.json(APPLICATION_PENDING)
+            : HttpResponse.json(
+                { detail: 'gone', code: 'APPLICATION_NOT_FOUND' },
+                { status: 404 },
+              ),
+        ),
+        http.get('*/api/v1/nations/me', () =>
+          nationLive
+            ? HttpResponse.json(NATION)
+            : HttpResponse.json(
+                { detail: 'none', code: 'NATION_NOT_FOUND' },
+                { status: 404 },
+              ),
+        ),
+      );
+    });
+    expect(await screen.findByTestId('panel-application')).toBeInTheDocument();
+
+    appLive = false;
+    nationLive = true;
+    fireEvent.focus(window);
+
+    await waitFor(() => expect(window.location.hash).toBe('#/'));
+    expect(await screen.findByText('Testia')).toBeInTheDocument();
+    expect(seen).not.toContain('panel-create-nation');
+    observer.disconnect();
+  });
+
+  it('a poll answering a returned DRAFT lands on registration with the plate', async () => {
+    let appLive = true;
+    const returned = {
+      ...APPLICATION_PENDING,
+      status: 'DRAFT' as const,
+      draft_reason: 'returned' as const,
+      return_comment: 'Ссылка битая.',
+      review_deadline_at: null,
+    };
+    window.location.hash = '#/';
+    renderApp(() => {
+      server.use(nation404());
+      server.use(
+        http.get('*/api/v1/applications/me', () =>
+          appLive
+            ? HttpResponse.json(APPLICATION_PENDING)
+            : HttpResponse.json(returned),
+        ),
+      );
+    });
+    expect(await screen.findByTestId('panel-application')).toBeInTheDocument();
+
+    appLive = false;
+    fireEvent.focus(window);
+
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/nation/new'),
+    );
+    const plate = await screen.findByTestId('application-returned-plate');
+    expect(plate).toHaveTextContent('Анкета возвращена администратором');
+    expect(plate).toHaveTextContent('«Ссылка битая.»');
+  });
+
+  it('a poll 404 while the nation is still absent lands on registration', async () => {
+    let appLive = true;
+    window.location.hash = '#/';
+    renderApp(() => {
+      server.use(nation404());
+      server.use(
+        http.get('*/api/v1/applications/me', () =>
+          appLive
+            ? HttpResponse.json(APPLICATION_PENDING)
+            : HttpResponse.json(
+                { detail: 'gone', code: 'APPLICATION_NOT_FOUND' },
+                { status: 404 },
+              ),
+        ),
+      );
+    });
+    expect(await screen.findByTestId('panel-application')).toBeInTheDocument();
+
+    appLive = false;
+    fireEvent.focus(window);
+
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/nation/new'),
+    );
+    expect(
+      await screen.findByTestId('panel-create-nation'),
+    ).toBeInTheDocument();
+    // A vanished application with no return reason — plain form.
+    expect(
+      screen.queryByTestId('application-returned-plate'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('application-cancelled-plate'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a failed application load shows the error + retry — never the empty registration', async () => {
+    let appFails = true;
+    window.location.hash = '#/';
+    renderApp(() => {
+      server.use(nation404());
+      server.use(
+        http.get('*/api/v1/applications/me', () =>
+          appFails
+            ? HttpResponse.json(
+                { detail: 'boom', code: 'INTERNAL' },
+                { status: 500 },
+              )
+            : HttpResponse.json(APPLICATION_PENDING),
+        ),
+      );
+    });
+
+    expect(
+      await screen.findByText('Не удалось загрузить анкету'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('panel-create-nation'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Полное название'),
+    ).not.toBeInTheDocument();
+
+    // «Повторить» retries the same GET — the PENDING answer moves the
+    // shell to «Анкета».
+    appFails = false;
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(await screen.findByTestId('panel-application')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/application'),
+    );
   });
 });

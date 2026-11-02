@@ -116,3 +116,38 @@ describe('PanelApplication — the pending window', () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 });
+
+describe('PanelApplication — the state changed elsewhere (audit of PR 267)', () => {
+  it('a 409 APPLICATION_NOT_PENDING on cancel closes the popup and refreshes', async () => {
+    // The application was already decided or cancelled elsewhere —
+    // the popup closes and the shell refetches instead of an error.
+    server.use(
+      http.post('*/api/v1/applications/me/cancel', () =>
+        HttpResponse.json(
+          {
+            detail: 'Application is not pending',
+            code: 'APPLICATION_NOT_PENDING',
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const onChanged = vi.fn();
+    renderPanel(onChanged);
+    const user = userEvent.setup();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Отменить анкету' }),
+    );
+    const popup = await screen.findByTestId('popup-cancel-application');
+    await user.click(
+      within(popup).getByTestId('confirm-cancel-application'),
+    );
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(
+      screen.queryByTestId('popup-cancel-application'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
