@@ -35,6 +35,8 @@ from alembic import command
 from core.db import get_session
 from core.tick.orchestrator import TickOrchestrator
 from main import app
+from modules._00_core.application_service import ApplicationService
+from modules._00_core.config_schema import CoreConfig
 from modules._00_core.hooks import OwnershipChange
 from modules._00_core.models import GameClock, Province
 from modules._00_core.service import NationService
@@ -88,6 +90,20 @@ GEOMETRY_URL = "/api/v1/map/geometry/{version}"
 STATE_URL = "/api/v1/map/state"
 CHECK_URL = "/api/v1/map/starting-group/check"
 
+CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+
+# A valid Registration-2.0 application draft on the linked mini map —
+# STARTING_GROUP is its only connected five-province set.
+_DRAFT_APPLICATION = {
+    "name": "Draftland",
+    "short_name": "Draftland",
+    "color_hex": "#0C7CF4",
+    "province_ids": list(STARTING_GROUP),
+    "capital_province_id": None,
+    "capital_name": "Draftburg",
+    **VALID_PROFILE,
+}
+
 
 @pytest.fixture(autouse=True)
 def env_secrets(monkeypatch):
@@ -112,6 +128,31 @@ async def client(map_db_session, map_installed):
 
     async def _override_get_session():
         yield map_db_session
+
+    app.dependency_overrides[get_session] = _override_get_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def linked_map_installed(extension_snapshot, linked_map_service, config):
+    """Install the linked mini-map service + the real module hooks."""
+    register_map_hooks(linked_map_service, config)
+    init_map_service(linked_map_service)
+    saved = (api_service._payloads, api_service._payloads_service)
+    yield linked_map_service
+    api_service._payloads, api_service._payloads_service = saved
+
+
+@pytest_asyncio.fixture
+async def linked_client(linked_map_db_session, linked_map_installed):
+    """HTTP client on the shared session over the linked mini map —
+    the only fixture map a legal five-province application can use."""
+
+    async def _override_get_session():
+        yield linked_map_db_session
 
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
@@ -770,6 +811,65 @@ class TestState:
         assert resp.status_code == 422
         # The framework's validation shape, not a domain code.
         assert "code" not in resp.json()
+
+
+class TestReservations:
+    """GET /api/v1/map/state — the ``reservations`` field (0.13.0 8a)."""
+
+    async def test_pending_group_shows_and_cancel_clears(
+        self, linked_client, linked_map_db_session
+    ):
+        """A PENDING application's group appears in the live answer as
+        a bare id list in pick order (APP-6); cancelling lifts the
+        reserve and the field returns to []."""
+        viewer = await seed_player(linked_map_db_session, vk_user_id=8201)
+        applicant = await seed_player(linked_map_db_session, vk_user_id=8202)
+        await ApplicationService.save_draft(
+            linked_map_db_session, applicant.id, CORE_CONFIG, **_DRAFT_APPLICATION
+        )
+        await ApplicationService.submit(
+            linked_map_db_session, applicant.id, CORE_CONFIG
+        )
+        headers = bearer_headers(viewer.id)
+
+        live = MapStateDTO.model_validate(
+            (await linked_client.get(STATE_URL, headers=headers)).json()
+        )
+        assert live.reservations == [list(STARTING_GROUP)]
+        # The live answer is never storable — it can change mid-turn.
+        resp = await linked_client.get(STATE_URL, headers=headers)
+        assert resp.headers["cache-control"] == "no-store"
+
+        await ApplicationService.cancel(linked_map_db_session, applicant.id)
+        after = (
+            await linked_client.get(STATE_URL, headers=headers)
+        ).json()
+        assert after["reservations"] == []
+
+    async def test_past_turn_reservations_empty(
+        self, linked_client, linked_map_db_session
+    ):
+        """History knows nothing about reservations — a past-turn
+        answer is [] even while an application sits in PENDING."""
+        viewer = await seed_player(linked_map_db_session, vk_user_id=8203)
+        applicant = await seed_player(linked_map_db_session, vk_user_id=8204)
+        await ApplicationService.save_draft(
+            linked_map_db_session, applicant.id, CORE_CONFIG, **_DRAFT_APPLICATION
+        )
+        await ApplicationService.submit(
+            linked_map_db_session, applicant.id, CORE_CONFIG
+        )
+        await _set_turn(linked_map_db_session, 1)
+        headers = bearer_headers(viewer.id)
+
+        past = (
+            await linked_client.get(
+                STATE_URL, params={"turn": 0}, headers=headers
+            )
+        ).json()
+        assert past["reservations"] == []
+        live = (await linked_client.get(STATE_URL, headers=headers)).json()
+        assert live["reservations"] == [list(STARTING_GROUP)]
 
 
 class TestStartingGroupCheck:
