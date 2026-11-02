@@ -45,9 +45,10 @@ const ADMIN_APPLICATION: AdminApplicationDTO = {
 };
 
 function adminGet(body: () => AdminApplicationDTO | Response) {
-  return http.get(`*/api/v1/admin/applications/${APP_ID}`, () =>
-    typeof body === 'function' ? body() : HttpResponse.json(body),
-  );
+  return http.get(`*/api/v1/admin/applications/${APP_ID}`, () => {
+    const answer = body();
+    return answer instanceof Response ? answer : HttpResponse.json(answer);
+  });
 }
 
 const renderSubscreen = (onBack = vi.fn()) =>

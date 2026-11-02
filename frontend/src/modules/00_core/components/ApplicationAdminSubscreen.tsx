@@ -692,7 +692,7 @@ export function ApplicationAdminSubscreen({
   const trail =
     application === null
       ? ['Анкеты']
-      : ['Анкеты', application.short_name];
+      : ['Анкеты', application.name];
   const provincesCount = application?.provinces.length ?? 0;
   const imageLine = (() => {
     const flag = application?.images.flag != null;
