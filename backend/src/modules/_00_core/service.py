@@ -903,24 +903,32 @@ async def _check_short_name_free(
 
 
 async def _reserved_province_ids(
-    session: AsyncSession, province_ids: Iterable[int]
+    session: AsyncSession,
+    province_ids: Iterable[int],
+    exclude_application_id: str | None = None,
 ) -> set[int]:
     """The subset of ``province_ids`` currently reserved by PENDING
-    applications (APP-1). Read-only."""
+    applications (APP-1). ``exclude_application_id`` drops one
+    application's own reserve — used by the accept path. Read-only."""
     ids = set(province_ids)
     if not ids:
         return set()
-    result = await session.execute(
-        select(NationApplicationProvince.province_id).where(
-            NationApplicationProvince.province_id.in_(ids),
-            NationApplicationProvince.is_reserved.is_(True),
-        )
+    stmt = select(NationApplicationProvince.province_id).where(
+        NationApplicationProvince.province_id.in_(ids),
+        NationApplicationProvince.is_reserved.is_(True),
     )
+    if exclude_application_id is not None:
+        stmt = stmt.where(
+            NationApplicationProvince.application_id != exclude_application_id
+        )
+    result = await session.execute(stmt)
     return set(result.scalars().all())
 
 
 async def _load_available_provinces(
-    session: AsyncSession, province_ids: Iterable[int]
+    session: AsyncSession,
+    province_ids: Iterable[int],
+    exclude_application_id: str | None = None,
 ) -> list[Province]:
     """
     Load the province set for a registration check: every id must
@@ -928,6 +936,8 @@ async def _load_available_provinces(
     (APP-1). Raises ProvinceNotFoundError on the first missing id,
     ProvinceTakenError on the first owned-or-reserved one — the same
     order and codes NationService.create used before the reserve.
+    ``exclude_application_id`` lets the accept path ignore the
+    application's own reserve.
     """
     ids = list(province_ids)
     result = await session.execute(
@@ -944,7 +954,9 @@ async def _load_available_provinces(
         if province.nation_id is not None:
             raise ProvinceTakenError(province.id)
 
-    reserved = await _reserved_province_ids(session, found_ids)
+    reserved = await _reserved_province_ids(
+        session, found_ids, exclude_application_id
+    )
     if reserved:
         raise ProvinceTakenError(sorted(reserved)[0])
 

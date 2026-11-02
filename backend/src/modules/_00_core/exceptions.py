@@ -381,3 +381,25 @@ class ProvinceReservedError(CoreDomainError):
             f"Province {province_id} is reserved by a pending application",
             "PROVINCE_RESERVED",
         )
+
+
+class ApplicationSelfReviewError(CoreDomainError):
+    """The applicant may never decide their own application — not even
+    with admin rights (Spec applications §3, APP-3)."""
+
+    def __init__(self):
+        super().__init__(
+            "The applicant cannot decide their own application",
+            "APPLICATION_SELF_REVIEW",
+        )
+
+
+class ReturnCommentInvalidError(CoreDomainError):
+    """The return comment fails APP-7: after normalization it must be
+    1…``applications.comment_max_length`` characters."""
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Return comment is invalid: {reason}",
+            "RETURN_COMMENT_INVALID",
+        )

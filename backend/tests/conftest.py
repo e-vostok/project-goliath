@@ -93,10 +93,16 @@ _ADMIN_DICT_NAMES = (
     "_player_info_hooks",
     "_province_info_hooks",
     "_audit_action_hooks",
+    "_attention_hooks",
 )
 
 _LIFESPAN_TASK_NAMES = frozenset(
-    {"tick-scheduler", "orders-retry", "registry-profiles"}
+    {
+        "tick-scheduler",
+        "orders-retry",
+        "registry-profiles",
+        "applications-worker",
+    }
 )
 
 
@@ -110,6 +116,7 @@ def _snapshot_process_state() -> dict:
     import modules._03_registry.profile_worker as profile_worker
     import modules._03_registry.registry as registry_module
     import modules._03_registry.startup as registry_startup
+    import modules._00_core.applications_worker as applications_worker
     import modules._04_orders.startup as orders_startup
     import modules._04_orders.worker as orders_worker
     from core.admin.registry import AdminRegistry
@@ -166,6 +173,10 @@ def _snapshot_process_state() -> dict:
             orders_worker._wake_event,
             orders_worker._last_pass_at,
         ),
+        "applications_worker": (
+            applications_worker._mode,
+            applications_worker._last_pass_at,
+        ),
         "heartbeat": heartbeat._last_beat_at,
         "dep_overrides": dict(app.dependency_overrides),
     }
@@ -182,6 +193,7 @@ def _restore_process_state(saved: dict) -> None:
     import modules._03_registry.profile_worker as profile_worker
     import modules._03_registry.registry as registry_module
     import modules._03_registry.startup as registry_startup
+    import modules._00_core.applications_worker as applications_worker
     import modules._04_orders.startup as orders_startup
     import modules._04_orders.worker as orders_worker
     from core.admin.registry import AdminRegistry
@@ -237,6 +249,10 @@ def _restore_process_state(saved: dict) -> None:
         orders_worker._wake_event,
         orders_worker._last_pass_at,
     ) = saved["orders_worker"]
+    (
+        applications_worker._mode,
+        applications_worker._last_pass_at,
+    ) = saved["applications_worker"]
     heartbeat._last_beat_at = saved["heartbeat"]
     app.dependency_overrides.clear()
     app.dependency_overrides.update(saved["dep_overrides"])

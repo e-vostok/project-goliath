@@ -215,6 +215,32 @@ async def orders_overview(session: AsyncSession) -> list[dict]:
     ]
 
 
+async def orders_attention(session: AsyncSession) -> list[dict]:
+    """
+    The 04_orders item of the «требует внимания» counter (Spec
+    applications §7): «Приказы без судьи» — orders still in the
+    distribution queue (``judge_player_id IS NULL``, the derived
+    SUBMITTED stage). Empty list when the queue is empty. Read-only,
+    never commits.
+    """
+    waiting = (
+        await session.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.judge_player_id.is_(None))
+        )
+    ).scalar_one()
+    if not waiting:
+        return []
+    return [
+        {
+            "key": "orders_without_judge",
+            "label": "Приказы без судьи",
+            "count": waiting,
+        }
+    ]
+
+
 async def orders_reset(session: AsyncSession) -> None:
     """
     Wipe all orders (INV-O14). The caller owns the transaction — this
@@ -318,4 +344,6 @@ def register_orders_admin_hooks() -> None:
         AdminRegistry.register_overview(MODULE_SLUG, orders_overview)
     if MODULE_SLUG not in AdminRegistry.get_audit_action_hooks():
         AdminRegistry.register_audit_actions(MODULE_SLUG, ORDERS_AUDIT_ACTION_LABELS)
+    if MODULE_SLUG not in AdminRegistry.get_attention_hooks():
+        AdminRegistry.register_attention(MODULE_SLUG, orders_attention)
     register_player_delete_hook(f"{MODULE_SLUG}.player_delete", orders_delete_player)
