@@ -23,6 +23,7 @@ import {
 import {
   AppShell,
   normalizeEntryHash,
+  PANEL_APPLICATION,
   PANEL_CREATE,
   PANEL_HOME,
   PANEL_MAP,
@@ -51,6 +52,10 @@ if (!isUiKit) {
 const router = createHashRouter([
   { path: '/', panel: PANEL_HOME, view: 'main' },
   { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
+  // The player's own application window (0.13.0 unit 7a): replaces
+  // «Штаб» while the application is PENDING; the shell falls back to
+  // the default panel otherwise.
+  { path: '/application', panel: PANEL_APPLICATION, view: 'main' },
   { path: '/map', panel: PANEL_MAP, view: 'main' },
   { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
   // The nation subscreen (unit 14c): «Реестр» stays the active panel

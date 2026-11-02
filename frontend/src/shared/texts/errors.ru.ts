@@ -49,6 +49,17 @@ export const ERRORS_RU: Record<string, string | typeof SERVER_RU> = {
   /* The nation's uploaded picture was already removed (0.12.0 u9). */
   IMAGE_NOT_FOUND: 'Картинки уже нет.',
 
+  /* Applications (Spec applications §8). */
+  APPLICATION_NOT_FOUND: 'Анкеты нет — заполните её и отправьте.',
+  APPLICATION_NOT_EDITABLE:
+    'Анкета уже отправлена — править её можно только после отмены.',
+  APPLICATION_NOT_PENDING:
+    'Анкета уже не на рассмотрении — обновите страницу.',
+  /* Administrator-only codes — a regular player never triggers them. */
+  APPLICATION_SELF_REVIEW: 'Свою анкету рассматривать нельзя.',
+  RETURN_COMMENT_INVALID: 'Укажите причину возврата.',
+  PROVINCE_RESERVED: 'Провинция зарезервирована поданной анкетой.',
+
   /* Player, clock, map, registry. */
   PLAYER_NOT_FOUND: 'Игрок не найден.',
   GAME_CLOCK_NOT_FOUND: 'Игровые часы ещё не запущены.',

@@ -18,6 +18,7 @@
 
 import { ErrorCodes } from '../../../shared/types';
 import type {
+  ApplicationDTO,
   NationCreateRequest,
   NationDTO,
   NationRulesDTO,
@@ -81,6 +82,15 @@ export function normalizeColorHex(raw: string): string {
 
 export function isValidColorHex(raw: string): boolean {
   return HEX_COLOR_PATTERN.test(normalizeColorHex(raw));
+}
+
+/**
+ * The «на сутки»/«на N ч» tail of the reservation notes (mockups
+ * 19/19c/19d): the application's `review_hours` rendered for the
+ * player — 24 reads «сутки», anything else the compact «N ч».
+ */
+export function applicationReviewHoursText(hours?: number): string {
+  return hours === undefined || hours === 24 ? 'на сутки' : `на ${hours} ч`;
 }
 
 export function emptyRegistrationForm(): RegistrationForm {
@@ -264,6 +274,39 @@ export function missingRequired(
     missing.push('capitalName');
   }
   return missing;
+}
+
+/**
+ * Seeds the registration form from the server's DRAFT application
+ * (Spec applications §10, 0.13.0 unit 7a): a draft that came back —
+ * after a return or the player's own cancel — refills every field,
+ * provinces included, with their real display names (the DTO carries
+ * them). `capitalNameEdited` starts true: the stored capital name is
+ * the player's own and must never be auto-overwritten by the mark.
+ */
+export function registrationFormFromApplication(
+  application: ApplicationDTO,
+): RegistrationForm {
+  return {
+    name: application.name,
+    shortName: application.short_name,
+    color: application.color_hex,
+    motto: application.motto ?? '',
+    description: application.description ?? '',
+    leaderName: application.leader_name ?? '',
+    gender: application.gender ?? '',
+    leaderTitle: application.leader_title ?? '',
+    leaderBio: application.leader_bio ?? '',
+    successionType: application.succession_type ?? '',
+    historyUrl: application.history_url ?? '',
+    provinces: application.provinces.map((province) => ({
+      value: province.id,
+      label: province.name,
+    })),
+    capitalProvinceId: application.capital_province_id,
+    capitalName: application.capital_name ?? '',
+    capitalNameEdited: true,
+  };
 }
 
 /**

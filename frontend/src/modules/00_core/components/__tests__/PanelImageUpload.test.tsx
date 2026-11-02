@@ -4,7 +4,8 @@
  * raw PUT /nations/me/images/{kind} → onChanged refresh; the Registry
  * nation subscreen keeps pictures read-only; registration keeps the
  * picked File in window state and sends flag-then-portrait AFTER
- * createNation, a failed PUT never cancels the creation.
+ * registration's «Отправить анкету» — the draft PUT, the
+ * image PUTs, then the submit (Spec applications §10).
  *
  * jsdom has no `createImageBitmap`/canvas — stubbed narrowly; the
  * picked "file" is a node:buffer Blob so undici streams it raw.
@@ -22,6 +23,8 @@ import { PanelNationHome } from '../PanelNationHome';
 import {
   goToTab,
   registerDefaultHandlers,
+  APPLICATION_DRAFT,
+  APPLICATION_PENDING,
   renderWithProviders,
   seedRegistrationDraft,
   SESSION,
@@ -272,18 +275,18 @@ describe('registration images', () => {
     );
   };
 
-  it('a picked file stays in the window — nothing is sent before createNation', async () => {
+  it('a picked file stays in the window — nothing is sent before the draft PUT', async () => {
     const calls: string[] = [];
     server.use(
-      http.post('*/api/v1/nations', () => {
-        calls.push('create');
-        return HttpResponse.json(NATION, { status: 201 });
+      http.put('*/api/v1/applications/me', () => {
+        calls.push('draft');
+        return HttpResponse.json(APPLICATION_DRAFT);
       }),
-      http.put('*/api/v1/nations/me/images/flag', () => {
+      http.put('*/api/v1/applications/me/images/flag', () => {
         calls.push('flag');
         return HttpResponse.json({ kind: 'flag', url: '/f', thumb_url: '/t' });
       }),
-      http.put('*/api/v1/nations/me/images/portrait', () => {
+      http.put('*/api/v1/applications/me/images/portrait', () => {
         calls.push('portrait');
         return HttpResponse.json({
           kind: 'portrait',
@@ -291,11 +294,15 @@ describe('registration images', () => {
           thumb_url: '/pt',
         });
       }),
+      http.post('*/api/v1/applications/me/submit', () => {
+        calls.push('submit');
+        return HttpResponse.json(APPLICATION_PENDING);
+      }),
     );
     seedRegistrationDraft();
-    const onCreated = vi.fn();
+    const onSubmitted = vi.fn();
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
 
     // Tab 1 flag — «Использовать флаг» stores it, no request fires.
     await pickSlotFile(user, 'Загрузить флаг', 'Использовать флаг');
@@ -309,124 +316,33 @@ describe('registration images', () => {
     });
     expect(calls).toEqual([]);
 
-    // Submit: POST first, then flag, then portrait — in that order.
+    // «Отправить анкету»: draft PUT first, then flag, then portrait,
+    // then the submit — in that order (Spec applications §10).
     await goToTab(user, 4);
     await user.click(
-      await screen.findByRole('button', { name: 'Основать государство' }),
+      await screen.findByRole('button', { name: 'Отправить анкету' }),
     );
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
-    expect(calls).toEqual(['create', 'flag', 'portrait']);
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
+    expect(calls).toEqual(['draft', 'flag', 'portrait', 'submit']);
   });
 
-  it('a failing flag PUT still ends in onCreated plus one danger notice', async () => {
-    const calls: string[] = [];
-    server.use(
-      http.post('*/api/v1/nations', () => {
-        calls.push('create');
-        return HttpResponse.json(NATION, { status: 201 });
-      }),
-      http.put('*/api/v1/nations/me/images/flag', () => {
-        calls.push('flag');
-        return HttpResponse.json(
-          { code: 'IMAGE_ORIENTATION_INVALID', detail: 'orient' },
-          { status: 422 },
-        );
-      }),
-    );
-    seedRegistrationDraft();
-    const onCreated = vi.fn();
-    const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
-
-    await pickSlotFile(user, 'Загрузить флаг', 'Использовать флаг');
-    await goToTab(user, 4);
-    await user.click(
-      await screen.findByRole('button', { name: 'Основать государство' }),
-    );
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
-    expect(calls).toEqual(['create', 'flag']);
-    // ONE notice slot — the danger message replaces the «Государство
-    // создано» success one and carries the whole story itself.
-    expect(
-      await screen.findByText(
-        /Государство создано, но флаг не загрузился/,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getAllByTestId('notice')).toHaveLength(1);
-  });
-
-  it('two failed PUTs end in onCreated plus ONE combined danger notice', async () => {
-    const calls: string[] = [];
-    server.use(
-      http.post('*/api/v1/nations', () => {
-        calls.push('create');
-        return HttpResponse.json(NATION, { status: 201 });
-      }),
-      http.put('*/api/v1/nations/me/images/flag', () => {
-        calls.push('flag');
-        return HttpResponse.json(
-          { code: 'IMAGE_TOO_LARGE', detail: 'too big' },
-          { status: 413 },
-        );
-      }),
-      http.put('*/api/v1/nations/me/images/portrait', () => {
-        calls.push('portrait');
-        return HttpResponse.json(
-          { code: 'IMAGE_UNSUPPORTED', detail: 'not an image' },
-          { status: 415 },
-        );
-      }),
-    );
-    seedRegistrationDraft();
-    const onCreated = vi.fn();
-    const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
-
-    await pickSlotFile(user, 'Загрузить флаг', 'Использовать флаг');
-    await goToTab(user, 2);
-    await pickSlotFile(user, 'Загрузить портрет', 'Использовать портрет', {
-      w: 800,
-      h: 1000,
-    });
-    await goToTab(user, 4);
-    await user.click(
-      await screen.findByRole('button', { name: 'Основать государство' }),
-    );
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
-    expect(calls).toEqual(['create', 'flag', 'portrait']);
-
-    // ONE notice carries both reasons and the both-failed tail —
-    // «Государство создано» never flashes alone.
-    const notices = screen.getAllByTestId('notice');
-    expect(notices).toHaveLength(1);
-    const text = notices[0].textContent ?? '';
-    expect(text).toContain('Файл больше 6 МБ');
-    expect(text).toContain('Это не картинка');
-    expect(text).toContain(
-      'Государство создано, но флаг и портрет не загрузились. Загрузите их позже в «Штабе» — щелчком по флагу и по портрету.',
-    );
-  });
-
-  it('registration with no pictures makes no PUT', async () => {
+  it('registration with no pictures makes no image PUT', async () => {
     const puts: string[] = [];
     server.use(
-      http.post('*/api/v1/nations', () =>
-        HttpResponse.json(NATION, { status: 201 }),
-      ),
-      http.put('*/api/v1/nations/me/images/*', () => {
+      http.put('*/api/v1/applications/me/images/*', () => {
         puts.push('put');
         return HttpResponse.json({});
       }),
     );
     seedRegistrationDraft();
-    const onCreated = vi.fn();
+    const onSubmitted = vi.fn();
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
     await goToTab(user, 4);
     await user.click(
-      await screen.findByRole('button', { name: 'Основать государство' }),
+      await screen.findByRole('button', { name: 'Отправить анкету' }),
     );
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
     expect(puts).toEqual([]);
   });
 });

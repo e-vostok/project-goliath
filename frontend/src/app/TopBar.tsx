@@ -26,11 +26,14 @@ import { PANEL_MAP, PANEL_REGISTRY } from './panels';
 
 type TopTabId = 'hq' | 'registry' | 'map';
 
-const TABS: { id: TopTabId; label: string; path: string }[] = [
-  { id: 'hq', label: 'Штаб', path: '/' },
-  { id: 'registry', label: 'Реестр', path: '/registry' },
-  { id: 'map', label: 'Карта', path: '/map' },
-];
+/** The player's home tab — «Штаб», or «Анкета» while an application
+ *  is under review (Spec applications §10, APP-5). */
+export interface HomeTab {
+  label: string;
+  path: string;
+}
+
+const HOME_TAB_DEFAULT: HomeTab = { label: 'Штаб', path: '/' };
 
 /** «Штаб» hosts both the nation card and the registration screen. */
 function activeTabOf(panel: string): TopTabId {
@@ -46,13 +49,22 @@ function activeTabOf(panel: string): TopTabId {
 export function TopBar({
   activePanel,
   clock,
+  homeTab,
 }: {
   activePanel: string;
   /** Null until the first /game-clock answer — the badge stays hidden. */
   clock: GameClockDTO | null;
+  /** «Анкета» replaces «Штаб» while an application is PENDING. */
+  homeTab?: HomeTab;
 }) {
   const navigator = useRouteNavigator();
   const activeTab = activeTabOf(activePanel);
+  const home = homeTab ?? HOME_TAB_DEFAULT;
+  const tabs: { id: TopTabId; label: string; path: string }[] = [
+    { id: 'hq', label: home.label, path: home.path },
+    { id: 'registry', label: 'Реестр', path: '/registry' },
+    { id: 'map', label: 'Карта', path: '/map' },
+  ];
 
   return (
     <header
@@ -73,7 +85,7 @@ export function TopBar({
         role="tablist"
         style={{ display: 'flex', gap: 4, height: '100%', flexGrow: 1 }}
       >
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const selected = tab.id === activeTab;
           return (
             <button

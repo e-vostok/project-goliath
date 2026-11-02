@@ -771,6 +771,7 @@ const DEMO_RULES: NationRulesDTO = {
   },
   genders: ['male', 'female'],
   succession_types: ['appointment'],
+  application: { review_hours: 24, comment_max_length: 300 },
 };
 
 /** Draws the mockup's demo flag/portrait into a data URL (null in jsdom). */

@@ -7,5 +7,6 @@
 
 export const PANEL_HOME = 'nation-home';
 export const PANEL_CREATE = 'nation-create';
+export const PANEL_APPLICATION = 'application';
 export const PANEL_MAP = 'map';
 export const PANEL_REGISTRY = 'registry';

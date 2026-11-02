@@ -36,7 +36,7 @@ const chatLink = () =>
   screen.getByRole('link', { name: BOT_TEXTS.gateButton });
 
 async function renderCreate() {
-  renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
+  renderWithBot(<PanelCreateNation onSubmitted={vi.fn()} />);
 }
 
 /** Gate shown with consent UNKNOWN. */
@@ -298,7 +298,7 @@ describe('PanelBotGate — consent polling', () => {
   it('clears all timers on unmount — no calls afterwards', async () => {
     mswBot.status = () =>
       HttpResponse.json(botStatusReady({ consent: 'UNKNOWN' }));
-    const view = renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
+    const view = renderWithBot(<PanelCreateNation onSubmitted={vi.fn()} />);
     await screen.findByText(GATE_TITLE);
     usePollingTimers();
     fireEvent.click(chatLink());

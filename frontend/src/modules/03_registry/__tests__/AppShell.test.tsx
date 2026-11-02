@@ -81,6 +81,14 @@ function registerAppHandlers() {
   server.use(
     http.post('*/api/v1/auth/vk', () => HttpResponse.json(AUTH_RESPONSE)),
     // Player without a nation: 404 is the normal "no nation" signal.
+    // 0.13.0 unit 7a: the shell also probes the live application —
+    // 404 means none (an error now shows the retry cell).
+    http.get('*/api/v1/applications/me', () =>
+      HttpResponse.json(
+        { detail: 'Application not found', code: 'APPLICATION_NOT_FOUND' },
+        { status: 404 },
+      ),
+    ),
     http.get('*/api/v1/nations/me', () =>
       HttpResponse.json(
         { detail: 'Nation not found', code: 'NATION_NOT_FOUND' },
