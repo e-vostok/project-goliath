@@ -197,6 +197,7 @@ describe('placeStateNames — groups and caching', () => {
       [1003, 1],
       [1004, 1],
     ],
+    reservations: [],
   };
   const deps = (): StateNameDeps => ({
     nodesById,

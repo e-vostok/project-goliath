@@ -29,6 +29,19 @@ const NATION_B: MapNationDTO = {
 };
 
 const BOUNDS = MINI_MANIFEST.view_box;
+/** Empty reservation map — province id → group index. */
+const NO_RESERVATIONS = new Map<number, number>();
+
+/** province id → group index from group lists, like the wire payload. */
+function reservationsOf(...groups: number[][]): Map<number, number> {
+  const map = new Map<number, number>();
+  groups.forEach((group, index) => {
+    for (const id of group) {
+      map.set(id, index);
+    }
+  });
+  return map;
+}
 
 /** LAND ids only — sea zones get no border lines (map2_15). */
 const LAND = new Set(
@@ -55,6 +68,7 @@ describe('buildBorderLayer — classification', () => {
     const layer = buildBorderLayer(
       MINI_BORDERS,
       ownersOf([]),
+      NO_RESERVATIONS,
       BOUNDS,
       LAND,
     );
@@ -78,6 +92,7 @@ describe('buildBorderLayer — classification', () => {
         [1003, NATION_B], // different nation → state
         // 1004 free → owned-vs-free is a state border
       ]),
+      NO_RESERVATIONS,
       BOUNDS,
       LAND,
     );
@@ -99,6 +114,7 @@ describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
     const layer = buildBorderLayer(
       MINI_BORDERS,
       ownersOf([[1003, NATION_A]]),
+      NO_RESERVATIONS,
       BOUNDS,
       LAND,
       4,
@@ -126,6 +142,7 @@ describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
         [1003, NATION_A],
         [1004, NATION_B],
       ]),
+      NO_RESERVATIONS,
       BOUNDS,
       LAND,
       grid,
@@ -138,6 +155,7 @@ describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
         [1003, NATION_A],
         [1004, NATION_A],
       ]),
+      NO_RESERVATIONS,
     );
 
     const flippedCell = before.chunks.high.state.findIndex((d) =>
@@ -170,10 +188,106 @@ describe('buildBorderLayer — chunks and rebuilds (map2_14)', () => {
     );
 
     // No ownership change → the same layer object, zero rebuilds.
-    expect(reclassifyBorderLayer(after, ownersOf([
-      [1003, NATION_A],
-      [1004, NATION_A],
-    ]))).toBe(after);
+    expect(
+      reclassifyBorderLayer(
+        after,
+        ownersOf([
+          [1003, NATION_A],
+          [1004, NATION_A],
+        ]),
+        NO_RESERVATIONS,
+      ),
+    ).toBe(after);
+  });
+});
+
+describe('buildBorderLayer — reserve class (applications §11)', () => {
+  it('a pair inside one group stays internal; its outer edge is reserve', () => {
+    const layer = buildBorderLayer(
+      MINI_BORDERS,
+      ownersOf([]),
+      reservationsOf([1002, 1003]),
+      BOUNDS,
+      LAND,
+    );
+
+    const internal = classGeometry(layer, 'internal');
+    const reserve = classGeometry(layer, 'reserve');
+    occursOnce(internal, MINI_BORDERS.pairs['1002-1003']);
+    occursOnce(reserve, MINI_BORDERS.pairs['1001-1002']);
+    occursOnce(reserve, MINI_BORDERS.pairs['1003-1004']);
+    expect(classGeometry(layer, 'state')).toBe('');
+  });
+
+  it('two adjacent groups share a reserve border; state border wins', () => {
+    // 1002 in group 0, 1003 in group 1 — different groups → reserve.
+    const layer = buildBorderLayer(
+      MINI_BORDERS,
+      ownersOf([]),
+      reservationsOf([1002], [1003]),
+      BOUNDS,
+      LAND,
+    );
+    occursOnce(classGeometry(layer, 'reserve'), MINI_BORDERS.pairs['1002-1003']);
+
+    // Ownership difference outranks the reserve: 1003 owned vs the
+    // reserved 1002 — the pair stays a state border, not reserve.
+    const priority = buildBorderLayer(
+      MINI_BORDERS,
+      ownersOf([[1003, NATION_A]]),
+      reservationsOf([1002]),
+      BOUNDS,
+      LAND,
+    );
+    occursOnce(classGeometry(priority, 'state'), MINI_BORDERS.pairs['1002-1003']);
+    expect(classGeometry(priority, 'reserve')).not.toContain(
+      MINI_BORDERS.pairs['1002-1003'],
+    );
+  });
+
+  it('a reservation change rebuilds only the flipped cells', () => {
+    const grid = 4;
+    const before = buildBorderLayer(
+      MINI_BORDERS,
+      ownersOf([]),
+      reservationsOf([1002, 1003]),
+      BOUNDS,
+      LAND,
+      grid,
+    );
+
+    // The application resolves — both borders fall back to internal.
+    const after = reclassifyBorderLayer(
+      before,
+      ownersOf([]),
+      NO_RESERVATIONS,
+    );
+
+    const dirtyCells = new Set(
+      [before.chunks.high.reserve, before.chunks.high.internal]
+        .flat()
+        .map((d, i) => (d !== null ? i : -1))
+        .filter((i) => i >= 0),
+    );
+    for (let cell = 0; cell < grid * grid; cell += 1) {
+      for (const cls of ['internal', 'reserve'] as const) {
+        if (dirtyCells.has(cell)) {
+          expect(after.chunks.high[cls][cell]).not.toBe(
+            before.chunks.high[cls][cell],
+          );
+        } else {
+          expect(after.chunks.high[cls][cell]).toBe(
+            before.chunks.high[cls][cell],
+          );
+        }
+      }
+    }
+    expect(classGeometry(after, 'reserve')).toBe('');
+
+    // Nothing changed → the same layer object, zero rebuilds.
+    expect(
+      reclassifyBorderLayer(after, ownersOf([]), NO_RESERVATIONS),
+    ).toBe(after);
   });
 });
 
@@ -202,6 +316,7 @@ describe('buildBorderLayer — sea zones get no lines (map2_15)', () => {
     const layer = buildBorderLayer(
       SEA_BORDERS,
       ownersOf([[1003, NATION_A]]),
+      NO_RESERVATIONS,
       BOUNDS,
       LAND,
       4,

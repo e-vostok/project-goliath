@@ -258,6 +258,12 @@ export interface MapStateDTO {
   nations: MapNationDTO[];
   /** [province_id, index into nations]; free provinces and SEA are absent. */
   owners: [number, number][];
+  /**
+   * One province-id list per PENDING nation application, ids in pick
+   * order — no application id, player, name or colour (APP-6, Spec
+   * 00_core_applications §11). Past-turn answers always carry [].
+   */
+  reservations: number[][];
 }
 
 /** POST /map/starting-group/check answer (Spec Part 5, Issue 6). */

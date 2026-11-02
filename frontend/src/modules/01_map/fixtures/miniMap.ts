@@ -204,6 +204,7 @@ export const MINI_STATE: MapStateDTO = {
     [1001, 0],
     [1002, 0],
   ],
+  reservations: [],
 };
 
 export const MINI_STATE_EMPTY: MapStateDTO = {
@@ -212,4 +213,5 @@ export const MINI_STATE_EMPTY: MapStateDTO = {
   turn: 7,
   nations: [],
   owners: [],
+  reservations: [],
 };

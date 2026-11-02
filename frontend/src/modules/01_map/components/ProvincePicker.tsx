@@ -51,6 +51,7 @@ import { errorText } from '../../../shared/errorTexts';
 import { Popup, tokenVar } from '../../../shared/ui';
 import { mapApi } from '../api';
 import { buildOwnerMap } from '../lib/colors';
+import { buildReservationMap } from '../lib/reservations';
 import { displayName } from '../lib/search';
 import {
   components,
@@ -149,9 +150,15 @@ export function ProvincePicker({
     () => buildOwnerMap(mapState.state, nodesById),
     [mapState.state, nodesById],
   );
+  // Reserved provinces are disabled exactly like owned ones (Spec
+  // applications §11) — the map never offers them for picking.
+  const reservations = useMemo(
+    () => buildReservationMap(mapState.state, nodesById),
+    [mapState.state, nodesById],
+  );
   const ctx = useMemo(
-    () => ({ nodes: nodesById, owners, max: limits.max }),
-    [nodesById, owners, limits.max],
+    () => ({ nodes: nodesById, owners, reservations, max: limits.max }),
+    [nodesById, owners, reservations, limits.max],
   );
   const edges = useMemo(() => manifest?.edges ?? [], [manifest]);
   const componentCount = useMemo(

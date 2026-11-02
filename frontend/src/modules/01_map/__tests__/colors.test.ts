@@ -62,6 +62,7 @@ describe('buildOwnerMap', () => {
       [5, 1],
       [6, 0],
     ],
+    reservations: [],
   };
 
   it('maps province ids to nation DTOs by index', () => {

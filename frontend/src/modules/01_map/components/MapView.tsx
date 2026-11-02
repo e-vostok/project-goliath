@@ -97,6 +97,12 @@ import {
   type BorderLayer,
 } from '../lib/borders';
 import { buildOwnerMap, nodeFill } from '../lib/colors';
+import {
+  buildReservationMap,
+  RESERVED_TITLE,
+  RESERVED_TOOLTIP,
+} from '../lib/reservations';
+import { tokenVar } from '../../../shared/ui';
 import { useRelief } from '../lib/relief';
 import { displayName } from '../lib/search';
 import { selectTooltipStatus } from '../lib/selection';
@@ -186,6 +192,10 @@ const WHEEL_ZOOM_STEP = 1.25;
 const CAPITAL_OUTLINE_PX = 3;
 /** Capital star: white fill edge in screen px (non-scaling). */
 const CAPITAL_STAR_STROKE_PX = 1.2;
+/** Reserve outline (Spec applications §11): ~3 screen px of dashed
+ *  signal yellow riding the outer boundary of a pending group. */
+const RESERVE_STROKE_PX = 3;
+const RESERVE_DASH = '7 4';
 /** Star tip radius = this share of the node's smaller bbox side… */
 const CAPITAL_STAR_RATIO = 0.24;
 /** …but never smaller than this in map units. */
@@ -310,6 +320,12 @@ export function MapView(props: MapViewProps) {
   );
   const owners = useMemo(
     () => buildOwnerMap(props.state ?? null, nodesById),
+    [props.state, nodesById],
+  );
+  // province_id → reservation group index (Spec applications §11):
+  // follows the owners — same state payload, same refresh.
+  const reservations = useMemo(
+    () => buildReservationMap(props.state ?? null, nodesById),
     [props.state, nodesById],
   );
 
@@ -1253,10 +1269,11 @@ export function MapView(props: MapViewProps) {
       next =
         layerRef.current !== null &&
         layerRef.current.borders === props.borders
-          ? reclassifyBorderLayer(layerRef.current, owners)
+          ? reclassifyBorderLayer(layerRef.current, owners, reservations)
           : buildBorderLayer(
               props.borders,
               owners,
+              reservations,
               manifest.view_box,
               landIds,
             );
@@ -1264,7 +1281,7 @@ export function MapView(props: MapViewProps) {
     layerRef.current = next;
     return next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.borders, owners, manifest.view_box, landIds]);
+  }, [props.borders, owners, reservations, manifest.view_box, landIds]);
   // Legacy per-node strokes survive only as the borders-failed fallback.
   const legacyStrokes =
     borderLayer === null && props.bordersFailed === true;
@@ -1334,11 +1351,12 @@ export function MapView(props: MapViewProps) {
     }
     const b = rules.borders;
     const classStyle: Record<
-      'internal' | 'coast' | 'state',
+      'internal' | 'coast' | 'state' | 'reserve',
       {
         stroke: string;
         strokeWidth: number;
         strokeOpacity?: number;
+        strokeDasharray?: string;
       }
     > = {
       internal: {
@@ -1353,6 +1371,13 @@ export function MapView(props: MapViewProps) {
       state: {
         stroke: b.state_color,
         strokeWidth: b.state_width,
+      },
+      // Last in key order → dashed reserve outlines render above the
+      // state borders (Spec applications §11; signal yellow token).
+      reserve: {
+        stroke: tokenVar('signal'),
+        strokeWidth: RESERVE_STROKE_PX,
+        strokeDasharray: RESERVE_DASH,
       },
     };
     return (
@@ -1407,6 +1432,24 @@ export function MapView(props: MapViewProps) {
     applySeamBand(seamBand.current, seamBand.current);
   }, [nodePaths, applySeamBand]);
 
+  // Reserved provinces glow white constantly (Spec applications §11,
+  // design 24_karta_rezerv): one compound <path> of every reserved
+  // LAND node — constant fill, fixed opacity, no filter, no animation.
+  const reservedGlowD = useMemo(() => {
+    if (reservations.size === 0) {
+      return '';
+    }
+    const parts: string[] = [];
+    for (const id of reservations.keys()) {
+      const node = nodesById.get(id);
+      const d = node?.kind === 'LAND' ? geometry.paths[id] : undefined;
+      if (d !== undefined && d !== '') {
+        parts.push(d);
+      }
+    }
+    return parts.join(' ');
+  }, [reservations, nodesById, geometry.paths]);
+
   const selected = props.selectedIds ?? [];
   const capitalNode =
     mode === 'select' && props.capitalId != null
@@ -1420,6 +1463,10 @@ export function MapView(props: MapViewProps) {
     hoverNode && hoverNode.kind === 'LAND'
       ? owners.get(hoverNode.id)
       : undefined;
+  const hoverReserved =
+    hoverNode !== null &&
+    hoverNode.kind === 'LAND' &&
+    reservations.has(hoverNode.id);
 
   // Select-mode cursor (Spec Part 5): pointer over a selectable node,
   // not-allowed over a disabled one — derived from `hoverNode`, so it
@@ -1705,6 +1752,20 @@ export function MapView(props: MapViewProps) {
               }}
             />
           )}
+          {/* reserved-territory glow (Spec applications §11): the
+              constant white fill sits above the fills so the dashed
+              reserve outline of the border layer rides on top of it —
+              one compound path, fixed opacity, no filter, no
+              animation. */}
+          {reservedGlowD !== '' && (
+            <g data-layer="reserved-glow" pointerEvents="none">
+              <path
+                d={reservedGlowD}
+                fill={colors.hover}
+                fillOpacity={rules.selection.picked_opacity}
+              />
+            </g>
+          )}
           {/* border layer: above the fills, below selection/hover and
               labels — chunked + LOD copies, inert (map2_4, map2_14). */}
           {borderEls}
@@ -1968,8 +2029,28 @@ export function MapView(props: MapViewProps) {
           {mode === 'select' ? (
             <div>
               {displayName(hoverNode)} —{' '}
-              {selectTooltipStatus(hoverNode, hoverOwner)}
+              {selectTooltipStatus(hoverNode, hoverOwner, hoverReserved)}
             </div>
+          ) : hoverReserved ? (
+            // Design 24_karta_rezerv: a reserved province's tooltip is
+            // anonymous (APP-6) — no node name, no applicant name or
+            // colour; the dashed signal dash mirrors the outline.
+            <>
+              <div>
+                <span
+                  aria-hidden
+                  style={{
+                    display: 'inline-block',
+                    width: 18,
+                    marginRight: 6,
+                    verticalAlign: 'middle',
+                    borderTop: `2px dashed ${tokenVar('signal')}`,
+                  }}
+                />
+                {RESERVED_TITLE}
+              </div>
+              <div style={{ opacity: 0.75 }}>{RESERVED_TOOLTIP}</div>
+            </>
           ) : (
             <>
               <div>{displayName(hoverNode)}</div>
