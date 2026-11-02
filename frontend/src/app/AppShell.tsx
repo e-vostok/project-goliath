@@ -8,7 +8,7 @@
  * kept in sync with the hash router.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useActiveVkuiLocation,
   useParams,
@@ -41,6 +41,7 @@ import { setMapEntryRequest } from '../modules/01_map/lib/mapEntryRequest';
 import { PanelRegistry } from '../modules/03_registry/components/PanelRegistry';
 import { PlayerSubscreen } from '../modules/03_registry/components/PlayerSubscreen';
 import { OrdersUiProvider } from '../modules/04_orders/OrdersUiProvider';
+import { ApiError } from '../shared/api-client';
 import { errorText } from '../shared/errorTexts';
 import {
   AuthErrorScreen,
@@ -195,6 +196,28 @@ function LoadingCell() {
   );
 }
 
+/** Same retry-able error the nation load shows — for a failed
+ *  GET /applications/me (audit of PR 267: never fall through to the
+ *  empty registration on a fetch error). */
+function ApplicationErrorCell({
+  error,
+  onRetry,
+}: {
+  error: ApiError | Error;
+  onRetry: () => void;
+}) {
+  return (
+    <Div>
+      <FormStatus mode="error" title="Не удалось загрузить анкету">
+        {errorText(error)}
+      </FormStatus>
+      <Button size="l" stretched onClick={onRetry}>
+        Повторить
+      </Button>
+    </Div>
+  );
+}
+
 function AuthedArea() {
   const { panel } = useActiveVkuiLocation();
   const navigator = useRouteNavigator();
@@ -238,7 +261,16 @@ function AuthedArea() {
   // while it is PENDING its window replaces «Штаб»; a refresh that
   // finds it gone (accepted into a nation, cancelled nowhere) makes
   // the nation refetch surface the new «Штаб» without a reload.
-  const applicationState = useApplication(refresh);
+  // `awaitingNation` holds every panel but the map and the Registry in
+  // the loading cell during that refetch — otherwise the «no nation,
+  // no application» frame would flash the empty registration.
+  const [awaitingNation, setAwaitingNation] = useState(false);
+  const applicationState = useApplication(
+    useCallback(() => {
+      setAwaitingNation(true);
+      void refresh().finally(() => setAwaitingNation(false));
+    }, [refresh]),
+  );
   const appStatus = applicationState.status;
   const application =
     appStatus === 'ready' ? applicationState.application : null;
@@ -249,6 +281,13 @@ function AuthedArea() {
       : null;
   const draftApplication =
     nation === null && application?.status === 'DRAFT' ? application : null;
+  // The application load failing is not «no application»: the shell
+  // shows the same retry-able error the nation load has instead of
+  // falling through to the empty registration (audit of PR 267).
+  const applicationError =
+    appStatus === 'error' ? applicationState.error : null;
+  const applicationErrored =
+    nation === null && applicationError !== null && !awaitingNation;
   const activePanel = panel ?? PANEL_HOME;
   const clock = useGameClock();
 
@@ -256,7 +295,12 @@ function AuthedArea() {
   // review state — keep the route in sync. The map and registry
   // screens are open to everyone, so they are exempt from the redirect.
   useEffect(() => {
-    if (status !== 'ready' || appStatus === 'loading') {
+    if (
+      status !== 'ready' ||
+      appStatus === 'loading' ||
+      appStatus === 'error' ||
+      awaitingNation
+    ) {
       return;
     }
     if (nation !== null) {
@@ -285,6 +329,7 @@ function AuthedArea() {
   }, [
     status,
     appStatus,
+    awaitingNation,
     nation,
     pendingApplication,
     activePanel,
@@ -330,21 +375,36 @@ function AuthedArea() {
               <SplitCol>
                 <View activePanel={activePanel}>
                   <Panel id={PANEL_CREATE}>
-                    {status === 'loading' || appStatus === 'loading' ? (
+                    {status === 'loading' ||
+                    appStatus === 'loading' ||
+                    awaitingNation ? (
                       <LoadingCell />
+                    ) : applicationErrored ? (
+                      <ApplicationErrorCell
+                        error={applicationError}
+                        onRetry={refreshApplication}
+                      />
                     ) : (
                       nation === null &&
                       pendingApplication === null && (
                         <PanelCreateNation
                           draft={draftApplication}
                           onSubmitted={refreshApplication}
+                          onRefresh={refreshApplication}
                         />
                       )
                     )}
                   </Panel>
                   <Panel id={PANEL_APPLICATION}>
-                    {status === 'loading' || appStatus === 'loading' ? (
+                    {status === 'loading' ||
+                    appStatus === 'loading' ||
+                    awaitingNation ? (
                       <LoadingCell />
+                    ) : applicationErrored ? (
+                      <ApplicationErrorCell
+                        error={applicationError}
+                        onRetry={refreshApplication}
+                      />
                     ) : (
                       pendingApplication !== null && (
                         <PanelApplication
@@ -355,7 +415,15 @@ function AuthedArea() {
                     )}
                   </Panel>
                   <Panel id={PANEL_HOME}>
-                    {status === 'loading' && <LoadingCell />}
+                    {(status === 'loading' || awaitingNation) && (
+                      <LoadingCell />
+                    )}
+                    {applicationErrored && status === 'ready' && (
+                      <ApplicationErrorCell
+                        error={applicationError}
+                        onRetry={refreshApplication}
+                      />
+                    )}
                     {status === 'error' && (
                       <Div>
                         <FormStatus

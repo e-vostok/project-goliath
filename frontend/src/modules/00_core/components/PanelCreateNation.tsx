@@ -49,6 +49,7 @@ import { Button, FormStatus } from '@vkontakte/vkui';
 import { api, ApiError } from '../../../shared/api-client';
 import { errorText } from '../../../shared/errorTexts';
 import { useFormDraft } from '../../../shared/formDraft';
+import { ErrorCodes } from '../../../shared/types';
 import type { ApplicationDTO } from '../../../shared/types';
 import {
   BlockTitle,
@@ -121,11 +122,18 @@ export interface PanelCreateNationProps {
    */
   draft?: ApplicationDTO | null;
   onSubmitted: (application: ApplicationDTO) => void;
+  /**
+   * Called when a request answers 409 APPLICATION_NOT_EDITABLE — the
+   * application went PENDING elsewhere (audit of PR 267): the shell
+   * refetches and moves to «Анкета» instead of a banner.
+   */
+  onRefresh?: () => void;
 }
 
 export function PanelCreateNation({
   draft,
   onSubmitted,
+  onRefresh,
 }: PanelCreateNationProps) {
   const { token } = useSession();
   const rulesState = useNationRules();
@@ -316,6 +324,15 @@ export function PanelCreateNation({
     // save and the submit — the server enforces either at any stage
     // (the submit runs the consent check too).
     const fail = async (error: unknown) => {
+      if (
+        error instanceof ApiError &&
+        error.code === ErrorCodes.APPLICATION_NOT_EDITABLE
+      ) {
+        // The application went PENDING elsewhere — the shell refetches
+        // and moves to «Анкета» instead of a banner (audit of PR 267).
+        onRefresh?.();
+        return;
+      }
       if (isConsentRequiredError(error)) {
         // The server enforced consent although the gate let the player
         // through (stale/failed status) — return to the gate; the form
@@ -373,6 +390,13 @@ export function PanelCreateNation({
         try {
           await api.uploadApplicationImage(token, kind, pending.file);
         } catch (uploadError) {
+          if (
+            uploadError instanceof ApiError &&
+            uploadError.code === ErrorCodes.APPLICATION_NOT_EDITABLE
+          ) {
+            await fail(uploadError);
+            return;
+          }
           uploadFailed = true;
           setImageErrors((prev) => ({
             ...prev,

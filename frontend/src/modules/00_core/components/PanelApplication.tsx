@@ -19,8 +19,9 @@
 import { useState } from 'react';
 import { Button, FormStatus, Link } from '@vkontakte/vkui';
 
-import { api } from '../../../shared/api-client';
+import { api, ApiError } from '../../../shared/api-client';
 import { errorText } from '../../../shared/errorTexts';
+import { ErrorCodes } from '../../../shared/types';
 import type {
   ApplicationDTO,
   NationPublicDTO,
@@ -293,6 +294,16 @@ export function PanelApplication({
       setConfirmOpen(false);
       onChanged();
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.code === ErrorCodes.APPLICATION_NOT_PENDING
+      ) {
+        // Already decided or cancelled elsewhere — close and refresh
+        // so the shell reroutes (audit of PR 267).
+        setConfirmOpen(false);
+        onChanged();
+        return;
+      }
       setCancelError(errorText(error));
     } finally {
       setCancelling(false);

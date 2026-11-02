@@ -17,7 +17,7 @@ export type NationState =
   | { status: 'error'; nation: null; error: ApiError | Error }
   | { status: 'ready'; nation: NationDTO | null };
 
-export function useNation(): NationState & { refresh: () => void } {
+export function useNation(): NationState & { refresh: () => Promise<void> } {
   const { token } = useSession();
   const [state, setState] = useState<NationState>({
     status: 'loading',
@@ -57,9 +57,9 @@ export function useNation(): NationState & { refresh: () => void } {
     return () => controller.abort();
   }, [load]);
 
-  const refresh = useCallback(() => {
-    void load();
-  }, [load]);
+  // The promise lets a caller await the refetch — the shell needs it
+  // to hold the loading cell until an acceptance lands.
+  const refresh = useCallback(() => load(), [load]);
 
   return { ...state, refresh };
 }
