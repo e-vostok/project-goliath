@@ -45,7 +45,7 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
     mswBot.status = () =>
       HttpResponse.json(botStatusReady({ consent: 'ALLOWED' }));
     server.use(
-      http.post('*/api/v1/nations', () =>
+      http.post('*/api/v1/applications/me/submit', () =>
         HttpResponse.json(
           { detail: 'Message consent required', code: 'CONSENT_REQUIRED' },
           { status: 403 },
@@ -57,11 +57,11 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
     // The seeded draft carries the fields whose inputs only arrive with
     // Issues 13–15 — without them the single submit stays disabled.
     seedRegistrationDraft();
-    renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
+    renderWithBot(<PanelCreateNation onSubmitted={vi.fn()} />);
     await screen.findByLabelText('Полное название');
     await goToTab(user, 4);
     await user.click(
-      screen.getByRole('button', { name: /основать государство/i }),
+      screen.getByRole('button', { name: /отправить анкету/i }),
     );
 
     // The gate replaces the form; entered values stay in the container.
@@ -108,7 +108,7 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
         : HttpResponse.json(botStatusReady({ consent: 'UNKNOWN' }));
     };
     server.use(
-      http.post('*/api/v1/nations', () =>
+      http.post('*/api/v1/applications/me/submit', () =>
         HttpResponse.json(
           { detail: 'Message consent required', code: 'CONSENT_REQUIRED' },
           { status: 403 },
@@ -118,11 +118,11 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
 
     const user = userEvent.setup();
     seedRegistrationDraft();
-    renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
+    renderWithBot(<PanelCreateNation onSubmitted={vi.fn()} />);
     await screen.findByLabelText('Полное название');
     await goToTab(user, 4);
     await user.click(
-      screen.getByRole('button', { name: /основать государство/i }),
+      screen.getByRole('button', { name: /отправить анкету/i }),
     );
 
     await screen.findByText(BOT_TEXTS.gateTitle);
@@ -132,12 +132,12 @@ describe('PanelCreateNation — CONSENT_REQUIRED', () => {
   it('with the bot disabled the container renders its pre-Issue output', async () => {
     mswBot.status = () => HttpResponse.json(BOT_STATUS_DISABLED);
     const user = userEvent.setup();
-    renderWithBot(<PanelCreateNation onCreated={vi.fn()} />);
+    renderWithBot(<PanelCreateNation onSubmitted={vi.fn()} />);
     await screen.findByLabelText('Полное название');
     expect(screen.queryByText(BOT_TEXTS.gateTitle)).not.toBeInTheDocument();
     await goToTab(user, 4);
     expect(
-      screen.getByRole('button', { name: /основать государство/i }),
+      screen.getByRole('button', { name: /отправить анкету/i }),
     ).toBeInTheDocument();
   });
 });

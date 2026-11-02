@@ -6,9 +6,16 @@
  * («Основные данные и символика», «Глава государства», «История»,
  * «Территории»), one `surface`/`radius-lg`/`space-4` block per tab with
  * its own `BlockTitle`, and the buttons row under it: «← Назад» (not on
- * tab 1), «Далее →» — on tab 4 «Основать государство», disabled until
- * `missingRequired` is empty, with the red-dot hint between the
- * buttons.
+ * tab 1), «Далее →» — on tab 4 «Отправить анкету», disabled until
+ * `missingRequired` is empty, with the red-dot hint or the review note
+ * between the buttons.
+ *
+ * «Отправить анкету» (Spec applications §10, 0.13.0 unit 7a) runs the
+ * sequence: PUT /applications/me (draft) → the chosen pictures onto
+ * the draft → POST /applications/me/submit. A failure at any step
+ * keeps the draft, shows the error at its own tab and the same button
+ * repeats the whole sequence. A server DRAFT (returned / cancelled /
+ * plain) fills the form and shows its plate above the tabs.
  *
  * The current tab and every field value live in this container as one
  * `RegistrationForm` object (the anthem field is gone; `anthem_url`
@@ -42,10 +49,10 @@ import { Button, FormStatus } from '@vkontakte/vkui';
 import { api, ApiError } from '../../../shared/api-client';
 import { errorText } from '../../../shared/errorTexts';
 import { useFormDraft } from '../../../shared/formDraft';
-import { SUCCESS_RU } from '../../../shared/texts/success.ru';
-import type { NationDTO } from '../../../shared/types';
+import type { ApplicationDTO } from '../../../shared/types';
 import {
   BlockTitle,
+  FieldMessage,
   ImageSlot,
   LoadingState,
   pickImageFile,
@@ -54,18 +61,18 @@ import {
   SPACING,
   TEXT_STYLES,
   tokenVar,
-  useNotice,
   type ImageSlotKind,
 } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
 import { imageErrorText } from './imageErrorTexts';
-import {
-  imageUploadLaterBothText,
-  imageUploadLaterText,
-} from './imageEditor';
 import { ImageUploadPreview } from './ImageUploadPreview';
-import { isValidColorHex, normalizeColorHex } from './registrationForm';
+import {
+  applicationReviewHoursText,
+  isValidColorHex,
+  normalizeColorHex,
+  registrationFormFromApplication,
+} from './registrationForm';
 import { useBotStatus } from '../../02_bot/hooks/useBotStatus';
 import { PanelBotGate } from '../../02_bot/components/PanelBotGate';
 import {
@@ -107,12 +114,20 @@ const sendTaptic = () => {
 };
 
 export interface PanelCreateNationProps {
-  onCreated: (nation: NationDTO) => void;
+  /**
+   * The server's DRAFT application (Spec applications §10): fills the
+   * form — it wins over the session draft — and its `draft_reason`
+   * shows the returned/cancelled plate above the tabs.
+   */
+  draft?: ApplicationDTO | null;
+  onSubmitted: (application: ApplicationDTO) => void;
 }
 
-export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
+export function PanelCreateNation({
+  draft,
+  onSubmitted,
+}: PanelCreateNationProps) {
   const { token } = useSession();
-  const notify = useNotice();
   const rulesState = useNationRules();
   const rules = rulesState.status === 'ready' ? rulesState.rules : null;
   const hints = nationRulesHints(rules);
@@ -120,7 +135,8 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   const [consentRequired, setConsentRequired] = useState(false);
 
   // Draft memory: reopening the registration screen restores whatever
-  // was typed; a successful creation deletes it (see handleSubmit).
+  // was typed; a successful submission deletes it (see handleSubmit).
+  // A server DRAFT wins over the session copy (Spec §10).
   const {
     draft: storedDraft,
     setDraft: setStoredDraft,
@@ -129,19 +145,26 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
 
   const [tab, setTab] = useState<RegistrationTab>(1);
   const [form, setForm] = useState<RegistrationForm>(() =>
-    registrationFormFromDraft(storedDraft),
+    draft !== undefined && draft !== null
+      ? registrationFormFromApplication(draft)
+      : registrationFormFromDraft(storedDraft),
   );
   // A restored draft means the player already edited the form — tab
   // dots for missing required fields show right away.
   const [touched, setTouched] = useState(
-    storedDraft !== null &&
-      !registrationFormIsEmpty(registrationFormFromDraft(storedDraft)),
+    draft !== undefined && draft !== null
+      ? !registrationFormIsEmpty(registrationFormFromApplication(draft))
+      : storedDraft !== null &&
+          !registrationFormIsEmpty(
+            registrationFormFromDraft(storedDraft),
+          ),
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   // Images chosen at registration (0.12.0, Spec «Порядок в окне
   // регистрации»): kept in this window only — a File plus a local
-  // object URL for the slot — and sent one by one AFTER the nation
-  // exists. Not part of the session draft: a reload loses them.
+  // object URL for the slot — and uploaded onto the saved draft one
+  // by one before the submit (Spec applications §10). Not part of the
+  // session draft: a reload loses the files, never the uploaded ones.
   const [pendingImages, setPendingImages] = useState<
     Partial<Record<ImageSlotKind, { file: File; url: string }>>
   >({});
@@ -169,8 +192,21 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       }
       return { ...prev, [kind]: { file, url: URL.createObjectURL(file) } };
     });
+    setImageErrors((prev) => {
+      if (!(kind in prev)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[kind];
+      return next;
+    });
   };
   const [submitting, setSubmitting] = useState(false);
+  // A failed draft upload marks its own tab (flag → 1, portrait → 2)
+  // and waits under the slot — the draft stays on the server.
+  const [imageErrors, setImageErrors] = useState<
+    Partial<Record<ImageSlotKind, string>>
+  >({});
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<NationField, string>>
   >({});
@@ -243,6 +279,12 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
   for (const field of Object.keys(fieldErrors) as NationField[]) {
     tabMarks[fieldToTab(field)] = true;
   }
+  if (imageErrors.flag !== undefined) {
+    tabMarks[1] = true;
+  }
+  if (imageErrors.portrait !== undefined) {
+    tabMarks[2] = true;
+  }
   if (touched) {
     for (const field of missing) {
       tabMarks[fieldToTab(field)] = true;
@@ -267,50 +309,13 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
     }
     setSubmitting(true);
     setFieldErrors({});
+    setImageErrors({});
     setFormError(null);
 
-    try {
-      const nation = await api.createNation(token, toCreateRequest(form));
-      // The nation exists — now the pending pictures go one by one:
-      // flag first, then the portrait. A failed upload never cancels
-      // the registration (Spec «Порядок в окне регистрации»). The
-      // notice slot shows ONE message, so failures collapse into one
-      // danger notice: one failure — reason + the «в «Штабе»» tail;
-      // both — both reasons + the shared both-failed tail.
-      const failedImages: Partial<Record<ImageSlotKind, string>> = {};
-      for (const kind of ['flag', 'portrait'] as const) {
-        const pending = pendingImages[kind];
-        if (pending === undefined) {
-          continue;
-        }
-        try {
-          await api.uploadNationImage(token, kind, pending.file);
-        } catch (uploadError) {
-          failedImages[kind] = imageErrorText(uploadError, kind, rules);
-        }
-      }
-      sendTaptic();
-      clearDraft();
-      const flagReason = failedImages.flag;
-      const portraitReason = failedImages.portrait;
-      if (flagReason !== undefined && portraitReason !== undefined) {
-        notify(
-          `${flagReason} ${portraitReason} ${imageUploadLaterBothText}`,
-          { tone: 'danger' },
-        );
-      } else if (flagReason !== undefined) {
-        notify(`${flagReason} ${imageUploadLaterText('flag')}`, {
-          tone: 'danger',
-        });
-      } else if (portraitReason !== undefined) {
-        notify(`${portraitReason} ${imageUploadLaterText('portrait')}`, {
-          tone: 'danger',
-        });
-      } else {
-        notify(SUCCESS_RU.nationCreated);
-      }
-      onCreated(nation);
-    } catch (error) {
+    // The consent gate + field error mapping, shared by the draft
+    // save and the submit — the server enforces either at any stage
+    // (the submit runs the consent check too).
+    const fail = async (error: unknown) => {
       if (isConsentRequiredError(error)) {
         // The server enforced consent although the gate let the player
         // through (stale/failed status) — return to the gate; the form
@@ -351,6 +356,40 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
       } else {
         setFormError(errorText(error));
       }
+    };
+
+    try {
+      // Spec §10: save the draft, upload the chosen pictures onto it,
+      // then submit. A failure at any step keeps the draft, shows the
+      // error at its own tab and the same button repeats the sequence.
+      await api.putApplication(token, toCreateRequest(form));
+
+      let uploadFailed = false;
+      for (const kind of ['flag', 'portrait'] as const) {
+        const pending = pendingImages[kind];
+        if (pending === undefined) {
+          continue;
+        }
+        try {
+          await api.uploadApplicationImage(token, kind, pending.file);
+        } catch (uploadError) {
+          uploadFailed = true;
+          setImageErrors((prev) => ({
+            ...prev,
+            [kind]: imageErrorText(uploadError, kind, rules),
+          }));
+        }
+      }
+      if (uploadFailed) {
+        return;
+      }
+
+      const submitted = await api.submitApplication(token);
+      sendTaptic();
+      clearDraft();
+      onSubmitted(submitted);
+    } catch (error) {
+      await fail(error);
     } finally {
       setSubmitting(false);
     }
@@ -454,10 +493,144 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           </span>
         }
       />
+
+      {draft?.draft_reason === 'returned' ||
+      draft?.draft_reason === 'failed' ? (
+        <section
+          data-testid="application-returned-plate"
+          style={{
+            background: tokenVar('warning-bg'),
+            borderRadius: RADII['radius-lg'],
+            padding: '12px 16px',
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start',
+          }}
+        >
+          <svg
+            width={20}
+            height={20}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke={tokenVar('signal-ink')}
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ display: 'block', flexShrink: 0, marginTop: 1 }}
+          >
+            <path d="M8 2.2L14.2 13H1.8z" />
+            <path d="M8 6.4v3" />
+            <circle cx="8" cy="11.4" r="0.4" fill={tokenVar('signal-ink')} />
+          </svg>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                ...TEXT_STYLES['body'],
+                fontWeight: 600,
+                color: tokenVar('ink'),
+              }}
+            >
+              {draft.draft_reason === 'returned'
+                ? 'Анкета возвращена администратором'
+                : 'Анкета возвращена'}
+            </div>
+            {draft.return_comment !== null &&
+              draft.return_comment !== '' && (
+                <div
+                  style={{
+                    ...TEXT_STYLES['body'],
+                    color: tokenVar('ink'),
+                    marginTop: 2,
+                  }}
+                >
+                  «{draft.return_comment}»
+                </div>
+              )}
+            <div
+              style={{
+                ...TEXT_STYLES['caption'],
+                color: tokenVar('ink-muted'),
+                marginTop: 4,
+              }}
+            >
+              Исправьте анкету и отправьте снова: провинции, цвет и
+              названия закрепятся заново{' '}
+              {applicationReviewHoursText(rules?.application.review_hours)}.
+            </div>
+          </div>
+        </section>
+      ) : draft?.draft_reason === 'cancelled' ? (
+        <section
+          data-testid="application-cancelled-plate"
+          style={{
+            background: tokenVar('surface'),
+            border: `1px solid ${tokenVar('line')}`,
+            borderRadius: RADII['radius-lg'],
+            padding: '12px 16px',
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 24,
+              height: 24,
+              flexShrink: 0,
+              borderRadius: RADII['radius-md'],
+              background: tokenVar('surface-inset'),
+            }}
+          >
+            <svg
+              width={14}
+              height={14}
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke={tokenVar('signal-ink')}
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{ display: 'block' }}
+            >
+              <path d="M3 7a5 5 0 1 0 1.4-3.4L3 5" />
+              <path d="M3 2v3h3" />
+            </svg>
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                ...TEXT_STYLES['body'],
+                fontWeight: 600,
+                color: tokenVar('ink'),
+              }}
+            >
+              Вы отменили анкету
+            </div>
+            <div
+              style={{
+                ...TEXT_STYLES['caption'],
+                color: tokenVar('ink-muted'),
+                marginTop: 2,
+              }}
+            >
+              Все данные сохранены. Исправьте их и отправьте анкету
+              снова — провинции, цвет и названия закрепятся заново{' '}
+              {applicationReviewHoursText(rules?.application.review_hours)}.
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <CreateNationTabBar tab={tab} onTabChange={setTab} tabMarks={tabMarks} />
 
       {formError && (
-        <FormStatus mode="error" title="Не удалось создать государство">
+        <FormStatus mode="error" title="Не удалось отправить анкету">
           {formError}
         </FormStatus>
       )}
@@ -475,20 +648,27 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           <CreateNationTabSymbols
             {...tabProps}
             imageSlot={
-              <ImageSlot
-                kind="flag"
-                size="registration"
-                src={pendingImages.flag?.url ?? null}
-                stubColor={
-                  isValidColorHex(form.color)
-                    ? normalizeColorHex(form.color)
-                    : undefined
-                }
-                alt="Флаг государства"
-                interactive
-                rules={rules}
-                onPick={(file) => setImagePick({ kind: 'flag', file })}
-              />
+              <>
+                <ImageSlot
+                  kind="flag"
+                  size="registration"
+                  src={
+                    pendingImages.flag?.url ??
+                    draft?.images.flag?.url ??
+                    null
+                  }
+                  stubColor={
+                    isValidColorHex(form.color)
+                      ? normalizeColorHex(form.color)
+                      : undefined
+                  }
+                  alt="Флаг государства"
+                  interactive
+                  rules={rules}
+                  onPick={(file) => setImagePick({ kind: 'flag', file })}
+                />
+                <FieldMessage error={imageErrors.flag} />
+              </>
             }
           />
         )}
@@ -496,15 +676,22 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
           <CreateNationTabLeadership
             {...tabProps}
             imageSlot={
-              <ImageSlot
-                kind="portrait"
-                size="registration"
-                src={pendingImages.portrait?.url ?? null}
-                alt="Портрет лидера"
-                interactive
-                rules={rules}
-                onPick={(file) => setImagePick({ kind: 'portrait', file })}
-              />
+              <>
+                <ImageSlot
+                  kind="portrait"
+                  size="registration"
+                  src={
+                    pendingImages.portrait?.url ??
+                    draft?.images.portrait?.url ??
+                    null
+                  }
+                  alt="Портрет лидера"
+                  interactive
+                  rules={rules}
+                  onPick={(file) => setImagePick({ kind: 'portrait', file })}
+                />
+                <FieldMessage error={imageErrors.portrait} />
+              </>
             }
           />
         )}
@@ -543,8 +730,10 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             color: tokenVar('ink-muted'),
           }}
         >
-          {tab === 4 && missing.length > 0
-            ? 'Заполните обязательные поля (отмечены *) на вкладках с красной точкой'
+          {tab === 4
+            ? missing.length > 0
+              ? 'Заполните обязательные поля (отмечены *) на вкладках с красной точкой'
+              : 'Анкета уйдёт на рассмотрение администратору. Править её после отправки нельзя, можно только отменить.'
             : ''}
         </span>
         {tab < 4 ? (
@@ -561,10 +750,9 @@ export function PanelCreateNation({ onCreated }: PanelCreateNationProps) {
             type="button"
             size="m"
             disabled={!canSubmit}
-            loading={submitting}
             onClick={() => void handleSubmit()}
           >
-            Основать государство
+            {submitting ? 'Отправляем…' : 'Отправить анкету'}
           </Button>
         )}
       </div>

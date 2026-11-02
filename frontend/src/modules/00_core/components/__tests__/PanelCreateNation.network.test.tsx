@@ -27,20 +27,20 @@ beforeEach(registerDefaultHandlers);
 describe('PanelCreateNation — network failure', () => {
   it('shows the generic FormStatus banner when fetch rejects outright', async () => {
     server.use(
-      http.post('*/api/v1/nations', () => HttpResponse.error()),
+      http.put('*/api/v1/applications/me', () => HttpResponse.error()),
     );
-    const onCreated = vi.fn();
+    const onSubmitted = vi.fn();
     seedRegistrationDraft();
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
 
     const user = userEvent.setup();
     await goToTab(user, 4);
     await user.click(
-      screen.getByRole('button', { name: /основать государство/i }),
+      screen.getByRole('button', { name: /отправить анкету/i }),
     );
 
-    await screen.findByText('Не удалось создать государство');
+    await screen.findByText('Не удалось отправить анкету');
     expect(screen.getByText(/ошибка сети/i)).toBeInTheDocument();
-    expect(onCreated).not.toHaveBeenCalled();
+    expect(onSubmitted).not.toHaveBeenCalled();
   });
 });

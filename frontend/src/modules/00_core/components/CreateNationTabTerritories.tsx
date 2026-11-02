@@ -32,6 +32,7 @@ import {
   CreateNationTextField,
   type RegistrationTabProps,
 } from './CreateNationFields';
+import { applicationReviewHoursText } from './registrationForm';
 
 export interface CreateNationTabTerritoriesProps
   extends RegistrationTabProps {
@@ -189,18 +190,77 @@ export function CreateNationTabTerritories({
         <FieldMessage error={provincesError} />
       </div>
       {(readOnly ? form.capitalProvinceId !== null : true) && (
-        <div style={{ marginTop: 16 }}>
-          <CreateNationTextField
-            id="nation-capital-name"
-            label="Название столицы"
-            required
-            testId="form-item-capital-name"
-            value={form.capitalName}
-            maxLength={rules?.capital_name_max_length}
-            error={errors.capitalName}
-            hint="По умолчанию совпадает с названием провинции"
-            onChange={(v) => onFieldChange('capitalName', v)}
-          />
+        <div
+          style={
+            readOnly
+              ? { marginTop: 16 }
+              : {
+                  marginTop: 16,
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'stretch',
+                }
+          }
+        >
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <CreateNationTextField
+              id="nation-capital-name"
+              label="Название столицы"
+              required
+              testId="form-item-capital-name"
+              value={form.capitalName}
+              maxLength={rules?.capital_name_max_length}
+              error={errors.capitalName}
+              hint="По умолчанию совпадает с названием провинции"
+              onChange={(v) => onFieldChange('capitalName', v)}
+            />
+          </div>
+          {/* Mockup 19 — the reservation note beside the capital
+              field, registration only: after the submit the picked
+              provinces, colour and both names are reserved for the
+              review hours (Spec applications §3, APP-1). */}
+          {!readOnly && (
+            <div
+              data-testid="reservation-note"
+              style={{
+                flexShrink: 0,
+                width: 300,
+                boxSizing: 'border-box',
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-start',
+                border: `1px solid ${tokenVar('line')}`,
+                borderRadius: RADII['radius-md'],
+                padding: '10px 12px',
+              }}
+            >
+              <svg
+                width={16}
+                height={16}
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke={tokenVar('signal-ink')}
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                style={{ display: 'block', flexShrink: 0, marginTop: 1 }}
+              >
+                <circle cx="8" cy="8" r="5.6" />
+                <path d="M8 4.8V8l2.2 1.4" />
+              </svg>
+              <span
+                style={{
+                  ...TEXT_STYLES['caption'],
+                  color: tokenVar('ink'),
+                }}
+              >
+                После отправки провинции, цвет и оба названия
+                закрепляются за вами{' '}
+                {applicationReviewHoursText(rules?.application.review_hours)}.
+              </span>
+            </div>
+          )}
         </div>
       )}
     </>

@@ -6,10 +6,12 @@
  * tab strip, one block per tab, the «Назад»/«Далее»/«Основать
  * государство» row), tab navigation and state retention, rules-driven
  * counters and hints (msw returns non-default numbers — nothing may be
- * hardcoded), the single POST /nations with the whole form's data and
- * no `anthem_url`, Russian field-level error texts with tab dots, the
+ * hardcoded), the PUT /applications/me draft save followed by POST
+ * /applications/me/submit — a failure keeps the draft, Russian field-level error texts with tab dots, the
  * v2 session draft and the keyboard rule (Enter never submits).
  */
+
+import { Blob as NodeBlob } from 'node:buffer';
 
 import {
   act,
@@ -30,37 +32,24 @@ import {
   mapErrorCodeToField,
 } from '../registrationForm';
 import {
+  APPLICATION_DRAFT,
+  APPLICATION_PENDING,
   goToTab,
   pickProvinces,
   registerDefaultHandlers,
   renderWithProviders,
   RULES,
   seedRegistrationDraft,
-  SESSION,
 } from './helpers';
 
-const NATION = {
-  id: 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d',
-  name: 'Testia',
-  color_hex: '#e64545',
-  owner_player_id: SESSION.player.id,
-  province_ids: [1005, 1006, 1007],
-  leader_name: 'Иван Грозный',
-  leader_title: 'Верховный правитель',
-  history_url: 'https://vk.com/@testia-istoriya',
-  created_at: '2026-09-27T00:00:00Z',
-  level: 1,
-  judge_rating: 0,
-};
-
 const submitButton = () =>
-  screen.getByRole('button', { name: /основать государство/i });
+  screen.getByRole('button', { name: /отправить анкету/i });
 
 beforeEach(registerDefaultHandlers);
 
 describe('PanelCreateNation — four-tab shell', () => {
   it('a player without a nation sees no orders block — the badges are nation-gated (unit 7b)', async () => {
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await screen.findByText('Создание государства');
 
     expect(screen.queryByTestId('orders-block')).toBeNull();
@@ -78,7 +67,7 @@ describe('PanelCreateNation — four-tab shell', () => {
   it('the key path: empty start, a full tab tour, then a server error lands on the right tab', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
-      <PanelCreateNation onCreated={() => {}} />,
+      <PanelCreateNation onSubmitted={() => {}} />,
     );
 
     // A user with an empty form starts on tab 1 of 4 under the shared
@@ -122,7 +111,7 @@ describe('PanelCreateNation — four-tab shell', () => {
     // The remaining required fields have no inputs until Issues 13–15 —
     // a complete v2 draft stands in for them so the submit can fire.
     server.use(
-      http.post('*/api/v1/nations', () =>
+      http.post('*/api/v1/applications/me/submit', () =>
         HttpResponse.json(
           { detail: 'History url must point to a VK article', code: 'HISTORY_URL_INVALID' },
           { status: 422 },
@@ -130,7 +119,7 @@ describe('PanelCreateNation — four-tab shell', () => {
       ),
     );
     seedRegistrationDraft();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 4);
     await user.click(submitButton());
 
@@ -152,7 +141,7 @@ describe('PanelCreateNation — four-tab shell', () => {
 
   it('shows the four exact tab titles, one block per tab, and the nav row', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     const indicator = screen.getByTestId('step-indicator');
 
     // The strip carries the exact titles of the UI spec — the titles
@@ -196,7 +185,7 @@ describe('PanelCreateNation — four-tab shell', () => {
 
     await user.click(screen.getByTestId('step-next'));
     expect(indicator).toHaveTextContent('Шаг 4 из 4');
-    // On tab 4 the right button is «Основать государство», not «Далее →».
+    // On tab 4 the right button is «Отправить анкету», not «Далее →».
     expect(screen.queryByTestId('step-next')).not.toBeInTheDocument();
     expect(submitButton()).toBeInTheDocument();
     expect(screen.getByTestId('form-item-provinces')).toBeInTheDocument();
@@ -207,7 +196,7 @@ describe('PanelCreateNation — four-tab shell', () => {
 
   it('marks inactive tabs with missing required fields after the first edit', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     // A pristine form shows no dots at all.
     expect(screen.queryByTestId('step-error-1')).not.toBeInTheDocument();
@@ -232,7 +221,7 @@ describe('PanelCreateNation — four-tab shell', () => {
 describe('PanelCreateNation — field grammar', () => {
   it('«N / M» counters, star only on required fields, no «необязательно»', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     // The counter sits in the label row: «N / M» with the rules limit.
     const nameItem = await screen.findByTestId('form-item-name');
@@ -279,13 +268,13 @@ describe('PanelCreateNation — field grammar', () => {
   it('Enter in a one-line field submits nothing; Enter in a textarea adds a line break', async () => {
     let posts = 0;
     server.use(
-      http.post('*/api/v1/nations', () => {
+      http.put('*/api/v1/applications/me', () => {
         posts += 1;
-        return HttpResponse.json(NATION, { status: 201 });
+        return HttpResponse.json(APPLICATION_DRAFT);
       }),
     );
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     const nameInput = await screen.findByLabelText('Полное название');
     await user.click(nameInput);
@@ -307,7 +296,7 @@ describe('PanelCreateNation — field grammar', () => {
 describe('PanelCreateNation — rules hints', () => {
   it('history: one field, the helper names the allowed domains from rules', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     await goToTab(user, 3);
     const historyItem = screen.getByTestId('form-item-history-url');
@@ -330,21 +319,21 @@ describe('PanelCreateNation — rules hints', () => {
           { status: 500 },
         ),
       ),
-      http.post('*/api/v1/nations', () =>
-        HttpResponse.json(NATION, { status: 201 }),
+      http.post('*/api/v1/applications/me/submit', () =>
+        HttpResponse.json(APPLICATION_PENDING),
       ),
     );
     seedRegistrationDraft();
-    const onCreated = vi.fn();
+    const onSubmitted = vi.fn();
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
 
     // Rules failed → no counters and no maxLength anywhere, yet the
     // seeded form still submits (fallback = non-empty checks).
     await goToTab(user, 4);
     expect(submitButton()).toBeEnabled();
     await user.click(submitButton());
-    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(APPLICATION_PENDING));
 
     expect(screen.queryByText(/символов/)).not.toBeInTheDocument();
     // No «N / M» counter inside the form block («Шаг 4 из 4» of the
@@ -363,10 +352,10 @@ describe('PanelCreateNation — rules hints', () => {
 });
 
 describe('PanelCreateNation — submit', () => {
-  it('gates «Основать государство» on the required fields, with the red-dot hint', async () => {
+  it('gates «Отправить анкету» on the required fields, with the red-dot hint', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
-      <PanelCreateNation onCreated={() => {}} />,
+      <PanelCreateNation onSubmitted={() => {}} />,
     );
     await goToTab(user, 4);
     expect(submitButton()).toBeDisabled();
@@ -379,7 +368,7 @@ describe('PanelCreateNation — submit', () => {
 
     // A complete seeded draft enables it…
     seedRegistrationDraft();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 4);
     expect(submitButton()).toBeEnabled();
     expect(
@@ -401,7 +390,7 @@ describe('PanelCreateNation — submit', () => {
       ],
     });
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 4);
     // Wait for the rules-driven «Выбрано N из M» line so the
     // exact-count gating is in force.
@@ -409,15 +398,15 @@ describe('PanelCreateNation — submit', () => {
     expect(submitButton()).toBeDisabled();
   });
 
-  it('sends exactly one POST /nations with trimmed values and null optionals — no anthem_url', async () => {
+  it('sends exactly one PUT /applications/me with trimmed values and null optionals — no anthem_url', async () => {
     const bodies: Record<string, unknown>[] = [];
     server.use(
-      http.post('*/api/v1/nations', async ({ request }) => {
+      http.put('*/api/v1/applications/me', async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>);
-        return HttpResponse.json(NATION, { status: 201 });
+        return HttpResponse.json(APPLICATION_PENDING);
       }),
     );
-    const onCreated = vi.fn();
+    const onSubmitted = vi.fn();
     const user = userEvent.setup();
     seedRegistrationDraft({
       name: '  Testia  ',
@@ -430,11 +419,11 @@ describe('PanelCreateNation — submit', () => {
       historyUrl: '  https://vk.com/@testia-istoriya ',
       capitalName: ' Столицево ',
     });
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
     await goToTab(user, 4);
     await user.click(submitButton());
 
-    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(APPLICATION_PENDING));
     expect(bodies).toEqual([
       {
         name: 'Testia',
@@ -457,10 +446,8 @@ describe('PanelCreateNation — submit', () => {
     // 0.12.0 unit 4: no catalog ids ever leave the form.
     expect(bodies[0]).not.toHaveProperty('flag_id');
     expect(bodies[0]).not.toHaveProperty('portrait_id');
-    // The shared success bar reports «Государство создано» (UI Spec 7).
-    expect(await screen.findByTestId('notice')).toHaveTextContent(
-      'Государство создано',
-    );
+    // No notice — the player lands on the application window.
+    expect(screen.queryByTestId('notice')).not.toBeInTheDocument();
   });
 });
 
@@ -473,16 +460,16 @@ describe('PanelCreateNation — tab 1 symbols', () => {
         http.post('*/api/v1/nations/color-check', () =>
           HttpResponse.json({ status: 'TOO_CLOSE' }),
         ),
-        http.post('*/api/v1/nations', async ({ request }) => {
+        http.put('*/api/v1/applications/me', async ({ request }) => {
           bodies.push(await request.json());
-          return HttpResponse.json(NATION, { status: 201 });
+          return HttpResponse.json(APPLICATION_PENDING);
         }),
       );
       seedRegistrationDraft({ color: '' });
       const user = userEvent.setup({
         advanceTimers: vi.advanceTimersByTime,
       });
-      renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+      renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
       const hexInput = await screen.findByLabelText('Цвет государства');
       // Wait for the rules so the palette grid renders.
@@ -522,7 +509,7 @@ describe('PanelCreateNation — tab 1 symbols', () => {
 describe('PanelCreateNation — tab 2 leadership', () => {
   it('«Пол» is two small icon buttons — Mars first, one active at a time', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 2);
 
     const genderItem = await screen.findByTestId('form-item-gender');
@@ -552,16 +539,16 @@ describe('PanelCreateNation — tab 2 leadership', () => {
   it('gender and a succession card submit their codes; the four cards form one radio group', async () => {
     const bodies: unknown[] = [];
     server.use(
-      http.post('*/api/v1/nations', async ({ request }) => {
+      http.put('*/api/v1/applications/me', async ({ request }) => {
         bodies.push(await request.json());
-        return HttpResponse.json(NATION, { status: 201 });
+        return HttpResponse.json(APPLICATION_DRAFT);
       }),
     );
     // All required fields filled except gender and succession on tab 2.
     seedRegistrationDraft({ gender: '', successionType: '' });
-    const onCreated = vi.fn();
+    const onSubmitted = vi.fn();
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={onCreated} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
     await goToTab(user, 2);
 
     const genderItem = screen.getByTestId('form-item-gender');
@@ -612,7 +599,7 @@ describe('PanelCreateNation — tab 2 leadership', () => {
 
     await goToTab(user, 4);
     await user.click(submitButton());
-    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NATION));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(APPLICATION_PENDING));
     expect(bodies).toEqual([
       expect.objectContaining({
         gender: 'female',
@@ -625,7 +612,7 @@ describe('PanelCreateNation — tab 2 leadership', () => {
 describe('PanelCreateNation — server error mapping', () => {
   it('NAME_TAKEN marks tab 1 while another tab is open; the Russian text waits under the field', async () => {
     server.use(
-      http.post('*/api/v1/nations', () =>
+      http.post('*/api/v1/applications/me/submit', () =>
         HttpResponse.json(
           {
             detail: "Nation name 'Testia' is already taken",
@@ -637,7 +624,7 @@ describe('PanelCreateNation — server error mapping', () => {
     );
     seedRegistrationDraft();
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 4);
     await user.click(submitButton());
 
@@ -663,7 +650,7 @@ describe('PanelCreateNation — server error mapping', () => {
 
   it('shows LEADER_NAME_INVALID in Russian under the leader name field', async () => {
     server.use(
-      http.post('*/api/v1/nations', () =>
+      http.post('*/api/v1/applications/me/submit', () =>
         HttpResponse.json(
           { detail: 'Leader name contains invalid characters', code: 'LEADER_NAME_INVALID' },
           { status: 422 },
@@ -672,7 +659,7 @@ describe('PanelCreateNation — server error mapping', () => {
     );
     seedRegistrationDraft();
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 4);
     await user.click(submitButton());
 
@@ -736,13 +723,13 @@ describe('PanelCreateNation — server error mapping', () => {
     'shows %s on its tab-4 field',
     async (code, detail, pattern, itemTestId) => {
       server.use(
-        http.post('*/api/v1/nations', () =>
+        http.post('*/api/v1/applications/me/submit', () =>
           HttpResponse.json({ detail, code }, { status: 422 }),
         ),
       );
       seedRegistrationDraft();
       const user = userEvent.setup();
-      renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+      renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
       await goToTab(user, 4);
       await user.click(submitButton());
 
@@ -759,7 +746,7 @@ describe('PanelCreateNation — server error mapping', () => {
 
   it('shows unmapped codes in the generic banner', async () => {
     server.use(
-      http.post('*/api/v1/nations', () =>
+      http.post('*/api/v1/applications/me/submit', () =>
         HttpResponse.json(
           { detail: 'You already own a nation', code: 'NATION_ALREADY_EXISTS' },
           { status: 409 },
@@ -768,11 +755,11 @@ describe('PanelCreateNation — server error mapping', () => {
     );
     seedRegistrationDraft();
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 4);
     await user.click(submitButton());
 
-    await screen.findByText('Не удалось создать государство');
+    await screen.findByText('Не удалось отправить анкету');
     // The English detail never reaches the screen — the dictionary
     // text of NATION_ALREADY_EXISTS does.
     expect(
@@ -790,16 +777,16 @@ describe('PanelCreateNation — province picker', () => {
   it('opens the picker, returns named rows, submits their ids', async () => {
     const bodies: unknown[] = [];
     server.use(
-      http.post('*/api/v1/nations', async ({ request }) => {
+      http.put('*/api/v1/applications/me', async ({ request }) => {
         bodies.push(await request.json());
-        return HttpResponse.json(NATION, { status: 201 });
+        return HttpResponse.json(APPLICATION_DRAFT);
       }),
     );
     // Every required field is seeded except the provinces — the picker
     // completes the form.
     seedRegistrationDraft({ provinces: [] });
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     await pickProvinces(user, [1005, 1006, 1007]);
     await waitFor(() =>
@@ -818,7 +805,7 @@ describe('PanelCreateNation — province picker', () => {
 
   it('cancel leaves the form unchanged', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     // Pick the connected triple first.
     await pickProvinces(user, [1005, 1006, 1007]);
@@ -857,7 +844,7 @@ describe('PanelCreateNation — province picker', () => {
 
   it('removing a row updates the form state', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     await pickProvinces(user, [1005, 1006, 1007]);
     await waitFor(() =>
@@ -880,7 +867,7 @@ describe('PanelCreateNation — province picker', () => {
 
   it('keeps the selection when switching tabs', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
 
     await pickProvinces(user, [1005, 1006, 1007]);
     await waitFor(() =>
@@ -937,7 +924,7 @@ describe('PanelCreateNation — tab 4 territories', () => {
   it('the capital row is first with «★», «Сделать столицей» moves the mark, and the name follows until a manual edit', async () => {
     seedRegistrationDraft({ provinces: [], capitalName: '' });
     const user = userEvent.setup();
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(user, 4);
 
     // No provinces yet — no rows, the capital-name field still shows.
@@ -1084,7 +1071,7 @@ describe('PanelCreateNation — draft memory', () => {
   it('restores the typed values after the screen is reopened', async () => {
     const user = userEvent.setup();
     const first = renderWithProviders(
-      <PanelCreateNation onCreated={() => {}} />,
+      <PanelCreateNation onSubmitted={() => {}} />,
     );
 
     await user.type(
@@ -1095,7 +1082,7 @@ describe('PanelCreateNation — draft memory', () => {
     await user.type(screen.getByLabelText('Имя лидера'), 'Черновик');
     first.unmount();
 
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     expect(screen.getByLabelText('Полное название')).toHaveValue(
       'Черновия',
     );
@@ -1113,9 +1100,201 @@ describe('PanelCreateNation — draft memory', () => {
       leaderTitle: '',
       historyUrl: '',
     });
-    renderWithProviders(<PanelCreateNation onCreated={() => {}} />);
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     expect(await screen.findByLabelText('Полное название')).toHaveValue(
       '',
     );
+  });
+});
+
+describe('PanelCreateNation — «Отправить анкету» (0.13.0 unit 7a)', () => {
+  function bitmap(width: number, height: number) {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => ({ width, height, close: () => {} }) as ImageBitmap),
+    );
+  }
+  const rawPngFile = (name: string) =>
+    Object.assign(new NodeBlob(['PNGDATA'], { type: 'image/png' }), {
+      name,
+    }) as unknown as File;
+
+  /** The flag slot's own file input — see PanelImageUpload tests. */
+  function pickFile(slotButton: HTMLElement, file: File) {
+    let host: HTMLElement | null = slotButton;
+    let input: HTMLInputElement | null = null;
+    while (host !== null && input === null) {
+      input = host.querySelector('input[type="file"]');
+      host = host.parentElement;
+    }
+    expect(input).not.toBeNull();
+    fireEvent.change(input!, { target: { files: [file] } });
+  }
+
+  beforeEach(() => {
+    bitmap(1920, 1080);
+    (URL as unknown as Record<string, unknown>).createObjectURL = vi.fn(
+      () => 'blob:mock',
+    );
+    (URL as unknown as Record<string, unknown>).revokeObjectURL = vi.fn();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Picks `file` on the flag slot of tab 1 (register preview →
+   *  «Использовать флаг»); returns after the popup closed. */
+  async function pickFlag(user: UserEvent, file: File) {
+    const slot = await screen.findByRole('button', {
+      name: 'Загрузить флаг',
+    });
+    pickFile(slot, file);
+    const popup = await screen.findByTestId('popup-image-upload');
+    await user.click(
+      within(popup).getByRole('button', { name: 'Использовать флаг' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('popup-image-upload'),
+      ).not.toBeInTheDocument(),
+    );
+  }
+
+  it('runs draft PUT → image uploads → submit, in that order', async () => {
+    const calls: string[] = [];
+    server.use(
+      http.put('*/api/v1/applications/me', () => {
+        calls.push('draft');
+        return HttpResponse.json(APPLICATION_DRAFT);
+      }),
+      http.put('*/api/v1/applications/me/images/flag', () => {
+        calls.push('flag');
+        return HttpResponse.json({
+          kind: 'flag',
+          url: '/i/f/full',
+          thumb_url: '/i/f/thumb',
+        });
+      }),
+      http.post('*/api/v1/applications/me/submit', () => {
+        calls.push('submit');
+        return HttpResponse.json(APPLICATION_PENDING);
+      }),
+    );
+    const onSubmitted = vi.fn();
+    seedRegistrationDraft();
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
+
+    await pickFlag(user, rawPngFile('flag.png'));
+    await goToTab(user, 4);
+    await user.click(submitButton());
+
+    await waitFor(() =>
+      expect(onSubmitted).toHaveBeenCalledWith(APPLICATION_PENDING),
+    );
+    expect(calls).toEqual(['draft', 'flag', 'submit']);
+  });
+
+  it('a failed upload keeps the draft, marks its own tab, and the same button retries', async () => {
+    const calls: string[] = [];
+    let flagFails = 1;
+    server.use(
+      http.put('*/api/v1/applications/me', () => {
+        calls.push('draft');
+        return HttpResponse.json(APPLICATION_DRAFT);
+      }),
+      http.put('*/api/v1/applications/me/images/flag', () => {
+        calls.push('flag');
+        if (flagFails-- > 0) {
+          return HttpResponse.json(
+            { detail: 'too large', code: 'IMAGE_TOO_LARGE' },
+            { status: 413 },
+          );
+        }
+        return HttpResponse.json({
+          kind: 'flag',
+          url: '/i/f/full',
+          thumb_url: '/i/f/thumb',
+        });
+      }),
+      http.post('*/api/v1/applications/me/submit', () => {
+        calls.push('submit');
+        return HttpResponse.json(APPLICATION_PENDING);
+      }),
+    );
+    const onSubmitted = vi.fn();
+    seedRegistrationDraft();
+    const user = userEvent.setup();
+    renderWithProviders(<PanelCreateNation onSubmitted={onSubmitted} />);
+
+    await pickFlag(user, rawPngFile('flag.png'));
+    await goToTab(user, 4);
+    await user.click(submitButton());
+
+    // The upload failed: the submit never ran, tab 1 is marked and
+    // its slot carries the Russian text — the draft stayed (PUT ok).
+    await waitFor(() => expect(calls).toEqual(['draft', 'flag']));
+    await screen.findByTestId('step-error-1');
+    expect(onSubmitted).not.toHaveBeenCalled();
+    await goToTab(user, 1);
+    expect(
+      screen.getByText(/Сожмите картинку или выберите другую/),
+    ).toBeInTheDocument();
+
+    // The same button repeats the whole sequence — now it lands.
+    await goToTab(user, 4);
+    await user.click(submitButton());
+    await waitFor(() =>
+      expect(onSubmitted).toHaveBeenCalledWith(APPLICATION_PENDING),
+    );
+    expect(calls).toEqual(['draft', 'flag', 'draft', 'flag', 'submit']);
+  });
+
+  it('the tab-4 note names the reservation window; the last button reads «Отправить анкету»', async () => {
+    seedRegistrationDraft();
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
+    await goToTab(await userEvent.setup(), 4);
+
+    expect(screen.getByTestId('reservation-note')).toHaveTextContent(
+      `закрепляются за вами на ${RULES.application.review_hours} ч`,
+    );
+    expect(submitButton()).toBeEnabled();
+    expect(
+      screen.getByText(/Анкета уйдёт на рассмотрение администратору/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('PanelCreateNation — the server draft (0.13.0 unit 7a)', () => {
+  const returnedDraft = {
+    ...APPLICATION_DRAFT,
+    draft_reason: 'returned' as const,
+    return_comment: 'Ссылка на историю ведёт на пустую страницу.',
+    submissions: 1,
+  };
+
+  it('fills the form from the draft — it wins over the session copy — and shows the returned plate', async () => {
+    // A stale local draft must lose to the server's.
+    seedRegistrationDraft({ name: 'Локальная Черновия' });
+    renderWithProviders(
+      <PanelCreateNation draft={returnedDraft} onSubmitted={() => {}} />,
+    );
+
+    const plate = await screen.findByTestId('application-returned-plate');
+    expect(plate).toHaveTextContent('Анкета возвращена администратором');
+    expect(plate).toHaveTextContent(
+      '«Ссылка на историю ведёт на пустую страницу.»',
+    );
+
+    expect(screen.getByLabelText('Полное название')).toHaveValue('Testia');
+    await goToTab(await userEvent.setup(), 4);
+    const provincesItem = screen.getByTestId('form-item-provinces');
+    expect(provincesItem).toHaveTextContent('Эпсилон');
+    expect(provincesItem).toHaveTextContent('Эта');
+    expect(screen.getByLabelText('Название столицы')).toHaveValue(
+      'Столицево',
+    );
+    // The draft was complete — the submit is armed right away.
+    expect(submitButton()).toBeEnabled();
   });
 });

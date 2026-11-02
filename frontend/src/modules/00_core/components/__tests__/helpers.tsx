@@ -25,7 +25,10 @@ import {
 } from '@vkontakte/vkui';
 
 import { server } from '../../../../../vitest.setup';
-import type { NationRulesDTO } from '../../../../shared/types';
+import type {
+  ApplicationDTO,
+  NationRulesDTO,
+} from '../../../../shared/types';
 import type { OrderRulesDTO } from '../../../04_orders/types';
 import { writeFormDraft } from '../../../../shared/formDraft';
 import {
@@ -89,6 +92,45 @@ export const RULES: NationRulesDTO = {
   },
   genders: ['male', 'female'],
   succession_types: ['elections', 'appointment', 'criteria', 'inheritance'],
+  application: { review_hours: 30, comment_max_length: 299 },
+};
+
+/**
+ * A DRAFT application matching `completeRegistrationForm` — PUT
+ * /applications/me answers it; its PENDING twin answers the submit.
+ */
+export const APPLICATION_DRAFT: ApplicationDTO = {
+  status: 'DRAFT',
+  draft_reason: null,
+  return_comment: null,
+  review_deadline_at: null,
+  submissions: 0,
+  name: 'Testia',
+  short_name: 'Тестия',
+  color_hex: '#e64545',
+  motto: null,
+  description: null,
+  leader_name: 'Иван Грозный',
+  leader_title: 'Верховный правитель',
+  gender: 'male',
+  succession_type: 'elections',
+  leader_bio: null,
+  history_url: 'https://vk.com/@testia-istoriya',
+  capital_province_id: null,
+  capital_name: 'Столицево',
+  provinces: [
+    { id: 1005, name: 'Эпсилон', is_capital: false },
+    { id: 1006, name: 'Дзета', is_capital: false },
+    { id: 1007, name: 'Эта', is_capital: false },
+  ],
+  images: { flag: null, portrait: null },
+};
+
+export const APPLICATION_PENDING: ApplicationDTO = {
+  ...APPLICATION_DRAFT,
+  status: 'PENDING',
+  review_deadline_at: '2026-11-02T11:20:00Z',
+  submissions: 1,
 };
 
 export const FREE_PROVINCES = [
@@ -205,6 +247,20 @@ export function registerDefaultHandlers() {
     http.get('*/api/v1/nations/rules', () => HttpResponse.json(RULES)),
     http.post('*/api/v1/nations/color-check', () =>
       HttpResponse.json({ status: 'OK' }),
+    ),
+    // The application endpoints (0.13.0 unit 7a): no live application
+    // by default; PUT saves the draft, submit answers PENDING.
+    http.get('*/api/v1/applications/me', () =>
+      HttpResponse.json(
+        { detail: 'Application not found', code: 'APPLICATION_NOT_FOUND' },
+        { status: 404 },
+      ),
+    ),
+    http.put('*/api/v1/applications/me', () =>
+      HttpResponse.json(APPLICATION_DRAFT),
+    ),
+    http.post('*/api/v1/applications/me/submit', () =>
+      HttpResponse.json(APPLICATION_PENDING),
     ),
     http.get('*/api/v1/provinces', () => HttpResponse.json(FREE_PROVINCES)),
     http.get('*/api/v1/game-clock', () => HttpResponse.json(GAME_CLOCK)),
