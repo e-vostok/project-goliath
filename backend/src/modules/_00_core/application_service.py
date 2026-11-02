@@ -221,6 +221,20 @@ class WorkerPassStats:
     errors: int = 0
 
 
+@dataclass(frozen=True)
+class ApplicationNotificationView:
+    """
+    The notification-facing slice of one application — the only
+    fields a satellite may read for a message (Spec applications §7,
+    0.13.0 unit 6): the full nation name, the review deadline and the
+    submission counter that makes dedup keys.
+    """
+
+    name: str
+    review_deadline_at: datetime | None
+    submissions: int
+
+
 class ApplicationService:
     """Domain service for nation applications («анкеты»)."""
 
@@ -698,6 +712,25 @@ class ApplicationService:
             )
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def notification_view(
+        session: AsyncSession, application_id: str
+    ) -> ApplicationNotificationView | None:
+        """
+        The frozen view an application listener (02_bot) renders a
+        message from — full name, ``review_deadline_at`` and
+        ``submissions``; ``None`` when no such application exists.
+        Read-only, never commits.
+        """
+        application = await session.get(NationApplication, application_id)
+        if application is None:
+            return None
+        return ApplicationNotificationView(
+            name=application.name,
+            review_deadline_at=application.review_deadline_at,
+            submissions=application.submissions,
+        )
 
     @staticmethod
     async def delete_for_player(session: AsyncSession, player_id: str) -> None:

@@ -26,10 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core.hooks import (
     STAGE_BEFORE_ALL,
+    register_application_listener,
     register_nation_created_hook,
     register_registration_check,
 )
 from modules._02_bot.admin_hooks import register_bot_admin_hooks
+from modules._02_bot.applications import application_listener
 from modules._02_bot.config_schema import BotConfig
 from modules._02_bot.nation_hook import nation_created_hook
 from modules._02_bot.registration_check import check_registration_consent
@@ -77,6 +79,13 @@ def startup_bot() -> BotConfig:
     register_nation_created_hook(
         f"{MODULE_SLUG}.nation_created",
         nation_created_hook,
+    )
+    # Spec 4.8 (0.13.0 unit 6): the application listener — always
+    # registered; the listener itself gates on the bot mode, so an OFF
+    # bot queues nothing.
+    register_application_listener(
+        f"{MODULE_SLUG}.applications",
+        application_listener,
     )
     _bot_config = config
     logger.info("02_bot started: mode=%s", get_bot_mode().value)
