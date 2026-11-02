@@ -145,6 +145,7 @@ async def get_map_borders(
 
 @router.get("/map/state", response_model=MapStateDTO)
 async def get_map_state(
+    response: Response,
     player: Player = Depends(get_current_player),
     session: AsyncSession = Depends(get_session),
     turn: Annotated[int | None, Query()] = None,
@@ -152,7 +153,11 @@ async def get_map_state(
     """
     Owners of the current turn (live tables) or of a past turn
     (ownership journal). Out-of-range -> 422 TURN_OUT_OF_RANGE.
+    The live answer changes inside a turn (reservations), so the
+    response is never stored — the same no-store rule as the other
+    volatile endpoints.
     """
+    response.headers["Cache-Control"] = "no-store"
     return await api_service.build_state(session, get_map_service(), turn)
 
 

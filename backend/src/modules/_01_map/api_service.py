@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core.application_service import ApplicationService
 from modules._00_core.exceptions import (
     ProvinceCountOutOfRangeError,
     ProvinceNotFoundError,
@@ -386,6 +387,7 @@ async def build_state(
     # owners of withdrawn nodes).
     active_ids = service.map_data.nodes
     entries: list[tuple[int, str, str | None, str, str, str]] = []
+    reservations: list[list[int]] = []
     if turn is None or turn == current:
         described = current
         for row in await ProvinceService.list_current_owners(session):
@@ -401,6 +403,18 @@ async def build_state(
                     row.nation_color,
                 )
             )
+        # APP-6: one id list per PENDING application, in pick order —
+        # filtered to the active manifest like owners are; a group
+        # that loses every id to the filter drops out whole. History
+        # knows nothing about reservations: past turns keep [].
+        reservations = [
+            group
+            for group in (
+                [pid for pid in ids if pid in active_ids]
+                for ids in await ApplicationService.reserved_groups(session)
+            )
+            if group
+        ]
     elif 0 <= turn < current:
         described = turn
         snapshot = await owners_at_turn(session, turn)
@@ -448,6 +462,7 @@ async def build_state(
         turn=described,
         nations=nations,
         owners=owners,
+        reservations=reservations,
     )
 
 

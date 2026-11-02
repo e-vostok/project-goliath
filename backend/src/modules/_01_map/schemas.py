@@ -244,6 +244,10 @@ class MapStateDTO(BaseModel):
     # [province_id, index into nations]; free provinces and SEA nodes
     # are never listed.
     owners: list[list[int]]
+    # One inner list per PENDING application — province ids in pick
+    # order, no application id / player / name / colour (APP-6);
+    # past-turn answers always carry the empty default.
+    reservations: list[list[int]] = Field(default_factory=list)
 
 
 class StartingGroupCheckRequest(BaseModel):
