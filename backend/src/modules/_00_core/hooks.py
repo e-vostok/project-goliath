@@ -46,6 +46,14 @@ core operations through two small registries populated at startup:
    the caller rolls back and nothing is removed (the operation is
    all-or-nothing by design; it exists for wiping test players).
 
+5. **Application listeners** — notified inside the same transaction
+   when a nation application changes state (Spec applications §7):
+   ``SUBMITTED``/``CANCELLED`` today, ``RETURNED``/``ACCEPTED`` when the
+   admin side lands. Each listener runs under its own SAVEPOINT: its
+   failure is logged as ``application_listener_failed`` and never
+   undoes the state change — a listener can only observe and append,
+   like the nation-created hooks.
+
 All registries are keyed by name; re-registering the same name replaces
 the entry, so application startup stays idempotent across repeated
 lifespan boots in one process. Call order is registration order.
@@ -118,12 +126,38 @@ NationCreatedHook = Callable[[AsyncSession, str, str], Awaitable[None]]
 # the operation is all-or-nothing by design).
 PlayerDeleteHook = Callable[[AsyncSession, str], Awaitable[None]]
 
+ApplicationEventKind = Literal["SUBMITTED", "CANCELLED", "RETURNED", "ACCEPTED"]
+
+
+@dataclass(frozen=True)
+class ApplicationEvent:
+    """
+    One application state change, announced to every application
+    listener inside the transaction that performed it (Spec
+    applications §7). ``comment`` carries the return reason for
+    ``RETURNED``; ``auto`` marks a machine-made decision (auto-accept).
+    """
+
+    kind: ApplicationEventKind
+    application_id: str
+    owner_player_id: str
+    reviewer_player_id: str | None = None
+    comment: str | None = None
+    auto: bool = False
+
+
+# An application listener sees ``(session, event)`` and runs inside the
+# operation's transaction under its own SAVEPOINT — a failure is logged
+# and never rolls the state change back.
+ApplicationListener = Callable[[AsyncSession, ApplicationEvent], Awaitable[None]]
+
 _ownership_listeners: dict[str, OwnershipListener] = {}
 _registration_checks: dict[
     CheckStage, dict[str, RegistrationCheck | BeforeAllCheck]
 ] = {stage: {} for stage in _CHECK_STAGES}
 _nation_created_hooks: dict[str, NationCreatedHook] = {}
 _player_delete_hooks: dict[str, PlayerDeleteHook] = {}
+_application_listeners: dict[str, ApplicationListener] = {}
 
 
 def register_ownership_listener(name: str, listener: OwnershipListener) -> None:
@@ -194,6 +228,49 @@ def register_player_delete_hook(name: str, hook: PlayerDeleteHook) -> None:
 def get_player_delete_hooks() -> dict[str, PlayerDeleteHook]:
     """All player-delete hooks, keyed by name, in registration order."""
     return dict(_player_delete_hooks)
+
+
+def register_application_listener(name: str, listener: ApplicationListener) -> None:
+    """
+    Register ``listener`` under ``name``; the same name re-registers
+    (replaces) instead of raising — startup is re-run per lifespan boot.
+    """
+    if name in _application_listeners:
+        logger.info("Replacing application listener '%s'", name)
+    _application_listeners[name] = listener
+    logger.info("Registered application listener '%s'", name)
+
+
+def get_application_listeners() -> dict[str, ApplicationListener]:
+    """All application listeners, keyed by name, in registration order."""
+    return dict(_application_listeners)
+
+
+async def run_application_listeners(
+    session: AsyncSession, event: ApplicationEvent
+) -> None:
+    """
+    Announce an application state change to every registered listener,
+    in registration order (Spec applications §7).
+
+    Called by the application service after the state writes, still
+    inside the caller's transaction. Each listener runs under its own
+    SAVEPOINT: an exception rolls back only that listener's writes, is
+    logged as a WARNING (listener name and exception class — never a
+    payload) and does not stop the remaining listeners or undo the
+    state change. ``asyncio.CancelledError`` and other
+    ``BaseException``s are not caught.
+    """
+    for name, listener in _application_listeners.items():
+        try:
+            async with session.begin_nested():
+                await listener(session, event)
+        except Exception as exc:
+            logger.warning(
+                "application_listener_failed listener=%s error=%s",
+                name,
+                type(exc).__name__,
+            )
 
 
 async def notify_ownership_changed(
@@ -293,11 +370,17 @@ def clear_player_delete_hooks() -> None:
     _player_delete_hooks.clear()
 
 
+def clear_application_listeners() -> None:
+    """Drop all application listeners — test isolation."""
+    _application_listeners.clear()
+
+
 def snapshot_extension_points() -> tuple[
     dict[str, OwnershipListener],
     dict[CheckStage, dict[str, RegistrationCheck | BeforeAllCheck]],
     dict[str, NationCreatedHook],
     dict[str, PlayerDeleteHook],
+    dict[str, ApplicationListener],
 ]:
     """Opaque snapshot of all registries for test isolation fixtures."""
     return (
@@ -305,12 +388,13 @@ def snapshot_extension_points() -> tuple[
         {stage: dict(checks) for stage, checks in _registration_checks.items()},
         dict(_nation_created_hooks),
         dict(_player_delete_hooks),
+        dict(_application_listeners),
     )
 
 
 def restore_extension_points(snapshot) -> None:
     """Restore a snapshot taken by :func:`snapshot_extension_points`."""
-    listeners, checks, created_hooks, delete_hooks = snapshot
+    listeners, checks, created_hooks, delete_hooks, app_listeners = snapshot
     _ownership_listeners.clear()
     _ownership_listeners.update(listeners)
     for stage in _CHECK_STAGES:
@@ -320,3 +404,5 @@ def restore_extension_points(snapshot) -> None:
     _nation_created_hooks.update(created_hooks)
     _player_delete_hooks.clear()
     _player_delete_hooks.update(delete_hooks)
+    _application_listeners.clear()
+    _application_listeners.update(app_listeners)

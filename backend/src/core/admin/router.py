@@ -84,6 +84,7 @@ from modules._00_core.models import (
     AdminGrant,
     GameClock,
     Nation,
+    NationApplicationProvince,
     Player,
     Province,
     TickLog,
@@ -651,7 +652,22 @@ async def list_provinces(
         )
     ).all()
     if free_only:
-        rows = [row for row in rows if row.nation_id is None]
+        # APP-1: provinces reserved by PENDING applications count as
+        # taken for the pickers, the same as owned ones.
+        reserved_ids = set(
+            (
+                await session.execute(
+                    select(NationApplicationProvince.province_id).where(
+                        NationApplicationProvince.is_reserved.is_(True)
+                    )
+                )
+            ).scalars()
+        )
+        rows = [
+            row
+            for row in rows
+            if row.nation_id is None and row.id not in reserved_ids
+        ]
     if text:
         rows = [row for row in rows if row.id in hook_province_ids]
 

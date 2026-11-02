@@ -948,6 +948,10 @@ class TestNationProfileEndpoints:
                 "criteria",
                 "inheritance",
             ],
+            "application": {
+                "review_hours": CORE_CONFIG.applications.review_hours,
+                "comment_max_length": CORE_CONFIG.applications.comment_max_length,
+            },
         }
 
 

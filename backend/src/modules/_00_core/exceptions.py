@@ -337,3 +337,47 @@ class FrequencyCapExceededError(CoreDomainError):
             f"{current_count}/{max_allowed}",
             "FREQUENCY_CAP_EXCEEDED",
         )
+
+
+class ApplicationNotFoundError(CoreDomainError):
+    """The player has no live (DRAFT/PENDING) application."""
+
+    def __init__(self, player_id: str):
+        super().__init__(
+            f"Player {player_id} has no application", "APPLICATION_NOT_FOUND"
+        )
+
+
+class ApplicationNotEditableError(CoreDomainError):
+    """The live application is not in DRAFT — a PENDING row only
+    accepts a cancel; an ACCEPTED one is history."""
+
+    def __init__(self, status: str):
+        super().__init__(
+            f"Application in status {status} cannot be edited",
+            "APPLICATION_NOT_EDITABLE",
+            details={"status": status},
+        )
+
+
+class ApplicationNotPendingError(CoreDomainError):
+    """The operation needs a PENDING application; the detail names
+    the current state (Spec applications §3, APP-3)."""
+
+    def __init__(self, status: str):
+        super().__init__(
+            f"Application is not under review (current status {status})",
+            "APPLICATION_NOT_PENDING",
+            details={"status": status},
+        )
+
+
+class ProvinceReservedError(CoreDomainError):
+    """The admin transfer targets a province reserved by a PENDING
+    application (Spec applications §8)."""
+
+    def __init__(self, province_id: int):
+        super().__init__(
+            f"Province {province_id} is reserved by a pending application",
+            "PROVINCE_RESERVED",
+        )

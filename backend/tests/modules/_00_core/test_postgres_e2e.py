@@ -164,6 +164,10 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
             "criteria",
             "inheritance",
         ],
+        "application": {
+            "review_hours": CORE_CONFIG.applications.review_hours,
+            "comment_max_length": CORE_CONFIG.applications.comment_max_length,
+        },
     }
 
     # Profile values padded with whitespace: stored normalized (strip).

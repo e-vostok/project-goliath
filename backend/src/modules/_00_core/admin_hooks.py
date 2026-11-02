@@ -28,6 +28,8 @@ from modules._00_core.models import (
     AdminGrant,
     GameClock,
     Nation,
+    NationApplication,
+    NationApplicationProvince,
     NationImage,
     Player,
     Province,
@@ -451,19 +453,23 @@ async def admin_reset(session: AsyncSession) -> None:
     """
     Wipe the 00_core world back to a fresh game.
 
-    Clears scheduled_actions, frees every province, deletes all nations
-    and the whole tick_log journal (restarting its id counter at 1), and
-    rewinds game_clock to turn 0 (inserting the singleton row if it is
-    somehow absent). players are kept on purpose — accounts survive a
-    world reset.
+    Clears scheduled_actions, frees every province, deletes all
+    applications and nations and the whole tick_log journal (restarting
+    its id counter at 1), and rewinds game_clock to turn 0 (inserting
+    the singleton row if it is somehow absent). players are kept on
+    purpose — accounts survive a world reset.
 
     The caller owns the transaction: this hook never commits.
     """
     await session.execute(delete(ScheduledAction))
     await session.execute(update(Province).values(nation_id=None))
     # INV-19: uploaded pictures go before the nations rows — the FK
-    # cascade is only a safety net; SQLite may run without FKs.
+    # cascade is only a safety net; SQLite may run without FKs. The
+    # same DELETE covers application-owned pictures (nation_images
+    # holds both owner kinds).
     await session.execute(delete(NationImage))
+    await session.execute(delete(NationApplicationProvince))
+    await session.execute(delete(NationApplication))
     await session.execute(delete(Nation))
     await session.execute(delete(TickLog))
     await _restart_tick_log_id(session)
