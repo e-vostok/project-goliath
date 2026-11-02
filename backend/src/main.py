@@ -30,6 +30,9 @@ from core.security.startup_guard import validate_production_environment
 from core.tick import heartbeat
 from core.tick.scheduler import scheduler_loop
 from modules._00_core.admin_hooks import register_admin_hooks
+from modules._00_core.applications_worker import (
+    start_applications_worker_if_ready,
+)
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import CoreDomainError
 from modules._00_core.images import check_image_support
@@ -177,6 +180,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # exception from the Tick DAG (D3).
     orders_worker = await start_orders_worker_if_ready(get_session_context)
 
+    # Spec applications §6: the review/auto-accept worker — the
+    # module's conscious exception from the Tick DAG (APP-4).
+    applications_worker = await start_applications_worker_if_ready(
+        get_session_context
+    )
+
     yield
 
     scheduler_task.cancel()
@@ -188,6 +197,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await profile_worker.stop()
     if orders_worker is not None:
         await orders_worker.stop()
+    if applications_worker is not None:
+        await applications_worker.stop()
     await get_engine().dispose()
 
 

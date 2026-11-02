@@ -437,7 +437,10 @@ class TestAdminOverview:
         assert response.status_code == 200
         tiles = response.json()
         for tile in tiles:
-            assert set(tile) == {"key", "label", "value", "sort"}
+            # `note` is the optional second line of the applications
+            # tiles (0.13.0 unit 5, mockup 25).
+            assert {"key", "label", "value", "sort"} <= set(tile)
+            assert set(tile) <= {"key", "label", "value", "note", "sort"}
         sorts = [t["sort"] for t in tiles]
         assert sorts == sorted(sorts)
         keys = [t["key"] for t in tiles]

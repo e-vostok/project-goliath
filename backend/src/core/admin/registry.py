@@ -53,6 +53,11 @@ ProvinceInfoHook = Callable[[AsyncSession, list[int]], Awaitable[dict]]
 # province ids matching the free-text query in this module's data —
 # merged into GET /admin/provinces's filter.
 ProvinceSearchHook = Callable[[AsyncSession, str], Awaitable[set]]
+# An attention hook sees (session) and returns a list of
+# {"key": str, "label": str, "count": int} — the module's items of the
+# «требует внимания» counter merged by GET /admin/attention; a count
+# of zero produces no item. Read-only, never commits.
+AttentionHook = Callable[[AsyncSession], Awaitable[list[dict]]]
 
 
 class AdminRegistry:
@@ -80,6 +85,9 @@ class AdminRegistry:
     # machine code; the journal screen renders the label of the module
     # that owns the action. A code nobody registered is shown raw.
     _audit_action_hooks: dict[str, dict[str, str]] = {}
+    # slug -> attention hook — the «требует внимания» counter items of
+    # GET /admin/attention (Spec applications §7).
+    _attention_hooks: dict[str, AttentionHook] = {}
 
     @classmethod
     def register_reset(cls, module_slug: str, reset_fn: ResetHook) -> None:
@@ -283,6 +291,31 @@ class AdminRegistry:
         logger.info(f"Registered admin audit actions for module '{module_slug}'")
 
     @classmethod
+    def register_attention(
+        cls, module_slug: str, attention_fn: AttentionHook
+    ) -> None:
+        """
+        Register a «требует внимания» hook for a module.
+
+        Args:
+            module_slug: The owning module's slug.
+            attention_fn: Async function taking (session) that returns a
+                          list of {"key", "label", "count"} attention
+                          items. Called by GET /admin/attention; a
+                          failing hook is logged and skipped there.
+
+        Raises:
+            ValueError: If an attention hook is already registered for
+                        module_slug.
+        """
+        if module_slug in cls._attention_hooks:
+            raise ValueError(
+                f"Attention hook already registered for module '{module_slug}'"
+            )
+        cls._attention_hooks[module_slug] = attention_fn
+        logger.info(f"Registered admin attention hook for module '{module_slug}'")
+
+    @classmethod
     def get_reset_hooks(cls) -> dict[str, ResetHook]:
         """Return all registered reset hooks in registration order."""
         return dict(cls._reset_hooks)
@@ -329,6 +362,11 @@ class AdminRegistry:
         }
 
     @classmethod
+    def get_attention_hooks(cls) -> dict[str, AttentionHook]:
+        """All registered attention hooks in registration order."""
+        return dict(cls._attention_hooks)
+
+    @classmethod
     def get_audit_action_labels(cls) -> dict[str, str]:
         """The merged {action_code: label} map in registration order."""
         labels: dict[str, str] = {}
@@ -356,3 +394,4 @@ class AdminRegistry:
         cls._player_info_hooks.clear()
         cls._province_info_hooks.clear()
         cls._audit_action_hooks.clear()
+        cls._attention_hooks.clear()

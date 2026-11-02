@@ -49,7 +49,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import UTC, date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
@@ -71,7 +71,9 @@ from modules._00_core.admin_service import (
 )
 from modules._00_core.calendar import compute_game_date, format_game_date
 from modules._00_core.config_schema import CoreConfig
+from modules._00_core.application_service import ApplicationService
 from modules._00_core.exceptions import (
+    ApplicationNotFoundError,
     CoreDomainError,
     ImageNotFoundError,
     NationNotFoundError,
@@ -84,12 +86,13 @@ from modules._00_core.models import (
     AdminGrant,
     GameClock,
     Nation,
+    NationApplication,
     NationApplicationProvince,
     Player,
     Province,
     TickLog,
 )
-from modules._00_core.router import GameClockNotFoundError
+from modules._00_core.router import GameClockNotFoundError, _application_dto
 from modules._00_core.schemas import _COLOR_HEX_PATTERN, _validate_nation_name
 from modules._00_core.service import (
     NationService,
@@ -2165,3 +2168,284 @@ async def admin_panel_session(
         },
         headers={"Cache-Control": "no-store"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Nation applications («анкеты», 0.13.0 unit 5): the admin side of Spec
+# applications §8 — the list, the detail view, the decisions and the
+# «требует внимания» counter. Every route is gated by require_admin.
+# ---------------------------------------------------------------------------
+
+
+class ApplicationReturnRequest(BaseModel):
+    """Body for POST /applications/{id}/return: the mandatory reason
+    (APP-7) — an invalid one answers 422 RETURN_COMMENT_INVALID from
+    the service."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = None
+
+
+async def _load_application_or_404(
+    session: AsyncSession, application_id: str
+) -> NationApplication:
+    """The application row or 404 APPLICATION_NOT_FOUND."""
+    application = await session.get(NationApplication, application_id)
+    if application is None:
+        raise ApplicationNotFoundError(application_id)
+    return application
+
+
+async def _admin_application_dto(
+    session: AsyncSession, application: NationApplication, admin: Player
+) -> dict:
+    """AdminApplicationDTO (Spec §8): the player's ApplicationDTO
+    field set plus ``id``, ``owner_vk_user_id``, ``owner_name`` (the
+    player-info hooks), ``assigned_to_me``, ``submitted_at``,
+    ``decided_at``, ``auto_accepted`` and ``accepted_nation_id``."""
+    base = (await _application_dto(session, application)).model_dump()
+    owner = await session.get(Player, application.owner_player_id)
+    names = await _display_names_by_vk(
+        session, {owner.vk_user_id} if owner is not None else set()
+    )
+    return {
+        **base,
+        "id": application.id,
+        "owner_vk_user_id": owner.vk_user_id if owner is not None else None,
+        "owner_name": (
+            names.get(owner.vk_user_id) if owner is not None else None
+        ),
+        "assigned_to_me": application.reviewer_player_id == admin.id,
+        "submitted_at": application.submitted_at,
+        "decided_at": application.decided_at,
+        "auto_accepted": application.auto_accepted,
+        "accepted_nation_id": application.accepted_nation_id,
+    }
+
+
+@router.get("/applications")
+async def admin_list_applications(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    status: Literal["PENDING", "ALL"] = "PENDING",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
+    """
+    The panel's «Анкеты» list (Spec §8): ``{"items", "total"}`` —
+    PENDING rows by nearest deadline first (the review queue), or
+    every application newest-first under ``status=ALL``. Each row
+    carries the short field set and ``assigned_to_me``.
+    """
+    stmt = select(NationApplication)
+    if status == "PENDING":
+        stmt = stmt.where(NationApplication.status == "PENDING").order_by(
+            NationApplication.review_deadline_at, NationApplication.id
+        )
+    else:
+        stmt = stmt.order_by(
+            NationApplication.created_at.desc(), NationApplication.id.desc()
+        )
+    rows_all = list((await session.execute(stmt)).scalars().all())
+    total = len(rows_all)
+    rows = rows_all[offset : offset + limit]
+    return {
+        "items": [
+            {
+                "id": application.id,
+                "short_name": application.short_name,
+                "name": application.name,
+                "status": application.status,
+                "submitted_at": application.submitted_at,
+                "review_deadline_at": application.review_deadline_at,
+                "assigned_to_me": application.reviewer_player_id == admin.id,
+                "submissions": application.submissions,
+            }
+            for application in rows
+        ],
+        "total": total,
+    }
+
+
+@router.get("/applications/{application_id}")
+async def admin_get_application(
+    application_id: str,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """The full application for the admin's review window (Spec §8);
+    unknown id -> 404 APPLICATION_NOT_FOUND."""
+    application = await _load_application_or_404(session, application_id)
+    return await _admin_application_dto(session, application, admin)
+
+
+@router.post("/applications/{application_id}/accept")
+async def admin_accept_application(
+    application_id: str,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Accept a PENDING application: the nation is created in the same
+    transaction (Spec §4, APP-2). The service's refusals keep their
+    codes — 409 APPLICATION_NOT_PENDING naming the state, 403
+    APPLICATION_SELF_REVIEW for the applicant, the occupancy codes of
+    the submit checks. One ``application.accept`` journal row lands
+    before the commit; a refusal writes nothing.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    owner = (
+        await session.execute(
+            select(Player).join(
+                NationApplication,
+                NationApplication.owner_player_id == Player.id,
+            ).where(NationApplication.id == application_id)
+        )
+    ).scalar_one_or_none()
+    owner_subject = (
+        await _admin_subject(session, owner)
+        if owner is not None
+        else application_id
+    )
+    application, nation = await ApplicationService.accept(
+        session,
+        application_id,
+        config,
+        decided_by_player_id=admin.id,
+    )
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="application.accept",
+        target_type="application",
+        target_id=application_id,
+        summary=(
+            f"Принята анкета «{application.short_name}» игрока "
+            f"{owner_subject}; создано государство «{nation.short_name}»."
+        ),
+        details={
+            "application_id": application_id,
+            "nation_id": nation.id,
+            "owner_player_id": application.owner_player_id,
+        },
+    )
+    answer = await _admin_application_dto(session, application, admin)
+    await session.commit()
+    return answer
+
+
+@router.post("/applications/{application_id}/return")
+async def admin_return_application(
+    application_id: str,
+    body: ApplicationReturnRequest,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Return a PENDING application to an editable draft with a
+    mandatory reason (APP-7): 422 RETURN_COMMENT_INVALID for a bad
+    comment, 409 APPLICATION_NOT_PENDING / 403 APPLICATION_SELF_REVIEW
+    otherwise. One ``application.return`` journal row lands before
+    the commit; a refusal writes nothing.
+    """
+    config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
+    application = await ApplicationService.return_application(
+        session,
+        application_id,
+        admin.id,
+        body.comment,
+        config,
+    )
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="application.return",
+        target_type="application",
+        target_id=application_id,
+        summary=(
+            f"Анкета «{application.short_name}» возвращена игроку "
+            "на доработку."
+        ),
+        details={
+            "application_id": application_id,
+            "owner_player_id": application.owner_player_id,
+            "comment": application.return_comment,
+        },
+    )
+    answer = await _admin_application_dto(session, application, admin)
+    await session.commit()
+    return answer
+
+
+@router.post("/applications/{application_id}/images/{kind}/delete")
+async def admin_application_image_delete(
+    application_id: str,
+    kind: str,
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Delete one picture of a DRAFT or PENDING application (Spec §4):
+    a ``kind`` outside flag/portrait is a bare 404; a missing picture
+    is 404 IMAGE_NOT_FOUND; the application keeps its state. One
+    ``application.image_delete`` journal row lands before the commit.
+    """
+    if kind not in _IMAGE_KINDS:
+        raise HTTPException(status_code=404)
+    application = await _load_application_or_404(session, application_id)
+    removed = await ApplicationService.delete_image_admin(
+        session, application_id, kind
+    )
+    if removed is None:
+        raise ImageNotFoundError(
+            f"application {application_id} has no {kind} image"
+        )
+    kind_word = "флаг" if kind == "flag" else "портрет"
+    await AdminAuditService.record(
+        session,
+        actor_vk_user_id=admin.vk_user_id,
+        action="application.image_delete",
+        target_type="application",
+        target_id=application_id,
+        summary=(
+            f"Удалён {kind_word} анкеты «{application.short_name}»."
+        ),
+        details={
+            "application_id": application_id,
+            "kind": kind,
+            "sha256_prefix": removed.sha256[:12],
+        },
+    )
+    answer = await _admin_application_dto(session, application, admin)
+    await session.commit()
+    logger.warning(
+        "admin_application_image_delete admin_vk_user_id=%s "
+        "application_id=%s kind=%s",
+        admin.vk_user_id,
+        application_id,
+        kind,
+    )
+    return answer
+
+
+@router.get("/attention")
+async def admin_attention(
+    admin: Player = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    The «требует внимания» counter of Spec applications §7: every
+    module's attention hook contributes its {"key", "label", "count"}
+    items; ``total`` is their sum and lights the shield when > 0. A
+    failing hook is logged, rolled back and skipped — it never takes
+    the response down, the same rule as the state views.
+    """
+    items: list[dict] = []
+    for slug, attention_hook in AdminRegistry.get_attention_hooks().items():
+        try:
+            items.extend(await attention_hook(session))
+        except Exception:
+            logger.exception("Admin attention hook failed for '%s'", slug)
+            await session.rollback()
+    return {"total": sum(item["count"] for item in items), "items": items}

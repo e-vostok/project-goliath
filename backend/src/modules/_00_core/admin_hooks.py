@@ -59,6 +59,10 @@ ADMIN_AUDIT_ACTION_LABELS = {
     "nation.delete": "Удаление государства",
     "nation_image_delete": "Удаление картинки государства",
     "province.transfer": "Передача провинции",
+    "application.accept": "Принятие анкеты",
+    "application.return": "Возврат анкеты",
+    "application.auto_accept": "Автоприём анкеты",
+    "application.image_delete": "Удаление картинки анкеты",
 }
 
 
@@ -449,6 +453,116 @@ async def admin_nation_images_preview(
     ]
 
 
+async def admin_attention(session: AsyncSession) -> list[dict]:
+    """
+    The 00_core item of the «требует внимания» counter (Spec
+    applications §7): «Анкеты на рассмотрении» — the number of
+    applications sitting in PENDING. Empty list when nothing waits.
+    Read-only, never commits.
+    """
+    pending = (
+        await session.execute(
+            select(func.count())
+            .select_from(NationApplication)
+            .where(NationApplication.status == "PENDING")
+        )
+    ).scalar_one()
+    if not pending:
+        return []
+    return [
+        {
+            "key": "applications_pending",
+            "label": "Анкеты на рассмотрении",
+            "count": pending,
+        }
+    ]
+
+
+def _age_caption(moment: datetime | None) -> str:
+    """«10 с назад» / «5 мин назад» / «2 ч назад» for the worker tile;
+    «—» before the first pass."""
+    if moment is None:
+        return "—"
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    seconds = max(0, int((datetime.now(UTC) - moment).total_seconds()))
+    if seconds < 60:
+        return f"{seconds} с назад"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} мин назад"
+    return f"{minutes // 60} ч назад"
+
+
+def _deadline_caption(deadline: datetime | None) -> str:
+    """«ближайший автоприём через 16 ч» for the pending tile."""
+    if deadline is None:
+        return "—"
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=UTC)
+    hours = max(0, int((deadline - datetime.now(UTC)).total_seconds() // 3600))
+    return f"ближайший автоприём через {hours} ч"
+
+
+async def applications_overview_tiles(session: AsyncSession) -> list[dict]:
+    """
+    The applications tiles of the panel's «Ход и мир» board (mockup
+    25, sorts 82–86 — after the orders tiles, before the
+    administrators count): «Анкеты в рассмотрении» (PENDING count,
+    nearest auto-accept), «Фоновая задача анкет» (worker mode + last
+    pass) and «Просроченные анкеты» (PENDING past deadline). The
+    optional ``note`` carries the small second line of the mockup.
+    Read-only, never commits.
+    """
+    from modules._00_core.applications_worker import (
+        get_last_pass_at,
+        get_worker_mode,
+    )
+
+    now = datetime.now(UTC)
+    pending, overdue, nearest = (
+        await session.execute(
+            select(
+                func.count(),
+                func.count().filter(
+                    NationApplication.review_deadline_at.is_not(None),
+                    NationApplication.review_deadline_at <= now,
+                ),
+                func.min(NationApplication.review_deadline_at).filter(
+                    NationApplication.review_deadline_at > now
+                ),
+            )
+            .select_from(NationApplication)
+            .where(NationApplication.status == "PENDING")
+        )
+    ).one()
+
+    running = get_worker_mode().value == "RUNNING"
+    return [
+        {
+            "key": "applications_pending",
+            "label": "Анкеты в рассмотрении",
+            "value": str(pending),
+            "note": _deadline_caption(nearest) if pending else "—",
+            "sort": 82,
+        },
+        {
+            "key": "applications_worker",
+            "label": "Фоновая задача анкет",
+            "value": "работает" if running else "остановлена",
+            "note": f"последний проход {_age_caption(get_last_pass_at())}",
+            "sort": 84,
+        },
+        {
+            "key": "applications_overdue",
+            "label": "Просроченные анкеты",
+            "value": str(overdue),
+            "note": "принимаются автоматически",
+            "sort": 86,
+        },
+    ]
+
+
 async def admin_reset(session: AsyncSession) -> None:
     """
     Wipe the 00_core world back to a fresh game.
@@ -524,3 +638,9 @@ def register_admin_hooks() -> None:
         AdminRegistry.register_overview(MODULE_SLUG, admin_overview)
     if MODULE_SLUG not in AdminRegistry.get_audit_action_hooks():
         AdminRegistry.register_audit_actions(MODULE_SLUG, ADMIN_AUDIT_ACTION_LABELS)
+    if MODULE_SLUG not in AdminRegistry.get_attention_hooks():
+        AdminRegistry.register_attention(MODULE_SLUG, admin_attention)
+    if "00_core_applications" not in AdminRegistry.get_overview_hooks():
+        AdminRegistry.register_overview(
+            "00_core_applications", applications_overview_tiles
+        )

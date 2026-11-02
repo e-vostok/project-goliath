@@ -48,8 +48,9 @@ core operations through two small registries populated at startup:
 
 5. **Application listeners** — notified inside the same transaction
    when a nation application changes state (Spec applications §7):
-   ``SUBMITTED``/``CANCELLED`` today, ``RETURNED``/``ACCEPTED`` when the
-   admin side lands. Each listener runs under its own SAVEPOINT: its
+   ``SUBMITTED`` at the submit, ``ASSIGNED`` when the worker names a
+   reviewer later, ``CANCELLED``/``RETURNED``/``ACCEPTED`` on the
+   outcomes. Each listener runs under its own SAVEPOINT: its
    failure is logged as ``application_listener_failed`` and never
    undoes the state change — a listener can only observe and append,
    like the nation-created hooks.
@@ -126,7 +127,9 @@ NationCreatedHook = Callable[[AsyncSession, str, str], Awaitable[None]]
 # the operation is all-or-nothing by design).
 PlayerDeleteHook = Callable[[AsyncSession, str], Awaitable[None]]
 
-ApplicationEventKind = Literal["SUBMITTED", "CANCELLED", "RETURNED", "ACCEPTED"]
+ApplicationEventKind = Literal[
+    "SUBMITTED", "ASSIGNED", "CANCELLED", "RETURNED", "ACCEPTED"
+]
 
 
 @dataclass(frozen=True)
