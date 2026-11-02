@@ -6,6 +6,8 @@
  * text with its line breaks kept — no row captions anywhere.
  */
 
+import type { ReactNode } from 'react';
+
 import type { NationDTO, NationPublicDTO } from '../../../../shared/types';
 import {
   BlockTitle,
@@ -23,6 +25,7 @@ import { CardBlock } from './CardBlock';
 export function LeaderBlock({
   nation,
   imageEditor,
+  action,
 }: {
   nation: NationDTO | NationPublicDTO;
   /**
@@ -30,6 +33,11 @@ export function LeaderBlock({
    * upload control. Absent (Registry subscreen) — read-only.
    */
   imageEditor?: NationImageEditor;
+  /**
+   * Extra node under the biography — the admin application window's
+   * «Удалить портрет» (0.13.0 unit 7b).
+   */
+  action?: ReactNode;
 }) {
   return (
     <CardBlock testId="nation-leader-block">
@@ -94,6 +102,9 @@ export function LeaderBlock({
             >
               {nation.leader_bio}
             </p>
+          )}
+          {action != null && (
+            <div style={{ marginTop: SPACING['space-2'] }}>{action}</div>
           )}
         </div>
       </div>

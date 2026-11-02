@@ -56,6 +56,10 @@ const router = createHashRouter([
   // «Штаб» while the application is PENDING; the shell falls back to
   // the default panel otherwise.
   { path: '/application', panel: PANEL_APPLICATION, view: 'main' },
+  // The administrator's review window (0.13.0 unit 7b): the `:sub`
+  // segment is the application id — anything else shows the plain
+  // default panel.
+  { path: '/application/:sub', panel: PANEL_APPLICATION, view: 'main' },
   { path: '/map', panel: PANEL_MAP, view: 'main' },
   { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
   // The nation subscreen (unit 14c): «Реестр» stays the active panel

@@ -14,7 +14,7 @@
  */
 
 import { ApiError } from './api-client';
-import type { NationRulesDTO } from './types';
+import { ErrorCodes, type NationRulesDTO } from './types';
 import { NETWORK_ERROR_TEXT } from './ui/ErrorState';
 import { nationErrorText } from '../modules/00_core/components/nationErrorTexts';
 import {
@@ -38,6 +38,21 @@ export function errorText(
   const nationText = nationErrorText(error.code, ctx?.rules ?? null);
   if (nationText !== null) {
     return nationText;
+  }
+  if (error.code === ErrorCodes.APPLICATION_NOT_PENDING) {
+    // Spec applications §3 (APP-3): the 409 names the state the
+    // application is already in — details.status (fallback: the
+    // detail's «current status X» tail).
+    const status =
+      typeof error.details?.status === 'string'
+        ? error.details.status
+        : /current status (\w+)/.exec(error.message)?.[1];
+    if (status === 'ACCEPTED') {
+      return 'Анкета уже принята.';
+    }
+    if (status === 'DRAFT') {
+      return 'Анкета уже не на рассмотрении — её отозвали или вернули.';
+    }
   }
   const entry = messages[error.code];
   if (entry === SERVER_RU) {

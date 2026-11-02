@@ -228,6 +228,7 @@ function renderApp(overrides?: () => void) {
     { path: '/', panel: PANEL_HOME, view: 'main' },
     { path: '/nation/new', panel: PANEL_CREATE, view: 'main' },
     { path: '/application', panel: PANEL_APPLICATION, view: 'main' },
+    { path: '/application/:sub', panel: PANEL_APPLICATION, view: 'main' },
     { path: '/map', panel: PANEL_MAP, view: 'main' },
     { path: '/registry', panel: PANEL_REGISTRY, view: 'main' },
     { path: '/registry/:sub', panel: PANEL_REGISTRY, view: 'main' },
@@ -254,6 +255,17 @@ describe('normalizeEntryHash — the #application bot link', () => {
     window.location.hash = '#application';
     normalizeEntryHash();
     expect(window.location.hash).toBe('#/application');
+  });
+
+  it.each([
+    ['#application/a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d', '#/application/a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d'],
+    ['#application/not-a-uuid', '#/'],
+    ['#application/', '#/'],
+    ['#application/a1b2', '#/'],
+  ])('rewrites %s to %s', (from, to) => {
+    window.location.hash = from;
+    normalizeEntryHash();
+    expect(window.location.hash).toBe(to);
   });
 });
 
@@ -365,6 +377,71 @@ describe('AppShell — the application window replaces «Штаб»', () => {
     expect(await screen.findByText('Testia')).toBeInTheDocument();
     expect(tab('Штаб')).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('tab', { name: 'Анкета' })).toBeNull();
+  });
+});
+
+describe('AppShell — the admin review link #application/<id> (unit 7b)', () => {
+  const ADMIN_ID = 'a1b2c3d4-0000-4b7e-9a1c-2e5f7a9b0c1d';
+  const adminDto = {
+    ...APPLICATION_PENDING,
+    id: ADMIN_ID,
+    owner_vk_user_id: 987654,
+    owner_name: 'Иван Петров',
+    assigned_to_me: true,
+    submitted_at: '2026-10-31T11:20:00Z',
+    decided_at: null,
+    auto_accepted: null,
+    accepted_nation_id: null,
+  };
+
+  it('an administrator WITH a nation opens the review window — the state redirect does not bounce it', async () => {
+    window.location.hash = `#/application/${ADMIN_ID}`;
+    renderApp(() => {
+      server.use(
+        http.get('*/api/v1/nations/me', () => HttpResponse.json(NATION)),
+      );
+      server.use(application404());
+      server.use(
+        http.get(`*/api/v1/admin/applications/${ADMIN_ID}`, () =>
+          HttpResponse.json(adminDto),
+        ),
+      );
+    });
+
+    expect(await screen.findByTestId('application-admin')).toBeInTheDocument();
+    // The hash stays on the review address — no redirect to «Штаб».
+    expect(window.location.hash).toBe(`#/application/${ADMIN_ID}`);
+    const facts = await screen.findByTestId('application-admin-facts');
+    expect(facts).toHaveTextContent('Иван Петров');
+    expect(
+      screen.getByTestId('application-admin-actions'),
+    ).toBeInTheDocument();
+  });
+
+  it('a non-administrator gets the plain default panel — the 403 shows no error', async () => {
+    window.location.hash = `#/application/${ADMIN_ID}`;
+    renderApp(() => {
+      server.use(
+        http.get('*/api/v1/nations/me', () => HttpResponse.json(NATION)),
+      );
+      server.use(application404());
+      server.use(
+        http.get(`*/api/v1/admin/applications/${ADMIN_ID}`, () =>
+          HttpResponse.json(
+            { detail: 'not an admin', code: 'ADMIN_REQUIRED' },
+            { status: 403 },
+          ),
+        ),
+      );
+    });
+
+    // Back on the default panel («Штаб» for a nation owner).
+    await waitFor(() => expect(window.location.hash).toBe('#/'));
+    expect(await screen.findByText('Testia')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('application-admin'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
 
