@@ -69,7 +69,9 @@ export function formatApplicationDeadline(iso: string): string {
  * (`NationCardHeader`, `LeaderBlock`) only read the profile fields;
  * the pictures come from `images`, stats and ids mean nothing here.
  */
-function applicationAsNation(application: ApplicationDTO): NationPublicDTO {
+export function applicationAsNation(
+  application: ApplicationDTO,
+): NationPublicDTO {
   return {
     id: '',
     created_at: '',
@@ -223,7 +225,7 @@ function StatusPlate({
 }
 
 /** «Территория» of the application — names arrive inside the DTO. */
-function ApplicationTerritory({
+export function ApplicationTerritory({
   application,
 }: {
   application: ApplicationDTO;

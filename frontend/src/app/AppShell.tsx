@@ -32,6 +32,7 @@ import { useAuth, SessionProvider } from '../modules/00_core/hooks/useAuth';
 import { useApplication } from '../modules/00_core/hooks/useApplication';
 import { useGameClock } from '../modules/00_core/hooks/useGameClock';
 import { useNation } from '../modules/00_core/hooks/useNation';
+import { ApplicationAdminSubscreen } from '../modules/00_core/components/ApplicationAdminSubscreen';
 import { PanelApplication } from '../modules/00_core/components/PanelApplication';
 import { PanelCreateNation } from '../modules/00_core/components/PanelCreateNation';
 import { PanelNationHome } from '../modules/00_core/components/PanelNationHome';
@@ -96,6 +97,18 @@ export const PLAYER_SUB_RE = /^player-[0-9]{1,9}$/;
 const PLAYER_BARE_HASH_RE = /^#registry\/(player-[0-9]{1,9})$/;
 
 /**
+ * The application id in the `#/application/<id>` address — hex + dash
+ * (the UUID alphabet), 8–64 chars, like the nation id of the registry
+ * address. Anything else in the `:sub` segment is not a review
+ * address (Spec applications §10, 0.13.0 unit 7b).
+ */
+export const APPLICATION_SUB_RE = /^[0-9a-fA-F-]{8,64}$/;
+
+/** `#application/<id>` — the bare (bot) form of the review link. */
+const APPLICATION_BARE_HASH_RE =
+  /^#application\/([0-9a-fA-F-]{8,64})$/;
+
+/**
  * The community-menu deep link `https://vk.com/app<APP_ID>#map` arrives
  * as the bare hash `#map`; the hash router expects a path. Call once,
  * before the router is created (main.tsx). Module 02_bot adds the
@@ -137,6 +150,18 @@ export function normalizeEntryHash(): void {
   }
   if (window.location.hash === '#map') {
     window.history.replaceState(null, '', '#/map');
+    return;
+  }
+  // `#application/<id>` — the bot's review link for administrators
+  // (Spec applications §10): the subscreen in the same «Штаб» shell.
+  // A malformed id falls back to the default panel, no error shown.
+  if (window.location.hash.startsWith('#application/')) {
+    const match = APPLICATION_BARE_HASH_RE.exec(window.location.hash);
+    window.history.replaceState(
+      null,
+      '',
+      match ? `#/application/${match[1]}` : '#/',
+    );
     return;
   }
   // `#application` — the bot's «ваша анкета» link (Spec applications
@@ -249,6 +274,13 @@ function AuthedArea() {
     typeof subSegment === 'string' && PLAYER_SUB_RE.test(subSegment)
       ? Number(subSegment.slice('player-'.length))
       : null;
+  // The admin review subscreen (0.13.0 unit 7b): `/application/:sub`
+  // carries the bare application id — unlike the registry addresses
+  // it has no name prefix.
+  const applicationSubId =
+    typeof subSegment === 'string' && APPLICATION_SUB_RE.test(subSegment)
+      ? subSegment
+      : null;
   const fromTab = (() => {
     const state = location.state as { fromTab?: unknown } | null;
     return state !== null && typeof state.fromTab === 'string'
@@ -299,7 +331,12 @@ function AuthedArea() {
       status !== 'ready' ||
       appStatus === 'loading' ||
       appStatus === 'error' ||
-      awaitingNation
+      awaitingNation ||
+      // The admin review window is exempt from the state redirect —
+      // an administrator may open it with a nation, without one or
+      // with their own application pending; the subscreen itself
+      // sends a non-administrator to the plain default panel.
+      applicationSubId !== null
     ) {
       return;
     }
@@ -333,6 +370,7 @@ function AuthedArea() {
     nation,
     pendingApplication,
     activePanel,
+    applicationSubId,
     navigator,
   ]);
 
@@ -396,9 +434,17 @@ function AuthedArea() {
                     )}
                   </Panel>
                   <Panel id={PANEL_APPLICATION}>
-                    {status === 'loading' ||
-                    appStatus === 'loading' ||
-                    awaitingNation ? (
+                    {applicationSubId !== null ? (
+                      /* The administrator's review window — it does
+                         not wait for the nation/application loads:
+                         the subscreen fetches the application itself. */
+                      <ApplicationAdminSubscreen
+                        applicationId={applicationSubId}
+                        onBack={() => void navigator.push('/')}
+                      />
+                    ) : status === 'loading' ||
+                      appStatus === 'loading' ||
+                      awaitingNation ? (
                       <LoadingCell />
                     ) : applicationErrored ? (
                       <ApplicationErrorCell
