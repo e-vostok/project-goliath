@@ -8,6 +8,7 @@
  */
 
 import type {
+  AdminApplicationDTO,
   AdminAuditFiltersDTO,
   AdminAuditLogDTO,
   AdminEntryDTO,
@@ -73,12 +74,20 @@ function resolveUrl(path: string): string {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  /** The error body's `details` payload when the server sends one. */
+  readonly details: Record<string, unknown> | undefined;
 
-  constructor(status: number, code: string, detail: string) {
+  constructor(
+    status: number,
+    code: string,
+    detail: string,
+    details?: Record<string, unknown>,
+  ) {
     super(detail);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -157,6 +166,7 @@ async function request(
 async function parseError(response: Response): Promise<ApiError> {
   let code = 'UNKNOWN_ERROR';
   let detail = response.statusText || `HTTP ${response.status}`;
+  let details: Record<string, unknown> | undefined;
   try {
     const payload: unknown = await response.json();
     if (payload && typeof payload === 'object') {
@@ -170,11 +180,14 @@ async function parseError(response: Response): Promise<ApiError> {
         // FastAPI 422 bodies carry detail as a list of violations.
         detail = JSON.stringify(record.detail);
       }
+      if (record.details !== null && typeof record.details === 'object') {
+        details = record.details as Record<string, unknown>;
+      }
     }
   } catch {
     // Non-JSON error body — keep statusText fallback.
   }
-  return new ApiError(response.status, code, detail);
+  return new ApiError(response.status, code, detail, details);
 }
 
 export async function apiFetch<T>(
@@ -946,6 +959,68 @@ export const api = {
     return apiFetch<{ revoked: number }>(
       `/admin/admins/${encodeURIComponent(String(vkUserId))}/revoke`,
       { method: 'POST', token, signal },
+    );
+  },
+
+  /* The admin side of nation applications (Spec applications §8,
+     0.13.0 unit 7b): the review window the bot's `#application/<id>`
+     link opens. Every answer is the full AdminApplicationDTO; the
+     refusals keep their codes — 404 APPLICATION_NOT_FOUND, 409
+     APPLICATION_NOT_PENDING (details.name the state), 403
+     APPLICATION_SELF_REVIEW, 422 RETURN_COMMENT_INVALID. */
+
+  /** GET /admin/applications/{id} — the application under review. */
+  adminApplication(token: string, applicationId: string, signal?: AbortSignal) {
+    return apiFetch<AdminApplicationDTO>(
+      `/admin/applications/${encodeURIComponent(applicationId)}`,
+      { token, signal },
+    );
+  },
+
+  /** POST /admin/applications/{id}/accept — create the nation. */
+  adminAcceptApplication(
+    token: string,
+    applicationId: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminApplicationDTO>(
+      `/admin/applications/${encodeURIComponent(applicationId)}/accept`,
+      { method: 'POST', token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/applications/{id}/return — back to an editable draft
+   * with the mandatory reason (APP-7).
+   */
+  adminReturnApplication(
+    token: string,
+    applicationId: string,
+    comment: string,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminApplicationDTO>(
+      `/admin/applications/${encodeURIComponent(applicationId)}/return`,
+      { method: 'POST', body: { comment }, token, signal },
+    );
+  },
+
+  /**
+   * POST /admin/applications/{id}/images/{kind}/delete — remove one
+   * picture of a DRAFT/PENDING application; the application keeps its
+   * state, a missing picture answers 404 IMAGE_NOT_FOUND.
+   */
+  adminApplicationImageDelete(
+    token: string,
+    applicationId: string,
+    kind: 'flag' | 'portrait',
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<AdminApplicationDTO>(
+      `/admin/applications/${encodeURIComponent(
+        applicationId,
+      )}/images/${encodeURIComponent(kind)}/delete`,
+      { method: 'POST', body: {}, token, signal },
     );
   },
 };

@@ -183,6 +183,25 @@ export interface ApplicationRulesDTO {
   comment_max_length: number;
 }
 
+/**
+ * GET /admin/applications/{id} and the accept/return/image-delete
+ * answers (Spec applications §8): the player's ApplicationDTO field
+ * set plus the review metadata — the applicant (`owner_vk_user_id`,
+ * `owner_name`, both null when the player is gone), `assigned_to_me`
+ * for the «назначена вам» mark and the decision history
+ * (`submitted_at`, `decided_at`, `auto_accepted`, `accepted_nation_id`).
+ */
+export interface AdminApplicationDTO extends ApplicationDTO {
+  id: string;
+  owner_vk_user_id: number | null;
+  owner_name: string | null;
+  assigned_to_me: boolean;
+  submitted_at: string | null;
+  decided_at: string | null;
+  auto_accepted: boolean | null;
+  accepted_nation_id: string | null;
+}
+
 /** The upload limits inside NationRulesDTO.images (Spec Part 5). */
 export interface NationRulesImagesDTO {
   flag_width: number;
