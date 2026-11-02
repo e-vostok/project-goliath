@@ -2236,7 +2236,11 @@ async def admin_list_applications(
     The panel's «Анкеты» list (Spec §8): ``{"items", "total"}`` —
     PENDING rows by nearest deadline first (the review queue), or
     every application newest-first under ``status=ALL``. Each row
-    carries the short field set and ``assigned_to_me``.
+    carries the field set of Spec §8: the owner and reviewer names
+    through the player-info hooks (null once the player is gone), the
+    province count, the decision fields and the Mini-App link — the
+    page's lookups batch into one count query and one info pass,
+    never one per row.
     """
     stmt = select(NationApplication)
     if status == "PENDING":
@@ -2250,6 +2254,36 @@ async def admin_list_applications(
     rows_all = list((await session.execute(stmt)).scalars().all())
     total = len(rows_all)
     rows = rows_all[offset : offset + limit]
+
+    provinces_count = dict(
+        (
+            await session.execute(
+                select(
+                    NationApplicationProvince.application_id,
+                    func.count(),
+                )
+                .where(
+                    NationApplicationProvince.application_id.in_(
+                        [application.id for application in rows]
+                    )
+                )
+                .group_by(NationApplicationProvince.application_id)
+            )
+        ).all()
+    )
+    player_ids = {
+        player_id
+        for application in rows
+        for player_id in (
+            application.owner_player_id,
+            application.reviewer_player_id,
+        )
+        if player_id is not None
+    }
+    info = await _collect_player_info(session, list(player_ids))
+    # The link text is the bot's contract — nothing else of 02_bot is used.
+    from modules._02_bot.service import BotService
+
     return {
         "items": [
             {
@@ -2257,10 +2291,25 @@ async def admin_list_applications(
                 "short_name": application.short_name,
                 "name": application.name,
                 "status": application.status,
+                "owner_name": info.get(application.owner_player_id, {}).get(
+                    "display_name"
+                ),
+                "provinces_count": provinces_count.get(application.id, 0),
+                "reviewer_name": (
+                    info.get(application.reviewer_player_id, {}).get(
+                        "display_name"
+                    )
+                    if application.reviewer_player_id is not None
+                    else None
+                ),
                 "submitted_at": application.submitted_at,
                 "review_deadline_at": application.review_deadline_at,
                 "assigned_to_me": application.reviewer_player_id == admin.id,
                 "submissions": application.submissions,
+                "draft_reason": application.draft_reason,
+                "auto_accepted": application.auto_accepted,
+                "decided_at": application.decided_at,
+                "link": BotService.app_link(f"application/{application.id}"),
             }
             for application in rows
         ],

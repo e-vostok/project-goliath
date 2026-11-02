@@ -511,7 +511,8 @@ async def applications_overview_tiles(session: AsyncSession) -> list[dict]:
     administrators count): «Анкеты в рассмотрении» (PENDING count,
     nearest auto-accept), «Фоновая задача анкет» (worker mode + last
     pass) and «Просроченные анкеты» (PENDING past deadline). The
-    optional ``note`` carries the small second line of the mockup.
+    optional ``note`` carries the small second line of the mockup and
+    ``group`` sorts the three into the board's «Анкеты» card.
     Read-only, never commits.
     """
     from modules._00_core.applications_worker import (
@@ -545,6 +546,7 @@ async def applications_overview_tiles(session: AsyncSession) -> list[dict]:
             "value": str(pending),
             "note": _deadline_caption(nearest) if pending else "—",
             "sort": 82,
+            "group": "applications",
         },
         {
             "key": "applications_worker",
@@ -552,6 +554,7 @@ async def applications_overview_tiles(session: AsyncSession) -> list[dict]:
             "value": "работает" if running else "остановлена",
             "note": f"последний проход {_age_caption(get_last_pass_at())}",
             "sort": 84,
+            "group": "applications",
         },
         {
             "key": "applications_overdue",
@@ -559,6 +562,7 @@ async def applications_overview_tiles(session: AsyncSession) -> list[dict]:
             "value": str(overdue),
             "note": "принимаются автоматически",
             "sort": 86,
+            "group": "applications",
         },
     ]
 
