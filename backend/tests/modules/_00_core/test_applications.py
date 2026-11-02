@@ -9,11 +9,17 @@ destructive paths.
 
 from __future__ import annotations
 
+import io
+
 import pytest
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from core.db import get_session
+from main import app
 from modules._00_core.application_service import ApplicationService
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
@@ -21,14 +27,18 @@ from modules._00_core.exceptions import (
     ApplicationNotFoundError,
     ApplicationNotPendingError,
     ColorTakenError,
+    CoreDomainError,
     NameTakenError,
     NationAlreadyExistsError,
+    ProvinceNotFoundError,
     ProvinceReservedError,
     ProvinceTakenError,
 )
 from modules._00_core.hooks import (
+    STAGE_BEFORE_ALL,
     ApplicationEvent,
     register_application_listener,
+    register_registration_check,
 )
 from modules._00_core.models import (
     Nation,
@@ -42,6 +52,12 @@ from tests.fixtures.provinces import (
     STARTING_GROUP,
     make_land_province,
     make_starting_group,
+)
+from tests.modules._00_core.test_router import (
+    TEST_JWT_SECRET,
+    TEST_VK_SECRET,
+    bearer_headers,
+    seed_player,
 )
 
 CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
@@ -63,6 +79,33 @@ async def session_factory(test_db_engine):
     return async_sessionmaker(
         test_db_engine, class_=AsyncSession, expire_on_commit=False
     )
+
+
+@pytest.fixture(autouse=True)
+def env_secrets(monkeypatch):
+    """Provide VK/JWT secrets for the live-client tests."""
+    monkeypatch.setenv("VK_APP_SECRET", TEST_VK_SECRET)
+    monkeypatch.setenv("JWT_SECRET_KEY", TEST_JWT_SECRET)
+
+
+@pytest_asyncio.fixture
+async def client(test_db_session):
+    """HTTP client bound to the real app, backed by the test DB session."""
+
+    async def _override_get_session():
+        yield test_db_session
+
+    app.dependency_overrides[get_session] = _override_get_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+def _png(size: tuple[int, int], color=(10, 120, 200)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, color).save(buf, "PNG")
+    return buf.getvalue()
 
 
 async def _draft(session, player, **overrides) -> NationApplication:
@@ -289,6 +332,114 @@ class TestReserve:
                     nation.id,
                     config=CORE_CONFIG,
                 )
+
+
+class TestAuditFixes:
+    """Lead AI audit of the unit-4 PR: the consent/nation gates of
+    Spec §4 and the draft's province-existence check."""
+
+    @pytest.mark.asyncio
+    async def test_submit_runs_before_all_checks(self, session_factory):
+        """A failing before_all check (e.g. missing bot consent,
+        Spec 02_bot 3.10) refuses the submit — the draft stays DRAFT.
+        The autouse process-state fixture restores the registry."""
+
+        class _NoConsent(CoreDomainError):
+            def __init__(self):
+                super().__init__("consent missing", "TEST_NO_CONSENT")
+
+        async def deny(session: AsyncSession, player_id: str) -> None:
+            raise _NoConsent()
+
+        register_registration_check(STAGE_BEFORE_ALL, "test.consent", deny)
+
+        async with session_factory() as session:
+            player = await make_player(session, vk_user_id=610040)
+            await make_starting_group(session)
+            await _draft(session, player)
+            await session.commit()
+
+        async with session_factory() as session:
+            with pytest.raises(_NoConsent):
+                await ApplicationService.submit(
+                    session, player.id, CORE_CONFIG
+                )
+            application = await ApplicationService.get_me(
+                session, player.id
+            )
+            assert application.status == "DRAFT"
+
+    @pytest.mark.asyncio
+    async def test_submit_refused_when_nation_exists(self, session_factory):
+        """An administrator may create the nation after the draft was
+        saved — submit then answers NATION_ALREADY_EXISTS first."""
+        async with session_factory() as session:
+            player = await make_player(session, vk_user_id=610041)
+            await make_starting_group(session)
+            await _draft(session, player)
+            nation = NationFactory.build(
+                owner=player, provinces=[], scheduled_actions=[]
+            )
+            session.add(nation)
+            await session.commit()
+
+        async with session_factory() as session:
+            with pytest.raises(NationAlreadyExistsError):
+                await ApplicationService.submit(
+                    session, player.id, CORE_CONFIG
+                )
+
+    @pytest.mark.asyncio
+    async def test_draft_unknown_province_refused(self, session_factory):
+        """A province id that does not exist is PROVINCE_NOT_FOUND,
+        never a foreign-key 500 or a silent bad row."""
+        async with session_factory() as session:
+            player = await make_player(session, vk_user_id=610042)
+            await make_starting_group(session)
+            await session.commit()
+
+        async with session_factory() as session:
+            with pytest.raises(ProvinceNotFoundError):
+                await _draft(
+                    session,
+                    player,
+                    province_ids=[1001, 1002, 1003, 1004, 9999],
+                )
+
+    @pytest.mark.asyncio
+    async def test_put_image_draft_ok_pending_409(self, client, test_db_session):
+        """PUT /applications/me/images/{kind}: 200 on a DRAFT, 409
+        APPLICATION_NOT_EDITABLE once the application is PENDING."""
+        player = await seed_player(test_db_session)
+        await make_starting_group(test_db_session)
+        headers = bearer_headers(player.id)
+
+        draft = await client.put(
+            "/api/v1/applications/me", headers=headers, json=_DRAFT
+        )
+        assert draft.status_code == 200, draft.text
+
+        ok = await client.put(
+            "/api/v1/applications/me/images/flag",
+            headers=headers,
+            content=_png((1200, 800)),
+        )
+        assert ok.status_code == 200, ok.text
+        assert ok.json()["kind"] == "flag"
+
+        submitted = await client.post(
+            "/api/v1/applications/me/submit", headers=headers
+        )
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.json()["status"] == "PENDING"
+
+        refused = await client.put(
+            "/api/v1/applications/me/images/flag",
+            headers=headers,
+            content=_png((1200, 800)),
+        )
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["code"] == "APPLICATION_NOT_EDITABLE"
 
 
 class TestGuards:
