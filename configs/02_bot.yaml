@@ -232,3 +232,75 @@ types:
     text: "По приказу №{order_number} получен вердикт: {order_link}"
     batch_text: null
     line_text: null
+
+  # --- Типы анкет (Spec 4.8, контракт Spec 00_core_applications §7) ----
+  APPLICATION_RECEIVED:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 1440               # сутки — живёт до срока решения
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Анкета государства «{nation_name}» получена. Администратор рассмотрит её не позже {deadline} (МСК); если ответа не будет, анкета примется сама. Посмотреть или отменить анкету: {application_link}"
+    batch_text: null
+    line_text: null
+  APPLICATION_RETURNED:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320               # трое суток
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Анкета государства «{nation_name}» возвращена на доработку. Причина: {comment} Исправьте анкету и отправьте её снова: {application_link}"
+    batch_text: null
+    line_text: null
+  APPLICATION_ACCEPTED:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Анкета принята: государство «{nation_name}» создано. Откройте «Штаб»: {application_link}"
+    batch_text: null
+    line_text: null
+  APPLICATION_ACCEPTED_AUTO:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Администратор не ответил в течение суток, и анкета принята автоматически: государство «{nation_name}» создано. Откройте «Штаб»: {application_link}"
+    batch_text: null
+    line_text: null
+  APPLICATION_REVIEW_REQUEST:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 1440               # сутки — живёт до срока решения
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Поступила анкета государства «{nation_name}». Откройте её и примите или верните с причиной до {deadline} (МСК): {application_link} Если решения не будет, анкета примется автоматически."
+    batch_text: null
+    line_text: null

@@ -49,6 +49,18 @@ BUILTIN_TYPE_VARIABLES: dict[str, frozenset[str]] = {
     "DIPLOMATIC_DISPATCH": frozenset({"from_nation"}),
     "DIRECTIVE_STATUS": frozenset({"directive_title", "status_text"}),
     "DEADLINE_WARNING": frozenset({"hours_left"}),
+    # Типы анкет — бот сам регистрирует и слушатель, и типы (Spec 4.8).
+    "APPLICATION_RECEIVED": frozenset(
+        {"nation_name", "application_link", "deadline"}
+    ),
+    "APPLICATION_RETURNED": frozenset(
+        {"nation_name", "application_link", "comment"}
+    ),
+    "APPLICATION_ACCEPTED": frozenset({"nation_name", "application_link"}),
+    "APPLICATION_ACCEPTED_AUTO": frozenset({"nation_name", "application_link"}),
+    "APPLICATION_REVIEW_REQUEST": frozenset(
+        {"nation_name", "application_link", "deadline"}
+    ),
 }
 
 # Дополнительная переменная в batch_text и line_text: число слитых событий.
