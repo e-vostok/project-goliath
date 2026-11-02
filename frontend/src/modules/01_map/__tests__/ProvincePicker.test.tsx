@@ -22,7 +22,7 @@ import {
 
 import { ProvincePicker } from '../components/ProvincePicker';
 import { PanelMap } from '../components/PanelMap';
-import { MINI_MANIFEST } from '../fixtures/miniMap';
+import { MINI_MANIFEST, MINI_STATE } from '../fixtures/miniMap';
 import type { SelectionLimits } from '../lib/selection';
 import { renderWithSession, stubMapFetch, errorResponse } from './helpers';
 import { RouterProvider, createHashRouter } from '@vkontakte/vk-mini-apps-router';
@@ -109,6 +109,29 @@ describe('ProvincePicker', () => {
     await pickerReady();
     expect(counter()).toBe('Выбрано 0 из 3 · минимум 2');
     expect(doneButton()).toBeDisabled();
+  });
+
+  it('a reserved province: anonymous tooltip, refused click (§11)', async () => {
+    // 1003 + 1004 are held by a PENDING application.
+    renderPicker({
+      state: { ...MINI_STATE, reservations: [[1003, 1004]] },
+    });
+    await pickerReady();
+
+    // Hover → the tooltip carries the reserve sentence, no applicant
+    // name or colour (APP-6).
+    fireEvent.mouseMove(nodePath(1003), { clientX: 10, clientY: 10 });
+    const tip = screen.getByTestId('map-tooltip');
+    expect(tip).toHaveTextContent(
+      'Территория зарезервирована игроком, подавшим анкету',
+    );
+
+    // Click → refused like an owned province: no chip, counter stays.
+    clickNode(1003);
+    expect(counter()).toBe('Выбрано 0 из 3 · минимум 2');
+    expect(screen.getByTestId('picker-hint')).toHaveTextContent(
+      'Территория зарезервирована игроком, подавшим анкету',
+    );
   });
 
   it('keeps an initial selection and reports it in the counter', async () => {

@@ -10,6 +10,7 @@
  */
 
 import { buildAdjacency } from './adjacency';
+import { RESERVED_TOOLTIP } from './reservations';
 import type { BBox } from './view';
 import type {
   MapEdgeDTO,
@@ -23,27 +24,39 @@ export interface SelectionContext {
   nodes: Map<number, MapNodeDTO>;
   /** province_id → owning nation (empty while the state has not loaded). */
   owners: Map<number, MapNationDTO>;
+  /** province_id → reservation group index (Spec applications §11);
+   *  absent while the state has not loaded or has no reserves. */
+  reservations?: ReadonlyMap<number, number>;
   /** Upper bound from /nations/rules; null while the rules are unknown. */
   max: number | null;
 }
 
-export type SelectableReason = 'OK' | 'SEA' | 'OCCUPIED';
+export type SelectableReason = 'OK' | 'SEA' | 'OCCUPIED' | 'RESERVED';
 
-/** Selectable = LAND node that is free in the current state. */
+/**
+ * Selectable = LAND node that is free in the current state; a
+ * reserved province counts as taken exactly like an owned one (Spec
+ * applications §11 — the reserve is anonymous, so it reports its own
+ * reason).
+ */
 export function isSelectable(
   node: MapNodeDTO,
-  ctx: Pick<SelectionContext, 'owners'>,
+  ctx: Pick<SelectionContext, 'owners' | 'reservations'>,
 ): SelectableReason {
   if (node.kind !== 'LAND') {
     return 'SEA';
   }
-  return ctx.owners.has(node.id) ? 'OCCUPIED' : 'OK';
+  if (ctx.owners.has(node.id)) {
+    return 'OCCUPIED';
+  }
+  return ctx.reservations?.has(node.id) === true ? 'RESERVED' : 'OK';
 }
 
 export type ToggleRefusal =
   | 'NOT_FOUND'
   | 'SEA'
   | 'OCCUPIED'
+  | 'RESERVED'
   | 'MAX_REACHED';
 
 export type ToggleResult =
@@ -245,6 +258,8 @@ export function refusalHint(
       return 'Морскую зону выбрать нельзя';
     case 'OCCUPIED':
       return 'Эта провинция уже занята';
+    case 'RESERVED':
+      return RESERVED_TOOLTIP;
     case 'MAX_REACHED':
       return max === null
         ? 'Выбрано максимум провинций'
@@ -257,14 +272,19 @@ export function refusalHint(
 /**
  * Tooltip status line in select mode (Spec Part 5):
  * free land «свободна», occupied «занята: ИмяГосударства»,
- * sea «морская зона, выбрать нельзя».
+ * sea «морская зона, выбрать нельзя», reserved — the anonymous
+ * reserve sentence (Spec applications §11, APP-6).
  */
 export function selectTooltipStatus(
   node: MapNodeDTO,
   owner: MapNationDTO | undefined,
+  reserved = false,
 ): string {
   if (node.kind === 'SEA') {
     return 'морская зона, выбрать нельзя';
+  }
+  if (reserved) {
+    return RESERVED_TOOLTIP;
   }
   return owner ? `занята: ${owner.short_name}` : 'свободна';
 }

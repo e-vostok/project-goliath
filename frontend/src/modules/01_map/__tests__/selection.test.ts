@@ -69,6 +69,23 @@ describe('isSelectable', () => {
       }),
     ).toBe('OK');
   });
+
+  it('a reserved province is taken like an owned one (applications §11)', () => {
+    const reserved = new Map([[1003, 0]]);
+    expect(
+      isSelectable(nodeById(1003), {
+        owners: buildOwnerMap(MINI_STATE),
+        reservations: reserved,
+      }),
+    ).toBe('RESERVED');
+    // Free provinces outside the reserve stay selectable.
+    expect(
+      isSelectable(nodeById(1004), {
+        owners: buildOwnerMap(MINI_STATE),
+        reservations: reserved,
+      }),
+    ).toBe('OK');
+  });
 });
 
 describe('toggle', () => {
@@ -274,6 +291,11 @@ describe('refusalHint / selectTooltipStatus', () => {
   it.each([
     ['SEA', 3, 'Морскую зону выбрать нельзя'],
     ['OCCUPIED', 3, 'Эта провинция уже занята'],
+    [
+      'RESERVED',
+      3,
+      'Территория зарезервирована игроком, подавшим анкету',
+    ],
     ['MAX_REACHED', 3, 'Выбрано максимум — 3 провинции'],
     ['MAX_REACHED', 1, 'Выбрано максимум — 1 провинция'],
     ['MAX_REACHED', null, 'Выбрано максимум провинций'],
@@ -289,5 +311,11 @@ describe('refusalHint / selectTooltipStatus', () => {
   ] as const)('tooltip for %s → «… %s»', (_label, id, suffix) => {
     const owner = buildOwnerMap(MINI_STATE).get(id);
     expect(selectTooltipStatus(nodeById(id), owner)).toBe(suffix);
+  });
+
+  it('tooltip for a reserved land → the anonymous reserve sentence', () => {
+    expect(
+      selectTooltipStatus(nodeById(1003), undefined, true),
+    ).toBe('Территория зарезервирована игроком, подавшим анкету');
   });
 });

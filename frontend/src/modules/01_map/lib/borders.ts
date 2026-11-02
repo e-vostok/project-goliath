@@ -15,6 +15,11 @@
  * - pair → STATE when the two owners differ, counting a free province
  *   as «no owner»: owned-vs-free is a state border, free-vs-free and
  *   same-nation are INTERNAL;
+ * - pair → RESERVE when the two sides belong to different reservation
+ *   groups or only one side is reserved (0.13.0 unit 8, Spec
+ *   00_core_applications §11: each PENDING application's group is
+ *   outlined like a state border) — STATE always wins over RESERVE,
+ *   a pair inside one group stays INTERNAL;
  * - every coast entry of a LAND node → COAST, owned or free (there is
  *   no thick state line along the sea; island parts of a node are
  *   pure coast).
@@ -42,7 +47,7 @@
 import type { MapBordersDTO, MapNationDTO } from '../types';
 import type { BBox } from './view';
 
-export type BorderClass = 'internal' | 'state' | 'coast';
+export type BorderClass = 'internal' | 'state' | 'coast' | 'reserve';
 export type BorderLOD = 'low' | 'mid' | 'high';
 
 /** Cells per axis of the spatial chunk grid. */
@@ -175,12 +180,34 @@ interface BorderPiece {
   cell: number;
 }
 
+type PairClass = 'internal' | 'state' | 'reserve';
+
 interface BorderLayerCtx {
   pairs: Map<string, BorderPiece>;
   /** key → class as last classified; mutated by reclassify only. */
-  pairClass: Map<string, 'internal' | 'state'>;
+  pairClass: Map<string, PairClass>;
   /** cell → pair keys whose midpoint falls in it (fixed at load). */
   pairsByCell: string[][];
+}
+
+/**
+ * Pair class under the current state: owners differ → STATE; then the
+ * reservation group index decides — different groups or reserved-vs-
+ * unreserved → RESERVE; same group or both unreserved → INTERNAL.
+ * `reservations` maps province id → group index (lib/reservations).
+ */
+function classifyPair(
+  a: number,
+  b: number,
+  owners: ReadonlyMap<number, MapNationDTO>,
+  reservations: ReadonlyMap<number, number>,
+): PairClass {
+  if (owners.get(a) !== owners.get(b)) {
+    return 'state';
+  }
+  return reservations.get(a) !== reservations.get(b)
+    ? 'reserve'
+    : 'internal';
 }
 
 export interface BorderLayer {
@@ -269,6 +296,7 @@ function joinCells(
 export function buildBorderLayer(
   borders: MapBordersDTO,
   owners: ReadonlyMap<number, MapNationDTO>,
+  reservations: ReadonlyMap<number, number>,
   bounds: BBox,
   land: ReadonlySet<number>,
   grid: number = BORDER_GRID,
@@ -280,12 +308,11 @@ export function buildBorderLayer(
     pairsByCell: Array.from({ length: cellCount }, () => [] as string[]),
   };
 
-  const acc: Record<BorderLOD, Record<'internal' | 'state', string[][]>> =
-    {
-      low: { internal: [], state: [] },
-      mid: { internal: [], state: [] },
-      high: { internal: [], state: [] },
-    };
+  const acc: Record<BorderLOD, Record<PairClass, string[][]>> = {
+    low: { internal: [], state: [], reserve: [] },
+    mid: { internal: [], state: [], reserve: [] },
+    high: { internal: [], state: [], reserve: [] },
+  };
 
   for (const [key, d] of Object.entries(borders.pairs)) {
     const [a, b] = key.split('-').map(Number);
@@ -296,7 +323,7 @@ export function buildBorderLayer(
     ctx.pairs.set(key, piece);
     ctx.pairsByCell[piece.cell].push(key);
 
-    const cls = owners.get(a) === owners.get(b) ? 'internal' : 'state';
+    const cls = classifyPair(a, b, owners, reservations);
     ctx.pairClass.set(key, cls);
     for (const lod of BORDER_LODS) {
       const cells = (acc[lod][cls][piece.cell] ??= []);
@@ -327,16 +354,19 @@ export function buildBorderLayer(
         internal: joinCells(acc.low.internal, cellCount),
         state: joinCells(acc.low.state, cellCount),
         coast: joinCells(coastAcc.low, cellCount),
+        reserve: joinCells(acc.low.reserve, cellCount),
       },
       mid: {
         internal: joinCells(acc.mid.internal, cellCount),
         state: joinCells(acc.mid.state, cellCount),
         coast: joinCells(coastAcc.mid, cellCount),
+        reserve: joinCells(acc.mid.reserve, cellCount),
       },
       high: {
         internal: joinCells(acc.high.internal, cellCount),
         state: joinCells(acc.high.state, cellCount),
         coast: joinCells(coastAcc.high, cellCount),
+        reserve: joinCells(acc.high.reserve, cellCount),
       },
     },
     _ctx: ctx,
@@ -352,11 +382,12 @@ export function buildBorderLayer(
 export function reclassifyBorderLayer(
   prev: BorderLayer,
   owners: ReadonlyMap<number, MapNationDTO>,
+  reservations: ReadonlyMap<number, number>,
 ): BorderLayer {
   const dirty = new Set<number>();
   for (const [key, piece] of prev._ctx.pairs) {
     const [a, b] = key.split('-').map(Number);
-    const cls = owners.get(a) === owners.get(b) ? 'internal' : 'state';
+    const cls = classifyPair(a, b, owners, reservations);
     if (prev._ctx.pairClass.get(key) !== cls) {
       prev._ctx.pairClass.set(key, cls);
       dirty.add(piece.cell);
@@ -375,11 +406,13 @@ export function reclassifyBorderLayer(
       internal: prev.chunks[lod].internal.slice(),
       state: prev.chunks[lod].state.slice(),
       coast: prev.chunks[lod].coast,
+      reserve: prev.chunks[lod].reserve.slice(),
     };
     for (const cell of dirty) {
-      const joined: Record<'internal' | 'state', string[]> = {
+      const joined: Record<PairClass, string[]> = {
         internal: [],
         state: [],
+        reserve: [],
       };
       for (const key of prev._ctx.pairsByCell[cell]) {
         const cls = prev._ctx.pairClass.get(key)!;
@@ -391,6 +424,8 @@ export function reclassifyBorderLayer(
         joined.internal.length > 0 ? joined.internal.join(' ') : null;
       next.chunks[lod].state[cell] =
         joined.state.length > 0 ? joined.state.join(' ') : null;
+      next.chunks[lod].reserve[cell] =
+        joined.reserve.length > 0 ? joined.reserve.join(' ') : null;
     }
   }
   return next;
