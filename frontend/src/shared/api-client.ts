@@ -38,6 +38,7 @@ import type {
   AdminStateDTO,
   AdminTickLogEntryDTO,
   AdminTickRunResultDTO,
+  ApplicationDTO,
   AuthResponseDTO,
   ColorCheckDTO,
   ColorCheckRequest,
@@ -315,6 +316,70 @@ export const api = {
       `/nations/me/images/${encodeURIComponent(kind)}`,
       { method: 'PUT', rawBody: file, token, signal },
     );
+  },
+
+  /* Nation applications («анкеты», Spec applications §8) — the
+     registration window's draft / submit / review flow. `get_me`
+     answers 404 APPLICATION_NOT_FOUND when no live application
+     (DRAFT/PENDING) exists; an ACCEPTED one is no longer live. */
+
+  /** GET /applications/me — the player's live application or 404. */
+  getMyApplication(token: string, signal?: AbortSignal) {
+    return apiFetch<ApplicationDTO>('/applications/me', { token, signal });
+  },
+
+  /**
+   * PUT /applications/me — create or rewrite the DRAFT. The body is
+   * the same field set as nation creation; names, colour and
+   * provinces are NOT checked for occupancy until submit (Spec §4).
+   * 409 NATION_ALREADY_EXISTS / APPLICATION_NOT_EDITABLE.
+   */
+  putApplication(
+    token: string,
+    body: NationCreateRequest,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<ApplicationDTO>('/applications/me', {
+      method: 'PUT',
+      body,
+      token,
+      signal,
+    });
+  },
+
+  /**
+   * PUT /applications/me/images/{kind} — the draft's flag/portrait;
+   * the file itself is the body, like the nation upload. DRAFT only —
+   * a PENDING application answers 409 APPLICATION_NOT_EDITABLE.
+   */
+  uploadApplicationImage(
+    token: string,
+    kind: 'flag' | 'portrait',
+    file: Blob,
+    signal?: AbortSignal,
+  ) {
+    return apiFetch<NationImageDTO>(
+      `/applications/me/images/${encodeURIComponent(kind)}`,
+      { method: 'PUT', rawBody: file, token, signal },
+    );
+  },
+
+  /** POST /applications/me/submit — DRAFT → PENDING (reserves on). */
+  submitApplication(token: string, signal?: AbortSignal) {
+    return apiFetch<ApplicationDTO>('/applications/me/submit', {
+      method: 'POST',
+      token,
+      signal,
+    });
+  },
+
+  /** POST /applications/me/cancel — PENDING → DRAFT 'cancelled'. */
+  cancelApplication(token: string, signal?: AbortSignal) {
+    return apiFetch<ApplicationDTO>('/applications/me/cancel', {
+      method: 'POST',
+      token,
+      signal,
+    });
   },
 
   /** GET /provinces — optional id filter and/or free-only flag. */

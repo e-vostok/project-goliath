@@ -122,6 +122,67 @@ export interface NationUpdateRequest {
   anthem_url?: string | null;
 }
 
+/**
+ * One uploaded picture of an application (Spec applications §8) —
+ * the application's flag/portrait rows hold their public URLs like
+ * the nation's do.
+ */
+export interface ApplicationImageDTO {
+  url: string;
+  thumb_url: string;
+}
+
+/**
+ * One picked province of an application: the id, the hook-resolved
+ * display name (numbers are never shown) and the capital mark.
+ */
+export interface ApplicationProvinceDTO {
+  id: number;
+  name: string;
+  is_capital: boolean;
+}
+
+/**
+ * GET/PUT /applications/me and the submit/cancel answers (Spec
+ * applications §8): every profile field plus the review state.
+ * `provinces` arrives capital-first, then in pick order; `images`
+ * carries an entry (or null) per kind; `draft_reason` marks a DRAFT
+ * that came back — 'returned' (admin), 'cancelled' (the player),
+ * 'failed' (the auto-accept pass) — `submitted_at`/`review_deadline_at`
+ * exist only in PENDING.
+ */
+export interface ApplicationDTO {
+  status: 'DRAFT' | 'PENDING' | 'ACCEPTED';
+  draft_reason: 'returned' | 'cancelled' | 'failed' | null;
+  return_comment: string | null;
+  review_deadline_at: string | null;
+  submissions: number;
+  name: string;
+  short_name: string;
+  color_hex: string;
+  motto: string | null;
+  description: string | null;
+  leader_name: string | null;
+  leader_title: string | null;
+  gender: string | null;
+  succession_type: string | null;
+  leader_bio: string | null;
+  history_url: string | null;
+  capital_province_id: number | null;
+  capital_name: string | null;
+  provinces: ApplicationProvinceDTO[];
+  images: {
+    flag: ApplicationImageDTO | null;
+    portrait: ApplicationImageDTO | null;
+  };
+}
+
+/** The `application` block of GET /nations/rules (Spec §8/§9). */
+export interface ApplicationRulesDTO {
+  review_hours: number;
+  comment_max_length: number;
+}
+
 /** The upload limits inside NationRulesDTO.images (Spec Part 5). */
 export interface NationRulesImagesDTO {
   flag_width: number;
@@ -155,6 +216,7 @@ export interface NationRulesDTO {
   images: NationRulesImagesDTO;
   genders: string[];
   succession_types: string[];
+  application: ApplicationRulesDTO;
 }
 
 export interface ColorCheckRequest {
@@ -675,6 +737,13 @@ export const ErrorCodes = {
   GAME_CLOCK_NOT_FOUND: 'GAME_CLOCK_NOT_FOUND',
   FREQUENCY_CAP_EXCEEDED: 'FREQUENCY_CAP_EXCEEDED',
   PANEL_LINK_INVALID: 'PANEL_LINK_INVALID',
+  /* Applications (Spec applications §8). */
+  APPLICATION_NOT_FOUND: 'APPLICATION_NOT_FOUND',
+  APPLICATION_NOT_EDITABLE: 'APPLICATION_NOT_EDITABLE',
+  APPLICATION_NOT_PENDING: 'APPLICATION_NOT_PENDING',
+  APPLICATION_SELF_REVIEW: 'APPLICATION_SELF_REVIEW',
+  RETURN_COMMENT_INVALID: 'RETURN_COMMENT_INVALID',
+  PROVINCE_RESERVED: 'PROVINCE_RESERVED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
