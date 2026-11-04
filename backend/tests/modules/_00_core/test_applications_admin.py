@@ -16,7 +16,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
-from sqlalchemy import func, select
+from sqlalchemy import delete, event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.db import get_session
@@ -34,13 +34,18 @@ from modules._00_core.models import (
     NationApplication,
     NationApplicationProvince,
     NationImage,
+    Player,
     Province,
 )
 from modules._00_core.reviewer import ReviewerCandidate, select_reviewer_v1
 from modules._00_core.service import NationService
-from tests.fixtures.factories import make_player
+from tests.fixtures.factories import make_player, make_vk_profile
 from tests.fixtures.profile import VALID_PROFILE
-from tests.fixtures.provinces import STARTING_GROUP, make_starting_group
+from tests.fixtures.provinces import (
+    STARTING_GROUP,
+    make_land_province,
+    make_starting_group,
+)
 from tests.modules._00_core.test_router import (
     TEST_JWT_SECRET,
     TEST_VK_SECRET,
@@ -542,3 +547,268 @@ class TestAdminRoutes:
             headers=bearer_headers(admin.id),
         )
         assert missing.status_code == 404
+
+
+class TestListPanelFields:
+    """Spec §8 (0.13.0 unit 9a): the «Анкеты» list rows for the
+    panel — names, counts, decision fields, link — and the board's
+    tile ``group``."""
+
+    @pytest.mark.asyncio
+    async def test_list_rows_carry_panel_fields(
+        self, client, test_db_session, monkeypatch
+    ):
+        """PENDING, manually and automatically ACCEPTED, returned and
+        cancelled rows each carry the new field set."""
+        from modules._03_registry.admin_hooks import (
+            register_registry_admin_hooks,
+        )
+
+        register_registry_admin_hooks()
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", "620080")
+        monkeypatch.setenv("VK_APP_ID", "777")
+        admin = await seed_player(test_db_session, vk_user_id=620080)
+        await make_vk_profile(
+            test_db_session, admin, first_name="Админ", last_name="Первый"
+        )
+
+        async def _application(vk, name, short, color, first_pid):
+            player = await seed_player(test_db_session, vk_user_id=vk)
+            await make_vk_profile(
+                test_db_session,
+                player,
+                first_name=f"Игрок{vk % 10}",
+                last_name="Заявитель",
+            )
+            for pid in range(first_pid, first_pid + 5):
+                await make_land_province(test_db_session, id=pid)
+            return await _pending(
+                test_db_session,
+                player,
+                name=name,
+                short_name=short,
+                color_hex=color,
+                province_ids=list(range(first_pid, first_pid + 5)),
+            )
+
+        pending = await _application(
+            620081, "Pending Land", "PendingLand", "#0C7CF4", 1100
+        )
+        manual = await _application(
+            620082, "Manual Land", "ManualLand", "#E03A2F", 1110
+        )
+        auto = await _application(
+            620083, "Auto Land", "AutoLand", "#058D1D", 1120
+        )
+        returned = await _application(
+            620084, "Returned Land", "ReturnedLand", "#8C5A00", 1130
+        )
+        cancelled = await _application(
+            620085, "Cancelled Land", "CancelledLand", "#5A2B8C", 1140
+        )
+
+        await ApplicationService.accept(
+            test_db_session,
+            manual.id,
+            CORE_CONFIG,
+            decided_by_player_id=admin.id,
+        )
+        await ApplicationService.accept(
+            test_db_session,
+            auto.id,
+            CORE_CONFIG,
+            decided_by_player_id=None,
+            auto=True,
+        )
+        await ApplicationService.return_application(
+            test_db_session,
+            returned.id,
+            admin.id,
+            "доделай историю",
+            CORE_CONFIG,
+        )
+        await ApplicationService.cancel(
+            test_db_session, cancelled.owner_player_id
+        )
+        await test_db_session.commit()
+
+        resp = await client.get(
+            "/api/v1/admin/applications",
+            params={"status": "ALL"},
+            headers=bearer_headers(admin.id),
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["total"] == 5
+        rows = {row["short_name"]: row for row in resp.json()["items"]}
+
+        row = rows["PendingLand"]
+        assert row["status"] == "PENDING"
+        assert row["owner_name"] == "Игрок1 Заявитель"
+        assert row["reviewer_name"] == "Админ Первый"
+        assert row["provinces_count"] == 5
+        assert row["assigned_to_me"] is True
+        assert row["draft_reason"] is None
+        assert row["auto_accepted"] is None
+        assert row["decided_at"] is None
+        assert row["link"] == (
+            f"https://vk.com/app777#application/{pending.id}"
+        )
+
+        row = rows["ManualLand"]
+        assert row["status"] == "ACCEPTED"
+        assert row["auto_accepted"] is False
+        assert row["decided_at"] is not None
+
+        row = rows["AutoLand"]
+        assert row["status"] == "ACCEPTED"
+        assert row["auto_accepted"] is True
+        assert row["decided_at"] is not None
+
+        assert rows["ReturnedLand"]["status"] == "DRAFT"
+        assert rows["ReturnedLand"]["draft_reason"] == "returned"
+        # The reviewer is cleared on return/cancel — no name to show.
+        assert rows["ReturnedLand"]["reviewer_name"] is None
+        assert rows["CancelledLand"]["draft_reason"] == "cancelled"
+        assert rows["CancelledLand"]["reviewer_name"] is None
+
+    @pytest.mark.asyncio
+    async def test_list_deleted_owner_gives_null_names(
+        self, client, test_db_session, monkeypatch
+    ):
+        """A row whose owner row is gone shows ``owner_name: null``
+        while a living reviewer keeps his name."""
+        from modules._03_registry.admin_hooks import (
+            register_registry_admin_hooks,
+        )
+
+        register_registry_admin_hooks()
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", "620090")
+        admin = await seed_player(test_db_session, vk_user_id=620090)
+        await make_vk_profile(
+            test_db_session, admin, first_name="Админ", last_name="Первый"
+        )
+        player = await seed_player(test_db_session, vk_user_id=620091)
+        await make_starting_group(test_db_session)
+        await _pending(test_db_session, player)
+        await test_db_session.execute(
+            delete(Player).where(Player.id == player.id)
+        )
+        await test_db_session.commit()
+
+        resp = await client.get(
+            "/api/v1/admin/applications", headers=bearer_headers(admin.id)
+        )
+        assert resp.status_code == 200, resp.text
+        row = resp.json()["items"][0]
+        assert row["owner_name"] is None
+        assert row["reviewer_name"] == "Админ Первый"
+
+    @pytest.mark.asyncio
+    async def test_list_link_follows_vk_app_id(
+        self, client, test_db_session, monkeypatch
+    ):
+        """``link`` is the Mini-App URL while VK_APP_ID is set, null
+        without it."""
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", "620100")
+        monkeypatch.delenv("VK_APP_ID", raising=False)
+        admin = await seed_player(test_db_session, vk_user_id=620100)
+        player = await seed_player(test_db_session, vk_user_id=620101)
+        await make_starting_group(test_db_session)
+        application = await _pending(test_db_session, player)
+        await test_db_session.commit()
+        headers = bearer_headers(admin.id)
+
+        resp = await client.get("/api/v1/admin/applications", headers=headers)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["items"][0]["link"] is None
+
+        monkeypatch.setenv("VK_APP_ID", "777")
+        resp = await client.get("/api/v1/admin/applications", headers=headers)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["items"][0]["link"] == (
+            f"https://vk.com/app777#application/{application.id}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_list_query_count_is_flat(
+        self, client, test_db_session, test_db_engine, monkeypatch
+    ):
+        """The page's lookups stay batched: more rows, same query count."""
+        from modules._03_registry.admin_hooks import (
+            register_registry_admin_hooks,
+        )
+
+        register_registry_admin_hooks()
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", "620110")
+        admin = await seed_player(test_db_session, vk_user_id=620110)
+        player = await seed_player(test_db_session, vk_user_id=620111)
+        await make_starting_group(test_db_session)
+        await _pending(test_db_session, player)
+        await test_db_session.commit()
+        headers = bearer_headers(admin.id)
+
+        statements: list[str] = []
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(
+            test_db_engine.sync_engine, "before_cursor_execute", _count
+        )
+        try:
+            first = await client.get(
+                "/api/v1/admin/applications", headers=headers
+            )
+            assert first.status_code == 200, first.text
+            count_one = len(statements)
+
+            for i, color in enumerate(("#E03A2F", "#8C5A00", "#5A2B8C")):
+                extra = await seed_player(
+                    test_db_session, vk_user_id=620112 + i
+                )
+                for pid in range(1200 + 5 * i, 1205 + 5 * i):
+                    await make_land_province(test_db_session, id=pid)
+                await _pending(
+                    test_db_session,
+                    extra,
+                    name=f"Extra Land {i}",
+                    short_name=f"ExtraLand{i}",
+                    color_hex=color,
+                    province_ids=list(range(1200 + 5 * i, 1205 + 5 * i)),
+                )
+            await test_db_session.commit()
+
+            statements.clear()
+            second = await client.get(
+                "/api/v1/admin/applications", headers=headers
+            )
+            assert second.status_code == 200, second.text
+            count_many = len(statements)
+        finally:
+            event.remove(
+                test_db_engine.sync_engine, "before_cursor_execute", _count
+            )
+
+        assert len(second.json()["items"]) == 4
+        assert count_many == count_one
+
+    @pytest.mark.asyncio
+    async def test_applications_tiles_carry_group(self, session_factory):
+        """The three applications tiles of the «Ход и мир» board carry
+        ``group: "applications"``; the world tiles stay ungrouped."""
+        from modules._00_core.admin_hooks import (
+            admin_overview,
+            applications_overview_tiles,
+        )
+
+        async with session_factory() as session:
+            tiles = await applications_overview_tiles(session)
+            world = await admin_overview(session)
+
+        assert {tile["key"] for tile in tiles} == {
+            "applications_pending",
+            "applications_worker",
+            "applications_overdue",
+        }
+        assert all(tile["group"] == "applications" for tile in tiles)
+        assert all("group" not in tile for tile in world)

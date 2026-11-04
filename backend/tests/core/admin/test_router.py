@@ -438,9 +438,10 @@ class TestAdminOverview:
         tiles = response.json()
         for tile in tiles:
             # `note` is the optional second line of the applications
-            # tiles (0.13.0 unit 5, mockup 25).
+            # tiles (0.13.0 unit 5, mockup 25); `group` is their
+            # optional card name on the board (unit 9a).
             assert {"key", "label", "value", "sort"} <= set(tile)
-            assert set(tile) <= {"key", "label", "value", "note", "sort"}
+            assert set(tile) <= {"key", "label", "value", "note", "group", "sort"}
         sorts = [t["sort"] for t in tiles]
         assert sorts == sorted(sorts)
         keys = [t["key"] for t in tiles]
