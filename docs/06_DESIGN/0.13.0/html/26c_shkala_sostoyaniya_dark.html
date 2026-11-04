@@ -1,0 +1,95 @@
+<!doctype html><html lang="ru" data-theme="dark"><head><meta charset="utf-8"><title>26c_shkala_sostoyaniya</title><style>
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Regular.woff2');font-weight:400}
+@font-face{font-family:'Fira Sans Condensed';src:url('../../0.10.0/fonts/FiraSansCondensed-Medium.woff2');font-weight:500}
+@font-face{font-family:'JetBrains Mono';src:url('../../0.10.0/fonts/JetBrainsMono-Regular.woff2');font-weight:400}
+:root{--ground:#141414;--surface:#222222;--raised:#292929;--inset:#333333;--line:#363738;--ink:#e1e3e6;--muted:#939393;--faint:#828282;--action:#71aaeb;--link:#71aaeb;--signal:#e3b04b;--onsignal:#241a06;--signalink:#e3b04b;--danger:#ff5c5c;--positive:#4bb34b;--warnbg:#473315;--edge:rgba(255,255,255,0.18);--popup:0 8px 24px rgba(0,0,0,0.5);--tip:0 4px 12px rgba(0,0,0,0.45);--dim:rgba(0,0,0,0.6);--onaction:#141414;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Roboto','Helvetica Neue',arial,sans-serif;font-size:14px;line-height:20px}
+a{color:inherit;text-decoration:none}
+h1,h2,h3,p{margin:0}
+.win{width:910px;background:var(--ground);position:relative}
+.wide{width:1280px;background:var(--ground);position:relative}
+.top{height:48px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 16px;gap:24px}
+.logo{display:block;width:38px;height:38px;border-radius:6px;background:#555}
+.wm{font-family:'Big Shoulders Display','Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:800;font-size:24px;line-height:28px;letter-spacing:.1em}
+.nav{display:flex;gap:4px;height:100%;flex-grow:1}
+.nav a{display:flex;align-items:center;padding:0 12px;height:100%;color:var(--muted);border-bottom:2px solid transparent}
+.nav a.on{color:var(--ink);border-bottom-color:var(--action)}
+.turn{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;background:var(--signal);color:var(--onsignal);padding:4px 8px;border-radius:4px}
+.ico{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0;color:var(--muted)}
+.ico.hl{color:var(--signalink);background:rgba(227,176,75,.16);position:relative}
+.ico.hl:after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:99px;background:var(--signal);box-shadow:0 0 0 2px var(--surface)}
+.sub{background:var(--raised);border-bottom:1px solid var(--line);border-left:4px solid var(--action);height:48px;display:flex;align-items:center;gap:12px;padding:0 16px 0 12px}
+.main{padding:16px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border-radius:12px;padding:16px}
+.lab{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.cap{font-size:12px;line-height:16px;color:var(--muted)}
+.dis{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500}
+.h1{display:flex;align-items:center;gap:8px;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:24px;line-height:28px;letter-spacing:.06em;text-transform:uppercase}
+.h2{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:18px;line-height:22px;letter-spacing:.06em;text-transform:uppercase}
+.h2 .rule{flex-grow:1;height:1px;background:var(--line);margin-left:4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 16px;border-radius:8px;background:var(--inset);color:var(--ink);white-space:nowrap}
+.btn.p{background:var(--action);color:var(--onaction)}
+.btn.d{background:var(--danger);color:var(--onaction)}
+.btn.do{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.btn.sm{height:32px;padding:0 12px}
+.btn.off{opacity:.45}
+.fld .l{display:flex;justify-content:space-between;margin-bottom:4px}
+.in{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:0 12px;border-radius:8px;background:var(--inset);border:1px solid var(--faint);overflow:hidden;white-space:nowrap}
+.in.area{align-items:flex-start;padding:8px 12px;white-space:normal;min-height:96px}
+.in.err{border-color:var(--danger)}
+.chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:4px;background:var(--inset)}
+.chip.cap1{color:var(--signalink)}
+.steps{background:var(--surface);border-radius:12px;display:flex;overflow:hidden}
+.steps>div{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;padding:10px;border-bottom:2px solid transparent;color:var(--muted)}
+.steps>div.on{border-bottom-color:var(--action);color:var(--ink)}
+.steps .n{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;border:1px solid var(--faint);color:var(--muted)}
+.steps .on .n{background:var(--action);color:var(--onaction);border:0}
+.steps .done .n{background:var(--inset);color:var(--ink);border:0}
+.thumb{display:block;overflow:hidden;box-shadow:0 0 0 1px var(--edge);flex-shrink:0}
+.plate{display:flex;gap:12px;border-radius:12px;padding:12px 16px;background:var(--warnbg);color:var(--ink)}
+.plate.neutral{background:var(--surface);border:1px solid var(--line)}
+.plate svg{flex-shrink:0;margin-top:2px}
+.dim{position:absolute;left:0;top:0;right:0;bottom:0;background:var(--dim)}
+.pop{position:absolute;background:var(--raised);border-radius:12px;box-shadow:var(--popup);overflow:hidden}
+.pop .hd{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 12px 16px;border-bottom:1px solid var(--line)}
+.pop .bd{padding:16px;display:flex;flex-direction:column;gap:12px}
+.pop .ft{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+.tip{position:absolute;background:var(--raised);border-radius:8px;box-shadow:var(--tip);padding:8px 12px;z-index:5}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;padding:2px 10px;border-radius:999px;background:var(--inset);color:var(--ink)}
+.pill.sig{background:rgba(227,176,75,.18);color:var(--signalink)}
+.pill.ok{color:var(--positive)}
+.pill.bad{color:var(--danger)}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px}
+.kv .k{color:var(--muted)}
+.close{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--inset)}
+.grow{flex-grow:1;min-width:0}
+.row{display:flex;align-items:center;gap:12px}
+.g2{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px}
+.link{color:var(--link)}
+
+.seg{display:inline-flex;gap:4px;background:var(--inset);border-radius:8px;padding:2px}
+.seg span{display:flex;align-items:center;height:32px;padding:0 14px;border-radius:6px;color:var(--muted)}
+.seg span.on{background:var(--surface);color:var(--ink)}
+.srch{width:240px;height:36px;border-radius:8px;background:var(--inset);border:1px solid var(--faint)}
+.tbl{background:var(--surface);border-radius:12px;padding:0 0 4px;position:relative}
+.tr{display:grid;grid-template-columns:48px 280px 130px 90px 134px minmax(0,1fr);align-items:center;padding:0 16px;height:44px;border-bottom:1px solid var(--line)}
+.tr:last-child{border-bottom:0}
+.tr.th{height:40px}
+.tr.th span{font-family:'Fira Sans Condensed','Roboto Condensed',sans-serif;font-weight:500;font-size:11px;line-height:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.av{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--inset);color:var(--faint);flex-shrink:0}
+.rate{display:flex;align-items:center;gap:8px}
+.rate .num{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;line-height:16px;min-width:34px;text-align:right;color:var(--ink)}
+.sc{--in:5px;position:relative;display:block;width:72px;height:6px;border-radius:3px;background:var(--inset);box-shadow:inset 0 0 0 1px var(--line);flex-shrink:0}
+.sc i{position:absolute;top:0;bottom:0;display:block}
+.sc i.fp{background:var(--positive);border-radius:0 3px 3px 0;top:1px;bottom:1px}
+.sc i.fn{background:var(--danger);border-radius:3px 0 0 3px;top:1px;bottom:1px}
+.sc b{position:absolute;left:50%;top:-3px;width:1px;height:12px;background:var(--muted);display:block}
+.sc u{position:absolute;top:-2px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 2px var(--surface);display:block;text-decoration:none}
+.sc.big{width:100%;height:8px;border-radius:4px;--in:7px}
+.sc.big u{top:-3px;width:14px;height:14px;margin-left:-7px}
+.sc.big b{top:-4px;height:16px}
+.sc.big i.fp{border-radius:0 4px 4px 0}.sc.big i.fn{border-radius:4px 0 0 4px}
+.hdrtip{position:absolute;z-index:6}
+</style></head><body><div class="win" style="padding:16px;display:flex;flex-direction:column;gap:16px"><div><div class="cap" style="margin:0 0 8px 2px">Шкала в таблице: пять значений</div><section class="card" style="display:flex;flex-direction:column;gap:12px"><div class="row" style="gap:16px"><span style="width:330px">Минимум</span><span class="rate"><span class="num">−100</span><span class="sc" role="img" aria-label="Рейтинг −100 из диапазона −100…+100"><i class="fn" style="right:50%;width:calc(calc(100% - 2 * var(--in)) * 100 / 200)"></i><b></b><u style="left:calc(var(--in) + calc(100% - 2 * var(--in)) * 0.0)"></u></span></span></div><div class="row" style="gap:16px"><span style="width:330px">Ниже нуля: красная заливка влево</span><span class="rate"><span class="num">−64</span><span class="sc" role="img" aria-label="Рейтинг −64 из диапазона −100…+100"><i class="fn" style="right:50%;width:calc(calc(100% - 2 * var(--in)) * 64 / 200)"></i><b></b><u style="left:calc(var(--in) + calc(100% - 2 * var(--in)) * 0.18)"></u></span></span></div><div class="row" style="gap:16px"><span style="width:330px">Ноль: заливки нет, кружок посередине</span><span class="rate"><span class="num">0</span><span class="sc" role="img" aria-label="Рейтинг 0 из диапазона −100…+100"><b></b><u style="left:calc(var(--in) + calc(100% - 2 * var(--in)) * 0.5)"></u></span></span></div><div class="row" style="gap:16px"><span style="width:330px">Выше нуля: зелёная заливка вправо</span><span class="rate"><span class="num">+35</span><span class="sc" role="img" aria-label="Рейтинг +35 из диапазона −100…+100"><i class="fp" style="left:50%;width:calc(calc(100% - 2 * var(--in)) * 35 / 200)"></i><b></b><u style="left:calc(var(--in) + calc(100% - 2 * var(--in)) * 0.675)"></u></span></span></div><div class="row" style="gap:16px"><span style="width:330px">Максимум</span><span class="rate"><span class="num">+100</span><span class="sc" role="img" aria-label="Рейтинг +100 из диапазона −100…+100"><i class="fp" style="left:50%;width:calc(calc(100% - 2 * var(--in)) * 100 / 200)"></i><b></b><u style="left:calc(var(--in) + calc(100% - 2 * var(--in)) * 1.0)"></u></span></span></div></section></div><div><div class="cap" style="margin:0 0 8px 2px">Плитка «Рейтинг» на экране «Игрок»: та же шкала крупнее под числом</div><div class="card" style="width:280px"><div class="lab">Рейтинг</div><div class="mono" style="font-size:22px;line-height:28px;margin:2px 0 8px;color:var(--signalink)">+35</div><span class="sc big" role="img" aria-label="Рейтинг +35 из диапазона −100…+100"><i class="fp" style="left:50%;width:calc(calc(100% - 2 * var(--in)) * 35 / 200)"></i><b></b><u style="left:calc(var(--in) + calc(100% - 2 * var(--in)) * 0.675)"></u></span><div class="row" style="justify-content:space-between;margin-top:6px"><span class="mono cap">−100</span><span class="mono cap">+100</span></div></div></div></div></body></html>
