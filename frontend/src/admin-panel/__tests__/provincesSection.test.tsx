@@ -210,6 +210,9 @@ function allowSection({
     http.get('*/api/v1/admin/me', () =>
       HttpResponse.json({ is_admin: true, reset_allowed: false }),
     ),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/provinces', () => {
       counters.provinces += 1;
       return HttpResponse.json(PROVINCES);

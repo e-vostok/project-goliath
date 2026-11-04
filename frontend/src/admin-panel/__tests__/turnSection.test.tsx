@@ -96,6 +96,9 @@ function allowSection(
       counters.overview += 1;
       return HttpResponse.json(TILES);
     }),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => {
       counters.log += 1;
       return HttpResponse.json(LOG_ROWS);
@@ -148,6 +151,46 @@ it('renders the world-state tiles from GET /admin/overview', async () => {
   expect(
     screen.getByRole('button', { name: 'Обновить' }),
   ).toBeInTheDocument();
+});
+
+it('groups tiles by `group` into their own cards and shows the note line', async () => {
+  allowSection();
+  server.use(
+    http.get('*/api/v1/admin/overview', () =>
+      HttpResponse.json([
+        { key: 'turn', label: 'Ход', value: '1', sort: 10 },
+        {
+          key: 'applications_pending',
+          label: 'Анкеты в рассмотрении',
+          value: '2',
+          note: 'ближайший автоприём через 16 ч',
+          sort: 82,
+          group: 'applications',
+        },
+        {
+          key: 'applications_worker',
+          label: 'Фоновая задача анкет',
+          value: 'работает',
+          note: 'последний проход 10 с назад',
+          sort: 84,
+          group: 'applications',
+        },
+      ]),
+    ),
+  );
+  await enterSection();
+
+  const world = screen.getByRole('heading', { name: 'Состояние мира' });
+  expect(world.closest('section')).toHaveTextContent('Ход');
+  const apps = screen.getByRole('heading', { name: 'Анкеты' });
+  const appsCard = apps.closest('section');
+  expect(appsCard).toHaveTextContent('Анкеты в рассмотрении');
+  expect(appsCard).toHaveTextContent('ближайший автоприём через 16 ч');
+  expect(appsCard).toHaveTextContent('последний проход 10 с назад');
+  // The applications tiles left the world card.
+  expect(world.closest('section')).not.toHaveTextContent(
+    'Фоновая задача анкет',
+  );
 });
 
 it('the tick popup confirm calls /tick/run once and refreshes tiles + log', async () => {

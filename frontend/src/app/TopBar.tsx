@@ -121,7 +121,7 @@ export function TopBar({
             ХОД {clock.current_turn} · {clock.game_date_text.toUpperCase()}
           </TurnBadge>
         )}
-        <AdminPanelButton />
+        <AdminPanelButton active={activeTab === 'hq'} />
         <ThemeToggle />
       </div>
     </header>

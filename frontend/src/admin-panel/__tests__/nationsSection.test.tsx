@@ -246,6 +246,9 @@ function allowSection({
       HttpResponse.json({ is_admin: true, reset_allowed: false }),
     ),
     http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
     http.get('*/api/v1/nations/rules', () => HttpResponse.json(RULES)),
     http.post('*/api/v1/admin/nations/color-check', () => {

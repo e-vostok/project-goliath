@@ -202,6 +202,51 @@ export interface AdminApplicationDTO extends ApplicationDTO {
   accepted_nation_id: string | null;
 }
 
+/**
+ * One row of GET /admin/applications — the panel's «Анкеты» list
+ * (Spec applications §8). `link` is the Mini-App «#application/<id>»
+ * address — null while VK_APP_ID is unset, so the row's link and its
+ * «Открыть» both stay disabled.
+ */
+export interface AdminApplicationListItemDTO {
+  id: string;
+  short_name: string;
+  name: string;
+  status: 'DRAFT' | 'PENDING' | 'ACCEPTED';
+  owner_name: string | null;
+  provinces_count: number;
+  reviewer_name: string | null;
+  submitted_at: string | null;
+  review_deadline_at: string | null;
+  assigned_to_me: boolean;
+  submissions: number;
+  draft_reason: 'returned' | 'cancelled' | 'failed' | null;
+  auto_accepted: boolean | null;
+  decided_at: string | null;
+  link: string | null;
+}
+
+export interface AdminApplicationsDTO {
+  items: AdminApplicationListItemDTO[];
+  total: number;
+}
+
+/**
+ * One item of GET /admin/attention (Spec applications §7) — a
+ * module's contribution to the «требует внимания» counter; `total`
+ * lights the shield when above zero.
+ */
+export interface AdminAttentionItemDTO {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface AdminAttentionDTO {
+  total: number;
+  items: AdminAttentionItemDTO[];
+}
+
 /** The upload limits inside NationRulesDTO.images (Spec Part 5). */
 export interface NationRulesImagesDTO {
   flag_width: number;
@@ -321,6 +366,10 @@ export interface AdminOverviewTileDTO {
   label: string;
   value: string;
   sort: number;
+  /** Optional small second line under the value (mockup 25). */
+  note?: string | null;
+  /** Optional card key the tile is grouped under (e.g. 'applications'). */
+  group?: string | null;
 }
 
 /** POST /admin/tick/run result. tick_log is null when no row exists. */
