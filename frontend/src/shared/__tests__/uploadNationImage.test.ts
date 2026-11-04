@@ -18,13 +18,16 @@ describe('api.uploadNationImage', () => {
     const seen: {
       auth: string | null;
       contentType: string | null;
-      body: Blob | null;
+      body: string | null;
     } = { auth: null, contentType: null, body: null };
     server.use(
       http.put('*/api/v1/nations/me/images/flag', async ({ request }) => {
         seen.auth = request.headers.get('authorization');
         seen.contentType = request.headers.get('content-type');
-        seen.body = await request.blob();
+        // Not request.blob(): its Blob flavor differs between Node
+        // runtimes — undici's (no instanceof, Node 20) vs the test-env
+        // global (no .text(), Node 22+). A string is identical everywhere.
+        seen.body = await request.text();
         return HttpResponse.json({
           kind: 'flag',
           url: '/api/v1/images/aa/full',
@@ -38,8 +41,8 @@ describe('api.uploadNationImage', () => {
     expect(seen.auth).toBe('Bearer tok-1');
     expect(seen.contentType).not.toBe('application/json');
     // The File itself is the body — not JSON, not multipart.
-    expect(seen.body).toBeInstanceOf(Blob);
-    expect(seen.body?.size).toBe(file.size);
+    expect(seen.body).toBe('PNGDATA');
+    expect(seen.body?.length).toBe(file.size);
     expect(res).toEqual({
       kind: 'flag',
       url: '/api/v1/images/aa/full',
