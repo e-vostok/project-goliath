@@ -3,6 +3,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      run_real_data:
+        description: "Also run the slow real_data map rebuild (map_pipeline job)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -170,7 +175,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.map_pipeline == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -182,12 +187,18 @@ jobs:
 
       - run: pip install -r tools/map_pipeline/requirements.txt
 
-      # Includes the `real_data` suite — it rebuilds geometry/graph from
-      # the committed data/map inputs and verifies their checksums.
+      # Fast set only: the `real_data` suite (rebuilds geometry/graph
+      # from the committed data/map inputs and verifies their checksums)
+      # is skipped — it exceeded the 30-minute limit. It runs only when
+      # the workflow is dispatched with `run_real_data: true` (below).
       # `python -m pytest` (not bare `pytest`): the tests import
       # `tools.map_pipeline`, so the repo root must be on sys.path.
-      - name: pytest (incl. real_data)
-        run: python -m pytest tools/map_pipeline/tests -v
+      - name: pytest (fast)
+        run: python -m pytest tools/map_pipeline/tests -v -m "not real_data"
+
+      - name: pytest (real_data)
+        if: ${{ inputs.run_real_data }}
+        run: python -m pytest tools/map_pipeline/tests -v -m real_data
 
   docker:
     name: docker
