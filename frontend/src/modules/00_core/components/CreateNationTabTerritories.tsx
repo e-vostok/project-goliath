@@ -198,7 +198,7 @@ export function CreateNationTabTerritories({
                   marginTop: 16,
                   display: 'flex',
                   gap: 12,
-                  alignItems: 'stretch',
+                  alignItems: 'flex-start',
                 }
           }
         >
@@ -217,13 +217,19 @@ export function CreateNationTabTerritories({
           </div>
           {/* Mockup 19 — the reservation note beside the capital
               field, registration only: after the submit the picked
-              provinces, colour and both names are reserved for the
-              review hours (Spec applications §3, APP-1). */}
+              territory is reserved for the review hours (Spec
+              applications §3, APP-1). It keeps its own height and
+              starts at the input's top edge (the label row with the
+              counter is 16 + 6 px) — stretching it to the
+              field-plus-hint height left a dead band under the text
+              (13a). */}
           {!readOnly && (
             <div
               data-testid="reservation-note"
               style={{
                 flexShrink: 0,
+                alignSelf: 'flex-start',
+                marginTop: 22,
                 width: 300,
                 boxSizing: 'border-box',
                 display: 'flex',
@@ -255,9 +261,8 @@ export function CreateNationTabTerritories({
                   color: tokenVar('ink'),
                 }}
               >
-                После отправки провинции, цвет и оба названия
-                закрепляются за вами{' '}
-                {applicationReviewHoursText(rules?.application.review_hours)}.
+                После отправки анкеты, территория бронируется за вами{' '}
+                {applicationReviewHoursText(rules?.application.review_hours)}
               </span>
             </div>
           )}

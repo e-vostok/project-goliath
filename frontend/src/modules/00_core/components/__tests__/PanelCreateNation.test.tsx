@@ -1250,18 +1250,72 @@ describe('PanelCreateNation — «Отправить анкету» (0.13.0 unit
     expect(calls).toEqual(['draft', 'flag', 'draft', 'flag', 'submit']);
   });
 
-  it('the tab-4 note names the reservation window; the last button reads «Отправить анкету»', async () => {
+  it('the tab-4 note names the reservation window («на N ч», «на сутки» at 24) and keeps its own height (13a)', async () => {
     seedRegistrationDraft();
+    const first = renderWithProviders(
+      <PanelCreateNation onSubmitted={() => {}} />,
+    );
+    await goToTab(await userEvent.setup(), 4);
+    // «Выбрано N из M» proves the rules arrived — the note reads hours.
+    await screen.findByText(`Выбрано 3 из ${RULES.max_provinces}`);
+
+    const note = screen.getByTestId('reservation-note');
+    expect(note).toHaveTextContent(
+      `После отправки анкеты, территория бронируется за вами на ${RULES.application.review_hours} ч`,
+    );
+    // The note keeps its own height at the input's top edge — never
+    // stretched to the field-plus-hint column (13a, stray bottom gap).
+    expect(note).toHaveStyle('align-self: flex-start');
+    expect(note.parentElement).toHaveStyle('align-items: flex-start');
+    first.unmount();
+
+    // 24 h reads «на сутки».
+    server.use(
+      http.get('*/api/v1/nations/rules', () =>
+        HttpResponse.json({
+          ...RULES,
+          application: { ...RULES.application, review_hours: 24 },
+        }),
+      ),
+    );
     renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
     await goToTab(await userEvent.setup(), 4);
-
+    await screen.findByText(`Выбрано 3 из ${RULES.max_provinces}`);
     expect(screen.getByTestId('reservation-note')).toHaveTextContent(
-      `закрепляются за вами на ${RULES.application.review_hours} ч`,
+      'После отправки анкеты, территория бронируется за вами на сутки',
     );
-    expect(submitButton()).toBeEnabled();
-    expect(
-      screen.getByText(/Анкета уйдёт на рассмотрение администратору/),
-    ).toBeInTheDocument();
+  });
+
+  it('the tab-4 footer: full button labels, flexShrink: 0, the hint on its own row (13a)', async () => {
+    const first = renderWithProviders(
+      <PanelCreateNation onSubmitted={() => {}} />,
+    );
+    // Tabs 1–3: no hint row at all — nothing leaves a gap.
+    expect(screen.queryByTestId('step-hint')).toBeNull();
+    first.unmount();
+
+    seedRegistrationDraft();
+    renderWithProviders(<PanelCreateNation onSubmitted={() => {}} />);
+    const user = userEvent.setup();
+    await goToTab(user, 4);
+
+    const row = screen.getByTestId('step-buttons');
+    const prev = screen.getByTestId('step-prev');
+    const submit = screen.getByRole('button', { name: 'Отправить анкету' });
+    // Both labels render in full — the buttons never shrink or clip.
+    expect(prev).toHaveTextContent('← Назад');
+    expect(submit).toHaveTextContent('Отправить анкету');
+    expect(prev).toHaveStyle('flex-shrink: 0');
+    expect(submit).toHaveStyle('flex-shrink: 0');
+    expect(row).toHaveStyle('justify-content: space-between');
+    // The hint is its own row above the buttons, not a sibling
+    // stealing their width.
+    const hint = screen.getByTestId('step-hint');
+    expect(hint).toHaveTextContent(
+      'Анкета уйдёт на рассмотрение администратору',
+    );
+    expect(row.contains(hint)).toBe(false);
+    expect(within(row).queryByText(/Анкета уйдёт/)).toBeNull();
   });
 });
 
