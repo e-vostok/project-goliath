@@ -1,9 +1,10 @@
 /**
  * ApplicationsList — the «Анкеты» sub-view of the «Государства»
  * section (0.13.0 unit 9b; Spec applications §10; mockups
- * docs/06_DESIGN/0.13.0 screens 22/22b): the breadcrumb back to
- * «Государства», the «Государства | Анкеты [N]» switcher (local
- * state — never a hash), the «В рассмотрении | Все» filter
+ * docs/06_DESIGN/0.13.0 screens 22/22b): the «Государства | Анкеты
+ * [N]» switcher (local state — never a hash; it is also the way
+ * back — the breadcrumb was dropped at 13a), the «В рассмотрении |
+ * Все» filter
  * (status=PENDING|ALL) and the table — Анкета (flag stub, the name
  * as a ↗ link, «short · N провинций»), Игрок, Отправлена (with
  * «отправка №N» above one), Решение (the remaining time to
@@ -291,29 +292,6 @@ export function ApplicationsList({ onBack }: { onBack: () => void }) {
 
   return (
     <>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          ...TEXT_STYLES['caption'],
-          color: tokenVar('ink-muted'),
-        }}
-      >
-        <a
-          href="#"
-          onClick={(event) => {
-            event.preventDefault();
-            onBack();
-          }}
-          style={{ color: tokenVar('link'), textDecoration: 'none' }}
-        >
-          Государства
-        </a>
-        <span>/</span>
-        <span style={{ color: tokenVar('ink') }}>Анкеты</span>
-      </div>
-
       <h1
         style={{
           margin: 0,

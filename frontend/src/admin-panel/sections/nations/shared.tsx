@@ -303,7 +303,9 @@ export function Pill({
 }
 
 /** The «Государства | Анкеты [N]» switcher of the nations section —
- *  local view state, never a hash (unit 9b). */
+ *  local view state, never a hash (unit 9b). The flex wrapper keeps
+ *  the pill content-width wherever it lands — dropped straight into
+ *  the section's column it would stretch to the full row (13a). */
 export function NationsAppsSwitch({
   active,
   pendingCount,
@@ -314,23 +316,25 @@ export function NationsAppsSwitch({
   onSelect: (tab: 'nations' | 'applications') => void;
 }) {
   return (
-    <SegGroup ariaLabel="Подраздел раздела «Государства»">
-      <SegButton
-        testId="tab-nations"
-        on={active === 'nations'}
-        onClick={() => onSelect('nations')}
-      >
-        Государства
-      </SegButton>
-      <SegButton
-        testId="tab-applications"
-        on={active === 'applications'}
-        onClick={() => onSelect('applications')}
-      >
-        Анкеты
-        {pendingCount > 0 && <CountBadge count={pendingCount} />}
-      </SegButton>
-    </SegGroup>
+    <div data-testid="nations-apps-switch" style={{ display: 'flex' }}>
+      <SegGroup ariaLabel="Подраздел раздела «Государства»">
+        <SegButton
+          testId="tab-nations"
+          on={active === 'nations'}
+          onClick={() => onSelect('nations')}
+        >
+          Государства
+        </SegButton>
+        <SegButton
+          testId="tab-applications"
+          on={active === 'applications'}
+          onClick={() => onSelect('applications')}
+        >
+          Анкеты
+          {pendingCount > 0 && <CountBadge count={pendingCount} />}
+        </SegButton>
+      </SegGroup>
+    </div>
   );
 }
 

@@ -15,6 +15,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 
@@ -204,6 +205,34 @@ beforeEach(() => {
   window.sessionStorage.clear();
   clearSession();
   window.history.replaceState(null, '', '/admin.html');
+});
+
+it('both views wrap the switcher in a content-width div; the «Анкеты» breadcrumb is gone (13a)', async () => {
+  allowSection();
+  await enterNations();
+
+  // «Государства» list: the h1 leads, then the switcher in its own
+  // display:flex wrapper — the pill never stretches to a full row.
+  let h1 = screen.getByRole('heading', { name: 'Государства' });
+  expect(h1.previousElementSibling).toBeNull();
+  let wrap = screen.getByTestId('nations-apps-switch');
+  expect(wrap).toHaveStyle('display: flex');
+  expect(within(wrap).getByTestId('tab-nations')).toBeInTheDocument();
+  expect(h1.nextElementSibling).toBe(wrap);
+
+  fireEvent.click(screen.getByTestId('tab-applications'));
+  await screen.findByTestId('applications-table');
+
+  // «Анкеты»: no «Государства / Анкеты» breadcrumb — the h1 leads
+  // here too, and the switcher shares its row with the status filter.
+  h1 = screen.getByRole('heading', { name: 'Государства' });
+  expect(h1.previousElementSibling).toBeNull();
+  wrap = screen.getByTestId('nations-apps-switch');
+  expect(wrap).toHaveStyle('display: flex');
+  expect(within(wrap).getByTestId('tab-applications')).toBeInTheDocument();
+  expect(wrap.parentElement).toContainElement(
+    screen.getByTestId('app-filter-pending'),
+  );
 });
 
 it('the «Анкеты» tab lists the review queue of mockup 22', async () => {
