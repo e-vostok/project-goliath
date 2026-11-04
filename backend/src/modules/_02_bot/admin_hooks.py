@@ -20,6 +20,12 @@ Admin hooks of module 02_bot (Spec 5.4).
   a raise aborts the whole deletion (no per-hook savepoint).
 - Player preview ``"02_bot"``: returns ``{"outbox_rows", "consent_rows"}``
   counts for the admin delete-preview; read-only.
+- Overview ``"02_bot"``: the three «Бот» tiles of the panel's «Ход и
+  мир» board (mockup 25, sorts 87–89 — after the applications tiles,
+  before the administrators count): sent per day, undelivered with the
+  biggest drop reasons, and the median delivery delay. Every figure
+  comes from the module's own ``bot_outbox`` over the last 24 hours —
+  no call to VK. Read-only, never commits.
 
 ``register_bot_admin_hooks`` is idempotent like the other modules'
 registrars: membership check, never double-register.
@@ -28,7 +34,9 @@ registrars: membership check, never double-register.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+import statistics
+from collections import Counter
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -146,6 +154,142 @@ async def bot_delete_player(session: AsyncSession, player_id: str) -> None:
     await session.execute(delete(BotConsent).where(BotConsent.player_id == player_id))
 
 
+_OVERVIEW_WINDOW = timedelta(hours=24)
+# The delay tile reads at most the 5000 newest sent rows of the window
+# — enough for a panel signal, bounded on a busy queue.
+_OVERVIEW_DELAY_ROW_CAP = 5000
+_UNDELIVERED_STATUSES = ("DROPPED", "FAILED", "EXPIRED")
+
+_DROP_REASON_LABELS = {
+    "NO_CONSENT": "нет разрешения",
+    "BLOCKED": "заблокирован",
+    "ATTEMPTS_EXHAUSTED": "попытки исчерпаны",
+    "BAD_REQUEST": "ошибка запроса",
+    "NO_NATION": "нет государства",
+}
+_OTHER_REASON_LABEL = "другое"
+
+
+def _duration_text(seconds: float) -> str:
+    """«2,4 с» under 10 s, «11 с» up to 120 s, «3 мин» above."""
+    if seconds < 10:
+        return f"{seconds:.1f} с".replace(".", ",")
+    if seconds <= 120:
+        return f"{round(seconds)} с"
+    return f"{round(seconds / 60)} мин"
+
+
+def _undelivered_note(rows: list) -> str:
+    """«нет разрешения 4 · заблокирован 3 · другое 2» — top-3 + tail."""
+    reasons: Counter[str] = Counter()
+    for status, drop_reason, count in rows:
+        if status == "EXPIRED":
+            label = "просрочено"
+        else:
+            label = _DROP_REASON_LABELS.get(drop_reason, _OTHER_REASON_LABEL)
+        reasons[label] += count
+    ordered = sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+    parts: list[str] = []
+    tail_total = sum(count for _, count in ordered[3:])
+    for label, count in ordered[:3]:
+        if label == _OTHER_REASON_LABEL and tail_total:
+            # The unknown bucket already reads «другое»: fold the tail
+            # in instead of printing the label twice.
+            count += tail_total
+            tail_total = 0
+        parts.append(f"{label} {count}")
+    if tail_total:
+        parts.append(f"{_OTHER_REASON_LABEL} {tail_total}")
+    return " · ".join(parts)
+
+
+async def bot_overview(session: AsyncSession) -> list[dict]:
+    """
+    The «Бот сообщества» tiles of the panel's «Ход и мир» board
+    (mockup 25, sorts 87–89): «отправлено за сутки», «не доставлено»
+    with the biggest reasons and «задержка доставки» — all counted
+    from ``bot_outbox`` over the last 24 hours, no call to VK.
+    Read-only, never commits.
+    """
+    since = datetime.now(UTC) - _OVERVIEW_WINDOW
+
+    sent_total = (
+        await session.execute(
+            select(func.count())
+            .select_from(BotOutbox)
+            .where(BotOutbox.status == "SENT", BotOutbox.sent_at >= since)
+        )
+    ).scalar_one()
+
+    undelivered_rows = (
+        await session.execute(
+            select(BotOutbox.status, BotOutbox.drop_reason, func.count())
+            .where(
+                BotOutbox.created_at >= since,
+                BotOutbox.status.in_(_UNDELIVERED_STATUSES),
+                # Our own cancel is not a failure.
+                BotOutbox.drop_reason.is_distinct_from("CANCELLED"),
+            )
+            .group_by(BotOutbox.status, BotOutbox.drop_reason)
+        )
+    ).all()
+    undelivered_total = sum(count for _, _, count in undelivered_rows)
+
+    # The delay is computed in Python from the two timestamps —
+    # sent_at minus max(created_at, not_before) — over the newest
+    # capped slice (see _OVERVIEW_DELAY_ROW_CAP). SQLite returns
+    # naive datetimes; they are UTC here.
+    delay_rows = (
+        await session.execute(
+            select(BotOutbox.sent_at, BotOutbox.created_at, BotOutbox.not_before)
+            .where(BotOutbox.status == "SENT", BotOutbox.sent_at >= since)
+            .order_by(BotOutbox.sent_at.desc())
+            .limit(_OVERVIEW_DELAY_ROW_CAP)
+        )
+    ).all()
+    delays = [
+        (sent_at - max(created_at, not_before)).total_seconds()
+        for sent_at, created_at, not_before in delay_rows
+    ]
+    if delays:
+        delay_value = _duration_text(statistics.median(delays))
+        delay_note = f"медиана за сутки; наибольшая {_duration_text(max(delays))}"
+    else:
+        delay_value = "—"
+        delay_note = "за сутки ничего не отправлено"
+
+    return [
+        {
+            "key": "bot_sent",
+            "label": "Бот · отправлено за сутки",
+            "value": str(sent_total),
+            "note": "уведомления и ответы",
+            "sort": 87,
+            "group": "bot",
+        },
+        {
+            "key": "bot_undelivered",
+            "label": "Бот · не доставлено",
+            "value": str(undelivered_total),
+            "note": (
+                _undelivered_note(undelivered_rows)
+                if undelivered_total
+                else "ничего не потеряно"
+            ),
+            "sort": 88,
+            "group": "bot",
+        },
+        {
+            "key": "bot_delivery_delay",
+            "label": "Бот · задержка доставки",
+            "value": delay_value,
+            "note": delay_note,
+            "sort": 89,
+            "group": "bot",
+        },
+    ]
+
+
 def register_bot_admin_hooks() -> None:
     """Register the admin hooks; safe to call on every app boot."""
     if MODULE_SLUG not in AdminRegistry.get_state_view_hooks():
@@ -154,6 +298,8 @@ def register_bot_admin_hooks() -> None:
         AdminRegistry.register_reset(MODULE_SLUG, bot_reset)
     if MODULE_SLUG not in AdminRegistry.get_player_preview_hooks():
         AdminRegistry.register_player_preview(MODULE_SLUG, bot_player_delete_preview)
+    if MODULE_SLUG not in AdminRegistry.get_overview_hooks():
+        AdminRegistry.register_overview(MODULE_SLUG, bot_overview)
     # Player-delete hooks live in the 00_core registry; re-registering
     # the same name simply replaces the entry.
     register_player_delete_hook(f"{MODULE_SLUG}.player_delete", bot_delete_player)
