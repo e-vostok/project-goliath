@@ -84,6 +84,15 @@ export interface TooltipProps {
   content: ReactNode | (() => ReactNode);
   /** Hover delay before the tip opens — `TOOLTIP_DELAY_MS` (500 ms). */
   delayMs?: number;
+  /**
+   * Also open on keyboard focus and close on blur (0.13.0 unit 11b —
+   * the «Рейтинг» header's trigger is a focusable sort button). The
+   * tip opens at once under the trigger's left edge — there is no
+   * pointer to follow. A focus that arrives while the pointer is
+   * pressed (a mouse click on the header) does not open it — the
+   * keyboard path only.
+   */
+  openOnFocus?: boolean;
   /** The trigger, wrapped in a span that fills its container box. */
   children: ReactNode;
 }
@@ -118,12 +127,14 @@ const TIP_STYLE: CSSProperties = {
 export function Tooltip({
   content,
   delayMs = TOOLTIP_DELAY_MS,
+  openOnFocus = false,
   children,
 }: TooltipProps) {
   const tooltipId = useId();
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef({ x: 0, y: 0 });
+  const pointerDownRef = useRef(false);
   const hostRef = useRef<HTMLElement | null>(null);
   const sizeRef = useRef({ width: 0, height: 0 });
   const timerRef = useRef<number | undefined>(undefined);
@@ -198,6 +209,52 @@ export function Tooltip({
     });
   };
 
+  // Keyboard path (`openOnFocus`): a focusable trigger inside the
+  // wrapper opens the tip at once — placed under the wrapper's left
+  // edge, since there is no pointer spot to follow. A focus that
+  // arrives while the pointer is held down (a mouse click puts focus
+  // on the trigger too) is NOT the keyboard path and opens nothing.
+  const onFocus = () => {
+    if (!openOnFocus || open || pointerDownRef.current) {
+      return;
+    }
+    hostRef.current =
+      wrapperRef.current?.closest<HTMLElement>(APP_ROOT_SELECTOR) ??
+      document.body;
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (rect !== undefined) {
+      pointerRef.current = {
+        x: rect.left - OFFSET_X_PX,
+        y: rect.bottom - OFFSET_Y_PX,
+      };
+    }
+    setOpen(true);
+  };
+
+  const onBlur = (event: React.FocusEvent<HTMLSpanElement>) => {
+    if (!openOnFocus) {
+      return;
+    }
+    // Focus moving between the trigger's own children is not a blur.
+    if (
+      event.relatedTarget instanceof Node &&
+      event.currentTarget.contains(event.relatedTarget)
+    ) {
+      return;
+    }
+    close();
+  };
+
+  // `pointerDownRef` clears on pointerup anywhere — even outside the
+  // trigger or after a drag.
+  useEffect(() => {
+    const onUp = () => {
+      pointerDownRef.current = false;
+    };
+    window.addEventListener('pointerup', onUp);
+    return () => window.removeEventListener('pointerup', onUp);
+  }, []);
+
   // First commit of the portal: measure the hidden box once, place
   // and show it — no flicker. After that a ResizeObserver re-measures
   // only when the content changes size; every pointer move reuses the
@@ -270,6 +327,11 @@ export function Tooltip({
         onPointerEnter={onPointerEnter}
         onPointerMove={onPointerMove}
         onPointerLeave={close}
+        onPointerDown={() => {
+          pointerDownRef.current = true;
+        }}
+        onFocus={onFocus}
+        onBlur={onBlur}
         style={TRIGGER_STYLE}
       >
         {children}

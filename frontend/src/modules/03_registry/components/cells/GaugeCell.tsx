@@ -1,16 +1,15 @@
 /**
  * GaugeCell — the `gauge` column (Spec 3.6, the players table's
- * «Рейтинг»): a number on a signed scale (`scale_min`/`scale_max`,
- * −100…+100). PNG 09 renders it as a plain JetBrains Mono figure in
- * `signal-ink` — no bar (positive values carry «+»). Since unit 13b
- * the scale shows in the cell's `title`: «<число> · шкала −100…+100»
- * (the numbers come from the column's DTO; a null scale leaves the
- * plain number).
+ * «Рейтинг»; mockups 26/26б, unit 11b): the signed number
+ * (JetBrains Mono, right-aligned, min-width 34 px) and the 72 px
+ * RatingScale after an 8 px gap. A null cell is «—»; a column
+ * without `scale_min`/`scale_max` keeps the bare signed figure.
  */
 
 import type { RegistryCell } from '../../types';
 import { FONTS, tokenVar } from '../../../../shared/ui';
 import { REGISTRY_TEXTS } from '../../texts';
+import { RatingScale } from '../RatingScale';
 
 export function GaugeCell({
   value,
@@ -22,25 +21,32 @@ export function GaugeCell({
   scaleMax: number | null;
 }) {
   const num = typeof value === 'number' ? value : null;
+  if (num === null) {
+    return <span>{REGISTRY_TEXTS.emptyValue}</span>;
+  }
+  if (scaleMin === null || scaleMax === null) {
+    return (
+      <span title={String(num)} style={{ fontFamily: FONTS.mono }}>
+        {REGISTRY_TEXTS.ratingNumber(num)}
+      </span>
+    );
+  }
   return (
-    <span
-      title={
-        num === null
-          ? undefined
-          : scaleMin !== null && scaleMax !== null
-            ? REGISTRY_TEXTS.gaugeScaleTitle(num, scaleMin, scaleMax)
-            : String(num)
-      }
-      style={{
-        fontFamily: FONTS.mono,
-        color: tokenVar('signal-ink'),
-      }}
-    >
-      {num === null
-        ? REGISTRY_TEXTS.emptyValue
-        : num > 0
-          ? `+${num}`
-          : `${num}`}
+    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span
+        style={{
+          fontFamily: FONTS.mono,
+          fontSize: 13,
+          lineHeight: '16px',
+          minWidth: 34,
+          textAlign: 'right',
+          color: tokenVar('ink'),
+          flexShrink: 0,
+        }}
+      >
+        {REGISTRY_TEXTS.ratingNumber(num)}
+      </span>
+      <RatingScale value={num} min={scaleMin} max={scaleMax} />
     </span>
   );
 }

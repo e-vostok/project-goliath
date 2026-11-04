@@ -10,6 +10,7 @@
  * Rows arrive already filtered+sorted by lib/tableView.applyView.
  */
 
+import { useState } from 'react';
 import {
   Icon16SortArrowDown,
   Icon16SortArrowUp,
@@ -43,6 +44,7 @@ import { NationCell, NationOpenLink, NationTip } from './cells/NationCell';
 import { PersonCell } from './cells/PersonCell';
 import { TextCell } from './cells/TextCell';
 import { HeaderIcon } from './HeaderIcon';
+import { RatingScaleTip } from './RatingScale';
 
 /** A column title never breaks inside a word and wraps only at spaces,
  * at most two lines (Spec 5.5). */
@@ -64,6 +66,12 @@ const NUMERIC_TYPES = new Set(['index', 'integer', 'gauge']);
 const MONO_TYPES = new Set(['index', 'integer', 'gauge', 'date', 'datetime']);
 
 const SORT_ICON_PROPS = { width: 14, height: 14 } as const;
+
+/** Mockup 26 — the «Рейтинг» column is ~134 px wide (number +
+    72 px scale); «Игрок» keeps at least this much for the avatar
+    and a usable name. */
+const GAUGE_COLUMN_WIDTH_PX = 134;
+const PERSON_MIN_WIDTH_PX = 120;
 
 function SortIcon({
   column,
@@ -91,6 +99,77 @@ function SortIcon({
       {...SORT_ICON_PROPS}
       fill="var(--vkui--color_icon_accent)"
     />
+  );
+}
+
+/**
+ * The `gauge` («Рейтинг») header (mockup 26б, unit 11b): the title
+ * carries a dotted underline and brightens to `ink` on hover/focus —
+ * the affordance of the «Судейский рейтинг» «Подсказка» the Tooltip
+ * wrapper opens. Sorting works exactly like every other column.
+ */
+function GaugeHeader({
+  column,
+  view,
+  onSortClick,
+}: {
+  column: RegistryColumnDTO;
+  view: TableView;
+  onSortClick: (columnId: string) => void;
+}) {
+  const [hot, setHot] = useState(false);
+  const hotHandlers = {
+    onMouseEnter: () => setHot(true),
+    onMouseLeave: () => setHot(false),
+    onFocus: () => setHot(true),
+    onBlur: () => setHot(false),
+  };
+  const title = (
+    <span
+      style={{
+        ...HEADER_TITLE_STYLE,
+        color: hot ? tokenVar('ink') : undefined,
+        borderBottom: `1px dotted ${tokenVar('ink-muted')}`,
+      }}
+    >
+      {column.title}
+    </span>
+  );
+  if (!column.sortable) {
+    return (
+      <span
+        {...hotHandlers}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+      >
+        {title}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      {...hotHandlers}
+      aria-label={REGISTRY_TEXTS.sortAriaLabel(column.title)}
+      data-testid={`sort-btn-${column.id}`}
+      onClick={() => onSortClick(column.id)}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        minWidth: 0,
+        border: 0,
+        background: 'transparent',
+        padding: 0,
+        font: 'inherit',
+        fontWeight: 'inherit',
+        color: 'inherit',
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      {title}
+      <SortIcon column={column} view={view} />
+    </button>
   );
 }
 
@@ -206,7 +285,29 @@ export function RegistryTable({
    */
   onOpenPlayer?: (playerNumber: number) => void;
 }) {
-  const totalWidth = table.columns.reduce((sum, col) => sum + col.width_px, 0);
+  // Mockup 26 (unit 11b): a `gauge` column needs ~134 px for the
+  // number + the 72 px scale; the `person` («Игрок») column gives the
+  // space. The server's `width_px` shares stay as delivered — this is
+  // a client-side adjustment only (no server change).
+  const widths = table.columns.map((col) => col.width_px);
+  let gaugeBorrow = 0;
+  table.columns.forEach((col, i) => {
+    if (col.type === 'gauge') {
+      const extra = Math.max(0, GAUGE_COLUMN_WIDTH_PX - col.width_px);
+      widths[i] += extra;
+      gaugeBorrow += extra;
+    }
+  });
+  const personIdx = table.columns.findIndex(
+    (col) => col.type === 'person',
+  );
+  if (personIdx >= 0 && gaugeBorrow > 0) {
+    widths[personIdx] = Math.max(
+      PERSON_MIN_WIDTH_PX,
+      widths[personIdx] - gaugeBorrow,
+    );
+  }
+  const totalWidth = widths.reduce((sum, w) => sum + w, 0);
   return (
     <table
       data-testid="registry-table"
@@ -219,10 +320,10 @@ export function RegistryTable({
       }}
     >
       <colgroup>
-        {table.columns.map((col) => (
+        {table.columns.map((col, i) => (
           <col
             key={col.id}
-            style={{ width: `${(col.width_px / totalWidth) * 100}%` }}
+            style={{ width: `${(widths[i] / totalWidth) * 100}%` }}
           />
         ))}
       </colgroup>
@@ -259,7 +360,23 @@ export function RegistryTable({
                     minWidth: 0,
                   }}
                 >
-                  {col.sortable ? (
+                  {col.type === 'gauge' ? (
+                    <Tooltip
+                      openOnFocus
+                      content={
+                        <RatingScaleTip
+                          min={col.scale_min}
+                          max={col.scale_max}
+                        />
+                      }
+                    >
+                      <GaugeHeader
+                        column={col}
+                        view={view}
+                        onSortClick={onSortClick}
+                      />
+                    </Tooltip>
+                  ) : col.sortable ? (
                     <button
                       type="button"
                       aria-label={REGISTRY_TEXTS.sortAriaLabel(col.title)}

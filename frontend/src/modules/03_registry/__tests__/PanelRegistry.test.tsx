@@ -286,8 +286,8 @@ describe('PanelRegistry — filter panel', () => {
  * the column's cell but sits in its own cell right after it; the
  * `select_or_contains` dropdown's first option reads «Все
  * государства»; a scaled `number_range` writes the bounds into the
- * placeholders («от −100» / «до +100»); the `gauge` cell carries the
- * scale in its `title`; nation names are plain `ink` buttons.
+ * placeholders («от −100» / «до +100»); the `gauge` cell draws the
+ * scale in its cell (unit 11b); nation names are plain `ink` buttons.
  */
 describe('PanelRegistry — filter panel grid (unit 13b)', () => {
   afterEach(clearTableFilterExtensions);
@@ -469,18 +469,22 @@ describe('PanelRegistry — filter panel grid (unit 13b)', () => {
     within(level).getByPlaceholderText('до');
   });
 
-  it('the «Рейтинг» figure carries the scale in its title', async () => {
+  it('the «Рейтинг» cell shows the signed figure on the scale (unit 11b)', async () => {
     renderRegistry();
     await screen.findByText('Борис Иванов');
 
-    expect(screen.getByText('+5')).toHaveAttribute(
-      'title',
-      '+5 · шкала −100…+100',
-    );
-    expect(screen.getByText('-20')).toHaveAttribute(
-      'title',
-      '-20 · шкала −100…+100',
-    );
+    expect(screen.getByText('+5')).toBeInTheDocument();
+    expect(screen.getByText('−20')).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', {
+        name: 'Рейтинг +5 из диапазона −100…+100',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', {
+        name: 'Рейтинг −20 из диапазона −100…+100',
+      }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -569,11 +573,15 @@ describe('PanelRegistry — 910 px window rule (Spec 5.5)', () => {
       ...table.querySelectorAll<HTMLElement>('colgroup col'),
     ];
     const players = TABLES.tables[0].columns;
-    const totalPx = players.reduce((s, c) => s + c.width_px, 0);
+    // Unit 11b (mockup 26): the `gauge` column grows to ~134 px for
+    // number + scale and `person` («Игрок») gives the 22 px — the
+    // colgroup follows these adjusted shares, not raw width_px.
+    const expectedPx = [48, 168, 136, 92, 134, 292];
+    const totalPx = expectedPx.reduce((s, w) => s + w, 0);
     const shares = cols.map((c) => parseFloat(c.style.width));
     expect(cols).toHaveLength(players.length);
     shares.forEach((share, i) => {
-      expect(share).toBeCloseTo((players[i].width_px / totalPx) * 100, 6);
+      expect(share).toBeCloseTo((expectedPx[i] / totalPx) * 100, 6);
     });
     expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
   });
