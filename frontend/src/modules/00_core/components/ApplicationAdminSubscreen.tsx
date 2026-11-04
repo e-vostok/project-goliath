@@ -41,7 +41,6 @@ import {
   LoadingState,
   Popup,
   RADII,
-  SIZES,
   SPACING,
   Subscreen,
   TextArea,
@@ -50,6 +49,7 @@ import {
 } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { useNationRules } from '../hooks/useNationRules';
+import { DangerOutlineButton } from './DangerOutlineButton';
 import { CardBlock, CARD_BLOCK_STYLE } from './card/CardBlock';
 import { LeaderBlock } from './card/LeaderBlock';
 import { NationCardHeader } from './card/NationCardHeader';
@@ -240,45 +240,6 @@ function StatusPill({
       {clock && <ClockGlyph />}
       {text}
     </span>
-  );
-}
-
-/** The danger-outline button of mockup 21 («.btn do» / «.btn do sm»). */
-function DangerOutlineButton({
-  small = false,
-  disabled = false,
-  onClick,
-  testId,
-  children,
-}: {
-  small?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  testId?: string;
-  children: string;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        height: small ? SIZES['button-h-small'] : SIZES['button-h'],
-        padding: small ? '0 12px' : '0 16px',
-        boxSizing: 'border-box',
-        borderRadius: RADII['radius-md'],
-        border: `1px solid ${tokenVar('danger')}`,
-        background: 'transparent',
-        color: tokenVar('danger'),
-        ...TEXT_STYLES['body'],
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.45 : 1,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {children}
-    </button>
   );
 }
 
