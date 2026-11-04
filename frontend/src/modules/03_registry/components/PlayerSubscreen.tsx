@@ -12,7 +12,8 @@
  * neutral silhouette when `avatar_url` is null / `is_fallback`), the
  * «ИГРОК» caption, the name (the fallback name when `is_fallback`),
  * then three tiles — «РЕГИСТРАЦИЯ», «УРОВЕНЬ», «РЕЙТИНГ» (the rating
- * number in `signal-ink`, no gauge) — then the «ГОСУДАРСТВО» card:
+ * number in `signal-ink` over the large scale with «−100» / «+100»
+ * captions, mockup 26в) — then the «ГОСУДАРСТВО» card:
  * the flag and the short name as a link row with a chevron when the
  * cell id is set, «Государства нет» for a nation-less player (12b).
  *
@@ -31,6 +32,7 @@ import {
   BlockTitle,
   EmptyState,
   ErrorState,
+  FONTS,
   LoadingState,
   NationLabel,
   SPACING,
@@ -41,9 +43,15 @@ import {
 } from '../../../shared/ui';
 import { CardBlock } from '../../00_core/components/card/CardBlock';
 import { usePlayerProfile } from '../hooks/usePlayerProfile';
+import { REGISTRY_TEXTS } from '../texts';
 import type { RegistryPlayerDTO } from '../types';
 import { NationOpenLink } from './cells/NationCell';
 import { PlayerAvatar } from './PlayerAvatar';
+import {
+  JUDGE_RATING_MAX,
+  JUDGE_RATING_MIN,
+  RatingScale,
+} from './RatingScale';
 
 const PLAYER_TEXTS = {
   defaultTab: 'Игроки',
@@ -54,6 +62,14 @@ const PLAYER_TEXTS = {
   judgeRating: 'Рейтинг',
   nation: 'Государство',
   noNation: 'Государства нет',
+};
+
+/** Mockup 26в — the «−100» / «+100» captions under the tile scale:
+    mono `caption`, muted. */
+const RATING_CAPTION_STYLE: React.CSSProperties = {
+  ...TEXT_STYLES['caption'],
+  fontFamily: FONTS.mono,
+  color: tokenVar('ink-muted'),
 };
 
 /** «Государство» — the 48×32 flag and the short name as a link row. */
@@ -224,7 +240,33 @@ export function PlayerSubscreen({
             <StatTile
               label={PLAYER_TEXTS.judgeRating}
               accent
-              value={player.judge_rating}
+              value={
+                <>
+                  <div style={{ margin: '2px 0 8px' }}>
+                    {REGISTRY_TEXTS.ratingNumber(player.judge_rating)}
+                  </div>
+                  <RatingScale
+                    value={player.judge_rating}
+                    min={JUDGE_RATING_MIN}
+                    max={JUDGE_RATING_MAX}
+                    size="tile"
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginTop: 6,
+                    }}
+                  >
+                    <span style={RATING_CAPTION_STYLE}>
+                      {REGISTRY_TEXTS.ratingNumber(JUDGE_RATING_MIN)}
+                    </span>
+                    <span style={RATING_CAPTION_STYLE}>
+                      {REGISTRY_TEXTS.ratingNumber(JUDGE_RATING_MAX)}
+                    </span>
+                  </div>
+                </>
+              }
             />
           </div>
 

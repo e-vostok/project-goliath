@@ -94,18 +94,23 @@ describe('PlayerSubscreen — content', () => {
     expect(within(header).getByText('Игрок')).toBeInTheDocument();
     expect(within(header).getByText('Борис Иванов')).toBeInTheDocument();
 
-    // PNG 12: three tiles — «РЕГИСТРАЦИЯ», «УРОВЕНЬ», «РЕЙТИНГ» (the
-    // rating a bare signal number, no gauge bar).
+    // PNG 12 / mockup 26в (unit 11b): three tiles — «РЕГИСТРАЦИЯ»,
+    // «УРОВЕНЬ», «РЕЙТИНГ» (the signed signal number over the big
+    // scale with the «−100» / «+100» captions).
     const stats = screen.getByTestId('player-subscreen-stats');
     expect(within(stats).getByText('Регистрация')).toBeInTheDocument();
     expect(within(stats).getByText('01.09.2026')).toBeInTheDocument();
     expect(within(stats).getByText('Уровень')).toBeInTheDocument();
     expect(within(stats).getByText('2')).toBeInTheDocument();
     expect(within(stats).getByText('Рейтинг')).toBeInTheDocument();
-    expect(within(stats).getByText('12')).toBeInTheDocument();
+    expect(within(stats).getByText('+12')).toBeInTheDocument();
     expect(
-      within(stats).queryByTestId('gauge-fill'),
-    ).not.toBeInTheDocument();
+      within(stats).getByRole('img', {
+        name: 'Рейтинг +12 из диапазона −100…+100',
+      }),
+    ).toBeInTheDocument();
+    expect(within(stats).getByText('−100')).toBeInTheDocument();
+    expect(within(stats).getByText('+100')).toBeInTheDocument();
 
     // The nation card — the short name is a button to the subscreen.
     const nation = screen.getByTestId('player-subscreen-nation');

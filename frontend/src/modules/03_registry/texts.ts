@@ -42,10 +42,21 @@ export const REGISTRY_TEXTS = {
       column carries `scale_min`/`scale_max` (the players' «Рейтинг»). */
   filterFromWithBound: (min: number) => `от ${scaleBound(min)}`,
   filterToWithBound: (max: number) => `до ${scaleBound(max)}`,
-  /** `gauge` cell title: «<число> · шкала −100…+100» (unit 13b) — the
-      number keeps the cell's own look («+» for positives). */
-  gaugeScaleTitle: (value: number, min: number, max: number) =>
-    `${value > 0 ? `+${value}` : `${value}`} · шкала ${scaleBound(min)}…${scaleBound(max)}`,
+  /* Шкала рейтинга (макеты 26–26в, единица 11б). */
+
+  /** Число рейтинга со знаком — «+35», «−20», «0» (типографский
+      минус U+2212): ячейка, плитка и подписи шкалы. */
+  ratingNumber: (value: number) => scaleBound(value),
+
+  /** `aria-label` шкалы: «Рейтинг +35 из диапазона −100…+100». */
+  ratingAriaLabel: (value: number, min: number, max: number) =>
+    `Рейтинг ${scaleBound(value)} из диапазона ${scaleBound(min)}…${scaleBound(max)}`,
+
+  ratingTipTitle: 'Судейский рейтинг',
+  /** Подсказка заголовка «Рейтинг»: «От −100 до +100. …» — границы
+      берутся из `scale_min`/`scale_max` столбца (макет 26б). */
+  ratingTipText: (min: number, max: number) =>
+    `От ${scaleBound(min)} до ${scaleBound(max)}. Судьёй приказа назначают игрока с рейтингом не ниже порога.`,
 
   /* Table filter extensions (Spec 5.5) — the «Все / Да» control a
      module registers for a table («Назначены мне»). */
