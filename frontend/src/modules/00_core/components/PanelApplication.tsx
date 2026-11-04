@@ -39,6 +39,7 @@ import {
 } from '../../../shared/ui';
 import { useSession } from '../hooks/useAuth';
 import { CardBlock } from './card/CardBlock';
+import { DangerOutlineButton } from './DangerOutlineButton';
 import { LeaderBlock } from './card/LeaderBlock';
 import { NationCardHeader } from './card/NationCardHeader';
 
@@ -197,28 +198,12 @@ function StatusPlate({
         </div>
       </div>
       <div style={{ flexShrink: 0 }}>
-        {/* Amber outline per mockup 20 — VKUI's danger/negative reads
-            red; the plate button is signal-amber, the red only lands
-            on the confirm inside the popup (mockup 20b). */}
-        <button
-          type="button"
-          data-testid="open-cancel-application"
+        <DangerOutlineButton
+          testId="open-cancel-application"
           onClick={onCancel}
-          style={{
-            height: 36,
-            padding: '0 16px',
-            borderRadius: RADII['radius-md'],
-            border: `1px solid ${tokenVar('signal')}`,
-            background: 'transparent',
-            color: tokenVar('signal-ink'),
-            ...TEXT_STYLES['body'],
-            fontWeight: 600,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
         >
           Отменить анкету
-        </button>
+        </DangerOutlineButton>
       </div>
     </section>
   );

@@ -6,9 +6,10 @@
  * («Основные данные и символика», «Глава государства», «История»,
  * «Территории»), one `surface`/`radius-lg`/`space-4` block per tab with
  * its own `BlockTitle`, and the buttons row under it: «← Назад» (not on
- * tab 1), «Далее →» — on tab 4 «Отправить анкету», disabled until
- * `missingRequired` is empty, with the red-dot hint or the review note
- * between the buttons.
+ * tab 1) at the left, «Далее →» — on tab 4 «Отправить анкету»,
+ * disabled until `missingRequired` is empty — at the right; on tab 4
+ * the red-dot hint or the review note sits in its own row above the
+ * buttons (acceptance 13a — a shared row clipped the labels).
  *
  * «Отправить анкету» (Spec applications §10, 0.13.0 unit 7a) runs the
  * sequence: PUT /applications/me (draft) → the chosen pictures onto
@@ -728,43 +729,50 @@ export function PanelCreateNation({
         )}
       </section>
 
+      {tab === 4 && (
+        <div
+          data-testid="step-hint"
+          style={{
+            ...TEXT_STYLES['caption'],
+            color: tokenVar('ink-muted'),
+          }}
+        >
+          {missing.length > 0
+            ? 'Заполните обязательные поля (отмечены *) на вкладках с красной точкой'
+            : 'Анкета уйдёт на рассмотрение администратору. Править её после отправки нельзя, можно только отменить.'}
+        </div>
+      )}
       <div
+        data-testid="step-buttons"
         style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: SPACING['space-3'],
         }}
       >
-        {tab > 1 && (
+        {tab > 1 ? (
           <Button
             type="button"
             mode="secondary"
             size="m"
             data-testid="step-prev"
+            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
             onClick={() => setTab((tab - 1) as RegistrationTab)}
           >
             ← Назад
           </Button>
+        ) : (
+          // The spacer keeps the forward button on the right end of
+          // the space-between row while there is no «← Назад».
+          <span aria-hidden="true" />
         )}
-        <span
-          style={{
-            flex: '1 1 auto',
-            textAlign: 'center',
-            ...TEXT_STYLES['caption'],
-            color: tokenVar('ink-muted'),
-          }}
-        >
-          {tab === 4
-            ? missing.length > 0
-              ? 'Заполните обязательные поля (отмечены *) на вкладках с красной точкой'
-              : 'Анкета уйдёт на рассмотрение администратору. Править её после отправки нельзя, можно только отменить.'
-            : ''}
-        </span>
         {tab < 4 ? (
           <Button
             type="button"
             size="m"
             data-testid="step-next"
+            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
             onClick={() => setTab((tab + 1) as RegistrationTab)}
           >
             Далее →
@@ -774,6 +782,7 @@ export function PanelCreateNation({
             type="button"
             size="m"
             disabled={!canSubmit}
+            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
             onClick={() => void handleSubmit()}
           >
             {submitting ? 'Отправляем…' : 'Отправить анкету'}

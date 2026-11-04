@@ -56,6 +56,18 @@ describe('PanelApplication — the pending window', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
+  it('«Отменить анкету» is the shared danger-outline button — red, not amber (13a)', async () => {
+    renderPanel();
+
+    const cancel = await screen.findByTestId('open-cancel-application');
+    // The danger token on border AND text — the amber `signal` skin
+    // is gone (mockup 20 renders «.btn do»).
+    expect(cancel.style.border).toBe('1px solid var(--pax-danger)');
+    expect(cancel.style.color).toBe('var(--pax-danger)');
+    expect(cancel.style.border).not.toContain('signal');
+    expect(cancel.style.background).toBe('transparent');
+  });
+
   it('«Отменить анкету» asks, then POSTs cancel and reports back', async () => {
     let cancels = 0;
     server.use(
