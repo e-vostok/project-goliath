@@ -518,7 +518,7 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 
 Каталог допускает типы модулей-сателлитов. Модуль `04_orders` регистрирует четыре типа в `register_orders_extensions()` — `ORDER_JUDGE_ASSIGNED`, `ORDER_JUDGE_REMINDER`, `ORDER_DISTRIBUTED`, `ORDER_VERDICT_READY` (все с `requires_nation = false`: судья может быть игроком без государства, если у него есть согласие на сообщения бота). Их тексты и переменные заданы в Spec `04_orders`, Приложение C.
 
-Типы анкет (0.13.0, контракт — `docs/02_SYSTEM_SPECS/00_core_applications.md`, разд. 7). Модуль `02_bot` сам регистрирует слушатель анкет (`register_application_listener`) и пять типов; все с `requires_consent = true`, `requires_nation = false`, `counts_toward_cap = false`, `merge = never`, `hold_seconds = 0`. Переменные: `nation_name` — полное название из анкеты, `application_link` — `BotService.app_link("application")` для игрока и `BotService.app_link("application/<id>")` для рецензента, `deadline` — срок решения «1 ноября, 14:20» по часовому поясу тика, `comment` — причина возврата. Без `VK_APP_ID` сообщения не ставятся и пишется одно предупреждение, как у приказов. Отсутствие согласия сообщение не создаёт и решения не блокирует (щит и панель остаются каналом для администратора).
+Типы анкет (0.13.0, контракт — `docs/02_SYSTEM_SPECS/00_core_applications.md`, разд. 7). Модуль `02_bot` сам регистрирует слушатель анкет (`register_application_listener`) и пять типов; все с `requires_consent = true`, `requires_nation = false`, `counts_toward_cap = false`, `merge = never`, `hold_seconds = 0`. Переменные: `nation_name` — полное название из анкеты, `application_link` — `BotService.app_link("application")` для игрока и `BotService.app_link("application/<id>")` для администратора, `deadline` — срок решения «1 ноября, 14:20» по часовому поясу тика, `comment` — причина возврата. Без `VK_APP_ID` сообщения не ставятся и пишется одно предупреждение, как у приказов. Отсутствие согласия сообщение не создаёт и решения не блокирует (щит и панель остаются каналом для администратора).
 
 | Тип | Кому, по какому событию | TTL, мин | Текст |
 | :-- | :-- | :-- | :-- |
@@ -526,9 +526,9 @@ $$n\ge n_{\min}\ \wedge\ \frac{f}{n}\ge\rho_{\max}$$
 | `APPLICATION_RETURNED` | игроку, `RETURNED` | 4320 | Анкета государства «{nation_name}» возвращена на доработку. Причина: {comment} Исправьте анкету и отправьте её снова: {application_link} |
 | `APPLICATION_ACCEPTED` | игроку, `ACCEPTED` решением администратора | 4320 | Анкета принята: государство «{nation_name}» создано. Откройте «Штаб»: {application_link} |
 | `APPLICATION_ACCEPTED_AUTO` | игроку, `ACCEPTED` с `auto` | 4320 | Администратор не ответил в течение суток, и анкета принята автоматически: государство «{nation_name}» создано. Откройте «Штаб»: {application_link} |
-| `APPLICATION_REVIEW_REQUEST` | рецензенту, `SUBMITTED` с рецензентом или `ASSIGNED` | 1440 | Поступила анкета государства «{nation_name}». Откройте её и примите или верните с причиной до {deadline} (МСК): {application_link} Если решения не будет, анкета примется автоматически. |
+| `APPLICATION_REVIEW_REQUEST` | каждому администратору с согласием, кроме заявителя, `SUBMITTED` | 1440 | Поступила анкета государства «{nation_name}». Откройте её и примите или верните с причиной до {deadline} (МСК): {application_link} Если решения не будет, анкета примется автоматически. |
 
-`CANCELLED` и `ASSIGNED` игроку сообщений не создают. Ключ дедупликации: `application_<тип>:<id анкеты>:<число отправок>`, чтобы повторная отправка после возврата снова писала игроку и рецензенту. Сообщение «государство создано» (`nation_created`) остаётся для государств, созданных администратором в панели.
+`CANCELLED` сообщений не создаёт. Ключ дедупликации: `application_<тип>:<id анкеты>:<число отправок>`, чтобы повторная отправка после возврата снова писала игроку и администраторам. Сообщение «государство создано» (`nation_created`) остаётся для государств, созданных администратором в панели.
 
 | Ключ | Тип | Диапазон / правило |
 | :-- | :-- | :-- |
