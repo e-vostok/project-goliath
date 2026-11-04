@@ -6,8 +6,8 @@
  * nation subscreen. Address: `#/application/<id>`.
  *
  * The facts card holds the review facts (applicant, send time with
- * the submission number, decision deadline with the remaining time,
- * the «назначена вам» mark for the assigned reviewer) while the
+ * the submission number, decision deadline with the remaining time)
+ * while the
  * application is PENDING; decided or withdrawn applications show the
  * state line of mockup 21d instead — and an administrator reading
  * their OWN application gets the «свою анкету рассматривать нельзя»
@@ -313,30 +313,6 @@ function PendingFacts({
                   application.review_deadline_at,
                   Date.now(),
                 )}`}
-              </span>
-            </>
-          ) : (
-            '—'
-          )}
-        </span>
-        <span style={{ color: tokenVar('ink-muted') }}>Рецензент</span>
-        <span>
-          {application.assigned_to_me ? (
-            <>
-              вы
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  marginLeft: 6,
-                  ...TEXT_STYLES['caption'],
-                  padding: '2px 10px',
-                  borderRadius: RADII['radius-pill'],
-                  background: tokenVar('surface-inset'),
-                  color: tokenVar('ink'),
-                }}
-              >
-                назначена вам
               </span>
             </>
           ) : (

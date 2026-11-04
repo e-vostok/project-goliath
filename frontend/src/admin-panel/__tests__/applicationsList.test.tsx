@@ -3,8 +3,8 @@
  * 9b; mockups docs/06_DESIGN/0.13.0 screens 22/22b): the switcher
  * tab, the «В рассмотрении | Все» filter against status=PENDING|ALL,
  * every decision cell (countdown, «срок вышел», the outcome pills),
- * every reviewer case («вам» pill, «вы», name, «нет рецензента»,
- * «—»), a null `link` (plain name, disabled «Открыть» with the
+ * no «Рецензент» column (13b — any administrator decides),
+ * a null `link` (plain name, disabled «Открыть» with the
  * VK_APP_ID hint), the attention badge at 0 and above, and a 401
  * ending the session through the frame. msw stands at the HTTP
  * boundary — the real api-client does the requests.
@@ -43,10 +43,8 @@ function pendingRow(over: Record<string, unknown> = {}) {
     status: 'PENDING',
     owner_name: 'Иван Петров',
     provinces_count: 5,
-    reviewer_name: null,
     submitted_at: '2026-10-31T14:20:00Z',
     review_deadline_at: new Date(Date.now() + (21 * 60 + 40) * 60_000).toISOString(),
-    assigned_to_me: true,
     submissions: 2,
     draft_reason: null,
     auto_accepted: null,
@@ -64,12 +62,10 @@ const PENDING_PAGE = {
       short_name: 'Нордланд',
       name: 'Республика Нордланд',
       owner_name: 'Мария Орлова',
-      reviewer_name: 'Анна Кузнецова',
       submitted_at: '2026-10-31T11:05:00Z',
       review_deadline_at: new Date(
         Date.now() + (18 * 60 + 25) * 60_000,
       ).toISOString(),
-      assigned_to_me: false,
       submissions: 1,
       link: `${APP_LINK}app-2`,
     }),
@@ -79,7 +75,6 @@ const PENDING_PAGE = {
       name: 'Дунайская Лига',
       owner_name: 'Пётр Громов',
       submitted_at: '2026-10-31T09:40:00Z',
-      assigned_to_me: false,
       submissions: 1,
       link: null,
     }),
@@ -93,8 +88,6 @@ const ALL_PAGE = {
     pendingRow({
       id: 'app-4',
       status: 'ACCEPTED',
-      reviewer_name: 'Анна Кузнецова',
-      assigned_to_me: false,
       auto_accepted: false,
       decided_at: '2026-10-31T13:00:00Z',
       review_deadline_at: null,
@@ -102,7 +95,6 @@ const ALL_PAGE = {
     pendingRow({
       id: 'app-5',
       status: 'ACCEPTED',
-      assigned_to_me: true,
       auto_accepted: true,
       decided_at: '2026-10-30T11:20:00Z',
       review_deadline_at: null,
@@ -111,31 +103,24 @@ const ALL_PAGE = {
       id: 'app-6',
       status: 'DRAFT',
       draft_reason: 'returned',
-      reviewer_name: 'Анна Кузнецова',
-      assigned_to_me: false,
       review_deadline_at: null,
     }),
     pendingRow({
       id: 'app-7',
       status: 'DRAFT',
       draft_reason: 'cancelled',
-      assigned_to_me: true,
       review_deadline_at: null,
     }),
     pendingRow({
       id: 'app-8',
       status: 'DRAFT',
       draft_reason: null,
-      reviewer_name: null,
-      assigned_to_me: false,
       submitted_at: null,
       review_deadline_at: null,
     }),
     pendingRow({
       id: 'app-9',
       review_deadline_at: new Date(Date.now() - 60_000).toISOString(),
-      assigned_to_me: false,
-      reviewer_name: 'Анна Кузнецова',
     }),
   ],
   total: 9,
@@ -259,7 +244,6 @@ it('the «Анкеты» tab lists the review queue of mockup 22', async () => {
   expect(row1).toHaveTextContent('отправка №2');
   expect(row1).toHaveTextContent(/21 ч \d{2} мин/);
   expect(row1).toHaveTextContent('до автоприёма');
-  expect(row1).toHaveTextContent('вам');
   expect(
     screen.getByTestId('application-link-app-1'),
   ).toHaveAttribute('href', `${APP_LINK}app-1`);
@@ -269,12 +253,13 @@ it('the «Анкеты» tab lists the review queue of mockup 22', async () => {
 
   const row2 = screen.getByTestId('application-row-app-2');
   expect(row2).toHaveTextContent(/18 ч \d{2} мин/);
-  expect(row2).toHaveTextContent('Анна Кузнецова');
   expect(row2).not.toHaveTextContent('отправка №');
 
-  expect(screen.getByTestId('application-row-app-3')).toHaveTextContent(
-    'нет рецензента',
-  );
+  // 13b: no reviewer anywhere — no column, no «вам», no «нет
+  // рецензента».
+  expect(table).not.toHaveTextContent('Рецензент');
+  expect(table).not.toHaveTextContent('вам');
+  expect(table).not.toHaveTextContent('нет рецензента');
   expect(table).toHaveTextContent('Решение');
 });
 
@@ -319,8 +304,7 @@ it('the «Все» filter switches to status=ALL and shows every outcome', async
   expect(screen.getByTestId('application-row-app-8')).toHaveTextContent(
     'Черновик',
   );
-  // Decided rows mark the reviewer as «вы», none as «—».
-  expect(screen.getByTestId('application-row-app-5')).toHaveTextContent('вы');
+  // No reviewer cell anymore (13b) — a submitted_at-less draft shows «—».
   expect(screen.getByTestId('application-row-app-8')).toHaveTextContent('—');
   // A PENDING row past its deadline reads «срок вышел».
   expect(screen.getByTestId('application-row-app-9')).toHaveTextContent(

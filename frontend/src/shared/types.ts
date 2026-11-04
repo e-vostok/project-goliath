@@ -187,15 +187,14 @@ export interface ApplicationRulesDTO {
  * GET /admin/applications/{id} and the accept/return/image-delete
  * answers (Spec applications §8): the player's ApplicationDTO field
  * set plus the review metadata — the applicant (`owner_vk_user_id`,
- * `owner_name`, both null when the player is gone), `assigned_to_me`
- * for the «назначена вам» mark and the decision history
- * (`submitted_at`, `decided_at`, `auto_accepted`, `accepted_nation_id`).
+ * `owner_name`, both null when the player is gone) and the decision
+ * history (`submitted_at`, `decided_at`, `auto_accepted`,
+ * `accepted_nation_id`).
  */
 export interface AdminApplicationDTO extends ApplicationDTO {
   id: string;
   owner_vk_user_id: number | null;
   owner_name: string | null;
-  assigned_to_me: boolean;
   submitted_at: string | null;
   decided_at: string | null;
   auto_accepted: boolean | null;
@@ -215,10 +214,8 @@ export interface AdminApplicationListItemDTO {
   status: 'DRAFT' | 'PENDING' | 'ACCEPTED';
   owner_name: string | null;
   provinces_count: number;
-  reviewer_name: string | null;
   submitted_at: string | null;
   review_deadline_at: string | null;
-  assigned_to_me: boolean;
   submissions: number;
   draft_reason: 'returned' | 'cancelled' | 'failed' | null;
   auto_accepted: boolean | null;

@@ -30,7 +30,6 @@ const ADMIN_APPLICATION: AdminApplicationDTO = {
   id: APP_ID,
   owner_vk_user_id: 987654,
   owner_name: 'Иван Петров',
-  assigned_to_me: true,
   submitted_at: '2026-10-31T11:20:00Z',
   decided_at: null,
   auto_accepted: null,
@@ -74,7 +73,9 @@ describe('ApplicationAdminSubscreen — the PENDING window', () => {
     expect(facts).toHaveTextContent('31 октября, 14:20');
     expect(facts).toHaveTextContent('отправка №1');
     expect(facts).toHaveTextContent('осталось');
-    expect(facts).toHaveTextContent('назначена вам');
+    // 13b: no assigned reviewer — the mark is gone for everyone.
+    expect(facts).not.toHaveTextContent('Рецензент');
+    expect(facts).not.toHaveTextContent('назначена вам');
 
     // The application blocks with the admin's delete buttons.
     expect(
@@ -205,7 +206,6 @@ describe('ApplicationAdminSubscreen — the 21d states', () => {
         HttpResponse.json({
           ...ADMIN_APPLICATION,
           owner_vk_user_id: SESSION.player.vk_user_id,
-          assigned_to_me: false,
         }),
       ),
     );

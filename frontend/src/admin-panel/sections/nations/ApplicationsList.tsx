@@ -8,8 +8,8 @@
  * (status=PENDING|ALL) and the table — Анкета (flag stub, the name
  * as a ↗ link, «short · N провинций»), Игрок, Отправлена (with
  * «отправка №N» above one), Решение (the remaining time to
- * auto-accept while PENDING, the outcome pill otherwise), Рецензент
- * («вам» pill / «вы» / name / «нет рецензента» / «—») and «Открыть»
+ * auto-accept while PENDING, the outcome pill otherwise) and
+ * «Открыть»
  * — the row's Mini-App `link` in a new tab; a null link keeps name
  * and button plain with the «не задан VK_APP_ID» hint. The note
  * plate under the table explains that the decision happens in the
@@ -202,20 +202,6 @@ function DecisionCell({
   );
 }
 
-/** «Рецензент»: «вам» pill while PENDING, «вы» once decided. */
-function ReviewerCell({ row }: { row: AdminApplicationListItemDTO }) {
-  if (row.status === 'PENDING') {
-    if (row.assigned_to_me) {
-      return <Pill tone="signal">вам</Pill>;
-    }
-    return <>{row.reviewer_name ?? 'нет рецензента'}</>;
-  }
-  if (row.assigned_to_me) {
-    return <>вы</>;
-  }
-  return row.reviewer_name !== null ? <>{row.reviewer_name}</> : <Dash />;
-}
-
 export function ApplicationsList({ onBack }: { onBack: () => void }) {
   const { token, reportUnauthorized, applicationsPending, refreshAttention } =
     useAdminSession();
@@ -374,7 +360,7 @@ export function ApplicationsList({ onBack }: { onBack: () => void }) {
           >
             <thead>
               <tr>
-                {['Анкета', 'Игрок', 'Отправлена', 'Решение', 'Рецензент', ''].map(
+                {['Анкета', 'Игрок', 'Отправлена', 'Решение', ''].map(
                   (head, index) => (
                     <th
                       key={index}
@@ -464,9 +450,6 @@ export function ApplicationsList({ onBack }: { onBack: () => void }) {
                     </td>
                     <td style={cellStyle(last)}>
                       <DecisionCell row={row} nowMs={nowMs} />
-                    </td>
-                    <td style={cellStyle(last)}>
-                      <ReviewerCell row={row} />
                     </td>
                     <td
                       style={{

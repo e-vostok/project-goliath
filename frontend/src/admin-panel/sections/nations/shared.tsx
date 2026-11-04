@@ -264,7 +264,7 @@ export function CountBadge({ count }: { count: number }) {
 
 type PillTone = 'plain' | 'signal' | 'ok' | 'bad';
 
-/** The mockup .pill — a rounded status label of the decision/reviewer cell. */
+/** The mockup .pill — a rounded status label of the decision cell. */
 export function Pill({
   tone = 'plain',
   testId,
