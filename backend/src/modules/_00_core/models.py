@@ -391,6 +391,9 @@ class NationApplication(Base):
     review_deadline_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Unused since the reviewer was dropped (Owner decision
+    # 04.11.2026): never written, never read — both columns and the
+    # FK stay until a later migration removes them.
     reviewer_player_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey(

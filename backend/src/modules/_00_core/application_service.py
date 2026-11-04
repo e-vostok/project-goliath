@@ -9,8 +9,7 @@ short name for every other path (APP-1) — and ``cancel`` returns it
 to DRAFT. The admin side: ``accept`` creates the nation from the
 application inside one transaction, ``return_application`` sends it
 back to an editable DRAFT with a mandatory reason, ``run_pass``
-auto-accepts the overdue PENDING rows and assigns reviewers to the
-unassigned ones (APP-4).
+auto-accepts the overdue PENDING rows (APP-4).
 
 Every state change runs inside the caller's transaction under
 ``_take_nations_lock`` and announces itself through the application
@@ -28,7 +27,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, false, func, insert, select, update
+from sqlalchemy import delete, false, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,7 +79,6 @@ from modules._00_core.profile_rules import (
     validate_short_name,
     validate_succession_type,
 )
-from modules._00_core.reviewer import ReviewerCandidate, reviewer_selector
 from modules._00_core.service import (
     NationImageInfo,
     NationImageView,
@@ -144,7 +142,7 @@ def _validate_profile_fields(
 async def _admin_player_ids(session: AsyncSession) -> set[str]:
     """The internal ids of every player holding admin rights — the
     env allowlist plus the granted rows — restricted to players that
-    actually exist (Spec applications §5)."""
+    actually exist (Spec applications §7)."""
     ids: set[str] = set()
     env_vk_ids = _admin_vk_user_ids()
     if env_vk_ids:
@@ -152,44 +150,13 @@ async def _admin_player_ids(session: AsyncSession) -> set[str]:
             select(Player.id).where(Player.vk_user_id.in_(env_vk_ids))
         )
         ids.update(row[0] for row in rows)
-    grant_rows = await session.execute(select(AdminGrant.player_id))
+    grant_rows = await session.execute(
+        select(AdminGrant.player_id).join(
+            Player, Player.id == AdminGrant.player_id
+        )
+    )
     ids.update(row[0] for row in grant_rows)
     return ids
-
-
-async def _pick_reviewer(
-    session: AsyncSession, applicant_player_id: str
-) -> str | None:
-    """Choose the reviewer of one application (Spec §5) through the
-    injectable ``reviewer_selector`` — None when no administrator is
-    eligible. The selector sees only snapshots; the gathering is the
-    only DB touch."""
-    admin_ids = await _admin_player_ids(session)
-    if not admin_ids:
-        return None
-    stats = await session.execute(
-        select(
-            NationApplication.reviewer_player_id,
-            func.count().filter(NationApplication.status == "PENDING"),
-            func.max(NationApplication.reviewer_assigned_at),
-        )
-        .where(NationApplication.reviewer_player_id.is_not(None))
-        .group_by(NationApplication.reviewer_player_id)
-    )
-    pending_by: dict[str, int] = {}
-    last_by: dict[str, datetime] = {}
-    for reviewer_id, pending, last_at in stats.all():
-        pending_by[reviewer_id] = pending
-        last_by[reviewer_id] = last_at
-    candidates = [
-        ReviewerCandidate(
-            player_id=player_id,
-            pending=pending_by.get(player_id, 0),
-            last_assigned_at=last_by.get(player_id),
-        )
-        for player_id in sorted(admin_ids)
-    ]
-    return reviewer_selector(applicant_player_id, candidates)
 
 
 def _validate_return_comment(comment: str | None, config: CoreConfig) -> str:
@@ -217,7 +184,6 @@ class WorkerPassStats:
 
     auto_accepted: int = 0
     auto_failed: int = 0
-    reviewers_assigned: int = 0
     errors: int = 0
 
 
@@ -501,8 +467,8 @@ class ApplicationService:
         after_count -> capital membership -> PENDING write
         (is_reserved=true on every picked province, submitted_at,
         review_deadline_at, submissions+1, draft_reason and
-        return_comment cleared, reviewer NULL — unit 5 picks one) ->
-        the SUBMITTED event. The caller commits.
+        return_comment cleared) -> the SUBMITTED event. The caller
+        commits.
         """
         result = await session.execute(
             select(Nation.id).where(Nation.owner_player_id == player_id)
@@ -607,11 +573,6 @@ class ApplicationService:
         application.review_deadline_at = now + timedelta(
             hours=config.applications.review_hours
         )
-        reviewer_id = await _pick_reviewer(session, player_id)
-        application.reviewer_player_id = reviewer_id
-        application.reviewer_assigned_at = (
-            now if reviewer_id is not None else None
-        )
         application.updated_at = now
         await session.execute(
             update(NationApplicationProvince)
@@ -626,7 +587,6 @@ class ApplicationService:
                 kind="SUBMITTED",
                 application_id=application.id,
                 owner_player_id=player_id,
-                reviewer_player_id=application.reviewer_player_id,
             ),
         )
         return application
@@ -637,7 +597,7 @@ class ApplicationService:
     ) -> NationApplication:
         """
         Withdraw a PENDING application back to DRAFT (Spec §4): the
-        reserve lifts, the deadline and reviewer clear, ``draft_reason``
+        reserve lifts, the deadline clears, ``draft_reason``
         marks 'cancelled', the row and its pictures stay for the next
         save/submit — then the CANCELLED event. The caller commits.
         """
@@ -654,8 +614,6 @@ class ApplicationService:
         application.draft_reason = "cancelled"
         application.submitted_at = None
         application.review_deadline_at = None
-        application.reviewer_player_id = None
-        application.reviewer_assigned_at = None
         application.updated_at = now
         await session.execute(
             update(NationApplicationProvince)
@@ -733,13 +691,27 @@ class ApplicationService:
         )
 
     @staticmethod
+    async def admin_recipient_ids(
+        session: AsyncSession, exclude_player_id: str | None = None
+    ) -> set[str]:
+        """
+        The internal ids of every administrator — the env allowlist
+        plus the grants, only those with a ``players`` row — minus
+        ``exclude_player_id`` (the applicant). The review-request
+        audience a satellite (02_bot) notifies on SUBMITTED (Spec
+        applications §7). Read-only, never commits.
+        """
+        ids = await _admin_player_ids(session)
+        ids.discard(exclude_player_id)
+        return ids
+
+    @staticmethod
     async def delete_for_player(session: AsyncSession, player_id: str) -> None:
         """
         Remove every application of the player with its province picks
         and pictures — the explicit DELETE the coverage contract
         demands; the FK cascades are only a PostgreSQL safety net.
-        Reviewer links on other players' rows are cleared too (SQLite
-        runs without FK enforcement). Never commits.
+        Never commits.
         """
         application_ids = list(
             (
@@ -766,11 +738,7 @@ class ApplicationService:
                     NationApplication.id.in_(application_ids)
                 )
             )
-        await session.execute(
-            update(NationApplication)
-            .where(NationApplication.reviewer_player_id == player_id)
-            .values(reviewer_player_id=None)
-        )
+
     @staticmethod
     async def accept(
         session: AsyncSession,
@@ -975,7 +943,6 @@ class ApplicationService:
                 kind="ACCEPTED",
                 application_id=application.id,
                 owner_player_id=application.owner_player_id,
-                reviewer_player_id=application.reviewer_player_id,
                 auto=auto,
             ),
         )
@@ -993,7 +960,7 @@ class ApplicationService:
         Send a PENDING application back to an editable DRAFT (Spec §4):
         ``draft_reason='returned'``, the mandatory normalized comment
         (APP-7 — invalid is RETURN_COMMENT_INVALID), the reserve
-        lifted, deadline and reviewer cleared — then the RETURNED
+        lifted, deadline cleared — then the RETURNED
         event. PENDING only, never by the applicant (APP-3). The
         caller commits and writes the audit row.
         """
@@ -1018,8 +985,6 @@ class ApplicationService:
         application.return_comment = comment
         application.submitted_at = None
         application.review_deadline_at = None
-        application.reviewer_player_id = None
-        application.reviewer_assigned_at = None
         application.updated_at = now
         await session.execute(
             update(NationApplicationProvince)
@@ -1120,8 +1085,6 @@ class ApplicationService:
                 application.return_comment = comment
                 application.submitted_at = None
                 application.review_deadline_at = None
-                application.reviewer_player_id = None
-                application.reviewer_assigned_at = None
                 application.updated_at = now
                 await session.execute(
                     update(NationApplicationProvince)
@@ -1163,55 +1126,6 @@ class ApplicationService:
             return "accepted"
 
     @staticmethod
-    async def _assign_reviewer_guarded(
-        session: AsyncSession, application_id: str
-    ) -> bool:
-        """
-        One conditional reviewer assignment inside the caller's
-        transaction under a SAVEPOINT (Spec §5–§6): the row is claimed
-        only while still PENDING and reviewer-less, so a racing
-        decision wins it (rowcount 0 = lost). The ASSIGNED event
-        (distinct from the submit's SUBMITTED) carries the new
-        reviewer — the applicant already got his SUBMITTED.
-        """
-        if session.bind.dialect.name == "sqlite":
-            await session.execute(delete(NationApplication).where(false()))
-        async with session.begin_nested():
-            application = await session.get(NationApplication, application_id)
-            if application is None or application.status != "PENDING":
-                return False
-            reviewer_id = await _pick_reviewer(
-                session, application.owner_player_id
-            )
-            if reviewer_id is None:
-                return False
-            now = datetime.now(UTC)
-            claimed = await session.execute(
-                update(NationApplication)
-                .where(
-                    NationApplication.id == application_id,
-                    NationApplication.status == "PENDING",
-                    NationApplication.reviewer_player_id.is_(None),
-                )
-                .values(
-                    reviewer_player_id=reviewer_id,
-                    reviewer_assigned_at=now,
-                )
-            )
-            if claimed.rowcount == 0:
-                return False
-            await run_application_listeners(
-                session,
-                ApplicationEvent(
-                    kind="ASSIGNED",
-                    application_id=application_id,
-                    owner_player_id=application.owner_player_id,
-                    reviewer_player_id=reviewer_id,
-                ),
-            )
-            return True
-
-    @staticmethod
     async def run_pass(
         session_factory: SessionFactory,
         config: CoreConfig,
@@ -1222,16 +1136,14 @@ class ApplicationService:
         One background pass of Spec §6 — the worker's step and a
         standalone testable unit.
 
-        Part A, auto-accept: every PENDING application whose
+        Auto-accept: every PENDING application whose
         ``review_deadline_at`` is in the past, oldest deadline first;
         each decided in its own session and transaction — a failure
         of one row is logged, counted and never stops the pass
-        (APP-4). Part B, reviewer assignment: PENDING rows without a
-        reviewer get the Spec §5 pick, each in its own transaction.
-        Never raises for a single bad row.
+        (APP-4). Never raises for a single bad row.
         """
         moment = now if now is not None else datetime.now(UTC)
-        auto_accepted = auto_failed = assigned = errors = 0
+        auto_accepted = auto_failed = errors = 0
 
         async with session_factory() as session:
             overdue_ids = (
@@ -1272,46 +1184,8 @@ class ApplicationService:
             elif outcome == "failed":
                 auto_failed += 1
 
-        async with session_factory() as session:
-            waiting_ids = (
-                (
-                    await session.execute(
-                        select(NationApplication.id)
-                        .where(
-                            NationApplication.status == "PENDING",
-                            NationApplication.reviewer_player_id.is_(None),
-                        )
-                        .order_by(
-                            NationApplication.submitted_at,
-                            NationApplication.id,
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-        for application_id in waiting_ids:
-            try:
-                async with session_factory() as session:
-                    async with session.begin():
-                        done = await ApplicationService._assign_reviewer_guarded(
-                            session, application_id
-                        )
-            except Exception:
-                errors += 1
-                logger.exception(
-                    "00_core applications pass: reviewer assignment "
-                    "failed for %s",
-                    application_id,
-                )
-                continue
-            if done:
-                assigned += 1
-
         return WorkerPassStats(
             auto_accepted=auto_accepted,
             auto_failed=auto_failed,
-            reviewers_assigned=assigned,
             errors=errors,
         )
