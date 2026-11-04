@@ -27,3 +27,5 @@
 | 26c_shkala_sostoyaniya | Шкала: пять значений и плитка «Рейтинг» на экране «Игрок» | 11 |
 
 Не нарисовано, отложено решением Project Owner: «плитка „Провинции“ шире».
+
+Изменения приёмки: screen 22: breadcrumb dropped, red cancel button on 20 (13a).
