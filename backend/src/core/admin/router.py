@@ -2198,11 +2198,11 @@ async def _load_application_or_404(
 
 
 async def _admin_application_dto(
-    session: AsyncSession, application: NationApplication, admin: Player
+    session: AsyncSession, application: NationApplication
 ) -> dict:
     """AdminApplicationDTO (Spec §8): the player's ApplicationDTO
     field set plus ``id``, ``owner_vk_user_id``, ``owner_name`` (the
-    player-info hooks), ``assigned_to_me``, ``submitted_at``,
+    player-info hooks), ``submitted_at``,
     ``decided_at``, ``auto_accepted`` and ``accepted_nation_id``."""
     base = (await _application_dto(session, application)).model_dump()
     owner = await session.get(Player, application.owner_player_id)
@@ -2216,7 +2216,6 @@ async def _admin_application_dto(
         "owner_name": (
             names.get(owner.vk_user_id) if owner is not None else None
         ),
-        "assigned_to_me": application.reviewer_player_id == admin.id,
         "submitted_at": application.submitted_at,
         "decided_at": application.decided_at,
         "auto_accepted": application.auto_accepted,
@@ -2236,7 +2235,7 @@ async def admin_list_applications(
     The panel's «Анкеты» list (Spec §8): ``{"items", "total"}`` —
     PENDING rows by nearest deadline first (the review queue), or
     every application newest-first under ``status=ALL``. Each row
-    carries the field set of Spec §8: the owner and reviewer names
+    carries the field set of Spec §8: the owner name
     through the player-info hooks (null once the player is gone), the
     province count, the decision fields and the Mini-App link — the
     page's lookups batch into one count query and one info pass,
@@ -2272,13 +2271,9 @@ async def admin_list_applications(
         ).all()
     )
     player_ids = {
-        player_id
+        application.owner_player_id
         for application in rows
-        for player_id in (
-            application.owner_player_id,
-            application.reviewer_player_id,
-        )
-        if player_id is not None
+        if application.owner_player_id is not None
     }
     info = await _collect_player_info(session, list(player_ids))
     # The link text is the bot's contract — nothing else of 02_bot is used.
@@ -2295,16 +2290,8 @@ async def admin_list_applications(
                     "display_name"
                 ),
                 "provinces_count": provinces_count.get(application.id, 0),
-                "reviewer_name": (
-                    info.get(application.reviewer_player_id, {}).get(
-                        "display_name"
-                    )
-                    if application.reviewer_player_id is not None
-                    else None
-                ),
                 "submitted_at": application.submitted_at,
                 "review_deadline_at": application.review_deadline_at,
-                "assigned_to_me": application.reviewer_player_id == admin.id,
                 "submissions": application.submissions,
                 "draft_reason": application.draft_reason,
                 "auto_accepted": application.auto_accepted,
@@ -2326,7 +2313,7 @@ async def admin_get_application(
     """The full application for the admin's review window (Spec §8);
     unknown id -> 404 APPLICATION_NOT_FOUND."""
     application = await _load_application_or_404(session, application_id)
-    return await _admin_application_dto(session, application, admin)
+    return await _admin_application_dto(session, application)
 
 
 @router.post("/applications/{application_id}/accept")
@@ -2379,7 +2366,7 @@ async def admin_accept_application(
             "owner_player_id": application.owner_player_id,
         },
     )
-    answer = await _admin_application_dto(session, application, admin)
+    answer = await _admin_application_dto(session, application)
     await session.commit()
     return answer
 
@@ -2422,7 +2409,7 @@ async def admin_return_application(
             "comment": application.return_comment,
         },
     )
-    answer = await _admin_application_dto(session, application, admin)
+    answer = await _admin_application_dto(session, application)
     await session.commit()
     return answer
 
@@ -2466,7 +2453,7 @@ async def admin_application_image_delete(
             "sha256_prefix": removed.sha256[:12],
         },
     )
-    answer = await _admin_application_dto(session, application, admin)
+    answer = await _admin_application_dto(session, application)
     await session.commit()
     logger.warning(
         "admin_application_image_delete admin_vk_user_id=%s "

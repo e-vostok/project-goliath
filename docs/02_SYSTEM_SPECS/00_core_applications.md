@@ -8,7 +8,7 @@ version: 0.13.0
 
 # 02_SYSTEM_SPECS / 00_core — Анкеты государств
 
-> Контракт рассмотрения анкет (версия 0.13.0, решения Project Owner 19.10, 23.10 и 31.10.2026 — журнал `docs/04_VERSIONS/0.13.0.md`). Основной Spec — `docs/02_SYSTEM_SPECS/00_core.md`; здесь только то, что добавляет анкета. Слово «анкета» везде означает заявку на регистрацию государства; «ссылка на историю» остаётся ссылкой на историю. Государство в базе до принятия анкеты не создаётся; в Реестре анкеты нет.
+> Контракт рассмотрения анкет (версия 0.13.0, решения Project Owner 19.10, 23.10, 31.10 и 04.11.2026 — журнал `docs/04_VERSIONS/0.13.0.md`). Основной Spec — `docs/02_SYSTEM_SPECS/00_core.md`; здесь только то, что добавляет анкета. Слово «анкета» везде означает заявку на регистрацию государства; «ссылка на историю» остаётся ссылкой на историю. Государство в базе до принятия анкеты не создаётся; в Реестре анкеты нет.
 
 ## 1. Данные
 
@@ -25,7 +25,7 @@ version: 0.13.0
 | `return_comment` | VARCHAR(300) | NULL; причина возврата (длина из конфига) |
 | `submissions` | INTEGER | число отправок, NOT NULL, default 0 |
 | `submitted_at`, `review_deadline_at` | TIMESTAMPTZ | NULL вне `PENDING`; срок = отправка + `applications.review_hours` |
-| `reviewer_player_id`, `reviewer_assigned_at` | UUID, TIMESTAMPTZ | FK → `players.id` `ON DELETE SET NULL`; кому ушло сообщение о рассмотрении |
+| `reviewer_player_id`, `reviewer_assigned_at` | UUID, TIMESTAMPTZ | не используются (рецензент убран решением 04.11.2026): не пишутся и не читаются, колонки и FK → `players.id` `ON DELETE SET NULL` остаются до поздней миграции |
 | `decided_at`, `decided_by_player_id`, `auto_accepted` | TIMESTAMPTZ, UUID, BOOLEAN | заполняются при принятии; `decided_by_player_id` NULL при автоприёме |
 | `accepted_nation_id` | UUID | FK → `nations.id`, `ON DELETE SET NULL` |
 | `created_at`, `updated_at` | TIMESTAMPTZ | NOT NULL |
@@ -50,7 +50,7 @@ stateDiagram-v2
 
 - `DRAFT` ничего не резервирует. Править черновик, загружать картинки и отправлять его можно только в `DRAFT`; в `PENDING` игрок анкету править не может, только отменить (решение 31.10.2026).
 - `PENDING` резервирует провинции, цвет, полное и краткое название (разд. 3).
-- Принятая анкета остаётся строкой-снимком (`ACCEPTED`) и хранит историю выбора рецензента.
+- Принятая анкета остаётся строкой-снимком (`ACCEPTED`).
 - У игрока не больше одной живой анкеты (индекс) и либо анкета, либо государство: `PUT /applications/me` при существующем государстве отвечает 409 `NATION_ALREADY_EXISTS`.
 
 ## 3. Инварианты
@@ -67,7 +67,7 @@ stateDiagram-v2
 
 **Сохранение черновика** (`PUT /applications/me`, тело — те же поля, что `NationCreateRequest`): игрок без государства → состояние `DRAFT` или анкеты нет (иначе 409 `APPLICATION_NOT_EDITABLE`) → проверки формата и длин всех профильных полей в порядке создания государства (INV-9) → выбранные провинции существуют (иначе `PROVINCE_NOT_FOUND`) → запись. Занятость названий, цвета и провинций здесь не проверяется.
 
-**Отправка** (`POST /applications/me/submit`): у игрока нет государства (иначе 409 `NATION_ALREADY_EXISTS`) → проверки спутников стадии `before_all`, как у `NationService.create` (согласие на сообщения бота, Spec `02_bot`, 3.10) → `DRAFT` → блокировка → повторные проверки формата → названия и краткое название против государств и других `PENDING` (`NAME_TAKEN`, `SHORT_NAME_TAKEN`) → цвет (`COLOR_TAKEN`, `COLOR_TOO_CLOSE`: против государств, цветов карты и цветов других `PENDING`) → провинции: существуют, свободны и не зарезервированы (`PROVINCE_TAKEN`), `after_free`, число, `after_count`, столица → `PENDING`, `is_reserved = true`, `submitted_at`, `review_deadline_at`, `submissions + 1`, очистка `draft_reason` и `return_comment`, выбор рецензента (разд. 5) → событие `SUBMITTED`.
+**Отправка** (`POST /applications/me/submit`): у игрока нет государства (иначе 409 `NATION_ALREADY_EXISTS`) → проверки спутников стадии `before_all`, как у `NationService.create` (согласие на сообщения бота, Spec `02_bot`, 3.10) → `DRAFT` → блокировка → повторные проверки формата → названия и краткое название против государств и других `PENDING` (`NAME_TAKEN`, `SHORT_NAME_TAKEN`) → цвет (`COLOR_TAKEN`, `COLOR_TOO_CLOSE`: против государств, цветов карты и цветов других `PENDING`) → провинции: существуют, свободны и не зарезервированы (`PROVINCE_TAKEN`), `after_free`, число, `after_count`, столица → `PENDING`, `is_reserved = true`, `submitted_at`, `review_deadline_at`, `submissions + 1`, очистка `draft_reason` и `return_comment` → событие `SUBMITTED`.
 
 **Отмена** (`POST /applications/me/cancel`): `PENDING` → `DRAFT`, `draft_reason = cancelled`, резерв снят, срок обнулён, событие `CANCELLED`.
 
@@ -79,16 +79,16 @@ stateDiagram-v2
 
 ## 5. Выбор рецензента
 
-Чистая функция без обращений к базе, точка подмены в тестах (по образцу `select_judge_v1` модуля `04_orders`). Кандидаты — администраторы (`.env` и гранты), у которых есть строка `players`, кроме заявителя. Победитель минимизирует `(число анкет в PENDING на нём, reviewer_assigned_at последней его анкеты — отсутствие считается самым давним, player_id)`. Нет кандидатов — `reviewer_player_id = NULL`; фоновая задача пробует назначить, пока анкета в `PENDING`. Рецензент определяет только, кому уйдёт сообщение бота и чья анкета помечена «назначена мне»; решить может любой администратор (APP-3). Переназначения нет.
+Назначенного рецензента нет (решение Project Owner 04.11.2026): анкета в `PENDING` видна каждому администратору, и решение принимает любой администратор, кроме заявителя (APP-3).
 
 ## 6. Фоновая задача
 
-Одна задача на процесс (по образцу `OrdersWorker`), запускается в `lifespan`, период `applications.worker_interval_seconds`. Проход: (а) анкеты `PENDING` со сроком в прошлом — автоприём, каждая в своей транзакции, сбой одной не останавливает остальные; (б) анкеты `PENDING` без рецензента — попытка назначения. Осознанное исключение из Tick DAG: сроки идут по реальному времени, фазы тика не затрагиваются. Режим и момент последнего прохода — плитка «Анкеты» в состоянии мира панели; просроченные после простоя сервера принимаются при первом проходе.
+Одна задача на процесс (по образцу `OrdersWorker`), запускается в `lifespan`, период `applications.worker_interval_seconds`. Проход одночастный: анкеты `PENDING` со сроком в прошлом — автоприём, каждая в своей транзакции, сбой одной не останавливает остальные. Осознанное исключение из Tick DAG: сроки идут по реальному времени, фазы тика не затрагиваются. Режим и момент последнего прохода — плитка «Анкеты» в состоянии мира панели; просроченные после простоя сервера принимаются при первом проходе.
 
 ## 7. События и хуки
 
-- **Реестр слушателей анкет** (`hooks.py`, по образцу `nation_created`): `register_application_listener(name, fn)`; событие `ApplicationEvent(kind, application_id, owner_player_id, reviewer_player_id, comment, auto)`, `kind` ∈ `SUBMITTED` / `ASSIGNED` / `CANCELLED` / `RETURNED` / `ACCEPTED`; `ASSIGNED` — только фоновая задача назначила рецензента позже отправки (при отправке рецензент уже в `SUBMITTED`). Слушатель вызывается в транзакции операции под своим SAVEPOINT; его ошибка логируется и решения не отменяет (в отличие от слушателей смены владельца). Снимок и восстановление для тестов — как у остальных реестров.
-- **Бот (`02_bot`, Issue 8):** игроку — `SUBMITTED` (анкета получена, срок), `RETURNED` (с причиной), `ACCEPTED` (в том числе автоматически, с пометкой), с ссылкой на окно анкеты `#application`; рецензенту — `SUBMITTED` (если рецензент назначен при отправке) или `ASSIGNED` со ссылкой `#application/<id>`; игроку `ASSIGNED` сообщений не создаёт; `CANCELLED` сообщений не создаёт. Тип сообщения и отсутствие согласия — по правилам Spec `02_bot` (уведомление без согласия не уходит, это закрывают щит и панель).
+- **Реестр слушателей анкет** (`hooks.py`, по образцу `nation_created`): `register_application_listener(name, fn)`; событие `ApplicationEvent(kind, application_id, owner_player_id, comment, auto)`, `kind` ∈ `SUBMITTED` / `CANCELLED` / `RETURNED` / `ACCEPTED`. Слушатель вызывается в транзакции операции под своим SAVEPOINT; его ошибка логируется и решения не отменяет (в отличие от слушателей смены владельца). Снимок и восстановление для тестов — как у остальных реестров.
+- **Бот (`02_bot`, Issue 8):** игроку — `SUBMITTED` (анкета получена, срок), `RETURNED` (с причиной), `ACCEPTED` (в том числе автоматически, с пометкой), с ссылкой на окно анкеты `#application`; каждому администратору, кроме заявителя, — `APPLICATION_REVIEW_REQUEST` на `SUBMITTED` со ссылкой `#application/<id>`; `CANCELLED` сообщений не создаёт. Аудитория администраторов — `ApplicationService.admin_recipient_ids` (env-список и гранты, только с строкой `players`); каждый получатель — под своим SAVEPOINT, сбой одного не мешает остальным. Тип сообщения и отсутствие согласия — по правилам Spec `02_bot` (уведомление без согласия не уходит, это закрывают щит и панель).
 - **«Требует внимания»:** `AdminRegistry.register_attention(module_slug, fn)`, `fn(session)` возвращает список `{"key", "label", "count"}`; `GET /api/v1/admin/attention` (`require_admin`) отвечает `{total, items}`, падающий хук логируется и пропускается. `00_core` отдаёт «Анкеты на рассмотрении» (число `PENDING`), `04_orders` — «Приказы без судьи». Щит подсвечивается при `total > 0`.
 - **Публичные представления для сателлитов:** `ApplicationService.reserved_groups(session)` — список групп `[province_id, ...]`, по группе на анкету в `PENDING`, без идентификаторов и без игрока; `ApplicationService.reserved_colors(session)` — цвета анкет в `PENDING` для расчёта различимости.
 
@@ -108,7 +108,7 @@ stateDiagram-v2
 | POST | `/api/v1/admin/applications/{id}/images/{kind}/delete` | админ | `AdminApplicationDTO` |
 | GET | `/api/v1/admin/attention` | админ | `{total, items}` |
 
-`ApplicationDTO`: профильные поля, `status`, `draft_reason`, `return_comment`, `review_deadline_at`, `submissions`, `provinces` (названиями, столичная первая), `images` (адреса через `images.image_url`). `AdminApplicationDTO` добавляет `id`, `owner_vk_user_id`, `owner_name`, `assigned_to_me`, `submitted_at`, `decided_at`, `auto_accepted`. Строка списка: `id`, `short_name`, `name`, `status`, `owner_name` (имя через хуки данных игрока, `null` для удалённого), `provinces_count`, `reviewer_name` (`null` без рецензента), `submitted_at`, `review_deadline_at`, `assigned_to_me`, `submissions`, `draft_reason`, `auto_accepted`, `decided_at`, `link` (адрес `#application/<id>` в Mini App, `null`, пока `VK_APP_ID` пуст). `GET /nations/rules` получает `application`: `review_hours`, `comment_max_length`.
+`ApplicationDTO`: профильные поля, `status`, `draft_reason`, `return_comment`, `review_deadline_at`, `submissions`, `provinces` (названиями, столичная первая), `images` (адреса через `images.image_url`). `AdminApplicationDTO` добавляет `id`, `owner_vk_user_id`, `owner_name`, `submitted_at`, `decided_at`, `auto_accepted`. Строка списка: `id`, `short_name`, `name`, `status`, `owner_name` (имя через хуки данных игрока, `null` для удалённого), `provinces_count`, `submitted_at`, `review_deadline_at`, `submissions`, `draft_reason`, `auto_accepted`, `decided_at`, `link` (адрес `#application/<id>` в Mini App, `null`, пока `VK_APP_ID` пуст). `GET /nations/rules` получает `application`: `review_hours`, `comment_max_length`.
 
 Новые коды: `APPLICATION_NOT_FOUND` 404, `APPLICATION_NOT_EDITABLE` 409, `APPLICATION_NOT_PENDING` 409, `APPLICATION_SELF_REVIEW` 403, `RETURN_COMMENT_INVALID` 422, `PROVINCE_RESERVED` 409 (передача провинции администратором в резерв). Названия, цвет и провинции, занятые анкетой, для остальных путей отвечают прежними кодами `NAME_TAKEN`, `SHORT_NAME_TAKEN`, `COLOR_TAKEN`, `COLOR_TOO_CLOSE`, `PROVINCE_TAKEN`.
 

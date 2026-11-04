@@ -1,7 +1,7 @@
 """
 Nation-application («анкета») admin-side tests of module 00_core
-(0.13.0 unit 5): the reviewer pick, accept/return/image-delete,
-the worker pass (auto-accept + assignment) and the admin routes.
+(0.13.0 unit 5): accept/return/image-delete, the worker pass
+(auto-accept) and the admin routes.
 
 Real in-memory SQLite through ``test_db_engine`` — no mocks anywhere
 (Anti-Mock Guard).
@@ -37,8 +37,6 @@ from modules._00_core.models import (
     Player,
     Province,
 )
-from modules._00_core.reviewer import ReviewerCandidate, select_reviewer_v1
-from modules._00_core.service import NationService
 from tests.fixtures.factories import make_player, make_vk_profile
 from tests.fixtures.profile import VALID_PROFILE
 from tests.fixtures.provinces import (
@@ -109,72 +107,6 @@ async def _grant(session, player) -> AdminGrant:
     session.add(row)
     await session.flush()
     return row
-
-
-class TestReviewerPick:
-    """Spec §5: the pure selector — load, age, applicant, nobody."""
-
-    def test_select_reviewer_orders_and_excludes(self):
-        applicant = "p-app"
-        candidates = [
-            ReviewerCandidate("p-load2", pending=0, last_assigned_at=None),
-            ReviewerCandidate(
-                "p-load1",
-                pending=2,
-                last_assigned_at=datetime(2026, 1, 1, tzinfo=UTC),
-            ),
-            ReviewerCandidate(applicant, pending=0, last_assigned_at=None),
-            ReviewerCandidate("p-load3", pending=0, last_assigned_at=None),
-        ]
-        # Least loaded wins; never-assigned counts oldest (τ = −∞);
-        # the applicant is skipped despite a clean slate; ties break
-        # on player_id.
-        assert (
-            select_reviewer_v1(applicant, candidates) == "p-load2"
-        )
-        assert select_reviewer_v1(applicant, candidates[2:3] * 0) is None
-        # Only the applicant remains → nobody.
-        assert (
-            select_reviewer_v1(
-                applicant, [c for c in candidates if c.player_id == applicant]
-            )
-            is None
-        )
-
-    @pytest.mark.asyncio
-    async def test_submit_assigns_admin_reviewer(self, session_factory):
-        async with session_factory() as session:
-            player = await make_player(session, vk_user_id=620001)
-            admin = await make_player(session, vk_user_id=620002)
-            await _grant(session, admin)
-            await make_starting_group(session)
-            await session.commit()
-
-        async with session_factory() as session:
-            application = await _pending(session, player)
-            assert application.reviewer_player_id == admin.id
-            assert application.reviewer_assigned_at is not None
-
-        async with session_factory() as session:
-            # The applicant's own admin rights never self-assign.
-            await _grant(session, player)
-            other = await make_player(session, vk_user_id=620003)
-            await make_starting_group(session)
-            for pid in (1010, 1011, 1012, 1013, 1014):
-                from tests.fixtures.provinces import make_land_province
-
-                await make_land_province(session, id=pid)
-            application2 = await _pending(
-                session,
-                other,
-                name="Other Realm",
-                short_name="OtherShort",
-                color_hex="#2B2DB0",
-                province_ids=[1010, 1011, 1012, 1013, 1014],
-            )
-            # other applicant: reviewer is an admin — either of the two.
-            assert application2.reviewer_player_id in {admin.id, player.id}
-            assert application2.reviewer_player_id != other.id
 
 
 class TestAccept:
@@ -323,7 +255,8 @@ class TestReturn:
         assert body["status"] == "DRAFT"
         assert body["draft_reason"] == "returned"
         assert body["return_comment"] == "доделай историю"
-        assert body["assigned_to_me"] is False
+        assert "assigned_to_me" not in body
+        assert "reviewer_name" not in body
 
         journal = (
             await test_db_session.execute(
@@ -426,10 +359,33 @@ class TestWorkerPass:
         assert "ACCEPTED" in events
         assert "RETURNED" in events
         # The only SUBMITTED events are the two submits — the worker's
-        # reviewer assignment fires ASSIGNED, never a second SUBMITTED
-        # (the unit-6 bot listener would message the applicant twice).
+        # auto-accept pass never fires a second SUBMITTED.
         assert events.count("SUBMITTED") == 2
-        assert "ASSIGNED" not in events
+
+    @pytest.mark.asyncio
+    async def test_pending_without_admins_auto_accepts(self, session_factory):
+        """13b: submitted while no administrator exists — the row
+        stays PENDING and the deadline pass accepts it (APP-4)."""
+        async with session_factory() as session:
+            player = await make_player(session, vk_user_id=620055)
+            await make_starting_group(session)
+            application = await _pending(session, player)
+            application.review_deadline_at = (
+                datetime.now(UTC) - timedelta(hours=1)
+            )
+            await session.commit()
+
+        async with session_factory() as session:
+            row = await session.get(NationApplication, application.id)
+            assert row.status == "PENDING"
+
+        stats = await ApplicationService.run_pass(session_factory, CORE_CONFIG)
+        assert stats.auto_accepted == 1
+        assert stats.errors == 0
+        async with session_factory() as session:
+            row = await session.get(NationApplication, application.id)
+            assert row.status == "ACCEPTED"
+            assert row.auto_accepted is True
 
 
 class TestAdminRoutes:
@@ -468,9 +424,11 @@ class TestAdminRoutes:
         assert detail.status_code == 200, detail.text
         body = detail.json()
         assert body["owner_vk_user_id"] == 620061
-        # Submit picked the only admin (vk 620060) as this
-        # application's reviewer — the tile is his.
-        assert body["assigned_to_me"] is True
+        # 13b: no reviewer fields anywhere in the admin answers.
+        assert "assigned_to_me" not in body
+        assert "reviewer_name" not in body
+        assert "assigned_to_me" not in row
+        assert "reviewer_name" not in row
 
         attention = await client.get(
             "/api/v1/admin/attention", headers=headers
@@ -503,6 +461,93 @@ class TestAdminRoutes:
             )
         ).scalar_one()
         assert journal.actor_vk_user_id == 620060
+
+    @pytest.mark.asyncio
+    async def test_any_admin_decides_but_not_the_applicant(
+        self, client, test_db_session, monkeypatch
+    ):
+        """13b: nothing is assigned — a second administrator accepts;
+        the applicant's own accept is 403 APPLICATION_SELF_REVIEW
+        (APP-3)."""
+        second = await seed_player(test_db_session, vk_user_id=620066)
+        admin_applicant = await seed_player(
+            test_db_session, vk_user_id=620067
+        )
+        player = await seed_player(test_db_session, vk_user_id=620068)
+        for grantee in (second, admin_applicant):
+            await _grant(test_db_session, grantee)
+        await make_starting_group(test_db_session)
+        for pid in (1010, 1011, 1012, 1013, 1014):
+            await make_land_province(test_db_session, id=pid)
+        application = await _pending(test_db_session, player)
+        own = await _pending(
+            test_db_session,
+            admin_applicant,
+            name="Own Land",
+            short_name="OwnLand",
+            color_hex="#2B2DB0",
+            province_ids=[1010, 1011, 1012, 1013, 1014],
+        )
+        await test_db_session.commit()
+
+        accepted = await client.post(
+            f"/api/v1/admin/applications/{application.id}/accept",
+            headers=bearer_headers(second.id),
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["status"] == "ACCEPTED"
+
+        own_accept = await client.post(
+            f"/api/v1/admin/applications/{own.id}/accept",
+            headers=bearer_headers(admin_applicant.id),
+        )
+        assert own_accept.status_code == 403, own_accept.text
+        assert own_accept.json()["code"] == "APPLICATION_SELF_REVIEW"
+
+    @pytest.mark.asyncio
+    async def test_attention_and_tile_count_every_pending(
+        self, client, test_db_session, monkeypatch
+    ):
+        """13b: the attention counter and the overview tile count ALL
+        PENDING rows — no reviewer is needed for either."""
+        from modules._00_core.admin_hooks import (
+            admin_attention,
+            applications_overview_tiles,
+            register_admin_hooks,
+        )
+
+        register_admin_hooks()
+        monkeypatch.setenv("ADMIN_VK_USER_IDS", "620120")
+        admin = await seed_player(test_db_session, vk_user_id=620120)
+        await make_starting_group(test_db_session)
+        for pid in (1010, 1011, 1012, 1013, 1014):
+            await make_land_province(test_db_session, id=pid)
+        player_a = await seed_player(test_db_session, vk_user_id=620121)
+        player_b = await seed_player(test_db_session, vk_user_id=620122)
+        await _pending(test_db_session, player_a)
+        await _pending(
+            test_db_session,
+            player_b,
+            name="Second Land",
+            short_name="SecondLand",
+            color_hex="#2B2DB0",
+            province_ids=[1010, 1011, 1012, 1013, 1014],
+        )
+        await test_db_session.commit()
+
+        attention = await client.get(
+            "/api/v1/admin/attention", headers=bearer_headers(admin.id)
+        )
+        assert attention.status_code == 200, attention.text
+        assert attention.json()["total"] == 2
+        assert attention.json()["items"][0]["count"] == 2
+
+        tiles = await applications_overview_tiles(test_db_session)
+        pending_tile = next(
+            tile for tile in tiles if tile["key"] == "applications_pending"
+        )
+        assert pending_tile["value"] == "2"
+        assert (await admin_attention(test_db_session))[0]["count"] == 2
 
     @pytest.mark.asyncio
     async def test_admin_image_delete(self, client, test_db_session, monkeypatch):
@@ -644,9 +689,9 @@ class TestListPanelFields:
         row = rows["PendingLand"]
         assert row["status"] == "PENDING"
         assert row["owner_name"] == "Игрок1 Заявитель"
-        assert row["reviewer_name"] == "Админ Первый"
+        assert "reviewer_name" not in row
         assert row["provinces_count"] == 5
-        assert row["assigned_to_me"] is True
+        assert "assigned_to_me" not in row
         assert row["draft_reason"] is None
         assert row["auto_accepted"] is None
         assert row["decided_at"] is None
@@ -666,17 +711,13 @@ class TestListPanelFields:
 
         assert rows["ReturnedLand"]["status"] == "DRAFT"
         assert rows["ReturnedLand"]["draft_reason"] == "returned"
-        # The reviewer is cleared on return/cancel — no name to show.
-        assert rows["ReturnedLand"]["reviewer_name"] is None
         assert rows["CancelledLand"]["draft_reason"] == "cancelled"
-        assert rows["CancelledLand"]["reviewer_name"] is None
 
     @pytest.mark.asyncio
-    async def test_list_deleted_owner_gives_null_names(
+    async def test_list_deleted_owner_gives_null_name(
         self, client, test_db_session, monkeypatch
     ):
-        """A row whose owner row is gone shows ``owner_name: null``
-        while a living reviewer keeps his name."""
+        """A row whose owner row is gone shows ``owner_name: null``."""
         from modules._03_registry.admin_hooks import (
             register_registry_admin_hooks,
         )
@@ -701,7 +742,7 @@ class TestListPanelFields:
         assert resp.status_code == 200, resp.text
         row = resp.json()["items"][0]
         assert row["owner_name"] is None
-        assert row["reviewer_name"] == "Админ Первый"
+        assert "reviewer_name" not in row
 
     @pytest.mark.asyncio
     async def test_list_link_follows_vk_app_id(

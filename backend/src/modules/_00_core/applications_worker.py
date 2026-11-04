@@ -8,8 +8,7 @@ follow wall-clock time, not game turns.
 Each pass calls ``ApplicationService.run_pass``: auto-accept every
 overdue PENDING application (each in its own transaction — a failed
 check drops it back to DRAFT/failed, a row failure never stops the
-others) and then assign a reviewer to every PENDING row still without
-one. Overdue applications submitted while the server was down are
+others). Overdue applications submitted while the server was down are
 taken by the first pass after boot.
 
 Modes: ``STOPPED`` before :meth:`ApplicationsWorker.start` and after
@@ -68,7 +67,7 @@ def get_last_pass_at() -> datetime | None:
 
 
 class ApplicationsWorker:
-    """Owns the applications auto-accept/assignment task for one app
+    """Owns the applications auto-accept task for one app
     lifespan."""
 
     def __init__(

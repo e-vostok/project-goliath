@@ -57,7 +57,7 @@ _GENITIVE_MONTHS = [
 
 @pytest.fixture(autouse=True)
 def _no_env_admins(monkeypatch):
-    """No env admin allowlist — only granted rows make reviewers."""
+    """No env admin allowlist — only granted rows make admins."""
     monkeypatch.delenv("ADMIN_VK_USER_IDS", raising=False)
 
 
@@ -131,20 +131,33 @@ def _expected_deadline(moment) -> str:
 class TestMapping:
     """Spec 4.8: every event kind through the real listener."""
 
-    async def test_submitted_writes_applicant_and_reviewer(
+    async def test_submitted_writes_applicant_and_every_admin(
         self, started, session_factory
     ):
         """SUBMITTED -> APPLICATION_RECEIVED to the applicant plus
-        APPLICATION_REVIEW_REQUEST to the reviewer the event carries;
-        a repeated delivery writes nothing (dedup UNIQUE)."""
+        APPLICATION_REVIEW_REQUEST to every administrator except the
+        applicant; a consent-less administrator is skipped and the
+        rest still get theirs (dedup UNIQUE on redelivery)."""
         async with session_factory() as session:
             applicant = await make_player(
                 session, vk_user_id=770011, consent_state="ALLOWED"
             )
-            reviewer = await make_player(
-                session, vk_user_id=770012, consent_state="ALLOWED"
+            # The applicant holds admin rights himself — he is still
+            # excluded from the review requests.
+            await _grant(session, applicant)
+            admins = [
+                await make_player(
+                    session,
+                    vk_user_id=770012 + i,
+                    consent_state="ALLOWED",
+                )
+                for i in range(3)
+            ]
+            silent_admin = await make_player(
+                session, vk_user_id=770020
             )
-            await _grant(session, reviewer)
+            for admin in (*admins, silent_admin):
+                await _grant(session, admin)
             await make_starting_group(session)
             await session.commit()
 
@@ -154,9 +167,9 @@ class TestMapping:
 
         async with session_factory() as session:
             rows = await _outbox(session)
-        assert len(rows) == 2
+        assert len(rows) == 4
 
-        received, request = rows
+        received = rows[0]
         deadline = _expected_deadline(application.review_deadline_at)
         assert received.player_id == applicant.id
         assert received.type_key == "APPLICATION_RECEIVED"
@@ -169,18 +182,23 @@ class TestMapping:
             "application_link": "https://vk.com/app777#application",
             "deadline": deadline,
         }
-        assert request.player_id == reviewer.id
-        assert request.type_key == "APPLICATION_REVIEW_REQUEST"
-        assert request.event_key == (
-            f"application_APPLICATION_REVIEW_REQUEST:{application.id}:1"
-        )
-        assert request.payload == {
-            "nation_name": "Draftland",
-            "application_link": (
-                f"https://vk.com/app777#application/{application.id}"
-            ),
-            "deadline": deadline,
+        requests = rows[1:]
+        assert {row.player_id for row in requests} == {
+            admin.id for admin in admins
         }
+        for request in requests:
+            assert request.type_key == "APPLICATION_REVIEW_REQUEST"
+            assert request.event_key == (
+                f"application_APPLICATION_REVIEW_REQUEST:"
+                f"{application.id}:1"
+            )
+            assert request.payload == {
+                "nation_name": "Draftland",
+                "application_link": (
+                    f"https://vk.com/app777#application/{application.id}"
+                ),
+                "deadline": deadline,
+            }
         # The texts render verbatim with the stored variables.
         assert (
             render(started.types["APPLICATION_RECEIVED"].text, received.payload)
@@ -194,7 +212,7 @@ class TestMapping:
         assert (
             render(
                 started.types["APPLICATION_REVIEW_REQUEST"].text,
-                request.payload,
+                requests[0].payload,
             )
             == (
                 "Поступила анкета государства «Draftland». Откройте её и "
@@ -212,19 +230,17 @@ class TestMapping:
                     kind="SUBMITTED",
                     application_id=application.id,
                     owner_player_id=applicant.id,
-                    reviewer_player_id=reviewer.id,
                 ),
             )
             await session.commit()
         async with session_factory() as session:
-            assert len(await _outbox(session)) == 2
+            assert len(await _outbox(session)) == 4
 
-    async def test_submitted_without_reviewer_then_assigned(
+    async def test_submitted_without_admins_writes_applicant_only(
         self, started, session_factory
     ):
-        """SUBMITTED without a reviewer writes the applicant only; the
-        worker's later ASSIGNED writes the review request to the
-        reviewer — never to the applicant."""
+        """SUBMITTED while no administrator exists writes the
+        applicant only — nobody to ask for a review."""
         async with session_factory() as session:
             applicant = await make_player(
                 session, vk_user_id=770021, consent_state="ALLOWED"
@@ -234,7 +250,6 @@ class TestMapping:
 
         async with session_factory() as session:
             application = await _pending(session, applicant)
-            assert application.reviewer_player_id is None
             await session.commit()
 
         async with session_factory() as session:
@@ -242,33 +257,6 @@ class TestMapping:
         (received,) = rows
         assert received.player_id == applicant.id
         assert received.type_key == "APPLICATION_RECEIVED"
-
-        async with session_factory() as session:
-            reviewer = await make_player(
-                session, vk_user_id=770022, consent_state="ALLOWED"
-            )
-            await _grant(session, reviewer)
-            await session.commit()
-
-        stats = await ApplicationService.run_pass(session_factory, CORE_CONFIG)
-        assert stats.reviewers_assigned == 1
-
-        async with session_factory() as session:
-            rows = await _outbox(session)
-        assert len(rows) == 2
-        request = rows[1]
-        assert request.player_id == reviewer.id
-        assert request.type_key == "APPLICATION_REVIEW_REQUEST"
-        assert request.event_key == (
-            f"application_APPLICATION_REVIEW_REQUEST:{application.id}:1"
-        )
-        assert request.payload == {
-            "nation_name": "Draftland",
-            "application_link": (
-                f"https://vk.com/app777#application/{application.id}"
-            ),
-            "deadline": _expected_deadline(application.review_deadline_at),
-        }
 
     async def test_returned_writes_reason(self, started, session_factory):
         """RETURNED -> APPLICATION_RETURNED to the applicant carrying
@@ -463,12 +451,16 @@ class TestSkips:
 
     async def test_resubmission_writes_again(self, started, session_factory):
         """The dedup key carries ``submissions``: a return followed by
-        a resubmit writes the applicant again under the new count."""
+        a resubmit writes the applicant and every administrator again
+        under the new count."""
         async with session_factory() as session:
             applicant = await make_player(
                 session, vk_user_id=770091, consent_state="ALLOWED"
             )
-            decider = await make_player(session, vk_user_id=770092)
+            decider = await make_player(
+                session, vk_user_id=770092, consent_state="ALLOWED"
+            )
+            await _grant(session, decider)
             await make_starting_group(session)
             await session.commit()
 
@@ -497,12 +489,19 @@ class TestSkips:
             rows = await _outbox(session)
         assert [row.type_key for row in rows] == [
             "APPLICATION_RECEIVED",
+            "APPLICATION_REVIEW_REQUEST",
             "APPLICATION_RETURNED",
             "APPLICATION_RECEIVED",
+            "APPLICATION_REVIEW_REQUEST",
         ]
         assert rows[0].event_key == (
             f"application_APPLICATION_RECEIVED:{application.id}:1"
         )
-        assert rows[2].event_key == (
+        assert rows[3].event_key == (
             f"application_APPLICATION_RECEIVED:{application.id}:2"
+        )
+        assert rows[1].player_id == decider.id
+        assert rows[4].player_id == decider.id
+        assert rows[4].event_key == (
+            f"application_APPLICATION_REVIEW_REQUEST:{application.id}:2"
         )

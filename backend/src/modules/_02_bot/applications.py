@@ -10,11 +10,11 @@ only this listener's rows and never the decision (Spec applications
 §7).
 
 Mapping: ``SUBMITTED`` -> ``APPLICATION_RECEIVED`` to the applicant,
-plus ``APPLICATION_REVIEW_REQUEST`` to the reviewer when the event
-carries one; ``ASSIGNED`` -> the review request to the reviewer only;
-``RETURNED`` -> ``APPLICATION_RETURNED``; ``ACCEPTED`` ->
-``APPLICATION_ACCEPTED`` or ``_AUTO`` on ``auto``; ``CANCELLED`` ->
-nothing.
+plus ``APPLICATION_REVIEW_REQUEST`` to every administrator except
+the applicant (each under his own SAVEPOINT — one failure never
+stops the others); ``RETURNED`` -> ``APPLICATION_RETURNED``;
+``ACCEPTED`` -> ``APPLICATION_ACCEPTED`` or ``_AUTO`` on ``auto``;
+``CANCELLED`` -> nothing.
 
 Every text links into the Mini App through ``BotService.app_link``;
 without ``VK_APP_ID`` nothing is enqueued and one warning is logged —
@@ -24,9 +24,10 @@ message is skipped and never raises, never blocks the decision — the
 shield and the panel stay the administrator's channels.
 
 Data sovereignty: the listener never touches core tables — the
-application's name, deadline and submission counter come through
-``ApplicationService.notification_view``, and the deadline renders in
-``tick_timezone`` of ``configs/00_core.yaml``.
+application's name, deadline, submission counter and the admin
+audience come through ``ApplicationService.notification_view`` and
+``ApplicationService.admin_recipient_ids``, and the deadline renders
+in ``tick_timezone`` of ``configs/00_core.yaml``.
 """
 
 from __future__ import annotations
@@ -89,20 +90,19 @@ async def _enqueue_review_request(
     session: AsyncSession,
     *,
     application_id: str,
-    reviewer_player_id: str,
+    admin_player_id: str,
     view: ApplicationNotificationView,
 ) -> None:
     """
-    ``APPLICATION_REVIEW_REQUEST`` to the reviewer — identical for a
-    ``SUBMITTED`` carrying a reviewer and a later ``ASSIGNED``; the
-    link opens the application's own window (``#application/<id>``).
+    ``APPLICATION_REVIEW_REQUEST`` to one administrator; the link
+    opens the application's own window (``#application/<id>``).
     """
     from modules._02_bot.service import BotService
 
     await BotService.enqueue(
         session,
         type_key=APPLICATION_REVIEW_REQUEST,
-        player_id=reviewer_player_id,
+        player_id=admin_player_id,
         event_key=(
             f"application_{APPLICATION_REVIEW_REQUEST}:"
             f"{application_id}:{view.submissions}"
@@ -160,21 +160,24 @@ async def application_listener(
                 "deadline": _deadline_text(view.review_deadline_at),
             },
         )
-        if event.reviewer_player_id is not None:
-            await _enqueue_review_request(
-                session,
-                application_id=event.application_id,
-                reviewer_player_id=event.reviewer_player_id,
-                view=view,
-            )
-    elif event.kind == "ASSIGNED":
-        if event.reviewer_player_id is not None:
-            await _enqueue_review_request(
-                session,
-                application_id=event.application_id,
-                reviewer_player_id=event.reviewer_player_id,
-                view=view,
-            )
+        admin_ids = await ApplicationService.admin_recipient_ids(
+            session, exclude_player_id=event.owner_player_id
+        )
+        for admin_id in sorted(admin_ids):
+            try:
+                async with session.begin_nested():
+                    await _enqueue_review_request(
+                        session,
+                        application_id=event.application_id,
+                        admin_player_id=admin_id,
+                        view=view,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "application_review_request_failed player=%s error=%s",
+                    admin_id,
+                    type(exc).__name__,
+                )
     elif event.kind == "RETURNED":
         await BotService.enqueue(
             session,

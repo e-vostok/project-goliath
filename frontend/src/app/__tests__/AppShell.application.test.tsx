@@ -387,7 +387,6 @@ describe('AppShell — the admin review link #application/<id> (unit 7b)', () =>
     id: ADMIN_ID,
     owner_vk_user_id: 987654,
     owner_name: 'Иван Петров',
-    assigned_to_me: true,
     submitted_at: '2026-10-31T11:20:00Z',
     decided_at: null,
     auto_accepted: null,
