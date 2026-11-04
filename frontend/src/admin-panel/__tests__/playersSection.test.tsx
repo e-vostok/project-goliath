@@ -111,6 +111,9 @@ function allowSection({
     // The default «Ход и мир» section may mount on the way through —
     // answer its calls so a stray render never fails the test.
     http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
     http.get('*/api/v1/admin/players', () => {
       counters.players += 1;

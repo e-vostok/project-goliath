@@ -207,6 +207,9 @@ function allowSection({
     http.get('*/api/v1/admin/me', () =>
       HttpResponse.json({ is_admin: true, reset_allowed: false }),
     ),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/orders', ({ request }) => {
       counters.orders += 1;
       counters.ordersQueries.push(new URL(request.url).search);

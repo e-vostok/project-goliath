@@ -9,6 +9,8 @@
 
 import type {
   AdminApplicationDTO,
+  AdminApplicationsDTO,
+  AdminAttentionDTO,
   AdminAuditFiltersDTO,
   AdminAuditLogDTO,
   AdminEntryDTO,
@@ -1022,5 +1024,48 @@ export const api = {
       )}/images/${encodeURIComponent(kind)}/delete`,
       { method: 'POST', body: {}, token, signal },
     );
+  },
+
+  /**
+   * GET /admin/applications — one page of the panel's «Анкеты»
+   * table as `{items, total}` (0.13.0 unit 9b); `status` is PENDING
+   * (the review queue, nearest deadline first) or ALL (newest first).
+   */
+  adminApplications(
+    token: string,
+    query: {
+      status?: 'PENDING' | 'ALL';
+      limit?: number;
+      offset?: number;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (query.status !== undefined) {
+      params.set('status', query.status);
+    }
+    if (query.limit !== undefined) {
+      params.set('limit', String(query.limit));
+    }
+    if (query.offset !== undefined) {
+      params.set('offset', String(query.offset));
+    }
+    const suffix = params.toString();
+    return apiFetch<AdminApplicationsDTO>(
+      `/admin/applications${suffix ? `?${suffix}` : ''}`,
+      { token, signal },
+    );
+  },
+
+  /**
+   * GET /admin/attention — the «требует внимания» counter (Spec
+   * applications §7): `{total, items}` — every module's
+   * `{key, label, count}` item; `total > 0` lights the shield.
+   */
+  adminAttention(token: string, signal?: AbortSignal) {
+    return apiFetch<AdminAttentionDTO>('/admin/attention', {
+      token,
+      signal,
+    });
   },
 };

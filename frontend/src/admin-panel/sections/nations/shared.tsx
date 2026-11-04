@@ -10,6 +10,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useTheme } from '../../../shared/ui/theme';
 import {
+  FONTS,
   RADII,
   SIZES,
   SPACING,
@@ -170,6 +171,168 @@ export const inputStyle: CSSProperties = {
   color: tokenVar('ink'),
   ...TEXT_STYLES['body'],
 };
+
+/* ---------------------------------------------------------------- */
+/* Mockup 22 building blocks: .seg, .badge, .pill (0.13.0 unit 9b).   */
+/* ---------------------------------------------------------------- */
+
+/** The mockup .seg container — the inset strip holding segment pills. */
+export function SegGroup({
+  ariaLabel,
+  children,
+}: {
+  ariaLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      style={{
+        display: 'inline-flex',
+        gap: 4,
+        background: tokenVar('surface-inset'),
+        borderRadius: RADII['radius-md'],
+        padding: 2,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** One segment of a .seg switch (view tab or status filter). */
+export function SegButton({
+  on,
+  onClick,
+  testId,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  testId: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        height: SIZES['button-h-small'],
+        padding: '0 12px',
+        border: 'none',
+        borderRadius: 6,
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        background: on ? tokenVar('surface') : 'transparent',
+        color: tokenVar(on ? 'ink' : 'ink-muted'),
+        ...TEXT_STYLES['body'],
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The mockup .badge — the amber count chip (menu item / «Анкеты» tab). */
+export function CountBadge({ count }: { count: number }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 20,
+        height: 20,
+        padding: '0 6px',
+        borderRadius: RADII['radius-pill'],
+        background: tokenVar('signal'),
+        color: tokenVar('on-signal'),
+        fontFamily: FONTS.mono,
+        fontSize: 12,
+        lineHeight: '16px',
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
+type PillTone = 'plain' | 'signal' | 'ok' | 'bad';
+
+/** The mockup .pill — a rounded status label of the decision/reviewer cell. */
+export function Pill({
+  tone = 'plain',
+  testId,
+  children,
+}: {
+  tone?: PillTone;
+  testId?: string;
+  children: ReactNode;
+}) {
+  const skin: CSSProperties =
+    tone === 'signal'
+      ? { background: tokenVar('warning-bg'), color: tokenVar('signal-ink') }
+      : {
+          background: tokenVar('surface-inset'),
+          color: tokenVar(
+            tone === 'ok' ? 'positive' : tone === 'bad' ? 'danger' : 'ink',
+          ),
+        };
+  return (
+    <span
+      data-testid={testId}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '2px 10px',
+        borderRadius: RADII['radius-pill'],
+        whiteSpace: 'nowrap',
+        ...TEXT_STYLES['caption'],
+        ...skin,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** The «Государства | Анкеты [N]» switcher of the nations section —
+ *  local view state, never a hash (unit 9b). */
+export function NationsAppsSwitch({
+  active,
+  pendingCount,
+  onSelect,
+}: {
+  active: 'nations' | 'applications';
+  pendingCount: number;
+  onSelect: (tab: 'nations' | 'applications') => void;
+}) {
+  return (
+    <SegGroup ariaLabel="Подраздел раздела «Государства»">
+      <SegButton
+        testId="tab-nations"
+        on={active === 'nations'}
+        onClick={() => onSelect('nations')}
+      >
+        Государства
+      </SegButton>
+      <SegButton
+        testId="tab-applications"
+        on={active === 'applications'}
+        onClick={() => onSelect('applications')}
+      >
+        Анкеты
+        {pendingCount > 0 && <CountBadge count={pendingCount} />}
+      </SegButton>
+    </SegGroup>
+  );
+}
 
 /** One option row inside a suggestion dropdown. */
 export function SuggestionList({

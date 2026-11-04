@@ -48,6 +48,9 @@ function allowExchange() {
       HttpResponse.json({ is_admin: true, reset_allowed: false }),
     ),
     http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
   );
   return () => body;
@@ -191,6 +194,9 @@ describe('panel entry — no fragment', () => {
       ),
       http.get('*/api/v1/game-clock', () => HttpResponse.json(CLOCK_DTO)),
       http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
       http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
     );
 

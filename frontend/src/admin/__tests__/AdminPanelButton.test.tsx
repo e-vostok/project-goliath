@@ -60,6 +60,9 @@ function allowAdmin() {
     http.get('*/api/v1/admin/me', () =>
       HttpResponse.json({ is_admin: true }),
     ),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
   );
 }
 

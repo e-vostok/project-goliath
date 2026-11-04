@@ -18,14 +18,32 @@
  * The token rides in the `#t=` fragment — never a query string —
  * so it stays out of the server log and Referer; it is never
  * logged and is dropped from `href` the moment its lifetime ends.
+ *
+ * The lit look (0.13.0 unit 9b; mockups docs/06_DESIGN/0.13.0
+ * screens 23/23b): while the home tab is active and the page is
+ * visible, `useAdminAttention` polls GET /admin/attention —
+ * `total > 0` tints the square and adds the signal dot, and the
+ * «Требует внимания» tooltip lists the counter items. A zero or a
+ * failure keeps today's quiet look. The link/token logic is
+ * unchanged by that.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 
 import { api } from '../shared/api-client';
-import { RADII, tokenVar, useNotice } from '../shared/ui';
+import type { AdminAttentionDTO } from '../shared/types';
+import {
+  FONTS,
+  RADII,
+  SPACING,
+  TEXT_STYLES,
+  tokenVar,
+  Tooltip,
+  useNotice,
+} from '../shared/ui';
 import { useSession } from '../modules/00_core/hooks/useAuth';
+import { useAdminAttention } from './useAdminAttention';
 import { useAdminProbe } from './useAdminProbe';
 
 const TITLE = 'Панель администратора';
@@ -40,8 +58,53 @@ interface IssuedLink {
   freshUntil: number;
 }
 
-export function AdminPanelButton() {
+/** The lit shield's «Требует внимания» tip (mockup 23). */
+function AttentionTip({ attention }: { attention: AdminAttentionDTO }) {
+  return (
+    <div style={{ minWidth: 220 }}>
+      <div style={{ ...TEXT_STYLES['heading'], fontSize: 14 }}>
+        Требует внимания
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          marginTop: SPACING['space-2'] - 2,
+        }}
+      >
+        {attention.items.map((item) => (
+          <div
+            key={item.key}
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+          >
+            <span>{item.label}</span>
+            <span style={{ fontFamily: FONTS.mono }}>{item.count}</span>
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          ...TEXT_STYLES['caption'],
+          color: tokenVar('ink-muted'),
+          marginTop: SPACING['space-2'] - 2,
+        }}
+      >
+        Нажмите, чтобы открыть панель администратора.
+      </div>
+    </div>
+  );
+}
+
+export function AdminPanelButton({
+  active = true,
+}: {
+  /** False outside the home tab — the counter sleeps (Spec §10). */
+  active?: boolean;
+}) {
   const isAdmin = useAdminProbe();
+  const attention = useAdminAttention(isAdmin && active);
+  const lit = attention !== null && attention.total > 0;
   const { token } = useSession();
   const notify = useNotice();
 
@@ -148,9 +211,10 @@ export function AdminPanelButton() {
     return null;
   }
 
-  return (
+  const link = (
     <a
       data-testid="admin-panel-button"
+      data-attention={lit ? 'lit' : undefined}
       href={href}
       target="_blank"
       rel="noopener noreferrer"
@@ -170,9 +234,11 @@ export function AdminPanelButton() {
         width: 28,
         height: 28,
         borderRadius: RADII['radius-md'],
-        color: tokenVar('ink-faint'),
-        opacity: 0.55,
+        color: tokenVar(lit ? 'signal-ink' : 'ink-faint'),
+        background: lit ? tokenVar('warning-bg') : 'transparent',
+        opacity: lit ? 1 : 0.55,
         flexShrink: 0,
+        position: 'relative',
         outline: focused ? `2px solid ${tokenVar('action')}` : 'none',
         outlineOffset: 2,
       }}
@@ -192,6 +258,30 @@ export function AdminPanelButton() {
         <path d="M8 1.8l5 1.8v4.2c0 3-2.2 5-5 6.4-2.8-1.4-5-3.4-5-6.4V3.6z" />
         <path d="M5.8 8l1.7 1.7L10.5 6.4" />
       </svg>
+      {lit && (
+        <span
+          data-testid="admin-attention-dot"
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 3,
+            right: 3,
+            width: 7,
+            height: 7,
+            borderRadius: RADII['radius-pill'],
+            background: tokenVar('signal'),
+            boxShadow: `0 0 0 2px ${tokenVar('surface')}`,
+          }}
+        />
+      )}
     </a>
+  );
+
+  return lit && attention !== null ? (
+    <Tooltip content={() => <AttentionTip attention={attention} />}>
+      {link}
+    </Tooltip>
+  ) : (
+    link
   );
 }

@@ -4,7 +4,10 @@
  *
  * Four cards: «Состояние мира» — the tiles GET /admin/overview merges
  * from every module's overview hook (values arrive formatted — no
- * JSON); «Запуск хода» — the manual tick behind an S-size
+ * JSON); a tile's optional `group` sorts it under a card of its own
+ * («Анкеты», «Бот сообщества» — mockup 25, 0.13.0 unit 9b) and the
+ * optional `note` renders as the tile's small second line;
+ * «Запуск хода» — the manual tick behind an S-size
  * confirmation popup, the result goes to the shared Notice, a failed
  * tick shows the server's message; «Журнал ходов» — the last five
  * tick_log rows; «Сброс мира» — stays disabled while /admin/me says
@@ -42,6 +45,49 @@ import { PanelIcon } from '../../panelIcons';
 const TICK_LOG_LIMIT = 5;
 const RESET_WORD = 'СБРОС';
 const UPDATED_LABEL_TICK_MS = 30_000;
+
+/**
+ * The board's tile cards (0.13.0 unit 9b, mockup 25): a tile's
+ * optional `group` sorts it under a card of its own; ungrouped and
+ * unknown-group tiles stay in «Состояние мира».
+ */
+const WORLD_GROUP_TITLE = 'Состояние мира';
+const GROUP_TITLES: Record<string, string> = {
+  applications: 'Анкеты',
+  bot: 'Бот сообщества',
+};
+
+interface TileGroup {
+  key: string;
+  title: string;
+  tiles: AdminOverviewTileDTO[];
+}
+
+/** Groups arrive pre-sorted by the server — first appearance wins. */
+function groupTiles(tiles: AdminOverviewTileDTO[]): TileGroup[] {
+  const groups: TileGroup[] = [];
+  const byKey = new Map<string, TileGroup>();
+  for (const tile of tiles) {
+    const key =
+      tile.group !== undefined &&
+      tile.group !== null &&
+      Object.prototype.hasOwnProperty.call(GROUP_TITLES, tile.group)
+        ? tile.group
+        : '';
+    let group = byKey.get(key);
+    if (group === undefined) {
+      group = {
+        key,
+        title: GROUP_TITLES[key] ?? WORLD_GROUP_TITLE,
+        tiles: [],
+      };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    group.tiles.push(tile);
+  }
+  return groups;
+}
 
 const RESET_CONSEQUENCE =
   'Удаляет все государства, запланированные действия и журнал ходов, ' +
@@ -338,6 +384,75 @@ export function TurnSection() {
   };
 
   const lastLogRow = data?.log[0];
+  const tileGroups = data !== null ? groupTiles(data.tiles) : [];
+
+  const refreshAside = (
+    <>
+      <span
+        style={{
+          ...TEXT_STYLES['caption'],
+          color: tokenVar('ink-muted'),
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {updatedCaption(updatedAt, now)}
+      </span>
+      <PanelButton small disabled={refreshing} onClick={() => void refresh()}>
+        Обновить
+      </PanelButton>
+    </>
+  );
+
+  const tilesGrid = (tiles: AdminOverviewTileDTO[]) => (
+    <div
+      data-testid="overview-tiles"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: '12px 16px',
+      }}
+    >
+      {tiles.map((tile) => (
+        <div
+          key={tile.key}
+          data-testid={`tile-${tile.key}`}
+          style={{
+            background: tokenVar('surface-inset'),
+            borderRadius: RADII['radius-md'],
+            padding: SPACING['space-3'],
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          <span
+            style={{
+              ...TEXT_STYLES['label'],
+              color: tokenVar('ink-muted'),
+            }}
+          >
+            {tile.label}
+          </span>
+          <span
+            style={{
+              ...TEXT_STYLES['figure-lg'],
+              color: tokenVar('ink'),
+            }}
+          >
+            {tile.value}
+          </span>
+          <span
+            style={{
+              ...TEXT_STYLES['caption'],
+              color: tokenVar('ink-muted'),
+            }}
+          >
+            {tile.note ?? ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <>
@@ -356,72 +471,25 @@ export function TurnSection() {
         Ход и мир
       </h1>
 
-      <PanelCard
-        title="Состояние мира"
-        aside={
-          <>
-            <span
-              style={{
-                ...TEXT_STYLES['caption'],
-                color: tokenVar('ink-muted'),
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {updatedCaption(updatedAt, now)}
-            </span>
-            <PanelButton small disabled={refreshing} onClick={() => void refresh()}>
-              Обновить
-            </PanelButton>
-          </>
-        }
-      >
-        {data === null && !loadFailed && <LoadingState height={150} />}
-        {loadFailed && data === null && (
-          <ErrorState onRetry={() => void refresh()} />
-        )}
-        {data !== null && (
-          <div
-            data-testid="overview-tiles"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-              gap: '12px 16px',
-            }}
+      {data === null ? (
+        <PanelCard title={WORLD_GROUP_TITLE} aside={refreshAside}>
+          {!loadFailed ? (
+            <LoadingState height={150} />
+          ) : (
+            <ErrorState onRetry={() => void refresh()} />
+          )}
+        </PanelCard>
+      ) : (
+        tileGroups.map((group, index) => (
+          <PanelCard
+            key={group.key === '' ? 'world' : group.key}
+            title={group.title}
+            aside={index === 0 ? refreshAside : undefined}
           >
-            {data.tiles.map((tile) => (
-              <div
-                key={tile.key}
-                data-testid={`tile-${tile.key}`}
-                style={{
-                  background: tokenVar('surface-inset'),
-                  borderRadius: RADII['radius-md'],
-                  padding: SPACING['space-3'],
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4,
-                }}
-              >
-                <span
-                  style={{
-                    ...TEXT_STYLES['label'],
-                    color: tokenVar('ink-muted'),
-                  }}
-                >
-                  {tile.label}
-                </span>
-                <span
-                  style={{
-                    ...TEXT_STYLES['figure-lg'],
-                    color: tokenVar('ink'),
-                  }}
-                >
-                  {tile.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </PanelCard>
+            {tilesGrid(group.tiles)}
+          </PanelCard>
+        ))
+      )}
 
       <PanelCard title="Запуск хода">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

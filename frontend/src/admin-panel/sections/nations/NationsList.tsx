@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { api, ApiError } from '../../../shared/api-client';
 import type { AdminNationDTO } from '../../../shared/types';
@@ -42,12 +43,15 @@ export function NationsList({
   onCreate,
   onEdit,
   onDelete,
+  switcher,
 }: {
   onCreate: () => void;
   /** Row action — opens screen 03b for the nation. */
   onEdit: (nation: AdminNationDTO) => void;
   /** Row action — opens the screen-03d deletion popup. */
   onDelete: (nation: AdminNationDTO) => void;
+  /** The «Государства | Анкеты» switch row under the h1 (unit 9b). */
+  switcher?: ReactNode;
 }) {
   const { token, reportUnauthorized } = useAdminSession();
 
@@ -138,6 +142,8 @@ export function NationsList({
         <PanelIcon name="flag" accent size={20} />
         Государства
       </h1>
+
+      {switcher}
 
       <div
         style={{

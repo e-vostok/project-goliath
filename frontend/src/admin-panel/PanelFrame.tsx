@@ -16,15 +16,17 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
 } from 'react';
 
 import { api, ApiError } from '../shared/api-client';
-import type { GameClockDTO } from '../shared/types';
+import type { AdminAttentionDTO, GameClockDTO } from '../shared/types';
 import { ThemeToggle } from '../shared/ui/theme';
 import {
+  FONTS,
   RADII,
   SIZES,
   TEXT_STYLES,
@@ -43,6 +45,8 @@ import {
 
 /** «Сеанс: ещё N мин» refresh cadence. */
 const SESSION_LABEL_TICK_MS = 30_000;
+/** GET /admin/attention cadence — the «Анкеты» badge (0.13.0 unit 9b). */
+const ATTENTION_POLL_MS = 60_000;
 
 /** What sections (units 6–11) use for every admin API call. */
 export interface AdminSessionContextValue {
@@ -50,6 +54,10 @@ export interface AdminSessionContextValue {
   expiresAtMs: number;
   /** A 401 from any admin endpoint ends the visible session. */
   reportUnauthorized: () => void;
+  /** PENDING applications — the «Анкеты»/menu badge (0 hides it). */
+  applicationsPending: number;
+  /** Re-pull GET /admin/attention; sections call it after loading. */
+  refreshAttention: () => void;
 }
 
 const AdminSessionContext = createContext<AdminSessionContextValue | null>(
@@ -141,6 +149,39 @@ export function PanelFrame({
     return () => clearTimeout(id);
   }, [session.expiresAtMs, onSessionEnd]);
 
+  // The «Анкеты» attention count (Spec applications §7): on mount,
+  // every 60 s, on window focus, and whenever a section calls
+  // refreshAttention (the list does after loading). Other failures
+  // keep the last number; a 401 ends the session like everywhere.
+  const [attention, setAttention] = useState<AdminAttentionDTO | null>(null);
+  const loadAttention = useCallback(async () => {
+    try {
+      setAttention(await api.adminAttention(session.token));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        onSessionEnd();
+      }
+    }
+  }, [session.token, onSessionEnd]);
+  useEffect(() => {
+    void loadAttention();
+    const interval = window.setInterval(() => void loadAttention(), ATTENTION_POLL_MS);
+    const onFocus = () => void loadAttention();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [loadAttention]);
+  const applicationsPending =
+    attention?.items.find((item) => item.key === 'applications_pending')
+      ?.count ?? 0;
+  // Stable identity — sections feed it into load-callback deps; a
+  // fresh arrow every render would loop their fetch effect.
+  const refreshAttention = useCallback(() => {
+    void loadAttention();
+  }, [loadAttention]);
+
   const minutesLeft = Math.max(
     0,
     Math.ceil((session.expiresAtMs - nowMs) / 60_000),
@@ -152,6 +193,8 @@ export function PanelFrame({
         token: session.token,
         expiresAtMs: session.expiresAtMs,
         reportUnauthorized: onSessionEnd,
+        applicationsPending,
+        refreshAttention,
       }}
     >
       {/* The frame is a column at least one window tall: the top bar,
@@ -277,6 +320,28 @@ export function PanelFrame({
                 >
                   <PanelIcon name={section.icon} accent={selected} />
                   {section.title}
+                  {section.slug === 'nations' && applicationsPending > 0 && (
+                    <span
+                      data-testid="nav-badge-nations"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: 20,
+                        height: 20,
+                        padding: '0 6px',
+                        marginLeft: 'auto',
+                        borderRadius: RADII['radius-pill'],
+                        background: tokenVar('signal'),
+                        color: tokenVar('on-signal'),
+                        fontFamily: FONTS.mono,
+                        fontSize: 12,
+                        lineHeight: '16px',
+                      }}
+                    >
+                      {applicationsPending}
+                    </span>
+                  )}
                 </a>
               );
             })}

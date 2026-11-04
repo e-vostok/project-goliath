@@ -50,6 +50,9 @@ function allowExchange(expiresInSeconds = 3600) {
       HttpResponse.json({ is_admin: true, reset_allowed: false }),
     ),
     http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
   );
 }
@@ -151,6 +154,9 @@ it('the frame fills the window and the menu caption is the menu\'s last child', 
     http.get('*/api/v1/admin/players', () =>
       HttpResponse.json({ items: [], total: 0 }),
     ),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
   );
   renderPanel();
 
@@ -183,6 +189,9 @@ it('a later 401 from the API ends the session the same way', async () => {
       HttpResponse.json({ is_admin: true, reset_allowed: false }),
     ),
     http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
   );
   renderPanel();

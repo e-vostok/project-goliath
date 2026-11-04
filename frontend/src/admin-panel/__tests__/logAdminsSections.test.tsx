@@ -164,6 +164,9 @@ function allowAdminsSection({
     ),
     // The default «Ход и мир» section may mount on the way through.
     http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
     http.get('*/api/v1/admin/admins', () => {
       counters.admins += 1;
@@ -209,6 +212,9 @@ function allowLogSection() {
       HttpResponse.json({ is_admin: true, reset_allowed: false }),
     ),
     http.get('*/api/v1/admin/overview', () => HttpResponse.json([])),
+    http.get('*/api/v1/admin/attention', () =>
+      HttpResponse.json({ total: 0, items: [] }),
+    ),
     http.get('*/api/v1/admin/tick-log', () => HttpResponse.json([])),
     http.get('*/api/v1/admin/audit-log/filters', () =>
       HttpResponse.json(AUDIT_FILTERS),
