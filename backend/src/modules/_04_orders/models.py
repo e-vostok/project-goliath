@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from sqlalchemy import (
     CHAR,
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -125,6 +126,17 @@ class Order(Base):
     assignment_no: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
+    # Term exemption (0.14.0 unit 7b): the verdict term is not
+    # enforced for this order — no overdue mark, no refusal, no
+    # seizure; a verdict is accepted at any time. Set by the seizure
+    # itself (the order lands with an administrator) and by
+    # ``admin_assign_judge`` — a manually assigned judge was never
+    # told the term and must never be fined for it. The distribution
+    # timestamps stay filled (the CHECKs demand them) but are no
+    # longer enforced.
+    term_exempt: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     __table_args__ = (
         UniqueConstraint("number", name="uq_orders_number"),
@@ -208,10 +220,14 @@ def stage_of(order: Order) -> OrderStage:
 def is_overdue(order: Order, now: datetime) -> bool:
     """Deadline passed and no verdict written yet (Spec Part 1).
 
+    A term-exempt order is never overdue: its ``deadline_at`` exists
+    for the CHECK group alone and is not enforced (0.14.0 unit 7b).
     Naive datetimes are read as UTC — the storage convention; SQLite
     returns naive values even for timezone=True columns, so a refreshed
     row must compare cleanly against an aware ``now``.
     """
+    if order.term_exempt:
+        return False
     deadline_at = order.deadline_at
     if deadline_at is not None and deadline_at.tzinfo is None:
         deadline_at = deadline_at.replace(tzinfo=UTC)

@@ -122,14 +122,16 @@ class TestOrdersSource:
         self, test_db_session, orders_started
     ):
         """Appendix A: an overdue order's empty ``verdict`` cell
-        carries ``mark = "overdue"``; once the judge writes the
-        verdict the cell is a real datetime and the mark is gone."""
+        carries ``mark = "overdue"``; once the order leaves the firm
+        term (7b) and the verdict lands, the cell is a real datetime
+        and the mark is gone."""
         register_orders_extensions()
         startup_registry()
         author, nation = await seed_author(test_db_session, 770311)
         judge = await seed_judge(test_db_session, 770312, nation=True)
+        admin_judge = await seed_judge(test_db_session, 770313, nation=True)
         # Submitted 80 h ago: the factory's +72 h deadline already
-        # passed — the order is overdue until the verdict lands.
+        # passed — the order is overdue while it sits undecided.
         order = await make_order(
             test_db_session,
             author,
@@ -147,9 +149,18 @@ class TestOrdersSource:
             "mark": "overdue",
         }
 
+        # 7b: an overdue order leaves the term only through an
+        # exemption — a manual judge assignment makes it term-exempt,
+        # so the mark clears and the verdict can land at any time.
+        await OrderService.admin_assign_judge(
+            test_db_session, order.number, admin_judge.id
+        )
+        built = await build_table(test_db_session, "orders")
+        assert built.rows[0].cells["verdict"]["mark"] is None
+
         await OrderService.write_verdict(
             test_db_session,
-            player_id=judge.id,
+            player_id=admin_judge.id,
             number=order.number,
             title="Вердикт по приказу",
             summary="Приказ рассмотрен и принят к исполнению.",

@@ -9,6 +9,7 @@ injection point: tests may replace it, everything else stays identical.
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -68,3 +69,9 @@ def select_judge_v1(
 # Selector injection point: tests replace this reference to check the
 # wiring or force NO_CANDIDATES; the rest of distribute() is unchanged.
 judge_selector: JudgeSelector = select_judge_v1
+
+# The random source of the overdue-order seizure (0.14.0 unit 7b): the
+# worker hands a seized order to a uniformly random administrator via
+# ``admin_random.choice``. The instance is the injection point for
+# tests, like judge_selector above.
+admin_random: random.Random = random.Random()

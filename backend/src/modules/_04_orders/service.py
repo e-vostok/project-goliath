@@ -55,6 +55,7 @@ from sqlalchemy import delete, false, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules._00_core.admin_service import AdminGrantService
 from modules._00_core.service import NationService, PlayerService
 from modules._02_bot.service import BotService, EnqueueResult
 from modules._04_orders import distribution
@@ -69,6 +70,7 @@ from modules._04_orders.exceptions import (
     OrderNationRequiredError,
     OrderNotFoundError,
     OrderNumberConflictError,
+    OrderRefuseNotAllowedError,
     OrderVerdictExistsError,
     OrderVerdictForbiddenError,
 )
@@ -77,8 +79,11 @@ from modules._04_orders.notifications import (
     ORDER_JUDGE_ASSIGNED,
     ORDER_JUDGE_REMINDER,
     assignment_event_key,
+    notify_admin_assigned,
     notify_assignment,
     notify_judge_refused,
+    notify_overdue_author,
+    notify_overdue_judge,
     notify_reminder,
     notify_verdict,
 )
@@ -173,7 +178,8 @@ class RegistryOrderView:
     stage timestamps. ``nation_id`` is the snapshot id — the Registry
     source links the cell only after checking the nation still exists;
     ``deadline_at`` rides along for the overdue mark — no judge field,
-    ever (INV-O5).
+    ever (INV-O5). ``term_exempt`` silences the mark: an exempt order
+    is never overdue (0.14.0 unit 7b).
     """
 
     number: int
@@ -187,6 +193,7 @@ class RegistryOrderView:
     distributed_at: datetime | None
     deadline_at: datetime | None
     verdict_at: datetime | None
+    term_exempt: bool
 
 
 class DistributeResult(StrEnum):
@@ -227,15 +234,18 @@ class RetryPassStats:
     messages were put into the bot outbox, ``reminders_skipped`` due
     reminders produced none (the deadline had already passed, no
     VK_APP_ID, the bot skipped the recipient, or a racing pass marked
-    the row first) and ``errors`` per-order transactions failed — each
-    is logged and the pass continues with the next order. No judge
-    field ever leaves the service (INV-O5).
+    the row first), ``seized`` overdue orders were taken from their
+    judges and handed to administrators (0.14.0 unit 7b) and
+    ``errors`` per-order transactions failed — each is logged and the
+    pass continues with the next order. No judge field ever leaves
+    the service (INV-O5).
     """
 
     assigned: int = 0
     still_waiting: int = 0
     reminders_sent: int = 0
     reminders_skipped: int = 0
+    seized: int = 0
     errors: int = 0
 
 
@@ -261,6 +271,7 @@ def _refuse_penalty(
         order.judge_player_id is None
         or order.judge_player_id != viewer_player_id
         or order.verdict_at is not None
+        or order.term_exempt
     ):
         return None
     deadline = _aware(order.deadline_at)
@@ -540,6 +551,7 @@ class OrderService:
                 Order.distributed_at,
                 Order.deadline_at,
                 Order.verdict_at,
+                Order.term_exempt,
             ).order_by(Order.number.desc())
         )
         rows = result.all()
@@ -557,6 +569,7 @@ class OrderService:
                 distributed_at=row[7],
                 deadline_at=row[8],
                 verdict_at=row[9],
+                term_exempt=row[10],
             )
             for row in rows
         ]
@@ -633,8 +646,11 @@ class OrderService:
         # 6. Build candidates and let the selector pick (the module-
         # level reference is the injection point for tests). A judge
         # who already refused this order is never offered it again
-        # (0.14.0 unit 7a).
+        # (0.14.0 unit 7a); an administrator is never a candidate at
+        # all — the seizure hands orders to them directly, so the
+        # pending-verdicts limit never applies to them (0.14.0 unit 7b).
         refused_ids = set(order.refused_judge_ids or [])
+        admin_ids = await AdminGrantService.admin_player_ids(session)
         candidates = [
             JudgeCandidate(
                 player_id=row.player_id,
@@ -645,6 +661,7 @@ class OrderService:
             )
             for row in players
             if row.player_id not in refused_ids
+            and row.player_id not in admin_ids
         ]
         judge_player_id = distribution.judge_selector(
             order.author_player_id, candidates, judge
@@ -711,20 +728,38 @@ class OrderService:
         ``event_at = now``, a deadline already passed logs INFO and
         enqueues nothing — either way the claim marks
         ``reminder_sent_at = now`` so a reminder is handled once.
+        Term-exempt orders carry no term, so no reminder is ever due
+        (0.14.0 unit 7b).
+
+        Part C, seizure (0.14.0 unit 7b): orders with a judge, no
+        verdict, ``term_exempt`` false and ``deadline_at < now``,
+        oldest deadline first — the same per-order transaction
+        pattern. Under the module lock a uniformly random
+        administrator (never the author, never the sitting judge;
+        ``distribution.admin_random`` is the injection point) takes
+        the order through a conditional UPDATE that also sets
+        ``term_exempt`` and bumps ``assignment_no``; the sitting judge
+        is fined ``overdue.penalty`` through ``00_core`` (reason
+        ``ORDER_OVERDUE``, idempotent by
+        ``order_overdue:<order id>:<assignment_no>``); the old judge's
+        unsent bot rows are recalled and the three announcements —
+        author, old judge, administrator — each land under their own
+        SAVEPOINT. An order with no eligible administrator is skipped
+        this pass with one warning — never fined without a seizure.
 
         Each part reads its candidates in one session and works every
         order in a fresh one: correct under concurrent passes (the
-        advisory lock serializes ``distribute``, the conditional UPDATE
-        serializes the reminder claim) and a slow order never holds a
-        transaction open across the whole batch. Never raises for a
-        single bad order.
+        advisory lock serializes ``distribute`` and the seizure pick,
+        the conditional UPDATE serializes the reminder claim and the
+        seizure) and a slow order never holds a transaction open
+        across the whole batch. Never raises for a single bad order.
         """
         from modules._04_orders.startup import get_orders_config
 
         batch_size = get_orders_config().distribution.batch_size
         moment = now if now is not None else datetime.now(UTC)
         assigned = still_waiting = 0
-        reminders_sent = reminders_skipped = errors = 0
+        reminders_sent = reminders_skipped = errors = seized = 0
 
         # Part A — retry the judge-less orders in submission order.
         async with session_factory() as session:
@@ -760,8 +795,9 @@ class OrderService:
             elif result is DistributeResult.NO_CANDIDATES:
                 still_waiting += 1
 
-        # Part B — the reminder sweep over due, unclaimed, undecided
-        # orders, oldest reminder first.
+        # Part B — the reminder sweep over due, unclaimed, undecided,
+        # enforced orders, oldest reminder first. Term-exempt rows
+        # carry no term, so no reminder is ever due for them.
         async with session_factory() as session:
             due = (
                 (
@@ -771,6 +807,7 @@ class OrderService:
                             Order.reminder_at <= moment,
                             Order.reminder_sent_at.is_(None),
                             Order.verdict_at.is_(None),
+                            Order.term_exempt.is_(False),
                         )
                         .order_by(Order.reminder_at)
                         .limit(batch_size)
@@ -799,11 +836,50 @@ class OrderService:
             else:
                 reminders_skipped += 1
 
+        # Part C — the seizure sweep over overdue, judged, undecided,
+        # enforced orders, oldest deadline first.
+        async with session_factory() as session:
+            overdue_ids = (
+                (
+                    await session.execute(
+                        select(Order.id)
+                        .where(
+                            Order.judge_player_id.is_not(None),
+                            Order.verdict_at.is_(None),
+                            Order.term_exempt.is_(False),
+                            Order.deadline_at < moment,
+                        )
+                        .order_by(Order.deadline_at)
+                        .limit(batch_size)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        for order_id in overdue_ids:
+            try:
+                async with session_factory() as session:
+                    async with session.begin():
+                        outcome = await OrderService._seize_guarded(
+                            session, order_id, now=moment
+                        )
+            except Exception:
+                errors += 1
+                logger.exception(
+                    "04_orders retry pass: seizure failed for order %s",
+                    order_id,
+                )
+                continue
+            if outcome == "seized":
+                seized += 1
+
         return RetryPassStats(
             assigned=assigned,
             still_waiting=still_waiting,
             reminders_sent=reminders_sent,
             reminders_skipped=reminders_skipped,
+            seized=seized,
             errors=errors,
         )
 
@@ -874,6 +950,173 @@ class OrderService:
                 now=now,
             )
         return "sent" if result is EnqueueResult.QUEUED else "skipped"
+
+    @staticmethod
+    async def _seize_guarded(
+        session: AsyncSession, order_id: str, *, now: datetime
+    ) -> str:
+        """
+        One overdue seizure inside the caller's transaction under a
+        SAVEPOINT (0.14.0 unit 7b). Returns ``"seized"`` only when the
+        order actually changed hands — every other claimed-or-lost
+        outcome is a skip the caller counts separately from errors.
+
+        The module advisory lock serializes the pick with submissions,
+        distributions, verdicts and other passes on PostgreSQL; the
+        conditional ``UPDATE`` (INV-O1) claims the row only while it
+        still carries the judge we re-read, no verdict and no
+        exemption — a verdict written or an admin reassignment between
+        the candidate read and this claim wins the row (rowcount 0,
+        no fine for a seizure that never happened).
+
+        With no eligible administrator the order is skipped for this
+        pass with one warning — the fine is never applied without a
+        seizure. The administrator pick is uniformly random over the
+        admins minus the author and the sitting judge, drawn from the
+        injectable ``distribution.admin_random``. The seized order
+        gets ``term_exempt`` (the administrator was never told a
+        term), fresh assignment timestamps (the CHECKs demand them),
+        ``reminder_sent_at = now`` and ``assignment_no + 1`` — the
+        seizure's bot event keys carry that new number. The three
+        announcements each run under their own SAVEPOINT (INV-O8): a
+        failed enqueue can never undo the seizure.
+        ``judge_player_id`` leaves this method only into the rating
+        fine, the cancel calls and the judge's notice — never into a
+        log line (INV-O5).
+        """
+        from modules._00_core.rating_service import change_judge_rating
+        from modules._04_orders.startup import get_orders_config
+
+        config = get_orders_config()
+        judge = config.judge
+        penalty = config.overdue.penalty
+
+        if session.bind.dialect.name == "sqlite":
+            await session.execute(delete(Order).where(false()))
+        async with session.begin_nested():
+            # Module lock — same key as submit/distribute/write_verdict.
+            if session.bind.dialect.name == "postgresql":
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(:key)"),
+                    {"key": ORDERS_ADVISORY_LOCK_KEY},
+                )
+
+            # Re-read under the lock: the row may have been decided or
+            # reassigned since the pass's candidate read.
+            fresh = (
+                await session.execute(select(Order).where(Order.id == order_id))
+            ).scalar_one()
+            if (
+                fresh.judge_player_id is None
+                or fresh.verdict_at is not None
+                or fresh.term_exempt
+                or _aware(fresh.deadline_at) >= now
+            ):
+                return "skipped"
+
+            # A uniformly random administrator who is neither the
+            # author nor the sitting judge takes the order; none means
+            # the order waits for the next pass — never a fine
+            # without a seizure.
+            admin_ids = await AdminGrantService.admin_player_ids(session)
+            eligible = sorted(
+                admin_ids - {fresh.author_player_id, fresh.judge_player_id}
+            )
+            if not eligible:
+                logger.warning(
+                    "04_orders seizure skipped: no administrator "
+                    "available for order %s",
+                    order_id,
+                )
+                return "skipped"
+            admin_player_id = distribution.admin_random.choice(eligible)
+
+            old_judge_id = fresh.judge_player_id
+            seized_no = fresh.assignment_no
+            new_no = seized_no + 1
+            result = await session.execute(
+                update(Order)
+                .where(
+                    Order.id == order_id,
+                    Order.judge_player_id == old_judge_id,
+                    Order.verdict_at.is_(None),
+                    Order.term_exempt.is_(False),
+                )
+                .values(
+                    judge_player_id=admin_player_id,
+                    distributed_at=now,
+                    deadline_at=now + timedelta(seconds=judge.deadline_seconds),
+                    reminder_at=now + timedelta(seconds=judge.reminder_seconds),
+                    # The administrator gets no bot message about a
+                    # term — same deliberate switch-off as
+                    # admin_assign_judge.
+                    reminder_sent_at=now,
+                    term_exempt=True,
+                    assignment_no=new_no,
+                )
+            )
+            if result.rowcount == 0:
+                # The row changed between the re-read and the update —
+                # the winner state owns the order; nobody is fined for
+                # a seizure that never happened.
+                return "skipped"
+
+            # The rating penalty, only through 00_core: negative
+            # delta, idempotent per (order, seized assignment).
+            await change_judge_rating(
+                session,
+                old_judge_id,
+                -penalty,
+                "ORDER_OVERDUE",
+                f"order_overdue:{order_id}:{seized_no}",
+            )
+
+            # The old judge's still-unsent assignment/reminder rows
+            # are meaningless now — recalled exactly like refuse does,
+            # keyed by the seized assignment.
+            for type_key, prefix in (
+                (ORDER_JUDGE_ASSIGNED, "order_assigned"),
+                (ORDER_JUDGE_REMINDER, "order_reminder"),
+            ):
+                await BotService.cancel_pending(
+                    session,
+                    player_id=old_judge_id,
+                    type_key=type_key,
+                    event_key=assignment_event_key(prefix, order_id, seized_no),
+                    now=now,
+                )
+
+            # The three announcements — each under its own SAVEPOINT:
+            # a failed enqueue must never undo the seizure (INV-O8).
+            for notify in (
+                lambda: notify_overdue_author(
+                    session, order=fresh, assignment_no=new_no, now=now
+                ),
+                lambda: notify_overdue_judge(
+                    session,
+                    order=fresh,
+                    judge_player_id=old_judge_id,
+                    penalty=penalty,
+                    assignment_no=new_no,
+                    now=now,
+                ),
+                lambda: notify_admin_assigned(
+                    session,
+                    order=fresh,
+                    admin_player_id=admin_player_id,
+                    assignment_no=new_no,
+                    now=now,
+                ),
+            ):
+                try:
+                    async with session.begin_nested():
+                        await notify()
+                except Exception:
+                    logger.exception(
+                        "04_orders seizure notice failed for order %s",
+                        order_id,
+                    )
+        return "seized"
 
     @staticmethod
     async def list_assigned(
@@ -986,14 +1229,23 @@ class OrderService:
         if order.verdict_at is not None:
             raise OrderVerdictExistsError(number)
 
-        # 5. Field rules (Spec 2.5) — the same limits as an order.
+        # 5. The term is firm (0.14.0 unit 7b): once deadline_at has
+        # passed, the judge can no longer write — the clock decides,
+        # not whether the worker's pass already ran. A term-exempt
+        # order carries no term and accepts a verdict at any time.
+        if not order.term_exempt and datetime.now(UTC) > _aware(
+            order.deadline_at
+        ):
+            raise OrderDeadlinePassedError(number)
+
+        # 6. Field rules (Spec 2.5) — the same limits as an order.
         title = validate_title(title, config)
         summary = validate_summary(summary, config)
         article_url = validate_article_url(
             article_url, config, allowed_hosts=get_orders_allowed_hosts()
         )
 
-        # 6. Conditional write (INV-O1): the four verdict columns and
+        # 7. Conditional write (INV-O1): the four verdict columns and
         # nothing else, only while the row is still this judge's to
         # decide.
         verdict_at = datetime.now(UTC)
@@ -1022,7 +1274,7 @@ class OrderService:
             raise OrderVerdictForbiddenError()
         await session.refresh(order)
 
-        # 7. The author's announcement under its own SAVEPOINT (INV-O8):
+        # 8. The author's announcement under its own SAVEPOINT (INV-O8):
         # a failure or a skip must never undo the verdict.
         try:
             async with session.begin_nested():
@@ -1054,9 +1306,11 @@ class OrderService:
         unknown number (``ORDER_NOT_FOUND``), the caller is not the
         assigned judge — one and the same ``ORDER_VERDICT_FORBIDDEN``
         as the verdict path, whatever the true cause (INV-O5) — a
-        verdict already written (``ORDER_ALREADY_DECIDED``) and a
-        deadline already passed (``ORDER_DEADLINE_PASSED``: an overdue
-        order is the worker's business, unit 7b, never a refusal).
+        verdict already written (``ORDER_ALREADY_DECIDED``), a
+        term-exempt order (``ORDER_REFUSE_NOT_ALLOWED``: a judge who
+        was never told a term can never be fined for it, 0.14.0 unit
+        7b) and a deadline already passed (``ORDER_DEADLINE_PASSED``:
+        an overdue order is the worker's business, never a refusal).
 
         The penalty is ``refusal.penalty_late`` in the last
         ``refusal.late_window_hours`` of the term, ``refusal.penalty``
@@ -1105,12 +1359,19 @@ class OrderService:
         if order.verdict_at is not None:
             raise OrderAlreadyDecidedError(number)
 
-        # 5. Still inside the term — overdue orders are 7b's business.
+        # 5. A term-exempt order never refuses (0.14.0 unit 7b): its
+        # judge was never told a term, so the refusal penalty has no
+        # grip — the only way out is a verdict.
+        if order.term_exempt:
+            raise OrderRefuseNotAllowedError(number)
+
+        # 6. Still inside the term — an overdue order leaves the
+        # judge's hands through the worker's seizure, never a refusal.
         deadline = _aware(order.deadline_at)
         if moment > deadline:
             raise OrderDeadlinePassedError(number)
 
-        # 6. The rating penalty, only through 00_core: negative delta,
+        # 7. The rating penalty, only through 00_core: negative delta,
         # idempotent per (order, assignment).
         late = deadline - moment <= timedelta(hours=refusal.late_window_hours)
         change = await change_judge_rating(
@@ -1121,7 +1382,7 @@ class OrderService:
             f"order_refused:{order.id}:{order.assignment_no}",
         )
 
-        # 7. Release the order with one conditional UPDATE (INV-O1).
+        # 8. Release the order with one conditional UPDATE (INV-O1).
         refused_no = order.assignment_no
         result = await session.execute(
             update(Order)
@@ -1150,7 +1411,7 @@ class OrderService:
                 raise OrderAlreadyDecidedError(number)
             raise OrderVerdictForbiddenError()
 
-        # 8. The refusing judge's still-unsent assignment/reminder rows
+        # 9. The refusing judge's still-unsent assignment/reminder rows
         # are meaningless now — recalled like admin_assign_judge does,
         # keyed by the assignment just released.
         for type_key, prefix in (
@@ -1165,7 +1426,7 @@ class OrderService:
                 now=moment,
             )
 
-        # 9. The author's announcement under its own SAVEPOINT (INV-O8):
+        # 10. The author's announcement under its own SAVEPOINT (INV-O8):
         # «the judge refused, the order was passed on» — no name.
         try:
             async with session.begin_nested():
@@ -1175,7 +1436,7 @@ class OrderService:
         except Exception:
             logger.exception("refusal notification failed for order %s", order.id)
 
-        # 10. Seat the next judge at once under its own SAVEPOINT — a
+        # 11. Seat the next judge at once under its own SAVEPOINT — a
         # failure or an empty candidate set leaves the order waiting
         # for the worker (INV-O8).
         try:
@@ -1287,6 +1548,11 @@ class OrderService:
                     # all): marks the reminder handled so the worker's
                     # sweep never tells the new judge.
                     reminder_sent_at=moment,
+                    # On purpose (0.14.0 unit 7b): a manually assigned
+                    # judge gets no bot message and must never be fined
+                    # for a term he was not told about — the order is
+                    # exempt from the term enforcement.
+                    term_exempt=True,
                 )
             )
             if result.rowcount:

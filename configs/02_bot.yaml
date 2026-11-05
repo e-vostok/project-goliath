@@ -246,6 +246,48 @@ types:
     text: "Судья отказался от приказа №{order_number}. Приказ автоматически передан другому судье: {order_link}"
     batch_text: null
     line_text: null
+  ORDER_OVERDUE_AUTHOR:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Судья не уложился в срок по приказу №{order_number}. Приказ передан администратору: {order_link}"
+    batch_text: null
+    line_text: null
+  ORDER_OVERDUE_JUDGE:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Срок по приказу №{order_number} истёк: приказ изъят, рейтинг снижен на {penalty}."
+    batch_text: null
+    line_text: null
+  ORDER_ADMIN_ASSIGNED:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Вам передан приказ №{order_number}: {order_link}"
+    batch_text: null
+    line_text: null
 
   # --- Типы анкет (Spec 4.8, контракт Spec 00_core_applications §7) ----
   APPLICATION_RECEIVED:

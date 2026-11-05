@@ -144,6 +144,26 @@ class OrderDeadlinePassedError(OrderDomainError):
         )
 
 
+class OrderRefuseNotAllowedError(OrderDomainError):
+    """
+    Refusal is impossible on a term-exempt order — HTTP 409 (0.14.0
+    unit 7b).
+
+    The judge of a seized or admin-assigned order was never told a
+    term, so the refusal penalty has no grip on them: the only way
+    out is a verdict.
+    """
+
+    code = "ORDER_REFUSE_NOT_ALLOWED"
+
+    def __init__(self, number: int):
+        super().__init__(
+            f"Отказ от приказа №{number} невозможен — срок по нему не действует",
+            self.code,
+            details={"number": number},
+        )
+
+
 class OrderAlreadyDecidedError(OrderDomainError):
     """
     A verdict is already written, so the judge can no longer change —

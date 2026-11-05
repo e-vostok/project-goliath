@@ -110,6 +110,9 @@ def _list_item(
         "status": _status_of(order),
         "deadline_at": format_game_time(order.deadline_at, tz),
         "overdue": is_overdue(order, now),
+        # The term is not enforced for this order (seized or
+        # admin-assigned) — the panel marks such orders (0.14.0 7b).
+        "term_exempt": order.term_exempt,
         "flag_thumb_url": flag_thumb_url,
     }
 

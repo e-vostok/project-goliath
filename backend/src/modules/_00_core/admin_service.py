@@ -181,6 +181,26 @@ class AdminGrantService:
         return result.scalar_one() > 0
 
     @staticmethod
+    async def admin_player_ids(session: AsyncSession) -> set[str]:
+        """
+        The player ids of everyone holding admin rights (0.14.0 unit
+        7b): the ADMIN_VK_USER_IDS env allowlist matched on
+        ``players.vk_user_id`` plus every ``admin_grants`` row.
+        Allowlist entries with no player row simply contribute
+        nothing — the answer is always existing players only.
+        Read-only, never commits.
+        """
+        result = await session.execute(select(AdminGrant.player_id))
+        ids = {row[0] for row in result.all()}
+        env_vk_ids = _admin_vk_user_ids()
+        if env_vk_ids:
+            env_rows = await session.execute(
+                select(Player.id).where(Player.vk_user_id.in_(env_vk_ids))
+            )
+            ids.update(row[0] for row in env_rows.all())
+        return ids
+
+    @staticmethod
     async def grant(
         session: AsyncSession, target_player_id: str, by_vk_user_id: int
     ) -> AdminGrant:

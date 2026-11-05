@@ -121,3 +121,63 @@ class TestConcurrentRetryPass:
         assert stats_a.reminders_sent + stats_b.reminders_sent == 1
         assert stats_a.errors == 0
         assert stats_b.errors == 0
+
+
+class TestConcurrentSeizure:
+    """Two racing passes seize one overdue order exactly once
+    (0.14.0 unit 7b) — the module advisory lock serializes the pick
+    and the conditional UPDATE claims the row for one winner."""
+
+    async def test_two_passes_seize_once_and_fine_once(
+        self,
+        pg_db,
+        orders_started,
+    ):
+        from modules._00_core.models import AdminGrant, JudgeRatingLog, Player
+
+        async with pg_db() as session:
+            author = await _seed_player(session, 779911)
+            judge = await _seed_player(session, 779912)
+            admin = PlayerFactory.build(vk_user_id=779913, nations=[])
+            session.add(admin)
+            await session.flush()
+            session.add(
+                AdminGrant(player_id=admin.id, granted_by_vk_user_id=1)
+            )
+            order = await make_order(
+                session,
+                author,
+                judge=judge,
+                submitted_at=NOW - timedelta(hours=80),
+            )
+            await session.commit()
+            order_id, judge_id, admin_id = order.id, judge.id, admin.id
+
+        stats_a, stats_b = await asyncio.gather(
+            OrderService.run_retry_pass(pg_db, now=NOW),
+            OrderService.run_retry_pass(pg_db, now=NOW),
+        )
+
+        assert stats_a.seized + stats_b.seized == 1
+        assert stats_a.errors == 0
+        assert stats_b.errors == 0
+
+        async with pg_db() as session:
+            order = await session.get(Order, order_id)
+            assert order.judge_player_id == admin_id
+            assert order.term_exempt is True
+            entries = (
+                (
+                    await session.execute(
+                        select(JudgeRatingLog).where(
+                            JudgeRatingLog.player_id == judge_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(entries) == 1
+            assert entries[0].reason_code == "ORDER_OVERDUE"
+            assert entries[0].delta == -5
+            assert (await session.get(Player, judge_id)).judge_rating == -5
