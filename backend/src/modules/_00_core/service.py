@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules._00_core import images
 from modules._00_core.color_policy import oklab_distance
+from modules._00_core.name_keys import name_key
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
     AlreadyOwnerError,
@@ -865,12 +866,16 @@ async def _check_name_free(
 ) -> None:
     """INV-2 + APP-1: the name must be held by no nation and no PENDING
     application (``exclude_application_id`` drops one application's own
-    reserve — used by the accept path)."""
-    result = await session.execute(select(Nation).where(Nation.name == name))
+    reserve — used by the accept path). Comparison runs on
+    ``name_key``: case- and ё-insensitive (0.14.0 unit 3b)."""
+    key = name_key(name)
+    result = await session.execute(
+        select(Nation).where(Nation.name_key == key)
+    )
     if result.scalar_one_or_none() is not None:
         raise NameTakenError(name)
     stmt = select(NationApplication.id).where(
-        NationApplication.name == name,
+        NationApplication.name_key == key,
         NationApplication.status == "PENDING",
     )
     if exclude_application_id is not None:
@@ -885,14 +890,16 @@ async def _check_short_name_free(
     exclude_application_id: str | None = None,
 ) -> None:
     """INV-11 + APP-1: the short name must be held by no nation and no
-    PENDING application."""
+    PENDING application. Comparison runs on ``short_name_key``:
+    case- and ё-insensitive (0.14.0 unit 3b)."""
+    key = name_key(short_name)
     result = await session.execute(
-        select(Nation).where(Nation.short_name == short_name)
+        select(Nation).where(Nation.short_name_key == key)
     )
     if result.scalar_one_or_none() is not None:
         raise ShortNameTakenError(short_name)
     stmt = select(NationApplication.id).where(
-        NationApplication.short_name == short_name,
+        NationApplication.short_name_key == key,
         NationApplication.status == "PENDING",
     )
     if exclude_application_id is not None:
@@ -1389,20 +1396,26 @@ class NationService:
 
         if name is not None:
             new_name = name.strip()
-            if new_name != nation.name:
+            # Key comparison: «Рим» -> «РИМ» of one's own nation keeps
+            # the same key and stays allowed (0.14.0 unit 3b).
+            if name_key(new_name) != nation.name_key:
                 result = await session.execute(
                     select(Nation).where(
-                        Nation.name == new_name, Nation.id != nation_id
+                        Nation.name_key == name_key(new_name),
+                        Nation.id != nation_id,
                     )
                 )
                 if result.scalar_one_or_none() is not None:
                     raise NameTakenError(new_name)
             nation.name = new_name
 
-        if new_short_name is not None and new_short_name != nation.short_name:
+        if (
+            new_short_name is not None
+            and name_key(new_short_name) != nation.short_name_key
+        ):
             result = await session.execute(
                 select(Nation).where(
-                    Nation.short_name == new_short_name,
+                    Nation.short_name_key == name_key(new_short_name),
                     Nation.id != nation_id,
                 )
             )

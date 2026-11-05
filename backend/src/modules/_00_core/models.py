@@ -33,9 +33,10 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SQLEnum,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from core.db import Base
+from modules._00_core.name_keys import name_key
 from modules._00_core.player_stats import (
     JUDGE_RATING_DEFAULT,
     JUDGE_RATING_MAX,
@@ -114,6 +115,12 @@ class Nation(Base):
         String(36), ForeignKey("players.id"), nullable=False, unique=True, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    # Uniqueness keys (0.14.0 unit 3b, migration 0021): case- and
+    # ё-insensitive — «Рим»/«РИМ»/«рим» share one key and «Берёза»
+    # equals «Береза». The @validates hooks below write them on every
+    # name/short_name assignment, so no write path can forget them;
+    # uq_nations_name_key / uq_nations_short_name_key enforce them.
+    name_key: Mapped[str] = mapped_column(String(100), nullable=False)
     color_hex: Mapped[str] = mapped_column(CHAR(7), nullable=False, unique=True)
     # Descriptive profile fields (Bible §8). NULL only for nations created
     # before the profile migration; NationService.create always writes all
@@ -127,6 +134,7 @@ class Nation(Base):
     # short_name is the exception: NOT NULL and UNIQUE since migration
     # 0012 (0.10.0 unit 4a) — every nation has a short name.
     short_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    short_name_key: Mapped[str] = mapped_column(String(100), nullable=False)
     gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
     succession_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -167,7 +175,19 @@ class Nation(Base):
 
     __table_args__ = (
         CheckConstraint("created_turn >= 0", name="ck_nations_created_turn_min"),
+        UniqueConstraint("name_key", name="uq_nations_name_key"),
+        UniqueConstraint("short_name_key", name="uq_nations_short_name_key"),
     )
+
+    @validates("name")
+    def _key_on_name_write(self, _key: str, value: str) -> str:
+        self.name_key = name_key(value)
+        return value
+
+    @validates("short_name")
+    def _key_on_short_name_write(self, _key: str, value: str) -> str:
+        self.short_name_key = name_key(value)
+        return value
 
 
 class Province(Base):
@@ -354,9 +374,13 @@ class NationApplication(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     # Profile fields — the same types and requiredness as ``nations``;
     # save_draft writes every mandatory field after the same format
-    # checks NationService.create runs (INV-9).
+    # checks NationService.create runs (INV-9). The key columns repeat
+    # the nations mechanism: the @validates hooks below compute them on
+    # every write, the PENDING-only partial indexes reserve them.
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    short_name_key: Mapped[str] = mapped_column(String(100), nullable=False)
     color_hex: Mapped[str] = mapped_column(CHAR(7), nullable=False)
     motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -459,7 +483,33 @@ class NationApplication(Base):
             sqlite_where=text("status = 'PENDING'"),
             postgresql_where=text("status = 'PENDING'"),
         ),
+        # The case- and ё-insensitive twins of the name/short_name
+        # reserves (0.14.0 unit 3b, migration 0021).
+        Index(
+            "uq_nation_applications_pending_name_key",
+            "name_key",
+            unique=True,
+            sqlite_where=text("status = 'PENDING'"),
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+        Index(
+            "uq_nation_applications_pending_short_name_key",
+            "short_name_key",
+            unique=True,
+            sqlite_where=text("status = 'PENDING'"),
+            postgresql_where=text("status = 'PENDING'"),
+        ),
     )
+
+    @validates("name")
+    def _key_on_name_write(self, _key: str, value: str) -> str:
+        self.name_key = name_key(value)
+        return value
+
+    @validates("short_name")
+    def _key_on_short_name_write(self, _key: str, value: str) -> str:
+        self.short_name_key = name_key(value)
+        return value
 
 
 class NationApplicationProvince(Base):
