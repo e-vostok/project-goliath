@@ -5,7 +5,7 @@
 # the code resolves configs/, data/map/ and .env relative to its own
 # file location — see docs/02_SYSTEM_SPECS/deploy.md §3.
 
-FROM python:3.12-slim
+FROM python:3.12.16-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
