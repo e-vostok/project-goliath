@@ -2,9 +2,7 @@
  * Tab 3 «История» of the registration window (UI Spec 9.6 — version
  * 0.9.0 unit 8c): ONE field — the required link to the nation's VK
  * article. The hint names the article form and the allowed domains from
- * `GET /nations/rules` (a config change rewrites the copy). The anthem
- * link is gone from the interface entirely: no field, no form state,
- * no `anthem_url` in the request body (the server column stays unused).
+ * `GET /nations/rules` (a config change rewrites the copy).
  * Purely presentational.
  */
 

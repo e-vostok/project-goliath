@@ -10,8 +10,6 @@
  * field that shows it inline, `missingRequired` lists the still-empty
  * mandatory fields (it gates the single submit button and feeds the
  * tab dots), and `toCreateRequest` builds the POST /nations body.
- * The anthem field is gone from the interface — `anthem_url` is never
- * sent (the server column stays unused).
  *
  * No React here — the container and the tests import the same logic.
  */
@@ -312,10 +310,7 @@ export function registrationFormFromApplication(
 /**
  * Builds the POST /nations body: texts are trimmed, empty optional texts
  * become null (INV-12 stores them as NULL), `capital_province_id` stays
- * null unless the player marked a capital. `anthem_url` is deliberately
- * absent — the interface dropped the anthem field (0.9.0, unit 8c) while
- * `NationCreateRequest` keeps the key because shared types mirror the
- * server DTO field-for-field.
+ * null unless the player marked a capital.
  */
 export function toCreateRequest(form: RegistrationForm): NationCreateRequest {
   const optionalText = (value: string): string | null => {

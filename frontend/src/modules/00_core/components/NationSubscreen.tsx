@@ -10,7 +10,7 @@
  * 11; the province count sits on the «Территория» title) — the
  * «Глава государства» + «Территория» row (province chips by name,
  * capital first) and «Описание» with the history link. The public
- * DTO carries no gender / succession / anthem — nothing here shows
+ * DTO carries no gender / succession — nothing here shows
  * them.
  *
  * The path chain: opened from a table row — «Реестр / <вкладка> /

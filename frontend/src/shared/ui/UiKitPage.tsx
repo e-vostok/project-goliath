@@ -757,8 +757,6 @@ const DEMO_RULES: NationRulesDTO = {
   capital_name_max_length: 40,
   history_url_max_length: 300,
   history_url_allowed_hosts: ['vk.com'],
-  anthem_url_max_length: 300,
-  anthem_url_allowed_hosts: ['vk.com'],
   min_provinces: 2,
   max_provinces: 5,
   palette: ['#2b2db0'],

@@ -61,7 +61,6 @@ const NATION: NationDTO = {
   portrait_thumb_url: null,
   succession_type: 'elections',
   history_url: 'https://vk.com/@testia-istoriya',
-  anthem_url: null,
   // The owner's stats ride the nation itself — NOT the old registry
   // players row (level 3 / rating 12 there).
   level: 5,
@@ -247,10 +246,7 @@ describe('PanelNationHome — the card', () => {
   });
 
   it('drops the service rows: no gender, notifications, succession, anthem, delete', async () => {
-    renderHome({
-      ...NATION,
-      anthem_url: 'https://vk.com/music/playlist/-1_2',
-    });
+    renderHome(NATION);
     await screen.findByText('Столицево (Альфа)');
 
     expect(screen.queryByText('Пол')).not.toBeInTheDocument();
