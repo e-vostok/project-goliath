@@ -96,7 +96,8 @@ async def test_two_concurrent_registrations_one_color(pg_live_client):
 # --- Migration 0011 on PostgreSQL ------------------------------------------
 
 # Columns 0011 adds that still exist at head — migration 0017 dropped
-# flag_id/portrait_id from this set (0.12.0 unit 4).
+# flag_id/portrait_id (0.12.0 unit 4), migration 0020 anthem_url
+# (0.14.0 unit 3a).
 _NEW_COLUMNS = [
     "short_name",
     "gender",
@@ -104,7 +105,6 @@ _NEW_COLUMNS = [
     "motto",
     "description",
     "leader_bio",
-    "anthem_url",
     "capital_province_id",
     "capital_name",
 ]

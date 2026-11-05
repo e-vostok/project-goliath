@@ -1011,10 +1011,8 @@ describe('mapErrorCodeToField', () => {
     expect(mapErrorCodeToField('LEADER_TITLE_INVALID')).toBe('leaderTitle');
     expect(mapErrorCodeToField('LEADER_BIO_INVALID')).toBe('leaderBio');
     expect(mapErrorCodeToField('SUCCESSION_INVALID')).toBe('successionType');
-    // Tab 3 — history only; the anthem code maps nowhere (generic
-    // banner) — the interface no longer has the field.
+    // Tab 3 — history only.
     expect(mapErrorCodeToField('HISTORY_URL_INVALID')).toBe('historyUrl');
-    expect(mapErrorCodeToField('ANTHEM_URL_INVALID')).toBeNull();
     // Tab 4.
     for (const code of [
       'PROVINCE_TAKEN',

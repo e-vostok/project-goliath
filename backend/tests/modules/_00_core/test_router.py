@@ -660,7 +660,7 @@ class TestNationPublic:
 
     async def test_returns_exact_public_key_set(self, client, test_db_session):
         """200 with exactly the 20 Spec keys — the service fields
-        (owner_player_id, gender, succession_type, anthem_url) and any
+        (owner_player_id, gender, succession_type) and any
         VK identifier can never leak through this route."""
         owner = await seed_player(test_db_session, vk_user_id=111)
         viewer = await seed_player(test_db_session, vk_user_id=222)
@@ -681,7 +681,6 @@ class TestNationPublic:
             "owner_player_id",
             "gender",
             "succession_type",
-            "anthem_url",
         ):
             assert key not in body
 
@@ -929,8 +928,6 @@ class TestNationProfileEndpoints:
             "capital_name_max_length": nation.capital_name_max_length,
             "history_url_max_length": nation.history_url_max_length,
             "history_url_allowed_hosts": nation.history_url_allowed_hosts,
-            "anthem_url_max_length": nation.anthem_url_max_length,
-            "anthem_url_allowed_hosts": nation.anthem_url_allowed_hosts,
             "min_provinces": nation.min_provinces_per_nation,
             "max_provinces": nation.max_provinces_per_nation,
             "palette": CORE_CONFIG.color.palette,

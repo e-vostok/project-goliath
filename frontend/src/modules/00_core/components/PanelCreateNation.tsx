@@ -19,8 +19,7 @@
  * plain) fills the form and shows its plate above the tabs.
  *
  * The current tab and every field value live in this container as one
- * `RegistrationForm` object (the anthem field is gone; `anthem_url`
- * is never sent).
+ * `RegistrationForm` object.
  *
  * Provinces are picked on the map — the «Выбрать на карте» button on
  * tab 4 opens the 01_map ProvincePicker popup; the selection lives in

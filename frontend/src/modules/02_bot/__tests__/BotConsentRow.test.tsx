@@ -53,7 +53,6 @@ const NATION: NationDTO = {
   portrait_thumb_url: null,
   succession_type: 'elections',
   history_url: 'https://vk.com/@testia-istoriya',
-  anthem_url: null,
   level: 1,
   judge_rating: 0,
 };

@@ -46,7 +46,6 @@ export interface NationDTO {
   portrait_thumb_url: string | null;
   succession_type: string | null;
   history_url: string | null;
-  anthem_url: string | null;
   /** Owner's player stats — since 0.9.0 (unit 14). */
   level: number;
   judge_rating: number;
@@ -55,7 +54,7 @@ export interface NationDTO {
 /**
  * The public view of another player's nation (Bible §7, Spec Part 5) —
  * exactly the public keys the server sends; the service fields
- * (`owner_player_id`, `gender`, `succession_type`, `anthem_url`) and VK
+ * (`owner_player_id`, `gender`, `succession_type`) and VK
  * identifiers are never part of it.
  */
 export interface NationPublicDTO {
@@ -103,7 +102,6 @@ export interface NationCreateRequest {
   leader_bio: string | null;
   succession_type: string;
   history_url: string;
-  anthem_url: string | null;
 }
 
 export interface NationUpdateRequest {
@@ -119,7 +117,6 @@ export interface NationUpdateRequest {
   leader_bio?: string | null;
   succession_type?: string | null;
   history_url?: string | null;
-  anthem_url?: string | null;
 }
 
 /**
@@ -269,8 +266,6 @@ export interface NationRulesDTO {
   capital_name_max_length: number;
   history_url_max_length: number;
   history_url_allowed_hosts: string[];
-  anthem_url_max_length: number;
-  anthem_url_allowed_hosts: string[];
   min_provinces: number;
   max_provinces: number;
   palette: string[];
@@ -790,7 +785,6 @@ export const ErrorCodes = {
   DESCRIPTION_INVALID: 'DESCRIPTION_INVALID',
   LEADER_BIO_INVALID: 'LEADER_BIO_INVALID',
   HISTORY_URL_INVALID: 'HISTORY_URL_INVALID',
-  ANTHEM_URL_INVALID: 'ANTHEM_URL_INVALID',
   CAPITAL_NAME_INVALID: 'CAPITAL_NAME_INVALID',
   CAPITAL_NOT_IN_PROVINCES: 'CAPITAL_NOT_IN_PROVINCES',
   IMAGE_TOO_LARGE: 'IMAGE_TOO_LARGE',

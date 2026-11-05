@@ -164,13 +164,6 @@ class LeaderBioInvalidError(CoreDomainError):
         super().__init__(f"Leader bio is invalid: {reason}", "LEADER_BIO_INVALID")
 
 
-class AnthemUrlInvalidError(CoreDomainError):
-    """Raised when the anthem URL fails the Part 3 soft link checks."""
-
-    def __init__(self, reason: str):
-        super().__init__(f"Anthem URL is invalid: {reason}", "ANTHEM_URL_INVALID")
-
-
 class CapitalNameInvalidError(CoreDomainError):
     """Raised when the capital name fails the Part 3 text-field checks."""
 

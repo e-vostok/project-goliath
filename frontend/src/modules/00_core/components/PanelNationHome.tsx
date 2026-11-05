@@ -14,7 +14,7 @@
  * to the two badges inside «Приказы» — «Мои приказы» and «Приказы
  * других игроков», each a button that opens the Registry's orders
  * tab with a preset filter through `onOpenRegistry`. Gender,
- * succession, anthem and the bot-consent row are not shown on the
+ * succession and the bot-consent row are not shown on the
  * card; province numbers are shown nowhere.
  *
  * «Изменить» opens the edit form — the same tab strip and tab blocks

@@ -78,8 +78,6 @@ const RULES = {
   capital_name_max_length: 40,
   history_url_max_length: 2000,
   history_url_allowed_hosts: ['vk.com'],
-  anthem_url_max_length: 2000,
-  anthem_url_allowed_hosts: [],
   min_provinces: 1,
   max_provinces: 5,
   palette: [],

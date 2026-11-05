@@ -132,8 +132,6 @@ class Nation(Base):
     motto: Mapped[str | None] = mapped_column(String(100), nullable=True)
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     leader_bio: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    # не используется с 0.9.0, снятие — бэклог 00_core
-    anthem_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     # use_alter + a named FK: nations <-> provinces reference each other
     # (provinces.nation_id already exists), so the capital FK is emitted
     # by a separate ALTER instead of inside CREATE TABLE.
@@ -389,21 +387,6 @@ class NationApplication(Base):
         DateTime(timezone=True), nullable=True
     )
     review_deadline_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    # Unused since the reviewer was dropped (Owner decision
-    # 04.11.2026): never written, never read — both columns and the
-    # FK stay until a later migration removes them.
-    reviewer_player_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey(
-            "players.id",
-            name="fk_nation_applications_reviewer_player_id",
-            ondelete="SET NULL",
-        ),
-        nullable=True,
-    )
-    reviewer_assigned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     decided_at: Mapped[datetime | None] = mapped_column(

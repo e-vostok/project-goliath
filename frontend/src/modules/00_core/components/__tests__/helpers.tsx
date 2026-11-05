@@ -78,8 +78,6 @@ export const RULES: NationRulesDTO = {
   capital_name_max_length: 22,
   history_url_max_length: 321,
   history_url_allowed_hosts: ['vk.com', 'm.vk.com'],
-  anthem_url_max_length: 222,
-  anthem_url_allowed_hosts: ['vk.com', 'm.vk.com'],
   min_provinces: 3,
   max_provinces: 3,
   palette: ['#102030', '#a0b0c0'],

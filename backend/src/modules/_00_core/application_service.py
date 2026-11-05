@@ -67,7 +67,6 @@ from modules._00_core.models import (
     Province,
 )
 from modules._00_core.profile_rules import (
-    validate_anthem_url,
     validate_capital_name,
     validate_description,
     validate_gender,
@@ -231,7 +230,6 @@ class ApplicationService:
         motto: str | None = None,
         description: str | None = None,
         leader_bio: str | None = None,
-        anthem_url: str | None = None,
     ) -> NationApplication:
         """
         Create or rewrite the player's DRAFT application (Spec §4).
@@ -253,9 +251,6 @@ class ApplicationService:
         if application is not None and application.status != "DRAFT":
             raise ApplicationNotEditableError(application.status)
 
-        # anthem_url keeps its slot in the creation check order but is
-        # not stored — the application table has no anthem column.
-        validate_anthem_url(anthem_url, config)
         fields = _validate_profile_fields(
             {
                 "leader_name": leader_name,
@@ -888,7 +883,6 @@ class ApplicationService:
             motto=fields["motto"],
             description=fields["description"],
             leader_bio=fields["leader_bio"],
-            anthem_url=None,
             capital_province_id=capital_id,
             capital_name=fields["capital_name"],
             created_at=now,

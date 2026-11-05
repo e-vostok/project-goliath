@@ -52,7 +52,6 @@ const NATION: NationDTO = {
   portrait_thumb_url: null,
   succession_type: 'elections',
   history_url: null,
-  anthem_url: null,
   level: 5,
   judge_rating: 21,
 };
