@@ -573,7 +573,7 @@ async def admin_reset(session: AsyncSession) -> None:
 
     Clears scheduled_actions, frees every province, deletes all
     applications and nations and the whole tick_log journal (restarting
-    its id counter at 1), and rewinds game_clock to turn 0 (inserting
+    its id counter at 1), and rewinds game_clock to turn 1 (inserting
     the singleton row if it is somehow absent). players are kept on
     purpose — accounts survive a world reset.
 
@@ -604,13 +604,13 @@ async def admin_reset(session: AsyncSession) -> None:
         session.add(
             GameClock(
                 id=1,
-                current_turn=0,
+                current_turn=1,
                 last_tick_at=None,
                 next_tick_at=next_tick_at,
             )
         )
     else:
-        clock.current_turn = 0
+        clock.current_turn = 1
         clock.last_tick_at = None
         clock.next_tick_at = next_tick_at
 

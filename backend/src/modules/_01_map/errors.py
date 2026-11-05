@@ -55,13 +55,13 @@ class MapVersionUnknownError(MapDomainError):
 
 
 class TurnOutOfRangeError(MapDomainError):
-    """Requested turn outside 0..current_turn (Part 5: 422)."""
+    """Requested turn outside 1..current_turn (Part 5: 422)."""
 
     code = "TURN_OUT_OF_RANGE"
 
     def __init__(self, turn: int, current_turn: int):
         super().__init__(
-            f"Ход {turn} вне диапазона 0..{current_turn}",
+            f"Ход {turn} вне диапазона 1..{current_turn}",
             self.code,
             details={"turn": turn, "current_turn": current_turn},
         )

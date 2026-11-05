@@ -174,7 +174,7 @@ class Nation(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("created_turn >= 0", name="ck_nations_created_turn_min"),
+        CheckConstraint("created_turn >= 1", name="ck_nations_created_turn_min"),
         UniqueConstraint("name_key", name="uq_nations_name_key"),
         UniqueConstraint("short_name_key", name="uq_nations_short_name_key"),
     )
@@ -265,7 +265,7 @@ class GameClock(Base):
     __tablename__ = "game_clock"
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
-    current_turn: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    current_turn: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     last_tick_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -124,8 +124,8 @@ async def owners_at_turn(session: AsyncSession, turn: int) -> dict[int, OwnerAtT
     absent from the result. One query using a window function portable
     across SQLite >= 3.25 and PostgreSQL.
     """
-    if turn < 0:
-        raise ValueError(f"turn must be >= 0, got {turn}")
+    if turn < 1:
+        raise ValueError(f"turn must be >= 1, got {turn}")
 
     rn = (
         func.row_number()

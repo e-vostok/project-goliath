@@ -370,7 +370,7 @@ async def build_state(
     Assemble MapStateDTO inside the caller's read transaction.
 
     ``turn`` absent or equal to the current turn -> live tables (owner
-    data straight from provinces/nations); ``0 <= turn < current`` ->
+    data straight from provinces/nations); ``1 <= turn < current`` ->
     the ownership journal (names/colours recorded at event time, the
     ``id`` of a since-deleted nation becomes null); anything else ->
     TURN_OUT_OF_RANGE.
@@ -415,7 +415,7 @@ async def build_state(
             )
             if group
         ]
-    elif 0 <= turn < current:
+    elif 1 <= turn < current:
         described = turn
         snapshot = await owners_at_turn(session, turn)
         existing = await NationService.existing_ids(

@@ -746,11 +746,11 @@ async def _current_turn(session: AsyncSession) -> int:
 
     A migrated database always holds the singleton row (migration 0001);
     bare create_all test schemas may not — in that case the change is
-    stamped turn 0 rather than failing the operation.
+    stamped turn 1 rather than failing the operation.
     """
     result = await session.execute(select(GameClock).where(GameClock.id == 1))
     clock = result.scalar_one_or_none()
-    return clock.current_turn if clock is not None else 0
+    return clock.current_turn if clock is not None else 1
 
 
 class GameClockService:
@@ -761,7 +761,7 @@ class GameClockService:
         """
         The current turn in the caller's transaction. Shares the
         write path's rule: a missing singleton row (bare test schema)
-        reads as turn 0.
+        reads as turn 1.
         """
         return await _current_turn(session)
 
