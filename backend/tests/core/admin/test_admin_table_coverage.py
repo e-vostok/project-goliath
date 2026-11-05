@@ -111,6 +111,9 @@ TABLE_COVERAGE: dict[str, object] = {
     "bot_outbox": "reset",
     # -- rows removed/released when one player is deleted -------------
     "players": "player_delete",
+    # subject rows go with the players row (FK CASCADE); actor
+    # references are released (SET NULL) — 0.14.0 unit 6a.
+    "judge_rating_log": "player_delete",
     "bot_consents": "player_delete",
     "registry_vk_profiles": "player_delete",
     "registry_player_numbers": "player_delete",

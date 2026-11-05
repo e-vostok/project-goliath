@@ -193,9 +193,9 @@ class TestDowngradeRoundTrip:
 
         after = set(_table_names(url)) - {"alembic_version"}
         assert BOT_TABLES.isdisjoint(after)
-        # Downgrading past 0018/0015/0010/0009/0008 also removes the
-        # nation_images table, the 00_core admin tables, the 04_orders
-        # and the 03_registry tables.
+        # Downgrading past 0023/0018/0015/0010/0009/0008 also removes
+        # the rating journal, the nation_images table, the 00_core
+        # admin tables, the 04_orders and the 03_registry tables.
         assert after == before - BOT_TABLES - {
             "orders",
             "nation_images",
@@ -206,6 +206,7 @@ class TestDowngradeRoundTrip:
             "registry_number_counter",
             "admin_grants",
             "admin_audit_log",
+            "judge_rating_log",
         }
 
     def test_upgrade_after_downgrade_works(self, tmp_path, monkeypatch):

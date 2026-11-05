@@ -626,3 +626,64 @@ class NationImage(Base):
         ),
         Index("ix_nation_images_sha256", "sha256"),
     )
+
+
+class JudgeRatingLog(Base):
+    """Append-only journal of ``players.judge_rating`` changes
+    (0.14.0 unit 6a, migration 0023).
+
+    Every write to the rating goes through
+    ``rating_service.change_judge_rating`` and leaves one row here:
+    the requested ``delta``, the ``applied_delta`` after the scale
+    clamp, and the rating before/after. ``source_key`` is the
+    idempotency key — ``uq_judge_rating_log_source_key`` lets a
+    repeated event answer with the existing row instead of moving the
+    rating twice. ``player_id`` cascades away with the rated player;
+    ``actor_player_id`` (the admin of a MANUAL change) is SET NULL so
+    the entry survives the actor's deletion.
+
+    The world reset keeps players (accounts survive), so it touches
+    neither this journal nor the ratings.
+    """
+
+    __tablename__ = "judge_rating_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey(
+            "players.id",
+            name="fk_judge_rating_log_player_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    applied_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    rating_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    rating_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(24), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    actor_player_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "players.id",
+            name="fk_judge_rating_log_actor_player_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "reason_code IN ('ORDER_REFUSED', 'ORDER_REFUSED_LATE', "
+            "'ORDER_OVERDUE', 'MANUAL')",
+            name="ck_judge_rating_log_reason_code",
+        ),
+        UniqueConstraint("source_key", name="uq_judge_rating_log_source_key"),
+        Index("ix_judge_rating_log_player_id", "player_id", "id"),
+    )
