@@ -396,3 +396,18 @@ class ReturnCommentInvalidError(CoreDomainError):
             f"Return comment is invalid: {reason}",
             "RETURN_COMMENT_INVALID",
         )
+
+
+class RatingChangeInvalidError(CoreDomainError):
+    """A judge-rating change request breaks the argument rules:
+
+    a zero or non-integer ``delta``, an unknown ``reason_code``, an
+    empty or overlong ``source_key``, a MANUAL change without its
+    note/actor, or an ORDER_* change that carries either.
+    """
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Rating change is invalid: {reason}",
+            "RATING_CHANGE_INVALID",
+        )
