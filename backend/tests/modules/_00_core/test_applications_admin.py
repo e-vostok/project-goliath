@@ -311,7 +311,7 @@ class TestWorkerPass:
                 capital_province_id=1010,
                 capital_name="Sq",
                 created_at=datetime.now(UTC),
-                created_turn=0,
+                created_turn=1,
             )
             session.add(squatter_nation)
             await session.flush()

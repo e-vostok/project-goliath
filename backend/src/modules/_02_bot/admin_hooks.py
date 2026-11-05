@@ -7,8 +7,8 @@ Admin hooks of module 02_bot (Spec 5.4).
   BREAKER_OPEN / HALF_OPEN / HALTED_AUTH, ``NOT_STARTED`` without a
   runtime) and each task's last successful pass. Never exposes env
   values or secrets (INV-B9).
-- Reset ``"02_bot"``: wipes the whole ``bot_outbox`` queue and zeroes
-  ``bot_state.last_digest_turn`` (INV-B14); consents and the
+- Reset ``"02_bot"``: wipes the whole ``bot_outbox`` queue and rewinds
+  ``bot_state.last_digest_turn`` to turn 1 (INV-B14); consents and the
   ``bot_vk_events`` journal survive. The hook never commits — the admin
   panel owns the transaction.
 - Player delete ``"02_bot.player_delete"``: removes the player's
@@ -101,23 +101,23 @@ async def bot_state_view(session: AsyncSession) -> dict:
         "consents": dict(consent_rows.all()),
         "outbox": dict(outbox_rows.all()),
         "oldest_ready_age_seconds": oldest_ready_age_seconds,
-        "last_digest_turn": last_digest_turn if last_digest_turn is not None else 0,
+        "last_digest_turn": last_digest_turn if last_digest_turn is not None else 1,
         "sender": sender,
         "tasks": tasks,
     }
 
 
 async def bot_reset(session: AsyncSession) -> None:
-    """World reset (INV-B14): empty queue, zero digest marker. No commit."""
+    """World reset (INV-B14): empty queue, digest marker at turn 1. No commit."""
     await session.execute(delete(BotOutbox))
     state = (
         await session.execute(select(BotState).where(BotState.id == 1))
     ).scalar_one_or_none()
     if state is None:
         # Bare test schemas lack the migration-seeded singleton.
-        session.add(BotState(id=1, last_digest_turn=0))
+        session.add(BotState(id=1, last_digest_turn=1))
     else:
-        state.last_digest_turn = 0
+        state.last_digest_turn = 1
     await session.flush()
 
 

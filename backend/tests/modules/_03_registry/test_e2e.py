@@ -8,8 +8,8 @@ profile-worker ``run_cycle``. Only the VK boundary is faked
 (``FakeVk`` on ``httpx.MockTransport`` — Anti-Mock Guard); nothing
 else is mocked.
 
-Scenario A — a nation founded on turn 0, the tick, a second nation on
-turn 1, a third player without a nation; then the first nation is
+Scenario A — a nation founded on turn 1, the tick, a second nation on
+turn 2, a third player without a nation; then the first nation is
 deleted and the table renumbers.
 Scenario B — one ``run_cycle`` over ``FakeVk``: an ``OK`` profile
 shows the real name and avatar, a ``deactivated`` one keeps the
@@ -54,7 +54,7 @@ def tick_handlers():
     TickOrchestrator.clear_handlers()
 
 
-async def _seed_clock(session, current_turn: int = 0) -> GameClock:
+async def _seed_clock(session, current_turn: int = 1) -> GameClock:
     """The game_clock singleton required by ``run_tick``."""
     clock = GameClock(
         id=1,
@@ -119,7 +119,7 @@ class TestScenarioA:
         assert resp.status_code == 201
         nation1_id = resp.json()["id"]
 
-        # The real tick advances the game to turn 1.
+        # The real tick advances the game to turn 2.
         outcome = await TickOrchestrator.run_tick(test_db_session)
         assert outcome is TickOutcome.EXECUTED
 
@@ -157,8 +157,8 @@ class TestScenarioA:
         }
         assert "flag" not in n1["cells"]
         assert n1["cells"]["formed"] == {
-            "text": format_game_date(compute_game_date(0, CORE_CONFIG), CORE_CONFIG),
-            "key": 0,
+            "text": format_game_date(compute_game_date(1, CORE_CONFIG), CORE_CONFIG),
+            "key": 1,
         }
         assert n1["cells"]["provinces"] == 5
         assert n2["key"] == nation2_id
@@ -170,8 +170,8 @@ class TestScenarioA:
             "flag_url": None,
         }
         assert n2["cells"]["formed"] == {
-            "text": format_game_date(compute_game_date(1, CORE_CONFIG), CORE_CONFIG),
-            "key": 1,
+            "text": format_game_date(compute_game_date(2, CORE_CONFIG), CORE_CONFIG),
+            "key": 2,
         }
         assert n2["cells"]["provinces"] == 5
         _assert_no_identifiers(resp.text, players)
@@ -223,7 +223,7 @@ class TestScenarioA:
         assert n2["key"] == nation2_id
         assert n2["cells"]["number"] == 1
         assert n2["cells"]["name"]["name"] == "Ладожский Союз"
-        assert n2["cells"]["formed"]["key"] == 1
+        assert n2["cells"]["formed"]["key"] == 2
         assert n2["cells"]["provinces"] == 5
         _assert_no_identifiers(resp.text, players)
 

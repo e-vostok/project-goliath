@@ -63,7 +63,7 @@ async def session_maker(test_db_engine):
 async def _seed_game_clock(
     session_maker,
     next_tick_at: datetime | None = None,
-    current_turn: int = 0,
+    current_turn: int = 1,
 ) -> None:
     """Persist the game_clock singleton row via a real committed session."""
     clock = GameClockFactory.build(
@@ -127,7 +127,7 @@ async def _move_next_tick_at(
         stored = clock.next_tick_at
         if stored is not None and stored.tzinfo is None:
             stored = stored.replace(tzinfo=UTC)
-        if stored == new_value or clock.current_turn != 0:
+        if stored == new_value or clock.current_turn != 1:
             return
         if time.monotonic() >= deadline:
             pytest.fail(
@@ -173,10 +173,10 @@ class TestRunScheduledTick:
             assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(session_maker)
-        assert clock.current_turn == 1
+        assert clock.current_turn == 2
         assert clock.last_tick_at is not None
 
-        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        logs = await _fetch_tick_logs(session_maker, turn_number=2)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
         assert logs[0].finished_at is not None
@@ -201,9 +201,9 @@ class TestRunScheduledTick:
                 assert await run_scheduled_tick(session) is TickOutcome.FAILED
 
         clock = await _fetch_clock(session_maker)
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
 
-        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        logs = await _fetch_tick_logs(session_maker, turn_number=2)
         assert len(logs) == 2
         assert all(log.status == TickLogStatus.FAILED for log in logs)
         assert all("Simulated handler failure" in log.error_message for log in logs)
@@ -232,9 +232,9 @@ class TestRunScheduledTick:
             assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(session_maker)
-        assert clock.current_turn == 1
+        assert clock.current_turn == 2
 
-        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        logs = await _fetch_tick_logs(session_maker, turn_number=2)
         assert [log.status for log in logs] == [
             TickLogStatus.FAILED,
             TickLogStatus.FAILED,
@@ -283,7 +283,7 @@ class TestSchedulerLoop:
         await scheduler_loop(session_maker, max_iterations=2)
 
         clock = await _fetch_clock(session_maker)
-        assert clock.current_turn == 2
+        assert clock.current_turn == 3
 
         async with session_maker() as session:
             result = await session.execute(
@@ -291,7 +291,7 @@ class TestSchedulerLoop:
             )
             logs = result.scalars().all()
         assert len(logs) == 2
-        assert [log.turn_number for log in logs] == [1, 2]
+        assert [log.turn_number for log in logs] == [2, 3]
         assert all(log.status == TickLogStatus.COMPLETED for log in logs)
 
     @pytest.mark.asyncio
@@ -322,9 +322,9 @@ class TestSchedulerLoop:
         assert elapsed < 30
 
         clock = await _fetch_clock(session_maker)
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
 
-        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        logs = await _fetch_tick_logs(session_maker, turn_number=2)
         assert len(logs) == 2
         assert all(log.status == TickLogStatus.FAILED for log in logs)
 
@@ -370,8 +370,8 @@ class TestSchedulerResilience:
 
         assert failures_left["count"] == 0
         clock = await _fetch_clock(session_maker)
-        assert clock.current_turn == 1
-        logs = await _fetch_tick_logs(session_maker, turn_number=1)
+        assert clock.current_turn == 2
+        logs = await _fetch_tick_logs(session_maker, turn_number=2)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
 
@@ -442,7 +442,7 @@ class TestSchedulerResilience:
         try:
             # Waiting on a far-future slot: several wakes, no tick.
             await asyncio.sleep(0.2)
-            assert (await _fetch_clock(session_maker)).current_turn == 0
+            assert (await _fetch_clock(session_maker)).current_turn == 1
 
             # Move the slot LATER — still no tick.
             await _move_next_tick_at(
@@ -450,15 +450,15 @@ class TestSchedulerResilience:
                 datetime.now(UTC) + timedelta(hours=2),
             )
             await asyncio.sleep(0.2)
-            assert (await _fetch_clock(session_maker)).current_turn == 0
+            assert (await _fetch_clock(session_maker)).current_turn == 1
 
             # Move it into the PAST — the next wake fires the tick.
             await _move_next_tick_at(
                 session_maker,
                 datetime.now(UTC) - timedelta(minutes=1),
             )
-            clock = await _wait_for_turn(session_maker, expected_turn=1)
-            assert clock.current_turn == 1, (
+            clock = await _wait_for_turn(session_maker, expected_turn=2)
+            assert clock.current_turn == 2, (
                 "tick did not fire within 10s of moving next_tick_at "
                 f"into the past; last observed current_turn="
                 f"{clock.current_turn}"

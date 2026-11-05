@@ -180,7 +180,7 @@ async def _seed_nation(vk_user_id: int) -> str:
                 succession_type=VALID_PROFILE["succession_type"],
                 capital_name="Mini Beta",
                 created_at=datetime.now(UTC),
-                created_turn=0,
+                created_turn=1,
             )
         )
         await session.commit()

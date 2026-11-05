@@ -622,7 +622,7 @@ class TestState:
         resp = await client.get(STATE_URL, headers=bearer_headers(player.id))
         assert resp.status_code == 200
         dto = MapStateDTO.model_validate(resp.json())
-        assert dto.turn == 0
+        assert dto.turn == 1
         assert dto.owners == []
         assert dto.nations == []
         assert dto.geometry_version == map_installed.geometry_version
@@ -643,7 +643,7 @@ class TestState:
         resp = await client.get(STATE_URL, headers=bearer_headers(player_a.id))
         assert resp.status_code == 200
         dto = MapStateDTO.model_validate(resp.json())
-        assert dto.turn == 0
+        assert dto.turn == 1
         assert dto.owners == [[1001, 0], [1002, 0], [1003, 1]]
         assert [str(n.id) for n in dto.nations] == [nation_a.id, nation_b.id]
         assert dto.nations[0].name == "Alpha"
@@ -656,8 +656,8 @@ class TestState:
 
     async def test_past_turn_from_journal(self, client, map_db_session):
         """
-        Scripted journal rows: claims at turns 0 and 1, a release at
-        turn 2. Journal nation ids absent from the live table resolve
+        Scripted journal rows: claims at turns 1 and 2, a release at
+        turn 3. Journal nation ids absent from the live table resolve
         to ``id: null``.
         """
         player = await seed_player(map_db_session)
@@ -671,7 +671,7 @@ class TestState:
                     new_name="Gone Realm",
                     new_short_name="Gone",
                     new_color="#101010",
-                    turn=0,
+                    turn=1,
                 ),
                 OwnershipChange(
                     province_id=1002,
@@ -680,7 +680,7 @@ class TestState:
                     new_name="B Realm",
                     new_short_name="B",
                     new_color="#202020",
-                    turn=1,
+                    turn=2,
                 ),
                 OwnershipChange(
                     province_id=1001,
@@ -689,15 +689,15 @@ class TestState:
                     new_name=None,
                     new_short_name=None,
                     new_color=None,
-                    turn=2,
+                    turn=3,
                 ),
             ],
         )
-        await _set_turn(map_db_session, 3)
+        await _set_turn(map_db_session, 4)
         headers = bearer_headers(player.id)
 
-        at_0 = (await client.get(STATE_URL, params={"turn": 0}, headers=headers)).json()
-        assert at_0["turn"] == 0
+        at_0 = (await client.get(STATE_URL, params={"turn": 1}, headers=headers)).json()
+        assert at_0["turn"] == 1
         assert at_0["owners"] == [[1001, 0]]
         # A vanished nation's journal snapshot keeps name, short name
         # and colour; its live id resolves to null.
@@ -710,7 +710,7 @@ class TestState:
             }
         ]
 
-        at_1 = (await client.get(STATE_URL, params={"turn": 1}, headers=headers)).json()
+        at_1 = (await client.get(STATE_URL, params={"turn": 2}, headers=headers)).json()
         assert at_1["owners"] == [[1001, 0], [1002, 1]]
         assert at_1["nations"][1]["name"] == "B Realm"
         assert at_1["nations"][1]["short_name"] == "B"
@@ -718,7 +718,7 @@ class TestState:
         # resolve to id=null (unique by (id, name, color)).
         assert [n["id"] for n in at_1["nations"]] == [None, None]
 
-        at_2 = (await client.get(STATE_URL, params={"turn": 2}, headers=headers)).json()
+        at_2 = (await client.get(STATE_URL, params={"turn": 3}, headers=headers)).json()
         assert at_2["owners"] == [[1002, 0]]
         assert at_2["nations"] == [
             {
@@ -756,8 +756,8 @@ class TestState:
         # a retired-but-owned leftover would have (startup normally
         # refuses this; the read path must still be safe).
         map_db_session.add(Province(id=9999, kind="LAND", nation_id=nation.id))
-        # A journal claim on the retired id back at turn 0 (a withdrawn
-        # node the journal legitimately remembers) plus the turn-0
+        # A journal claim on the retired id back at turn 1 (a withdrawn
+        # node the journal legitimately remembers) plus the turn-1
         # registration claim for 1001 — seed_nation writes live rows
         # only, the past-turn snapshot reads the journal.
         await record_changes(
@@ -770,7 +770,7 @@ class TestState:
                     new_name="Old Realm",
                     new_short_name="Old",
                     new_color="#303030",
-                    turn=0,
+                    turn=1,
                 ),
                 OwnershipChange(
                     province_id=1001,
@@ -779,11 +779,11 @@ class TestState:
                     new_name="Alpha",
                     new_short_name=nation.short_name,
                     new_color="#AA1100",
-                    turn=0,
+                    turn=1,
                 ),
             ],
         )
-        await _set_turn(map_db_session, 1)
+        await _set_turn(map_db_session, 2)
         headers = bearer_headers(player.id)
 
         current = MapStateDTO.model_validate(
@@ -792,8 +792,8 @@ class TestState:
         assert current.owners == [[1001, 0]]
         assert [str(n.id) for n in current.nations] == [nation.id]
 
-        at_0 = (await client.get(STATE_URL, params={"turn": 0}, headers=headers)).json()
-        # turn 0's snapshot holds 1001 (claimed at registration) and
+        at_0 = (await client.get(STATE_URL, params={"turn": 1}, headers=headers)).json()
+        # turn 1's snapshot holds 1001 (claimed at registration) and
         # the withdrawn 9999 — only the active id is returned, and the
         # retired node's journal nation disappears with it.
         assert at_0["owners"] == [[1001, 0]]
@@ -803,7 +803,7 @@ class TestState:
         player = await seed_player(map_db_session)
         await _set_turn(map_db_session, 2)
         headers = bearer_headers(player.id)
-        for turn in (-1, 3):
+        for turn in (-1, 0, 3):
             resp = await client.get(STATE_URL, params={"turn": turn}, headers=headers)
             assert resp.status_code == 422
             assert resp.json()["code"] == "TURN_OUT_OF_RANGE"
@@ -859,12 +859,12 @@ class TestReservations:
         await ApplicationService.submit(
             linked_map_db_session, applicant.id, CORE_CONFIG
         )
-        await _set_turn(linked_map_db_session, 1)
+        await _set_turn(linked_map_db_session, 2)
         headers = bearer_headers(viewer.id)
 
         past = (
             await linked_client.get(
-                STATE_URL, params={"turn": 0}, headers=headers
+                STATE_URL, params={"turn": 1}, headers=headers
             )
         ).json()
         assert past["reservations"] == []
@@ -1094,9 +1094,9 @@ class TestLiveHistory:
             assert resp.json()["ok"] is True
             return resp.json()["current_turn"]
 
-        # --- turn 0: both nations claimed --------------------------
+        # --- turn 1: both nations claimed --------------------------
         now = await state()
-        assert now["turn"] == 0
+        assert now["turn"] == 1
         assert now["owners"] == [
             *[[pid, 0] for pid in STARTING_GROUP],
             *[[pid, 1] for pid in range(1009, 1014)],
@@ -1107,8 +1107,8 @@ class TestLiveHistory:
             "Bravonia",
         ]
 
-        # --- tick -> 1, then rename Alpha -> Beta ------------------
-        assert await tick() == 1
+        # --- tick -> 2, then rename Alpha -> Beta ------------------
+        assert await tick() == 2
         resp = await live_client.patch(
             "/api/v1/nations/me",
             headers=player_a,
@@ -1116,19 +1116,19 @@ class TestLiveHistory:
         )
         assert resp.status_code == 200
 
-        at_0 = await state(turn=0)
+        at_0 = await state(turn=1)
         assert at_0["nations"][0]["name"] == "Alpha"
         assert at_0["nations"][0]["short_name"] == "Testland"
         assert at_0["nations"][0]["color_hex"] == "#AA1100"
         assert at_0["nations"][0]["id"] == nation_a["id"]
 
         current = await state()
-        assert current["turn"] == 1
+        assert current["turn"] == 2
         # The live row carries the new name; the journal keeps the old.
         assert current["nations"][0]["name"] == "Beta"
 
-        # --- tick -> 2, then delete the nation ---------------------
-        assert await tick() == 2
+        # --- tick -> 3, then delete the nation ---------------------
+        assert await tick() == 3
         # The player DELETE route is gone (0.9.0): deletion is an
         # internal operation, the service is the only entry point left.
         async with core_db.get_session_context() as session:
@@ -1136,7 +1136,7 @@ class TestLiveHistory:
             await session.commit()
 
         current = await state()
-        assert current["turn"] == 2
+        assert current["turn"] == 3
         assert current["owners"] == [[pid, 0] for pid in range(1009, 1014)]
         assert current["nations"] == [
             {
@@ -1148,7 +1148,7 @@ class TestLiveHistory:
         ]
 
         # Past turns keep the deleted nation with id = null.
-        at_0 = await state(turn=0)
+        at_0 = await state(turn=1)
         assert at_0["owners"] == [
             *[[pid, 0] for pid in STARTING_GROUP],
             *[[pid, 1] for pid in range(1009, 1014)],
@@ -1161,18 +1161,18 @@ class TestLiveHistory:
         }
         assert at_0["nations"][1]["id"] == nation_b["id"]
 
-        at_1 = await state(turn=1)
+        at_1 = await state(turn=2)
         # The journal records ownership events only: the rename does
         # not appear in past snapshots (Spec 3.5 formula).
         assert at_1["nations"][0]["name"] == "Alpha"
         assert at_1["nations"][0]["short_name"] == "Testland"
         assert at_1["nations"][0]["id"] is None
 
-        at_current = await state(turn=2)
+        at_current = await state(turn=3)
         assert at_current == current
 
         # --- out of range ------------------------------------------
-        for turn in (-1, 3):
+        for turn in (-1, 0, 4):
             resp = await live_client.get(
                 STATE_URL, params={"turn": turn}, headers=player_b
             )

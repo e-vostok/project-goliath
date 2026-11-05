@@ -308,7 +308,7 @@ class TestNationDeletePreview:
                     succession_type=VALID_PROFILE["succession_type"],
                     capital_name="Mini Alpha",
                     created_at=datetime.now(UTC),
-                    created_turn=0,
+                    created_turn=1,
                 )
             )
             (await session.get(Province, 1001)).nation_id = nation_id
@@ -509,7 +509,7 @@ class TestNationDelete:
                     succession_type=VALID_PROFILE["succession_type"],
                     capital_name="Mini Beta",
                     created_at=datetime.now(UTC),
-                    created_turn=0,
+                    created_turn=1,
                 )
             )
             await session.commit()

@@ -52,7 +52,7 @@ def _orchestrator():
 
 
 async def _seed_clock(
-    session, *, turn=0, next_tick=NOW - timedelta(minutes=1), last_tick=None
+    session, *, turn=1, next_tick=NOW - timedelta(minutes=1), last_tick=None
 ):
     session.add(
         GameClock(
@@ -89,7 +89,7 @@ class TestDigestAfterTick:
         sf = make_session_factory(test_db_engine)
         async with sf() as session:
             await _seed_clock(session)
-            await add_bot_state(session, 0)
+            await add_bot_state(session, 1)
             member_ok = await add_member(session, consent="ALLOWED")
             await add_member(session, consent="UNKNOWN")
             await add_member(session, consent="DENIED")
@@ -112,8 +112,8 @@ class TestDigestAfterTick:
         assert len(rows) == 1
         row = rows[0]
         assert row.player_id == member_ok.id
-        assert row.event_key == "turn:1"
-        assert row.payload["turn"] == 1
+        assert row.event_key == "turn:2"
+        assert row.payload["turn"] == 2
         assert row.payload["nation_name"].startswith("N-")
 
         # A second pass is a no-op (compare-and-swap already moved).
@@ -134,7 +134,7 @@ class TestDigestAfterTick:
         sf = make_session_factory(test_db_engine)
         async with sf() as session:
             await _seed_clock(session)
-            await add_bot_state(session, 0)
+            await add_bot_state(session, 1)
             await add_member(session, consent="ALLOWED")
             await session.commit()
 
@@ -143,7 +143,7 @@ class TestDigestAfterTick:
             await session.rollback()
 
             clock = (await session.execute(select(GameClock))).scalar_one()
-            assert clock.current_turn == 0
+            assert clock.current_turn == 1
 
         await digest_watcher_step(sf, bot_config, now=NOW)
         assert await _rows(test_db_engine) == []
@@ -164,7 +164,7 @@ class TestDigestAfterTick:
                     next_tick_at=NOW + timedelta(hours=14),
                 )
             )
-            await add_bot_state(session, 0)
+            await add_bot_state(session, 1)
             await add_member(session, consent="ALLOWED")
             await session.commit()
 

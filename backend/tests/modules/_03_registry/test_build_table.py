@@ -99,7 +99,7 @@ class TestBuildTable:
             p_alpha,
             "Alpha",
             "#AA0101",
-            created_turn=0,
+            created_turn=1,
             short_name="Alpha",
         )
         n_beta = await seed_nation(
@@ -107,7 +107,7 @@ class TestBuildTable:
             p_beta,
             "Beta",
             "#AA0102",
-            created_turn=0,
+            created_turn=1,
             short_name="Beta",
         )
 
@@ -239,7 +239,7 @@ class TestAdminStateView:
 
         player = await seed_player(test_db_session, 504001)
         await make_vk_profile(test_db_session, player, status="PENDING")
-        await seed_nation(test_db_session, player, "Альфа", "#BB0001", created_turn=0)
+        await seed_nation(test_db_session, player, "Альфа", "#BB0001", created_turn=1)
 
         view = AdminRegistry.get_state_view_hooks()["03_registry"]
         snapshot = await view(test_db_session)

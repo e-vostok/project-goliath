@@ -103,7 +103,7 @@ class TestListenerWrites:
             # The event-time snapshot carries the short name too.
             assert row.new_nation_short_name == "Testland"
             assert row.new_nation_color == "#FF0000"
-            assert row.turn_number == 0  # no game_clock row -> turn 0
+            assert row.turn_number == 1  # no game_clock row -> turn 1
 
     @pytest.mark.asyncio
     async def test_turn_comes_from_game_clock(
@@ -229,7 +229,7 @@ class TestOwnersAtTurn:
     async def _scripted_history(self, session) -> dict:
         """Nation A claims 1001 at turn 1, releases at turn 3;
         nation B (renamed before its event) claims at turn 5."""
-        await _set_turn(session, 0)
+        await _set_turn(session, 1)
         await record_changes(
             session,
             [
@@ -267,8 +267,6 @@ class TestOwnersAtTurn:
     async def test_snapshot_answers(self, map_db_session, map_hooks):
         await self._scripted_history(map_db_session)
 
-        assert await owners_at_turn(map_db_session, 0) == {}
-
         for turn in (1, 2):
             owners = await owners_at_turn(map_db_session, turn)
             assert owners == {
@@ -296,9 +294,10 @@ class TestOwnersAtTurn:
             }
 
     @pytest.mark.asyncio
-    async def test_negative_turn_raises(self, map_db_session):
-        with pytest.raises(ValueError):
-            await owners_at_turn(map_db_session, -1)
+    async def test_turn_below_one_raises(self, map_db_session):
+        for bad_turn in (0, -1):
+            with pytest.raises(ValueError):
+                await owners_at_turn(map_db_session, bad_turn)
 
     @pytest.mark.asyncio
     async def test_never_owned_province_absent(self, map_db_session):
@@ -337,7 +336,7 @@ class TestServiceGuards:
             new_name=None,  # inconsistent: id set, name NULL
             new_short_name="X",
             new_color="#ABCDEF",
-            turn=0,
+            turn=1,
         )
         with pytest.raises(ValueError, match="all set"):
             await record_changes(map_db_session, [change])
@@ -353,7 +352,7 @@ class TestServiceGuards:
             new_name="X Realm",
             new_short_name=None,  # claim without the short name
             new_color="#ABCDEF",
-            turn=0,
+            turn=1,
         )
         with pytest.raises(ValueError, match="all set"):
             await record_changes(map_db_session, [missing])

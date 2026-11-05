@@ -58,7 +58,7 @@ async def digest_watcher_step(
     t = now if now is not None else datetime.now(UTC)
     async with session_factory() as session:
         snapshot = await GameClockService.snapshot(session)
-    if snapshot is None or snapshot.current_turn == 0:
+    if snapshot is None or snapshot.current_turn <= 1:
         return
     turn = snapshot.current_turn
 

@@ -807,7 +807,7 @@ class TestNationProfile:
             short_name="Legacy",
             color_hex="#123456",
             created_at=datetime.now(UTC),
-            created_turn=0,
+            created_turn=1,
         )
         test_db_session.add(legacy)
         await test_db_session.flush()

@@ -191,7 +191,7 @@ async def _seed_nation(
                     else None
                 ),
                 created_at=datetime.now(UTC),
-                created_turn=0,
+                created_turn=1,
             )
         )
         for pid in province_ids:

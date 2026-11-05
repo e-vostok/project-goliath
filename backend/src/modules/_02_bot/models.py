@@ -170,7 +170,7 @@ class BotState(Base):
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     last_digest_turn: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
+        Integer, nullable=False, default=1, server_default="1"
     )
 
     __table_args__ = (CheckConstraint("id = 1", name="ck_bot_state_singleton"),)

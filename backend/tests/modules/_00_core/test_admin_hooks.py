@@ -369,7 +369,7 @@ class TestAdminReset:
             select(GameClock).where(GameClock.id == 1)
         )
         clock = result.scalar_one()
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
         assert clock.last_tick_at is None
         candidates = {
             next_tick_after(
@@ -399,7 +399,7 @@ class TestAdminReset:
             select(GameClock).where(GameClock.id == 1)
         )
         clock = result.scalar_one()
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
         assert clock.last_tick_at is None
         assert _utc(clock.next_tick_at) > datetime.now(UTC)
 
@@ -417,7 +417,7 @@ class TestAdminReset:
             select(GameClock).where(GameClock.id == 1)
         )
         clock = result.scalar_one()
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
         assert clock.next_tick_at is not None
         result = await test_db_session.execute(select(func.count()).select_from(Nation))
         assert result.scalar_one() == 0
@@ -435,7 +435,7 @@ class TestAdminReset:
         result = await test_db_session.execute(
             select(GameClock).where(GameClock.id == 1)
         )
-        assert result.scalar_one().current_turn == 0
+        assert result.scalar_one().current_turn == 1
 
 
 class TestAdminEndpointFunctions:
@@ -529,16 +529,16 @@ class TestAdminEndpointFunctions:
         from core.admin.router import admin_tick_run
 
         admin = await _seed_player(test_db_session, vk_user_id=424242)
-        test_db_session.add(GameClockFactory.build(current_turn=0))
+        test_db_session.add(GameClockFactory.build(current_turn=1))
         await test_db_session.flush()
         await test_db_session.commit()
 
         result = await admin_tick_run(admin=admin, session=test_db_session)
 
         assert result["ok"] is True
-        assert result["current_turn"] == 1
+        assert result["current_turn"] == 2
         assert result["tick_log"]["status"] == "COMPLETED"
-        assert result["tick_log"]["turn_number"] == 1
+        assert result["tick_log"]["turn_number"] == 2
         # Daily tick at 00:00 tick_timezone -> local string ends 00:00:00.
         assert result["next_tick_at"].endswith(" 00:00:00")
 
@@ -548,7 +548,7 @@ class TestAdminEndpointFunctions:
         from core.admin.router import admin_tick_run
 
         admin = await _seed_player(test_db_session, vk_user_id=424242)
-        test_db_session.add(GameClockFactory.build(current_turn=0))
+        test_db_session.add(GameClockFactory.build(current_turn=1))
         await test_db_session.commit()
 
         for _ in range(3):
@@ -561,9 +561,9 @@ class TestAdminEndpointFunctions:
 
         result = await admin_tick_run(admin=admin, session=test_db_session)
         assert result["ok"] is True
-        assert result["current_turn"] == 1
+        assert result["current_turn"] == 2
         assert result["tick_log"]["id"] == 1
-        assert result["tick_log"]["turn_number"] == 1
+        assert result["tick_log"]["turn_number"] == 2
 
     @pytest.mark.asyncio
     async def test_reset_on_empty_tick_log_next_id_is_1(self, test_db_session):
@@ -572,7 +572,7 @@ class TestAdminEndpointFunctions:
         from core.admin.router import admin_tick_run
 
         admin = await _seed_player(test_db_session, vk_user_id=424242)
-        test_db_session.add(GameClockFactory.build(current_turn=0))
+        test_db_session.add(GameClockFactory.build(current_turn=1))
         await test_db_session.commit()
 
         await admin_reset(test_db_session)

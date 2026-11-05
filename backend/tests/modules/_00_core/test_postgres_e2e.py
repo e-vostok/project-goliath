@@ -361,7 +361,7 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
                 "(id, owner_player_id, name, short_name, color_hex, "
                 " name_key, short_name_key, created_at, created_turn) "
                 "VALUES (:id, :owner, :name, 'OR', :color, "
-                " 'old realm', 'or', :created_at, 0)"
+                " 'old realm', 'or', :created_at, 1)"
             ),
             {
                 "id": nation_id,
@@ -466,11 +466,11 @@ async def test_admin_tick_and_state_reset_on_postgres(
     assert tick.status_code == 200, tick.text
     body = tick.json()
     assert body["ok"] is True
-    assert body["current_turn"] == 1
+    assert body["current_turn"] == 2
     assert body["tick_log"]["status"] == TickLogStatus.COMPLETED.value
 
     async with pg_db() as session:
-        result = await session.execute(select(TickLog).where(TickLog.turn_number == 1))
+        result = await session.execute(select(TickLog).where(TickLog.turn_number == 2))
         logs = result.scalars().all()
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
@@ -501,7 +501,7 @@ async def test_admin_tick_and_state_reset_on_postgres(
         clock = (
             await session.execute(select(GameClock).where(GameClock.id == 1))
         ).scalar_one()
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
         assert clock.last_tick_at is None
         logs = await session.execute(select(func.count()).select_from(TickLog))
         assert logs.scalar_one() == 0
@@ -545,7 +545,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(pg_live_client, 
     assert tick.status_code == 200
     body = tick.json()
     assert body["ok"] is False
-    assert body["current_turn"] == 0
+    assert body["current_turn"] == 1
     assert body["tick_log"]["status"] == TickLogStatus.FAILED.value
 
     async with pg_db() as session:
@@ -557,7 +557,7 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(pg_live_client, 
         clock = (
             await session.execute(select(GameClock).where(GameClock.id == 1))
         ).scalar_one()
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
         result = await session.execute(select(TickLog).order_by(TickLog.id))
         logs = result.scalars().all()
         assert len(logs) == 1
@@ -570,11 +570,11 @@ async def test_failed_tick_rolls_back_and_keeps_attempt_history(pg_live_client, 
     assert tick2.status_code == 200
     body2 = tick2.json()
     assert body2["ok"] is True
-    assert body2["current_turn"] == 1
+    assert body2["current_turn"] == 2
 
     async with pg_db() as session:
         result = await session.execute(
-            select(TickLog).where(TickLog.turn_number == 1).order_by(TickLog.id)
+            select(TickLog).where(TickLog.turn_number == 2).order_by(TickLog.id)
         )
         logs = result.scalars().all()
     assert [log.status for log in logs] == [
@@ -597,7 +597,7 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
                     "(id, owner_player_id, name, short_name, color_hex, "
                     " name_key, short_name_key, created_at, created_turn) "
                     "VALUES (:id, :owner, :name, 'GN', :color, "
-                    " 'ghost nation', 'gn', now(), 0)"
+                    " 'ghost nation', 'gn', now(), 1)"
                 ),
                 {
                     "id": str(uuid.uuid4()),

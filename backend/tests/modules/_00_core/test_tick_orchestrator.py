@@ -43,7 +43,7 @@ class TestTickOrchestrator:
         """Helper to create a game clock."""
         clock = GameClock(
             id=1,
-            current_turn=0,
+            current_turn=1,
             last_tick_at=None,
             next_tick_at=datetime.now(UTC),
         )

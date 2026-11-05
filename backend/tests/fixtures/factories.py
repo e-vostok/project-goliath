@@ -86,7 +86,7 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     succession_type = VALID_PROFILE["succession_type"]
     capital_name = VALID_PROFILE["capital_name"]
     created_at = utcnow
-    created_turn = 0
+    created_turn = 1
     __set_foreign_keys__ = False
 
 
@@ -108,7 +108,7 @@ class GameClockFactory(SQLAlchemyFactory[GameClock]):
     __model__ = GameClock
 
     id = 1
-    current_turn = 0
+    current_turn = 1
     last_tick_at = None
     next_tick_at = utcnow
 

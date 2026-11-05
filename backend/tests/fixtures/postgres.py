@@ -236,7 +236,7 @@ def pg_clean(pg_schema: str) -> None:
             conn.execute(sa.text("DELETE FROM tick_log"))
             conn.execute(
                 sa.text(
-                    "UPDATE game_clock SET current_turn = 0, "
+                    "UPDATE game_clock SET current_turn = 1, "
                     "last_tick_at = NULL, "
                     "next_tick_at = now() + interval '1 day'"
                 )

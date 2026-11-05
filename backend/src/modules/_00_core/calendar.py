@@ -2,8 +2,9 @@
 Game calendar for module 00_core.
 
 The game date is derived from game_clock.current_turn on read and is
-never stored (Spec Part 3):
-    total_months = epoch.year * 12 + (epoch.month - 1) + N_turn * R_months
+never stored (Spec Part 3); turns count from 1, so turn 1 is the
+epoch month (January 2040):
+    total_months = epoch.year * 12 + (epoch.month - 1) + (N_turn - 1) * R_months
     D_game = date(total_months // 12, total_months % 12 + 1, 1)
 """
 
@@ -21,7 +22,8 @@ def compute_game_date(current_turn: int, config: CoreConfig) -> date:
     Compute the in-game date for a given turn number.
 
     Args:
-        current_turn: The current turn from game_clock.current_turn.
+        current_turn: The current turn from game_clock.current_turn —
+            1-based, turn 1 is the epoch month.
         config: The core configuration (calendar.epoch_start_date,
             calendar.months_per_turn).
 
@@ -30,15 +32,15 @@ def compute_game_date(current_turn: int, config: CoreConfig) -> date:
         month; results beyond year 9999 are clamped to 9999-12-01.
 
     Raises:
-        ValueError: If current_turn is negative.
+        ValueError: If current_turn is below 1.
     """
-    if current_turn < 0:
-        raise ValueError("current_turn must not be negative")
+    if current_turn < 1:
+        raise ValueError("current_turn must be at least 1")
     epoch = config.calendar.epoch_start_date
     total = (
         epoch.year * 12
         + (epoch.month - 1)
-        + current_turn * config.calendar.months_per_turn
+        + (current_turn - 1) * config.calendar.months_per_turn
     )
     year, month0 = divmod(total, 12)
     if year > 9999:

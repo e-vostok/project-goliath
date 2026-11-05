@@ -5,7 +5,7 @@ Covers Spec Part 1.1 / Appendix B item B5:
 - ``upgrade head`` creates the four bot tables (bot_consents,
   bot_outbox, bot_vk_events, bot_state) with the named CHECKs, the
   ``uq_bot_outbox_dedup`` unique, both readiness indexes, and seeds the
-  ``bot_state`` singleton row ``(id=1, last_digest_turn=0)``;
+  ``bot_state`` singleton row ``(id=1, last_digest_turn=1)``;
 - BIGINT PKs autoincrement on SQLite (the tick_log.id lesson);
 - ``downgrade`` to 0006 drops exactly the four bot tables and leaves
   every other table intact; re-upgrade works.
@@ -94,7 +94,7 @@ class TestUpgradeToHead:
         finally:
             engine.dispose()
 
-        assert row == {"id": 1, "last_digest_turn": 0}
+        assert row == {"id": 1, "last_digest_turn": 1}
         assert "ck_bot_consents_state" in consents_checks
 
     def test_outbox_constraints_and_indexes(self, tmp_path, monkeypatch):
@@ -222,7 +222,7 @@ class TestDowngradeRoundTrip:
                     conn.execute(
                         sa.text(
                             "SELECT COUNT(*) FROM bot_state WHERE id = 1 "
-                            "AND last_digest_turn = 0"
+                            "AND last_digest_turn = 1"
                         )
                     ).scalar_one()
                     == 1

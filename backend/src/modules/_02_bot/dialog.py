@@ -237,7 +237,7 @@ async def _status_variables(session: AsyncSession, nation) -> dict[str, str | in
     """
     core_config = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
     snapshot = await GameClockService.snapshot(session)
-    turn = snapshot.current_turn if snapshot is not None else 0
+    turn = snapshot.current_turn if snapshot is not None else 1
     next_tick_time = (
         format_game_time(snapshot.next_tick_at, core_config.tick.tick_timezone)
         if snapshot is not None

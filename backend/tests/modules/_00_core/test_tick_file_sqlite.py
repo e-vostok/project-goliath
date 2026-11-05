@@ -136,9 +136,9 @@ class TestTickOnFileSQLite:
             assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(file_session_maker)
-        assert clock.current_turn == 1
+        assert clock.current_turn == 2
 
-        logs = await _fetch_tick_logs(file_session_maker, turn_number=1)
+        logs = await _fetch_tick_logs(file_session_maker, turn_number=2)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
         assert logs[0].finished_at is not None
@@ -174,9 +174,9 @@ class TestTickOnFileSQLite:
             assert await run_scheduled_tick(session) is TickOutcome.FAILED
 
         clock = await _fetch_clock(file_session_maker)
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
 
-        logs = await _fetch_tick_logs(file_session_maker, turn_number=1)
+        logs = await _fetch_tick_logs(file_session_maker, turn_number=2)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.FAILED
         assert logs[0].finished_at is not None
@@ -206,9 +206,9 @@ class TestTickOnFileSQLite:
             assert await run_scheduled_tick(session) is TickOutcome.EXECUTED
 
         clock = await _fetch_clock(file_session_maker)
-        assert clock.current_turn == 1
+        assert clock.current_turn == 2
 
-        logs = await _fetch_tick_logs(file_session_maker, turn_number=1)
+        logs = await _fetch_tick_logs(file_session_maker, turn_number=2)
         assert [log.status for log in logs] == [
             TickLogStatus.FAILED,
             TickLogStatus.COMPLETED,
@@ -282,7 +282,7 @@ async def test_admin_tick_run_endpoint_on_file_sqlite(live_client):
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["current_turn"] == 1
-    assert body["tick_log"]["turn_number"] == 1
+    assert body["current_turn"] == 2
+    assert body["tick_log"]["turn_number"] == 2
     assert body["tick_log"]["status"] == TickLogStatus.COMPLETED.value
     assert body["next_tick_at"] is not None

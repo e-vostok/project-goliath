@@ -110,7 +110,7 @@ def _nation_owning(url: str, province_id: int) -> None:
                     + (", short_name_key" if has_short_name_key else "")
                     + ") VALUES (:id, :owner, 'Guard Nation', '#123456',"
                     " :ts"
-                    + (", 0" if has_created_turn else "")
+                    + (", 1" if has_created_turn else "")
                     + (", 'GN'" if has_short_name else "")
                     + (", 'guard nation'" if has_name_key else "")
                     + (", 'gn'" if has_short_name_key else "")

@@ -89,7 +89,7 @@ def test_upgrade_head_creates_bot_tables(wiped_pg, monkeypatch):
         engine.dispose()
 
     assert BOT_TABLES <= tables
-    assert row == {"id": 1, "last_digest_turn": 0}
+    assert row == {"id": 1, "last_digest_turn": 1}
     assert {
         "ck_bot_outbox_kind",
         "ck_bot_outbox_priority",
@@ -192,7 +192,7 @@ def test_constraints_enforced_on_pg(wiped_pg, monkeypatch):
             with engine.begin() as conn:
                 conn.execute(
                     sa.text(
-                        "INSERT INTO bot_state (id, last_digest_turn) VALUES (2, 0)"
+                        "INSERT INTO bot_state (id, last_digest_turn) VALUES (2, 1)"
                     )
                 )
         # Autoincrement on PG: two inserts without id → distinct ids.
