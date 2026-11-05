@@ -55,7 +55,6 @@ VALID_SUMMARY = "Перегруппировать резервы до рассв
 VALID_URL = "https://vk.com/@night-march"
 
 SETTINGS = JudgeSettings(
-    min_rating=0,
     max_pending_verdicts=5,
     require_reachable=True,
     verdict_deadline_hours=72,
@@ -71,7 +70,6 @@ def _aware(value: datetime) -> datetime:
 def _c(
     player_id: str,
     *,
-    rating: int = 0,
     has_nation: bool = True,
     consented: bool = False,
     pending: int = 0,
@@ -79,7 +77,6 @@ def _c(
 ) -> JudgeCandidate:
     return JudgeCandidate(
         player_id=player_id,
-        rating=rating,
         has_nation=has_nation,
         consented=consented,
         pending=pending,
@@ -117,13 +114,6 @@ class TestSelectJudgeV1:
         candidates = [_c("author"), _c("other", pending=3)]
         assert select_judge_v1("author", candidates, SETTINGS) == "other"
         assert select_judge_v1("author", candidates[:1], SETTINGS) is None
-
-    def test_rating_threshold_is_inclusive(self):
-        """``rating >= judge.min_rating``: the boundary value counts."""
-        strict = SETTINGS.model_copy(update={"min_rating": 10})
-        candidates = [_c("below", rating=9), _c("edge", rating=10)]
-        assert select_judge_v1("author", candidates, strict) == "edge"
-        assert select_judge_v1("author", candidates[:1], strict) is None
 
     def test_load_limit_is_strict(self):
         """``pending < max_pending_verdicts``: a judge at the limit is

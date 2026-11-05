@@ -301,17 +301,17 @@ def test_03_registry_config_loads():
 def test_04_orders_config_loads():
     """configs/04_orders.yaml ↔ OrdersConfig (module 04_orders, Issue 1).
 
-    The registration gate proves the real file loads; the schema's
-    judge-rating bounds must equal the 00_core scale constants — they
-    are model properties the config can only repeat as the allowed
-    threshold range (Spec 04_orders 4.1, Appendix T)."""
+    The registration gate proves the real file loads; judging needs no
+    rating threshold at all since 0.14.0 (unit 7a)."""
     config = OrdersConfig.from_yaml(OrdersConfig.get_default_config_path())
 
-    assert config.judge.min_rating == 0
     assert config.judge.max_pending_verdicts == 5
     assert config.judge.require_reachable is True
     assert config.judge.verdict_deadline_hours == 72
     assert config.judge.reminder_percent == 75
+    assert config.refusal.penalty == 2
+    assert config.refusal.penalty_late == 3
+    assert config.refusal.late_window_hours == 24
     assert config.author.max_unresolved_orders == 5
     assert config.distribution.retry_interval_seconds == 60
     assert config.distribution.batch_size == 50
@@ -321,12 +321,51 @@ def test_04_orders_config_loads():
     assert config.limits.summary_max_length == 500
     assert config.limits.url_max_length == 200
 
-    # The min_rating Field bounds repeat the 00_core scale exactly.
-    assert orders_schema.JUDGE_RATING_MIN == JUDGE_RATING_MIN
-    assert orders_schema.JUDGE_RATING_MAX == JUDGE_RATING_MAX
-    field_meta = orders_schema.JudgeSettings.model_fields["min_rating"].metadata
-    assert any(getattr(m, "ge", None) == JUDGE_RATING_MIN for m in field_meta)
-    assert any(getattr(m, "le", None) == JUDGE_RATING_MAX for m in field_meta)
+
+def _orders_data(**patch) -> dict:
+    """The shipped 04_orders config as a dict with sections patched."""
+    with open(OrdersConfig.get_default_config_path(), encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    for section, values in patch.items():
+        data[section].update(values)
+    return data
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"refusal": {"penalty": 0}},
+        {"refusal": {"penalty": 51}},
+        {"refusal": {"penalty_late": 0}},
+        {"refusal": {"penalty_late": 51}},
+        {"refusal": {"penalty": 3, "penalty_late": 2}},  # late < base
+        {"refusal": {"late_window_hours": 0}},
+        # Wider than the whole verdict term (72 h).
+        {"refusal": {"late_window_hours": 73}},
+    ],
+)
+def test_04_orders_refusal_rules_reject_bad_values(patch):
+    """Refusal section bounds and both cross-field rules bite (7a)."""
+    with pytest.raises(ValidationError):
+        OrdersConfig.model_validate(_orders_data(**patch))
+
+
+def test_04_orders_refusal_boundaries_load():
+    """Edges are legal: penalty_late == penalty and a window covering
+    the whole term."""
+    config = OrdersConfig.model_validate(
+        _orders_data(
+            refusal={
+                "penalty": 2,
+                "penalty_late": 2,
+                "late_window_hours": 72,
+            }
+        )
+    )
+    assert config.refusal.penalty_late == config.refusal.penalty
+    assert (
+        config.refusal.late_window_hours == config.judge.verdict_deadline_hours
+    )
 
 
 def test_04_orders_column_lengths_match_schema():

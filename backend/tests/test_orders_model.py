@@ -36,6 +36,7 @@ ORDERS_CHECKS = {
     "ck_orders_verdict_needs_judge",
     "ck_orders_verdict_after_distribution",
     "ck_orders_reminder_needs_judge",
+    "ck_orders_assignment_no_positive",
 }
 
 ORDERS_INDEXES = {

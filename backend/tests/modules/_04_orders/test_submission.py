@@ -222,6 +222,7 @@ class TestSubmitHttp:
             "verdict": None,
             "overdue": False,
             "can_write_verdict": False,
+            "refuse_penalty": None,
         }
 
         # INV-O9: the idempotent repeat answers 200 with the same order.
