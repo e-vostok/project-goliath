@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@vkontakte/icons": "^3.2.0",
+    "@vkontakte/icons": "^3.79.0",
     "@vkontakte/vk-bridge": "^2.15.7",
     "@vkontakte/vk-mini-apps-router": "^1.6.0",
     "@vkontakte/vkui": "^7.11.7",
@@ -21,7 +21,7 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.8",
     "@testing-library/react": "^16.0.1",
-    "@testing-library/user-event": "^14.5.2",
+    "@testing-library/user-event": "^14.6.8",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
