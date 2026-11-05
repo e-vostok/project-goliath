@@ -35,6 +35,13 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
+    # Images are pinned to the lines we chose (Node 24, Caddy 2); only
+    # patch/minor moves are allowed, majors stay a deliberate decision.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "caddy"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/backend"
@@ -46,6 +53,11 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
+    # Python stays on the 3.12 line; Dependabot counts 3.12 -> 3.15 as a
+    # minor step, so major AND minor are ignored and only patches arrive.
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "docker-compose"
     directory: "/"
@@ -57,6 +69,11 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
+    # A new Postgres major cannot open an existing data directory, so the
+    # image may only move inside the 16.x line.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
