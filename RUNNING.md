@@ -114,7 +114,7 @@ The full production procedure — server setup, `deploy.sh`, backups, rollback, 
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`. A first lightweight job `changes` diffs the PR against its base (`git diff --name-only origin/<base>...HEAD`) and runs only the checks the change can affect; all four check names must still report green — a check skipped this way counts as passing for branch protection:
 
 - `backend` — runs when the PR touches `backend/**`, `configs/**` or `data/map/**`. Full `pytest` on Python 3.12 against a real `postgres:16` service container (`DATABASE_URL_TEST=…/goliath_test`, `REQUIRE_POSTGRES_TESTS=1`): the `postgres`-marked suite can never silently skip.
-- `frontend` — runs on `frontend/**`, `data/map/**`. Node 20: `npm ci`, `npm run typecheck`, `npm test`, `npm run build`.
+- `frontend` — runs on `frontend/**`, `data/map/**`. Node 24: `npm ci`, `npm run typecheck`, `npm test`, `npm run build`.
 - `map_pipeline` — runs on `tools/map_pipeline/**`, `data/map/**`. `pytest tools/map_pipeline/tests`, including the `real_data` suite on the committed map inputs.
 - `docker` — runs on `deploy/**`, `docker-compose*.yml`, `.env.prod.example`, any `Dockerfile`, `.dockerignore`, `backend/pyproject.toml`, `backend/requirements*.lock`, `backend/alembic/**`, `frontend/package.json`, `frontend/package-lock.json`, `data/map/**`. Validates `docker-compose.prod.yml` against `.env.prod.example`, then runs the DEP-1 runtime acceptance (`deploy/smoke_local.sh`) on the Linux runner.
 
