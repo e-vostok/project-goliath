@@ -28,8 +28,9 @@
  * written or rejected).
  *
  * A card click hands the host an entry request for the Registry's
- * orders tab with the preset filter («Мои приказы» — the nation
- * dropdown set to my short name, «Приказы других игроков» — the
+ * orders tab with the preset filter («Мои приказы» — the `my_orders`
+ * extension on «Да», matched by `nation_id` so a rename keeps the
+ * orders, 0.14.0 unit 5; «Приказы других игроков» — the
  * «Назначены мне» extension on «Да»); navigation itself lives in
  * AppShell, which stores the request and pushes '/registry'.
  */
@@ -118,12 +119,8 @@ function CardChevron() {
 }
 
 export function OrdersBlock({
-  nationShortName,
   onOpenRegistry,
 }: {
-  /** My nation's short name — the «Мои приказы» preset's dropdown value
-   * (the Registry's nation options list short names, Spec 03_registry 3.3). */
-  nationShortName: string;
   /** Hands the card's entry request to the host (AppShell stores it
    * and navigates to the Registry). */
   onOpenRegistry: (request: RegistryEntryRequest) => void;
@@ -171,7 +168,7 @@ export function OrdersBlock({
           onClick={() =>
             onOpenRegistry({
               tab: ORDERS_TABLE_ID,
-              preset: { nation: nationShortName },
+              preset: { myOrders: true },
             })
           }
         />

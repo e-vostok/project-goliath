@@ -5,6 +5,7 @@
  */
 
 import {
+  applyEntryPreset,
   applyView,
   daysFromCivil,
   EMPTY_VIEW,
@@ -287,5 +288,17 @@ describe('tableView — search', () => {
         filters: { level: [{ kind: 'number_range', from: '5', to: '' }] },
       }),
     ).toEqual([]);
+  });
+});
+
+describe('tableView — applyEntryPreset', () => {
+  it('myOrders: true switches the registered my_orders extension to «Да»', () => {
+    const view = applyEntryPreset(
+      EMPTY_VIEW,
+      playersTable,
+      { myOrders: true },
+      [{ id: 'my_orders' }, { id: 'assigned_to_me' }],
+    );
+    expect(view.extensions).toEqual({ my_orders: 'yes' });
   });
 });

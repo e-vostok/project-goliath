@@ -298,10 +298,7 @@ export function PanelNationHome({
           onClose={() => setImagePick(null)}
         />
       )}
-      <OrdersBlock
-        nationShortName={nation.short_name}
-        onOpenRegistry={onOpenRegistry}
-      />
+      <OrdersBlock onOpenRegistry={onOpenRegistry} />
     </div>
   );
 }

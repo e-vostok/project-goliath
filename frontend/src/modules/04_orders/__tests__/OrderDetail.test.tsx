@@ -79,7 +79,7 @@ describe('OrderDetailModal — open and content', () => {
     const user = userEvent.setup();
     renderWithOrders(
       <>
-        <OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />
+        <OrdersBlock onOpenRegistry={() => {}} />
         <RegistryWithRouter />
       </>,
     );
@@ -132,7 +132,7 @@ describe('OrderDetailModal — cell action edge cases', () => {
         ),
       ),
     );
-    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
+    renderWithOrders(<OrdersBlock onOpenRegistry={() => {}} />);
 
     // The provider registered `order` on mount — a click (or the
     // entry request) calls it; the state update needs act().

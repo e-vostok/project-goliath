@@ -910,7 +910,12 @@ function registerNationAndOrders() {
         unresolved_orders: 2,
       }),
     ),
-    // Order №3 alone sits in the caller's judge queue.
+    // Order №3 alone sits in the caller's judge queue; order №5 is
+    // the only one of the caller's CURRENT nation (0.14.0 unit 5 —
+    // matched by nation_id, so a rename keeps it).
+    http.get('*/api/v1/orders/mine', () =>
+      HttpResponse.json({ items: [{ number: 5 }] }),
+    ),
     http.get('*/api/v1/orders/assigned', () =>
       HttpResponse.json({
         items: [
@@ -960,7 +965,7 @@ describe('AppShell — «Штаб» order badges open the filtered «Прика�
     takeRegistryEntryRequest();
   });
 
-  it('«Мои приказы» opens «Приказы» with the «Государство: Синдикат» preset and only my orders', async () => {
+  it('«Мои приказы» opens «Приказы» with the «Мои приказы: Да» extension and only my orders', async () => {
     const user = userEvent.setup();
     window.location.hash = '#/';
     renderApp(registerNationAndOrders);
@@ -971,18 +976,20 @@ describe('AppShell — «Штаб» order badges open the filtered «Прика�
     await waitFor(() =>
       expect(tab('Приказы')).toHaveAttribute('aria-selected', 'true'),
     );
-    // Only my nation's order stays — the preset filtered the list.
+    // Only my nation's order stays — the extension filtered the list
+    // by nation_id (0.14.0 unit 5), not by the snapshot name.
     await waitFor(() => expect(orderRowKeys()).toEqual(['o5']));
     expect(screen.queryByText('О гарнизонах')).not.toBeInTheDocument();
 
-    // The preset is a real visible filter in the «Фильтры» panel.
+    // The preset is a real visible filter in the «Фильтры» panel —
+    // the nation dropdown itself stays untouched.
     await user.click(screen.getByTestId('filters-toggle'));
+    const ext = await screen.findByTestId('filter-ext-my_orders');
+    expect(within(ext).getByRole('radio', { name: 'Да' })).toBeChecked();
     const item = await screen.findByTestId('filter-item-nation');
-    await waitFor(() =>
-      expect(
-        within(item).getByLabelText('Государство: Список'),
-      ).toHaveValue('Синдикат'),
-    );
+    expect(
+      within(item).getByLabelText('Государство: Список'),
+    ).toHaveValue('');
     expect(screen.getByTestId('filters-count')).toHaveTextContent('1');
   });
 

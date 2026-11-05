@@ -77,6 +77,20 @@ export interface AssignedOrdersDTO {
   items: AssignedOrderDTO[];
 }
 
+/** One item of `GET /orders/mine` — just the public number. */
+export interface MyOrderDTO {
+  number: number;
+}
+
+/**
+ * `GET /orders/mine` payload (0.14.0 unit 5): the numbers of the
+ * caller's nation's orders, matched on `nation_id` — a rename of the
+ * nation keeps them (the order keeps the submission-time snapshot).
+ */
+export interface MyOrdersDTO {
+  items: MyOrderDTO[];
+}
+
 /** Error codes this module maps to fields/banners (Spec 5.3). */
 export const OrderErrorCodes = {
   ORDER_NATION_REQUIRED: 'ORDER_NATION_REQUIRED',
