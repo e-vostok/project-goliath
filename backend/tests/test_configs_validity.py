@@ -69,8 +69,6 @@ def _base_config() -> dict:
             "capital_name_max_length": 40,
             "history_url_max_length": 200,
             "history_url_allowed_hosts": ["vk.com", "vk.ru"],
-            "anthem_url_max_length": 200,
-            "anthem_url_allowed_hosts": ["vk.com", "vk.ru"],
         },
         "color": {
             "min_distance_nations": 0.08,
@@ -180,12 +178,6 @@ def test_valid_config_loads():
         "vk.ru",
         "m.vk.com",
     ]
-    assert config.nation.anthem_url_max_length == 200
-    assert config.nation.anthem_url_allowed_hosts == [
-        "vk.com",
-        "vk.ru",
-        "m.vk.com",
-    ]
     assert config.color.min_distance_nations == 0.08
     assert config.color.min_distance_reserved == 0.08
     assert len(config.color.reserved) == 4
@@ -230,7 +222,6 @@ def test_text_bounds_do_not_exceed_column_lengths():
         "leader_bio": config.nation.leader_bio_max_length,
         "capital_name": config.nation.capital_name_max_length,
         "history_url": config.nation.history_url_max_length,
-        "anthem_url": config.nation.anthem_url_max_length,
     }
     for column_name, bound in bounds.items():
         assert bound <= columns[column_name].type.length, (

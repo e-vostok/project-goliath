@@ -90,8 +90,6 @@ class NationDTO(BaseModel):
     portrait_thumb_url: str | None
     succession_type: str | None
     history_url: str | None
-    # не используется с 0.9.0, снятие — бэклог 00_core
-    anthem_url: str | None
     # Owner's player stats — since 0.9.0 (unit 14).
     level: int
     judge_rating: int
@@ -102,7 +100,7 @@ class NationPublicDTO(BaseModel):
     The public view of another player's nation (Bible §7, Spec Part 5).
 
     Exactly the public keys listed in the Spec — the service fields
-    (``owner_player_id``, ``gender``, ``succession_type``, ``anthem_url``)
+    (``owner_player_id``, ``gender``, ``succession_type``)
     and any VK identifier can never leak: the route is declared with
     ``response_model=NationPublicDTO``.
     """
@@ -154,7 +152,6 @@ class NationCreateRequest(BaseModel):
     leader_bio: str | None = None
     succession_type: str
     history_url: str
-    anthem_url: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -247,7 +244,6 @@ class NationUpdateRequest(BaseModel):
     leader_bio: str | None = None
     succession_type: str | None = None
     history_url: str | None = None
-    anthem_url: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -277,8 +273,6 @@ class NationRulesDTO(BaseModel):
     capital_name_max_length: int
     history_url_max_length: int
     history_url_allowed_hosts: list[str]
-    anthem_url_max_length: int
-    anthem_url_allowed_hosts: list[str]
     min_provinces: int
     max_provinces: int
     palette: list[str]

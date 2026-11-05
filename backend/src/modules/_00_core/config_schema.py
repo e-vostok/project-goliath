@@ -229,28 +229,10 @@ class NationSettings(BaseModel):
         description="Допустимые хосты ссылки на историю: нижний регистр, "
         "без схемы, порта и пути.",
     )
-    anthem_url_max_length: int = Field(
-        ge=30,
-        le=2000,
-        description="Максимальная длина ссылки на гимн, символы "
-        "(не больше длины колонки nations.anthem_url). Поле необязательное.",
-    )
-    anthem_url_allowed_hosts: list[str] = Field(
-        min_length=1,
-        max_length=10,
-        description="Допустимые хосты ссылки на гимн: нижний регистр, "
-        "без схемы, порта и пути.",
-    )
-
     @field_validator("history_url_allowed_hosts")
     @classmethod
     def check_history_hosts(cls, hosts: list[str]) -> list[str]:
         return _check_hosts("history_url_allowed_hosts", hosts)
-
-    @field_validator("anthem_url_allowed_hosts")
-    @classmethod
-    def check_anthem_hosts(cls, hosts: list[str]) -> list[str]:
-        return _check_hosts("anthem_url_allowed_hosts", hosts)
 
     @model_validator(mode="after")
     def check_ranges(self) -> Self:

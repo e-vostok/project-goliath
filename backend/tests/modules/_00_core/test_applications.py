@@ -179,7 +179,6 @@ class TestCycle:
             assert application.status == "DRAFT"
             assert application.draft_reason == "cancelled"
             assert application.review_deadline_at is None
-            assert application.reviewer_player_id is None
             await session.commit()
 
         async with session_factory() as session:

@@ -145,8 +145,6 @@ async def test_nation_lifecycle_on_postgres(pg_live_client, pg_db):
         "capital_name_max_length": nation_cfg.capital_name_max_length,
         "history_url_max_length": nation_cfg.history_url_max_length,
         "history_url_allowed_hosts": nation_cfg.history_url_allowed_hosts,
-        "anthem_url_max_length": nation_cfg.anthem_url_max_length,
-        "anthem_url_allowed_hosts": nation_cfg.anthem_url_allowed_hosts,
         "min_provinces": nation_cfg.min_provinces_per_nation,
         "max_provinces": nation_cfg.max_provinces_per_nation,
         "palette": CORE_CONFIG.color.palette,

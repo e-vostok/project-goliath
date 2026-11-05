@@ -18,7 +18,6 @@ from urllib.parse import urlsplit
 
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.exceptions import (
-    AnthemUrlInvalidError,
     CapitalNameInvalidError,
     CoreDomainError,
     DescriptionInvalidError,
@@ -253,37 +252,3 @@ def validate_succession_type(value: str, config: CoreConfig) -> str:
     return normalized
 
 
-def validate_anthem_url(value: str | None, config: CoreConfig) -> str | None:
-    """
-    Optional `anthem_url` (Part 3, soft check): empty stores NULL;
-    otherwise https scheme, an allowed host, no port/userinfo and no
-    whitespace/control characters. Path, query and fragment are NOT
-    checked — the VK music link format is unconfirmed (NAT-0, N4).
-    """
-    if value is None:
-        return None
-    url = value.strip()
-    if not url:
-        return None
-    max_length = config.nation.anthem_url_max_length
-    if len(url) > max_length:
-        raise AnthemUrlInvalidError(
-            f"must be at most {max_length} characters, got {len(url)}"
-        )
-    if any(
-        ch.isspace() or unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in url
-    ):
-        raise AnthemUrlInvalidError("contains whitespace or control characters")
-    try:
-        parsed = urlsplit(url)
-        host = parsed.hostname
-    except ValueError as exc:
-        raise AnthemUrlInvalidError("cannot be parsed") from exc
-    if parsed.scheme != "https":
-        raise AnthemUrlInvalidError("scheme must be https")
-    if host is None or host not in config.nation.anthem_url_allowed_hosts:
-        raise AnthemUrlInvalidError("host is not in the allowed list")
-    # netloc == hostname rejects credentials, ports and case tricks.
-    if parsed.netloc.lower() != host:
-        raise AnthemUrlInvalidError("port or userinfo is not allowed")
-    return url

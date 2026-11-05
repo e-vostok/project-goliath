@@ -64,7 +64,6 @@ from modules._00_core.models import (
     ScheduledActionStatus,
 )
 from modules._00_core.profile_rules import (
-    validate_anthem_url,
     validate_capital_name,
     validate_description,
     validate_gender,
@@ -1002,7 +1001,6 @@ class NationService:
         motto: str | None = None,
         description: str | None = None,
         leader_bio: str | None = None,
-        anthem_url: str | None = None,
     ) -> Nation:
         """
         Create a new nation with the given provinces and profile fields.
@@ -1011,7 +1009,7 @@ class NationService:
         02_bot 3.10/3.11): "before_all" satellite checks (they see the
         player, run before any write) -> INV-1 -> descriptive fields in
         the fixed order (leader_name, leader_title, gender,
-        succession_type, history_url, anthem_url, short_name, motto,
+        succession_type, history_url, short_name, motto,
         description, leader_bio, capital_name —
         the first violation wins) -> the nations lock -> INV-2 for the
         name -> INV-11 for the short name -> the color decision
@@ -1042,8 +1040,6 @@ class NationService:
             motto: Optional motto; empty after normalization -> NULL.
             description: Optional description; empty -> NULL.
             leader_bio: Optional multi-line leader bio; empty -> NULL.
-            anthem_url: Optional anthem link (soft check, Part 3);
-                unused since 0.9.0, removal is on the 00_core backlog.
 
         Returns:
             The newly created Nation instance.
@@ -1079,7 +1075,6 @@ class NationService:
         gender = validate_gender(gender, config)
         succession_type = validate_succession_type(succession_type, config)
         history_url = validate_history_url(history_url, config)
-        anthem_url = validate_anthem_url(anthem_url, config)
         short_name = validate_short_name(short_name, config)
         motto = validate_motto(motto, config)
         description = validate_description(description, config)
@@ -1150,7 +1145,6 @@ class NationService:
             motto=motto,
             description=description,
             leader_bio=leader_bio,
-            anthem_url=anthem_url,
             capital_province_id=capital_province_id,
             capital_name=capital_name,
             created_at=datetime.now(UTC),
@@ -1316,7 +1310,6 @@ class NationService:
         motto: str | None = None,
         description: str | None = None,
         leader_bio: str | None = None,
-        anthem_url: str | None = None,
         capital_name: str | None = None,
         *,
         config: CoreConfig,
@@ -1329,7 +1322,7 @@ class NationService:
         whole update before anything is mutated. Mandatory fields can
         never be cleared: an empty (post-strip) value is a validation
         error, not a reset. Optional fields (motto, description,
-        leader_bio, anthem_url) are cleared to
+        leader_bio) are cleared to
         NULL by an empty value. Provinces and the capital province are
         not changeable here (INV-14); ``capital_name`` may only be set
         on a nation that has a capital — a pre-0.8.0 nation without one
@@ -1378,7 +1371,6 @@ class NationService:
         new_history_url = (
             None if history_url is None else validate_history_url(history_url, config)
         )
-        new_anthem_url = validate_anthem_url(anthem_url, config)
         new_short_name = (
             None if short_name is None else validate_short_name(short_name, config)
         )
@@ -1438,8 +1430,6 @@ class NationService:
             nation.leader_title = new_leader_title
         if new_history_url is not None:
             nation.history_url = new_history_url
-        if anthem_url is not None:
-            nation.anthem_url = new_anthem_url
         if new_short_name is not None:
             nation.short_name = new_short_name
         if new_gender is not None:

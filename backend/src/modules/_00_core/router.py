@@ -151,7 +151,6 @@ async def _nation_dto(session: AsyncSession, nation: Nation) -> NationDTO:
         owner_player_id=nation.owner_player_id,
         gender=nation.gender,
         succession_type=nation.succession_type,
-        anthem_url=nation.anthem_url,
     )
 
 
@@ -228,8 +227,6 @@ async def get_nation_rules(
         capital_name_max_length=CORE_CONFIG.nation.capital_name_max_length,
         history_url_max_length=CORE_CONFIG.nation.history_url_max_length,
         history_url_allowed_hosts=CORE_CONFIG.nation.history_url_allowed_hosts,
-        anthem_url_max_length=CORE_CONFIG.nation.anthem_url_max_length,
-        anthem_url_allowed_hosts=CORE_CONFIG.nation.anthem_url_allowed_hosts,
         min_provinces=CORE_CONFIG.nation.min_provinces_per_nation,
         max_provinces=CORE_CONFIG.nation.max_provinces_per_nation,
         palette=CORE_CONFIG.color.palette,
@@ -319,7 +316,6 @@ async def create_nation(
         motto=body.motto,
         description=body.description,
         leader_bio=body.leader_bio,
-        anthem_url=body.anthem_url,
     )
     await session.commit()
     return await _nation_dto(session, nation)
@@ -347,7 +343,6 @@ async def update_nations_me(
         motto=body.motto,
         description=body.description,
         leader_bio=body.leader_bio,
-        anthem_url=body.anthem_url,
         capital_name=body.capital_name,
         config=CORE_CONFIG,
     )
@@ -662,7 +657,6 @@ async def put_application_me(
         motto=body.motto,
         description=body.description,
         leader_bio=body.leader_bio,
-        anthem_url=body.anthem_url,
     )
     await session.commit()
     return await _application_dto(session, application)

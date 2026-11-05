@@ -306,7 +306,7 @@ class AdminNationCreateRequest(BaseModel):
 
 
 # The twelve descriptive fields PATCH /admin/nations/{id} accepts —
-# the player's edit-window set (INV-8), minus flag, portrait, anthem
+# the player's edit-window set (INV-8), minus flag, portrait
 # and anything province-related. Order is the audit summary's.
 NATION_EDITABLE_FIELDS: tuple[str, ...] = (
     "name",
@@ -348,7 +348,7 @@ class AdminNationUpdateRequest(BaseModel):
     change", "" on an optional field clears it to NULL, "" on a
     mandatory field is the service's own *_INVALID error (INV-8).
 
-    ``extra="forbid"``: an anthem, picture or province field is
+    ``extra="forbid"``: a picture or province field is
     a 422, not a silent ignore.
     """
 
