@@ -15,7 +15,7 @@ x-logging: &default-logging
 
 services:
   db:
-    image: postgres:16.15
+    image: postgres:18.4
     env_file: ${ENV_FILE:-.env}
     volumes:
       - pgdata:/var/lib/postgresql/data
