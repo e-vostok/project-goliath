@@ -71,22 +71,29 @@ def _nation_owning(url: str, province_id: int) -> str:
                 sa.text("INSERT INTO players (id, vk_user_id) VALUES (:id, 42424202)"),
                 {"id": player_id},
             )
-            # created_turn exists only from migration 0008 on, and
-            # short_name only from 0011 (NOT NULL since 0012) — the
-            # guard tests run this helper against the 0005 schema too.
+            # created_turn exists only from migration 0008 on,
+            # short_name only from 0011 (NOT NULL since 0012) and the
+            # name keys only from 0021 — the guard tests run this helper
+            # against the 0005 schema too.
             nation_cols = {c["name"] for c in sa.inspect(conn).get_columns("nations")}
             has_created_turn = "created_turn" in nation_cols
             has_short_name = "short_name" in nation_cols
+            has_name_key = "name_key" in nation_cols
+            has_short_name_key = "short_name_key" in nation_cols
             conn.execute(
                 sa.text(
                     "INSERT INTO nations "  # noqa: S608
                     "(id, owner_player_id, name, color_hex, created_at"
                     + (", created_turn" if has_created_turn else "")
                     + (", short_name" if has_short_name else "")
+                    + (", name_key" if has_name_key else "")
+                    + (", short_name_key" if has_short_name_key else "")
                     + ") VALUES (:id, :owner, 'Guard Nation', '#654321',"
                     " :ts"
                     + (", 0" if has_created_turn else "")
                     + (", 'GN'" if has_short_name else "")
+                    + (", 'guard nation'" if has_name_key else "")
+                    + (", 'gn'" if has_short_name_key else "")
                     + ")"
                 ),
                 {
