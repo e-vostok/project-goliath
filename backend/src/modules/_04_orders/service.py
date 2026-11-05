@@ -1010,7 +1010,7 @@ class OrderService:
                 fresh.judge_player_id is None
                 or fresh.verdict_at is not None
                 or fresh.term_exempt
-                or _aware(fresh.deadline_at) <= now
+                or _aware(fresh.deadline_at) >= now
             ):
                 return "skipped"
 

@@ -462,15 +462,16 @@ class TestRefuseHttp:
         await test_db_session.refresh(judge)
         assert judge.judge_rating == 0
 
-    async def test_admin_assigned_judge_can_refuse(
+    async def test_admin_assigned_judge_cannot_refuse(
         self, client, test_db_session, orders_started
     ):
-        """Known 7a edge (7b decides): an order given through
-        ``admin_assign_judge`` refuses like any other — penalty, release,
-        redistribute."""
+        """The 7a edge closed by 7b: an order given through
+        ``admin_assign_judge`` is term-exempt — the judge was never
+        told a term, so refusal is refused with
+        ORDER_REFUSE_NOT_ALLOWED and nothing moves."""
         author, nation = await seed_author(test_db_session, 780101)
         judge = await seed_judge(test_db_session, 780102, nation=True)
-        second = await seed_judge(test_db_session, 780103, nation=True)
+        await seed_judge(test_db_session, 780103, nation=True)
         order = await make_order(test_db_session, author, nation=nation)
         await OrderService.admin_assign_judge(
             test_db_session, order.number, judge.id
@@ -480,11 +481,13 @@ class TestRefuseHttp:
             f"{ORDERS_URL}/{order.number}/refuse",
             headers=bearer_headers(judge.id),
         )
-        assert response.status_code == 200
-        assert response.json() == {"penalty": 2, "rating_after": -2}
+        assert response.status_code == 409
+        assert response.json()["code"] == "ORDER_REFUSE_NOT_ALLOWED"
         await test_db_session.refresh(order)
-        assert order.judge_player_id == second.id
-        assert order.assignment_no == 2
+        assert order.judge_player_id == judge.id
+        assert order.assignment_no == 1
+        await test_db_session.refresh(judge)
+        assert judge.judge_rating == 0
 
 
 class TestRefusalDetailHttp:
