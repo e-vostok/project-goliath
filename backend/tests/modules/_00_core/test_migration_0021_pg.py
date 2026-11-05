@@ -54,6 +54,13 @@ def _alembic(url: str, verb, target: str, monkeypatch) -> None:
     verb(Config(str(BACKEND_DIR / "alembic.ini")), target)
 
 
+def _unique_on(schema: dict, column: str) -> bool:
+    """A UNIQUE constraint on exactly ``column`` survives — the
+    auto-generated constraint name differs between SQLite (uq_*) and
+    PostgreSQL (<table>_<column>_key), so compare the column set."""
+    return [column] in schema["nation_uq"].values()
+
+
 def _schema(url: str) -> dict:
     engine = sa.create_engine(_sync_url(url))
     try:
@@ -64,7 +71,8 @@ def _schema(url: str) -> dict:
                     c["name"]: c for c in insp.get_columns(NATIONS)
                 },
                 "nation_uq": {
-                    c["name"] for c in insp.get_unique_constraints(NATIONS)
+                    c["name"]: c["column_names"]
+                    for c in insp.get_unique_constraints(NATIONS)
                 },
                 "app_columns": {c["name"]: c for c in insp.get_columns(APP)},
                 "app_indexes": {i["name"] for i in insp.get_indexes(APP)},
@@ -149,9 +157,10 @@ def test_0021_backfills_cyrillic_keys_and_keeps_schema_pg(wiped_pg, monkeypatch)
     for column in KEY_COLUMNS:
         assert schema["nation_columns"][column]["nullable"] is False
         assert schema["app_columns"][column]["nullable"] is False
-    assert NATION_UQ <= schema["nation_uq"]
+    assert NATION_UQ <= set(schema["nation_uq"])
     assert APP_UQ <= schema["app_indexes"]
-    assert {"uq_nations_name", "uq_nations_short_name"} <= schema["nation_uq"]
+    assert _unique_on(schema, "name")
+    assert _unique_on(schema, "short_name")
     assert {
         "uq_nation_applications_pending_name",
         "uq_nation_applications_pending_short_name",
@@ -197,9 +206,10 @@ def test_0021_downgrade_restores_0020_shape_pg(wiped_pg, monkeypatch):
     schema = _schema(wiped_pg)
     assert not (set(schema["nation_columns"]) & KEY_COLUMNS)
     assert not (set(schema["app_columns"]) & KEY_COLUMNS)
-    assert not (schema["nation_uq"] & NATION_UQ)
+    assert not (set(schema["nation_uq"]) & NATION_UQ)
     assert not (schema["app_indexes"] & APP_UQ)
-    assert {"uq_nations_name", "uq_nations_short_name"} <= schema["nation_uq"]
+    assert _unique_on(schema, "name")
+    assert _unique_on(schema, "short_name")
     assert {
         "uq_nation_applications_pending_name",
         "uq_nation_applications_pending_short_name",
