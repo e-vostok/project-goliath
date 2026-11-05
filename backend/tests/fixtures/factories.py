@@ -222,6 +222,7 @@ async def make_order(
     verdict_url: str | None = None,
     verdict_effects: dict | None = None,
     verdict_at: datetime | None = None,
+    term_exempt: bool = False,
 ) -> Order:
     """Insert an ``orders`` row for ``author`` and flush it.
 
@@ -272,6 +273,7 @@ async def make_order(
         verdict_url=verdict_url,
         verdict_effects=verdict_effects,
         verdict_at=verdict_at,
+        term_exempt=term_exempt,
     )
     session.add(row)
     await session.flush()

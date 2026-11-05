@@ -116,6 +116,24 @@ class RefusalSettings(_Strict):
         return self
 
 
+class OverdueSettings(_Strict):
+    """
+    Просроченный срок: изъятие приказа у молчащего судьи и штраф
+    его рейтингу (0.14.0, единица 7b).
+    """
+
+    penalty: int = Field(
+        ge=1,
+        le=50,
+        description=(
+            "Штраф рейтинга за просроченный срок на вердикт; обязан "
+            "быть строго больше refusal.penalty_late (проверяется на "
+            "корне) — молчание до конца срока не должно обходиться "
+            "дешевле отказа."
+        ),
+    )
+
+
 class AuthorSettings(_Strict):
     """Автор: предел неразрешённых приказов (Spec, D14, INV-O15)."""
 
@@ -187,6 +205,7 @@ class OrdersConfig(_Strict):
 
     judge: JudgeSettings
     refusal: RefusalSettings
+    overdue: OverdueSettings
     author: AuthorSettings
     distribution: DistributionSettings
     limits: LimitsSettings
@@ -214,6 +233,12 @@ class OrdersConfig(_Strict):
                 "refusal.late_window_hours не может превышать "
                 "judge.verdict_deadline_hours: окно повышенного штрафа "
                 "шире самого срока"
+            )
+        if self.overdue.penalty <= self.refusal.penalty_late:
+            raise ValueError(
+                "overdue.penalty должен быть строго больше "
+                "refusal.penalty_late: молчание до конца срока не "
+                "должно обходиться дешевле отказа"
             )
         return self
 

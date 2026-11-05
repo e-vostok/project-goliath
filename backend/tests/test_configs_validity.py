@@ -312,6 +312,7 @@ def test_04_orders_config_loads():
     assert config.refusal.penalty == 2
     assert config.refusal.penalty_late == 3
     assert config.refusal.late_window_hours == 24
+    assert config.overdue.penalty == 5
     assert config.author.max_unresolved_orders == 5
     assert config.distribution.retry_interval_seconds == 60
     assert config.distribution.batch_size == 50
@@ -342,10 +343,15 @@ def _orders_data(**patch) -> dict:
         {"refusal": {"late_window_hours": 0}},
         # Wider than the whole verdict term (72 h).
         {"refusal": {"late_window_hours": 73}},
+        {"overdue": {"penalty": 0}},
+        {"overdue": {"penalty": 51}},
+        # Silence must never beat refusing (7b).
+        {"overdue": {"penalty": 3}},  # == refusal.penalty_late
+        {"overdue": {"penalty": 2}},  # < refusal.penalty_late
     ],
 )
 def test_04_orders_refusal_rules_reject_bad_values(patch):
-    """Refusal section bounds and both cross-field rules bite (7a)."""
+    """Refusal and overdue bounds plus the cross-section rules bite."""
     with pytest.raises(ValidationError):
         OrdersConfig.model_validate(_orders_data(**patch))
 

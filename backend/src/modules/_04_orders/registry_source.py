@@ -84,6 +84,7 @@ async def load_orders_rows(session: AsyncSession) -> list[RegistryRow]:
                         "overdue"
                         if row.verdict_at is None
                         and row.deadline_at is not None
+                        and not row.term_exempt
                         and now > _aware(row.deadline_at)
                         else None
                     ),

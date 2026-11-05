@@ -12,6 +12,9 @@ when the assigned judge refuses.
 Player privacy (Spec 0, D9): the texts carry the order number, the
 author-nation name and the order link — never the player-written title
 or summary, and the judge's identity is revealed to no player.
+0.14.0 unit 7b adds the seizure trio: ``ORDER_OVERDUE_AUTHOR`` to the
+author, ``ORDER_OVERDUE_JUDGE`` to the judge who missed the term and
+``ORDER_ADMIN_ASSIGNED`` to the administrator who received the order.
 """
 
 from __future__ import annotations
@@ -32,6 +35,9 @@ ORDER_JUDGE_REMINDER = "ORDER_JUDGE_REMINDER"
 ORDER_DISTRIBUTED = "ORDER_DISTRIBUTED"
 ORDER_VERDICT_READY = "ORDER_VERDICT_READY"
 ORDER_JUDGE_REFUSED = "ORDER_JUDGE_REFUSED"
+ORDER_OVERDUE_AUTHOR = "ORDER_OVERDUE_AUTHOR"
+ORDER_OVERDUE_JUDGE = "ORDER_OVERDUE_JUDGE"
+ORDER_ADMIN_ASSIGNED = "ORDER_ADMIN_ASSIGNED"
 
 # The exact variable set each type promises to provide (Appendix C).
 NOTIFICATION_VARIABLES: dict[str, frozenset[str]] = {
@@ -40,6 +46,9 @@ NOTIFICATION_VARIABLES: dict[str, frozenset[str]] = {
     ORDER_DISTRIBUTED: frozenset({"order_number", "order_link"}),
     ORDER_VERDICT_READY: frozenset({"order_number", "order_link"}),
     ORDER_JUDGE_REFUSED: frozenset({"order_number", "order_link"}),
+    ORDER_OVERDUE_AUTHOR: frozenset({"order_number", "order_link"}),
+    ORDER_OVERDUE_JUDGE: frozenset({"order_number", "penalty"}),
+    ORDER_ADMIN_ASSIGNED: frozenset({"order_number", "order_link"}),
 }
 
 
@@ -190,6 +199,120 @@ async def notify_judge_refused(
         player_id=order.author_player_id,
         event_key=assignment_event_key(
             "order_judge_refused", order.id, assignment_no
+        ),
+        variables={
+            "order_number": order.number,
+            "order_link": link,
+        },
+        event_at=now,
+    )
+
+
+async def notify_overdue_author(
+    session: AsyncSession,
+    *,
+    order: Order,
+    assignment_no: int,
+    now: datetime,
+) -> EnqueueResult | None:
+    """
+    Enqueue the ORDER_OVERDUE_AUTHOR announcement to the author
+    (0.14.0 unit 7b): «the judge missed the term, the order went to
+    an administrator» — never a name, never the penalty (Spec 0, D9).
+    The event key carries the seizure assignment's number so every
+    seizure notifies exactly once and the dedupe guard stays honest.
+
+    Without VK_APP_ID there is no link to send: enqueue nothing and
+    log one warning — the same rule as the assignment pair. Returns
+    the enqueue result; ``None`` on the missing-app-id skip.
+    """
+    link = order_app_link(order.number)
+    if link is None:
+        logger.warning(
+            "order_notification_skipped_no_app_id: order %s seized from "
+            "a late judge — VK_APP_ID is not set, notification not "
+            "enqueued",
+            order.id,
+        )
+        return None
+    return await BotService.enqueue(
+        session,
+        type_key=ORDER_OVERDUE_AUTHOR,
+        player_id=order.author_player_id,
+        event_key=assignment_event_key(
+            "order_overdue_author", order.id, assignment_no
+        ),
+        variables={
+            "order_number": order.number,
+            "order_link": link,
+        },
+        event_at=now,
+    )
+
+
+async def notify_overdue_judge(
+    session: AsyncSession,
+    *,
+    order: Order,
+    judge_player_id: str,
+    penalty: int,
+    assignment_no: int,
+    now: datetime,
+) -> EnqueueResult:
+    """
+    Enqueue the ORDER_OVERDUE_JUDGE notice to the judge who lost the
+    order (0.14.0 unit 7b): «the term expired — the order was seized
+    and the rating went down by the penalty». The text needs no link,
+    so it enqueues even without VK_APP_ID. ``judge_player_id`` goes
+    into the enqueue call only — never into a log line (INV-O5).
+    """
+    return await BotService.enqueue(
+        session,
+        type_key=ORDER_OVERDUE_JUDGE,
+        player_id=judge_player_id,
+        event_key=assignment_event_key(
+            "order_overdue_judge", order.id, assignment_no
+        ),
+        variables={
+            "order_number": order.number,
+            "penalty": penalty,
+        },
+        event_at=now,
+    )
+
+
+async def notify_admin_assigned(
+    session: AsyncSession,
+    *,
+    order: Order,
+    admin_player_id: str,
+    assignment_no: int,
+    now: datetime,
+) -> EnqueueResult | None:
+    """
+    Enqueue the ORDER_ADMIN_ASSIGNED notice to the administrator who
+    received the seized order (0.14.0 unit 7b): «an order was handed
+    to you» — the number and the link, never a name (Spec 0, D9).
+
+    Without VK_APP_ID there is no link to send: enqueue nothing and
+    log one warning — the same rule as the assignment pair. Returns
+    the enqueue result; ``None`` on the missing-app-id skip.
+    """
+    link = order_app_link(order.number)
+    if link is None:
+        logger.warning(
+            "order_notification_skipped_no_app_id: order %s handed to "
+            "an administrator — VK_APP_ID is not set, notification "
+            "not enqueued",
+            order.id,
+        )
+        return None
+    return await BotService.enqueue(
+        session,
+        type_key=ORDER_ADMIN_ASSIGNED,
+        player_id=admin_player_id,
+        event_key=assignment_event_key(
+            "order_admin_assigned", order.id, assignment_no
         ),
         variables={
             "order_number": order.number,

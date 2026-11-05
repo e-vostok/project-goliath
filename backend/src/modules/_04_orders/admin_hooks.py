@@ -103,6 +103,8 @@ async def orders_state_view(session: AsyncSession) -> dict:
             Order.verdict_at.is_(None),
             Order.deadline_at.is_not(None),
             Order.deadline_at < now,
+            # A term-exempt order is never overdue (0.14.0 unit 7b).
+            Order.term_exempt.is_(False),
         )
         .order_by(Order.deadline_at)
     )
