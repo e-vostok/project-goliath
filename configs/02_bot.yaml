@@ -232,6 +232,20 @@ types:
     text: "По приказу №{order_number} получен вердикт: {order_link}"
     batch_text: null
     line_text: null
+  ORDER_JUDGE_REFUSED:
+    enabled: true
+    priority: normal
+    requires_consent: true
+    requires_nation: false
+    counts_toward_cap: false
+    ttl_minutes: 4320
+    hold_seconds: 0
+    merge: never
+    max_per_window: 0
+    window_minutes: 60
+    text: "Судья отказался от приказа №{order_number}. Приказ автоматически передан другому судье: {order_link}"
+    batch_text: null
+    line_text: null
 
   # --- Типы анкет (Spec 4.8, контракт Spec 00_core_applications §7) ----
   APPLICATION_RECEIVED:

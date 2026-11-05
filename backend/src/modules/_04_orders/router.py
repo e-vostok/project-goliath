@@ -35,6 +35,7 @@ from modules._04_orders.dto import (
     OrderCreateRequest,
     OrderDetailDTO,
     OrderRulesDTO,
+    RefuseResultDTO,
     VerdictCreateRequest,
     VerdictDTO,
 )
@@ -83,6 +84,7 @@ def _detail_dto(view: OrderDetailView) -> OrderDetailDTO:
         ),
         overdue=view.overdue,
         can_write_verdict=view.can_write_verdict,
+        refuse_penalty=view.refuse_penalty,
     )
 
 
@@ -223,6 +225,32 @@ async def write_verdict(
     # Spec 2.3: a verdict frees a judge's load slot — wake the worker.
     request_orders_wake()
     return _detail_dto(view)
+
+
+@router.post("/{number}/refuse", response_model=RefuseResultDTO)
+async def refuse_order(
+    number: Annotated[int, Path(ge=1)],
+    response: Response,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> RefuseResultDTO:
+    """
+    0.14.0 unit 7a — the assigned judge gives the order back before
+    the deadline; every other caller gets the verdict path's one and
+    the same refusal (INV-O5), a late refusal gets
+    ``ORDER_DEADLINE_PASSED``.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    outcome = await OrderService.refuse(
+        session, player_id=player.id, number=number
+    )
+    await session.commit()
+    # A refusal frees the order for the queue — wake the worker like
+    # the verdict route does.
+    request_orders_wake()
+    return RefuseResultDTO(
+        penalty=outcome.penalty, rating_after=outcome.rating_after
+    )
 
 
 @router.get("/{number}", response_model=OrderDetailDTO)

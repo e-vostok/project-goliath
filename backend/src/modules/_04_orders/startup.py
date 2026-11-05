@@ -4,9 +4,9 @@ Startup wiring of module 04_orders (Spec D11, 2.5).
 Two entry points, deliberately split:
 
 - ``register_orders_extensions()`` — registers the Registry table
-  source ``orders`` and the four bot notification types (Appendix C:
-  the assignment pair, the verdict announcement and the reminder —
-  the reminder's producer arrives with Issue 9). Called in
+  source ``orders`` and the five bot notification types (Appendix C:
+  the assignment pair, the verdict announcement, the reminder and the
+  judge-refusal notice). Called in
   ``lifespan`` strictly
   before ``startup_bot()`` and ``startup_registry()``: both validate
   their registries against their configs at boot, so the extensions
@@ -65,9 +65,8 @@ def register_orders_extensions() -> None:
     """
     Register the module's extension points before the owning modules'
     startups validate them (Spec D11): the Registry table source and the
-    four ORDER_* bot notification types with their variable sets
-    (Appendix C). The reminder type is registration-only for now —
-    its producer arrives with Issue 9.
+    five ORDER_* bot notification types with their variable sets
+    (Appendix C).
     """
     register_table_source("orders", ORDERS_PROVIDES, load_orders_rows)
     for key, variables in NOTIFICATION_VARIABLES.items():
