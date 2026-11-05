@@ -199,7 +199,7 @@ def test_migration_0011_up_down_up_postgres(wiped_pg, monkeypatch):
             )
             assert row["name"] == "Old Realm"
             assert row["color_hex"] == "#0C7CF4"
-            assert row["created_turn"] == 3
+            assert row["created_turn"] == 4
             # Backfilled from the full name by migration 0012.
             assert row["short_name"] == "Old Realm"
             assert row["capital_province_id"] is None

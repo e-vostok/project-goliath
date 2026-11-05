@@ -60,7 +60,7 @@ async def _member(session: AsyncSession, *, consent: str | None = "ALLOWED") -> 
             leader_title=VALID_PROFILE["leader_title"],
             history_url=VALID_PROFILE["history_url"],
             created_at=NOW,
-            created_turn=0,
+            created_turn=1,
         )
     )
     if consent is not None:

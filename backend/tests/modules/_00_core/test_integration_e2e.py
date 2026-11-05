@@ -72,7 +72,7 @@ async def client(test_db_session):
     app.dependency_overrides.clear()
 
 
-async def seed_game_clock(session, current_turn: int = 0) -> GameClock:
+async def seed_game_clock(session, current_turn: int = 1) -> GameClock:
     """Seed the game_clock singleton row required by run_tick."""
     clock = GameClock(
         id=1,

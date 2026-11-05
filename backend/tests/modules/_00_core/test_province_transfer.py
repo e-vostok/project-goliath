@@ -92,7 +92,7 @@ async def _make_nation(
         capital_province_id=capital_province_id,
         capital_name="Testburg" if capital_province_id is not None else None,
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     session.add(nation)
     await session.flush()

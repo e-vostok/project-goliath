@@ -61,7 +61,7 @@ async def add_member(
             leader_title=VALID_PROFILE["leader_title"],
             history_url=VALID_PROFILE["history_url"],
             created_at=NOW,
-            created_turn=0,
+            created_turn=1,
         )
     )
     await session.flush()
@@ -145,7 +145,7 @@ async def add_outbox(
     return row
 
 
-async def add_bot_state(session: AsyncSession, last_digest_turn: int = 0) -> BotState:
+async def add_bot_state(session: AsyncSession, last_digest_turn: int = 1) -> BotState:
     row = BotState(id=1, last_digest_turn=last_digest_turn)
     session.add(row)
     await session.flush()

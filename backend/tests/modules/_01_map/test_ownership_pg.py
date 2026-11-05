@@ -96,7 +96,6 @@ class TestOwnersAtTurnPg:
             await session.commit()
 
         async with pg_db() as session:
-            assert await owners_at_turn(session, 0) == {}
             assert await owners_at_turn(session, 1) == {
                 1001: OwnerAtTurn("nation-a", "Old A Name", "#111111", "OldA")
             }
@@ -293,7 +292,7 @@ class TestRemoveRetiredPg:
             player = Player(vk_user_id=992001)
             session.add(player)
             await session.flush()
-            await _set_turn(session, 0)
+            await _set_turn(session, 1)
             nation = await NationService.create(
                 session,
                 owner_player_id=player.id,

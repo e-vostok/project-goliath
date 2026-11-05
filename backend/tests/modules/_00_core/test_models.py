@@ -78,7 +78,7 @@ async def test_create_nation_happy_path(test_db_session):
         short_name="Testia",
         color_hex="#00FF00",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     test_db_session.add(nation)
     await test_db_session.flush()
@@ -110,7 +110,7 @@ async def test_duplicate_owner_player_id_constraint(test_db_session):
         short_name="N1",
         color_hex="#111111",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
@@ -119,7 +119,7 @@ async def test_duplicate_owner_player_id_constraint(test_db_session):
         short_name="N2",
         color_hex="#222222",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
 
     test_db_session.add(nation1)
@@ -154,7 +154,7 @@ async def test_duplicate_nation_name_constraint(test_db_session):
         short_name="Dup1",
         color_hex="#111111",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
@@ -163,7 +163,7 @@ async def test_duplicate_nation_name_constraint(test_db_session):
         short_name="Dup2",
         color_hex="#222222",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
 
     test_db_session.add(nation1)
@@ -198,7 +198,7 @@ async def test_duplicate_nation_color_hex_constraint(test_db_session):
         short_name="N1",
         color_hex="#ABCDEF",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     nation2 = Nation(
         id=str(uuid.uuid4()),
@@ -207,7 +207,7 @@ async def test_duplicate_nation_color_hex_constraint(test_db_session):
         short_name="N2",
         color_hex="#ABCDEF",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
 
     test_db_session.add(nation1)
@@ -236,7 +236,7 @@ async def test_create_scheduled_action_happy_path(test_db_session):
         short_name="Testia",
         color_hex="#FF0000",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     test_db_session.add(nation)
     await test_db_session.flush()
@@ -271,7 +271,7 @@ async def test_create_scheduled_action_happy_path(test_db_session):
 @pytest.mark.asyncio
 async def test_game_clock_singleton_constraint(test_db_session):
     """Test that only one game_clock row can exist (singleton pattern)."""
-    clock1 = GameClock(id=1, current_turn=0, next_tick_at=datetime.now(UTC))
+    clock1 = GameClock(id=1, current_turn=1, next_tick_at=datetime.now(UTC))
     test_db_session.add(clock1)
     await test_db_session.flush()
 
@@ -286,7 +286,7 @@ async def test_game_clock_singleton_constraint(test_db_session):
     await test_db_session.begin()
 
     # Try to insert a second row with different id (CHECK constraint violation)
-    clock3 = GameClock(id=2, current_turn=0, next_tick_at=datetime.now(UTC))
+    clock3 = GameClock(id=2, current_turn=1, next_tick_at=datetime.now(UTC))
     test_db_session.add(clock3)
     with pytest.raises(IntegrityError):
         await test_db_session.flush()
@@ -323,7 +323,7 @@ async def test_province_assignment(test_db_session):
         short_name="Testia",
         color_hex="#FF0000",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     province = await make_land_province(test_db_session, id=1001)
 

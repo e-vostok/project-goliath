@@ -363,7 +363,7 @@ class TestAdminState:
         assert orders["orders_total"] == 0
         assert orders["stages"] == {"SUBMITTED": 0, "DISTRIBUTED": 0, "VERDICT": 0}
         core = modules["00_core"]
-        assert core["clock"]["current_turn"] == 0
+        assert core["clock"]["current_turn"] == 1
         assert core["clock"]["next_tick_at"] is not None
         assert core["counts"]["provinces_total"] == MINI_NODE_COUNT
         assert core["counts"]["provinces_owned"] == 0
@@ -463,7 +463,7 @@ class TestAdminOverview:
         assert keys[-1] == "admins"
         by_key = {t["key"]: t for t in tiles}
         assert by_key["turn"]["label"] == "Ход"
-        assert by_key["turn"]["value"] == "0 · январь 2040"
+        assert by_key["turn"]["value"] == "1 · январь 2040"
         assert by_key["tick_timezone"]["value"] == "Москва"
         assert by_key["players"]["value"] == "1"  # the admin login
         assert by_key["provinces_occupied"]["value"] == f"0 из {MINI_NODE_COUNT}"
@@ -596,7 +596,7 @@ class TestAdminTickRun:
         assert response.status_code == 200
         body = response.json()
         assert body["ok"] is True
-        assert body["current_turn"] == 1
+        assert body["current_turn"] == 2
         candidates = {
             _expected_game_time(
                 next_tick_after(
@@ -611,7 +611,7 @@ class TestAdminTickRun:
         # tick_time 00:00 in tick_timezone -> local wall clock ends 00:00:00.
         assert body["next_tick_at"].endswith(" 00:00:00")
         assert not any(key.endswith("_local") for key in body)
-        assert body["tick_log"]["turn_number"] == 1
+        assert body["tick_log"]["turn_number"] == 2
         assert body["tick_log"]["status"] == "COMPLETED"
         assert not any(key.endswith("_local") for key in body["tick_log"])
         assert ADMIN_TIME_PATTERN.match(body["tick_log"]["started_at"])
@@ -634,7 +634,7 @@ class TestAdminTickRun:
         assert response.status_code == 200
         body = response.json()
         assert body["ok"] is False
-        assert body["current_turn"] == 0  # rolled back, turn unchanged
+        assert body["current_turn"] == 1  # rolled back, turn unchanged
         assert body["tick_log"]["status"] == "FAILED"
         assert "phase exploded" in body["tick_log"]["error_message"]
 
@@ -660,7 +660,7 @@ class TestAdminTickRun:
         assert response.status_code == 200
         body = response.json()
         assert body["ok"] is True
-        assert body["current_turn"] == 1
+        assert body["current_turn"] == 2
         assert body["tick_log"] is None
 
     @pytest.mark.asyncio
@@ -771,7 +771,7 @@ class TestAdminStateReset:
         assert len(provinces.json()) == MINI_NODE_COUNT
 
         clock = await live_client.get("/api/v1/game-clock", headers=headers)
-        assert clock.json()["current_turn"] == 0
+        assert clock.json()["current_turn"] == 1
 
         # The map reset hook wiped the ownership journal (INV-M8): the
         # create wrote rows, the bulk free during reset writes none.

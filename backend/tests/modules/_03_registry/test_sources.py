@@ -42,7 +42,7 @@ class TestPlayersTable:
             p2,
             "Второе",
             "#112233",
-            created_turn=0,
+            created_turn=1,
             short_name="В2",
         )
 
@@ -183,7 +183,7 @@ class TestNationsTable:
             owners[0],
             "Первая",
             "#AA0001",
-            created_turn=2,
+            created_turn=3,
             created_at=T0,
         )
         n2 = await seed_nation(
@@ -191,7 +191,7 @@ class TestNationsTable:
             owners[1],
             "Вторая",
             "#AA0002",
-            created_turn=0,
+            created_turn=2,
             created_at=T0.replace(hour=13),
         )
         n3 = await seed_nation(
@@ -199,7 +199,7 @@ class TestNationsTable:
             owners[2],
             "Третья",
             "#AA0003",
-            created_turn=2,
+            created_turn=3,
             created_at=T0.replace(hour=14),
         )
         await make_land_province(test_db_session, id=1001)
@@ -216,7 +216,7 @@ class TestNationsTable:
 
         built = await build_table(test_db_session, "nations")
         ordered = [row.key for row in built.rows]
-        # n2 (turn 0) first; n1 before n3 within turn 2 by created_at.
+        # n2 (turn 2) first; n1 before n3 within turn 3 by created_at.
         assert ordered == [n2.id, n1.id, n3.id]
         rows = _rows_by_key(built)
         assert rows[n2.id]["number"] == 1
@@ -226,10 +226,10 @@ class TestNationsTable:
         assert rows[n1.id]["provinces"] == 2
         assert rows[n2.id]["provinces"] == 0
         # formed: key = created_turn; text on the game calendar
-        # (epoch 2040-01-01 + 2 turns * 1 month = Март 2040).
+        # (epoch 2040-01-01 + (3 - 1) turns * 1 month = Март 2040).
         assert rows[n1.id]["formed"] == {
             "text": "Март 2040",
-            "key": 2,
+            "key": 3,
         }
         # The «name» column carries a nation cell — the same shape the
         # players table shows for the owner nation (Spec 3.3): id,
@@ -263,7 +263,7 @@ class TestNationFlagCells:
             owner,
             "Флаговая",
             "#112244",
-            created_turn=0,
+            created_turn=1,
             short_name="ФЛГ",
         )
 
@@ -287,7 +287,7 @@ class TestNationFlagCells:
     ):
         owner = await seed_player(test_db_session, 504101, created_at=T0)
         nation = await seed_nation(
-            test_db_session, owner, "Замена", "#223344", created_turn=0
+            test_db_session, owner, "Замена", "#223344", created_turn=1
         )
         old = await make_nation_image(test_db_session, nation, sha256="cd" * 32)
         old.sha256 = "ef" * 32
@@ -312,7 +312,7 @@ class TestNationFlagCells:
                 owner,
                 f"Строка {i}",
                 f"#00{i:04d}",
-                created_turn=i,
+                created_turn=i + 1,
             )
             await make_nation_image(test_db_session, nation, sha256=f"{i:064x}")
 
@@ -355,7 +355,7 @@ class TestCoreConfigInjection:
 
         player = await seed_player(test_db_session, 503001, created_at=T0)
         nation = await seed_nation(
-            test_db_session, player, "Инъекция", "#00AA44", created_turn=2
+            test_db_session, player, "Инъекция", "#00AA44", created_turn=3
         )
 
         players = await build_table(test_db_session, "players")
@@ -363,5 +363,5 @@ class TestCoreConfigInjection:
         assert players.total == 1
         assert _rows_by_key(nations)[nation.id]["formed"] == {
             "text": "Март 2040",
-            "key": 2,
+            "key": 3,
         }

@@ -143,7 +143,7 @@ def _nation_body(
 
 async def _seed_clock(
     session,
-    turn: int = 0,
+    turn: int = 1,
     next_tick_at: datetime | None = None,
 ) -> None:
     session.add(
@@ -322,7 +322,7 @@ async def test_e1_allow_register_digest_sent(
     await _watch(test_db_engine, config)
     (row,) = await _digest_rows(test_db_engine)
     assert row.player_id == player.id
-    assert row.event_key == "turn:1"
+    assert row.event_key == "turn:2"
     assert row.status == "PENDING"
 
     await _deliver(test_db_engine, runtime)
@@ -343,9 +343,9 @@ async def test_e1_allow_register_digest_sent(
     expected_text = _expected(
         config.types["TICK_DIGEST"].text,
         {
-            "turn": 1,
+            "turn": 2,
             "game_date": format_game_date(
-                compute_game_date(1, CORE_CONFIG), CORE_CONFIG
+                compute_game_date(2, CORE_CONFIG), CORE_CONFIG
             ),
             "nation_name": "Государство Тестовое",
             "province_count": 5,
@@ -403,8 +403,8 @@ async def test_e2_digest_sent_once_under_repeats(bot_started, file_db_engine):
         )
         rows = await _digest_rows(file_db_engine)
         assert len(rows) == 1
-        assert rows[0].event_key == "turn:1"
-        assert await _digest_turn(file_db_engine) == 1
+        assert rows[0].event_key == "turn:2"
+        assert await _digest_turn(file_db_engine) == 2
 
         await _deliver(file_db_engine, runtime)
         assert len(fake.send_requests()) == 1
@@ -415,7 +415,7 @@ async def test_e2_digest_sent_once_under_repeats(bot_started, file_db_engine):
         await _deliver(file_db_engine, runtime)
         assert len(await _digest_rows(file_db_engine)) == 1
         assert len(fake.send_requests()) == 1
-        assert await _digest_turn(file_db_engine) == 1
+        assert await _digest_turn(file_db_engine) == 2
     finally:
         await runtime.aclose()
 
@@ -577,7 +577,7 @@ async def test_e4_vk_outage_tick_health_retry(
 
     fake.fail_connect()
     await _tick(test_db_engine)
-    assert await _clock_turn(test_db_engine) == 1
+    assert await _clock_turn(test_db_engine) == 2
     await _watch(test_db_engine, config)
     await _deliver(test_db_engine, runtime)
 
@@ -649,7 +649,7 @@ async def test_e5_consent_lost_mid_flight(
     await _tick(test_db_engine)
     await _watch(test_db_engine, config)
     assert len(await _digest_rows(test_db_engine)) == 1
-    assert await _digest_turn(test_db_engine) == 2
+    assert await _digest_turn(test_db_engine) == 3
 
     # The player re-allows messages; the following turn digests again —
     # and the old dropped row is not revived.
@@ -671,7 +671,7 @@ async def test_e5_consent_lost_mid_flight(
     assert len(rows) == 2
     dropped, pending = rows
     assert dropped.status == "DROPPED"
-    assert pending.event_key == "turn:3"
+    assert pending.event_key == "turn:4"
     assert pending.status == "PENDING"
 
     await _deliver(test_db_engine, runtime)
@@ -890,7 +890,7 @@ async def test_e7_bot_off_is_invisible(
     assert resp.status_code == 201
 
     await _tick(test_db_engine)
-    assert await _clock_turn(test_db_engine) == 1
+    assert await _clock_turn(test_db_engine) == 2
     assert await _outbox_rows(test_db_engine) == []
     assert get_active_runtime() is None
     assert FakeVk().requests == []
@@ -986,7 +986,7 @@ async def test_e8_world_reset_preserves_consents(
     assert resp.json()["reset"] == ["02_bot", "01_map", "00_core"]
 
     assert await _outbox_rows(test_db_engine) == []
-    assert await _digest_turn(test_db_engine) == 0
+    assert await _digest_turn(test_db_engine) == 1
     consent = await _consent_of(test_db_engine, player.id)
     assert consent.state == "ALLOWED"
     async with make_session_factory(test_db_engine)() as session:
@@ -996,7 +996,7 @@ async def test_e8_world_reset_preserves_consents(
         ).scalar_one()
     assert len(events) == 1
     assert nation_count == 0
-    assert await _clock_turn(test_db_engine) == 0
+    assert await _clock_turn(test_db_engine) == 1
 
     # The world restarts: provinces were freed, the kept ALLOWED lets
     # registration pass with no VK call, and turn 1 digests again.
@@ -1023,7 +1023,7 @@ async def test_e8_world_reset_preserves_consents(
     await _tick(test_db_engine)
     await _watch(test_db_engine, config)
     (row,) = await _digest_rows(test_db_engine)
-    assert row.event_key == "turn:1"
+    assert row.event_key == "turn:2"
     assert row.status == "PENDING"
     await _deliver(test_db_engine, runtime)
     sends = fake.send_requests()
@@ -1168,7 +1168,7 @@ class TestPgMirror:
                 "bot_vk_events",
             ):
                 await conn.execute(sa.text(f"DELETE FROM {table}"))  # noqa: S608
-            await conn.execute(sa.text("UPDATE bot_state SET last_digest_turn = 0"))
+            await conn.execute(sa.text("UPDATE bot_state SET last_digest_turn = 1"))
         fake = FakeVk()
         try:
             async with LifespanManager(app) as manager:

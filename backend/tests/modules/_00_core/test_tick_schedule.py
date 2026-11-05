@@ -188,7 +188,7 @@ class TestFixedTimeScheduleOnDatabase:
             select(GameClock).where(GameClock.id == 1)
         )
         clock = result.scalar_one()
-        assert clock.current_turn == 0
+        assert clock.current_turn == 1
         next_tick_at = _utc(clock.next_tick_at)
         assert next_tick_at in _expected_candidates(before, after)
         _assert_local_midnight(next_tick_at)

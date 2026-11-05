@@ -90,13 +90,13 @@ class TestMapApiOnPostgres:
         state = await pg_live_client.get(STATE_URL, headers=headers)
         assert state.status_code == 200
         body = state.json()
-        assert body["turn"] == 0
+        assert body["turn"] == 1
         assert body["owners"] == [[pid, 0] for pid in STARTING_GROUP]
         assert body["nations"][0]["id"] == created.json()["id"]
 
     @pytest.mark.asyncio
     async def test_past_turn_after_delete(self, pg_live_client, pg_db):
-        """Delete at turn 0 -> past snapshot keeps id=null owner."""
+        """Delete at turn 1 -> past snapshot keeps id=null owner."""
         admin = await _auth_headers(pg_live_client, ADMIN_VK_ID)
         headers = await _auth_headers(pg_live_client, 9103)
         created = await pg_live_client.post(
@@ -112,14 +112,14 @@ class TestMapApiOnPostgres:
         assert created.status_code == 201, created.text
 
         tick = await pg_live_client.post("/api/v1/admin/tick/run", headers=admin)
-        assert tick.status_code == 200 and tick.json()["current_turn"] == 1
+        assert tick.status_code == 200 and tick.json()["current_turn"] == 2
         # The player DELETE route is gone (0.9.0): deletion is internal
         # now — NationService.delete is the only entry point left.
         async with pg_db() as session:
             await NationService.delete(session, nation_id=created.json()["id"])
             await session.commit()
 
-        past = await pg_live_client.get(STATE_URL, params={"turn": 0}, headers=admin)
+        past = await pg_live_client.get(STATE_URL, params={"turn": 1}, headers=admin)
         assert past.status_code == 200
         body = past.json()
         assert body["owners"] == [[pid, 0] for pid in STARTING_GROUP]
@@ -133,7 +133,7 @@ class TestMapApiOnPostgres:
         ]
 
         out_of_range = await pg_live_client.get(
-            STATE_URL, params={"turn": 2}, headers=admin
+            STATE_URL, params={"turn": 3}, headers=admin
         )
         assert out_of_range.status_code == 422
         assert out_of_range.json()["code"] == "TURN_OUT_OF_RANGE"

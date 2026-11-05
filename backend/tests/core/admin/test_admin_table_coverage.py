@@ -121,11 +121,11 @@ TABLE_COVERAGE: dict[str, object] = {
     ),
     "game_clock": (
         "kept",
-        "singleton clock row is rewound to turn 0, never emptied",
+        "singleton clock row is rewound to turn 1, never emptied",
     ),
     "bot_state": (
         "kept",
-        "singleton digest marker is zeroed, never emptied",
+        "singleton digest marker is rewound to turn 1, never emptied",
     ),
     "bot_vk_events": (
         "kept",

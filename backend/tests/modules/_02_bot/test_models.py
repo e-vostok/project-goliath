@@ -106,13 +106,13 @@ class TestRoundTrip:
         assert isinstance(row.id, int) and row.id > 0
 
     async def test_bot_state_round_trip(self, test_db_session):
-        test_db_session.add(BotState(id=1, last_digest_turn=0))
+        test_db_session.add(BotState(id=1, last_digest_turn=1))
         await test_db_session.flush()
 
         row = (
             await test_db_session.execute(select(BotState).where(BotState.id == 1))
         ).scalar_one()
-        assert row.last_digest_turn == 0
+        assert row.last_digest_turn == 1
 
 
 class TestConstraints:
@@ -156,7 +156,7 @@ class TestConstraints:
             await make_outbox_row(test_db_session, player, event_key="turn:1")
 
     async def test_bot_state_singleton_rejects_second_row(self, test_db_session):
-        test_db_session.add(BotState(id=1, last_digest_turn=0))
+        test_db_session.add(BotState(id=1, last_digest_turn=1))
         await test_db_session.flush()
         test_db_session.add(BotState(id=2, last_digest_turn=5))
         with pytest.raises(IntegrityError):

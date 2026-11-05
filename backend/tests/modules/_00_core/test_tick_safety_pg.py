@@ -127,10 +127,10 @@ class TestAdvisoryLock:
             "EXECUTED",
             "SKIPPED_LOCKED",
         ]
-        assert (await _clock(pg_db)).current_turn == 1
+        assert (await _clock(pg_db)).current_turn == 2
         logs = await _tick_logs(pg_db)
         assert len(logs) == 1
-        assert logs[0].turn_number == 1
+        assert logs[0].turn_number == 2
         assert logs[0].status == TickLogStatus.COMPLETED
         assert logs[0].finished_at is not None
 
@@ -149,14 +149,14 @@ class TestAdvisoryLock:
                 outcome = await run_scheduled_tick(tick_session, enforce_schedule=True)
             assert outcome is TickOutcome.SKIPPED_LOCKED
             assert await _tick_logs(pg_db) == []
-            assert (await _clock(pg_db)).current_turn == 0
+            assert (await _clock(pg_db)).current_turn == 1
 
             await _release_advisory_lock(blocker)
 
         async with pg_db() as tick_session:
             outcome = await run_scheduled_tick(tick_session, enforce_schedule=True)
         assert outcome is TickOutcome.EXECUTED
-        assert (await _clock(pg_db)).current_turn == 1
+        assert (await _clock(pg_db)).current_turn == 2
         logs = await _tick_logs(pg_db)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
@@ -178,7 +178,7 @@ class TestAdvisoryLock:
         async with pg_db() as session:
             outcome = await run_scheduled_tick(session, enforce_schedule=True)
         assert outcome is TickOutcome.FAILED
-        assert (await _clock(pg_db)).current_turn == 0
+        assert (await _clock(pg_db)).current_turn == 1
         logs = await _tick_logs(pg_db)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.FAILED
@@ -190,7 +190,7 @@ class TestAdvisoryLock:
         async with pg_db() as session:
             outcome = await run_scheduled_tick(session, enforce_schedule=True)
         assert outcome is TickOutcome.EXECUTED
-        assert (await _clock(pg_db)).current_turn == 1
+        assert (await _clock(pg_db)).current_turn == 2
         logs = await _tick_logs(pg_db)
         assert [log.status for log in logs] == [
             TickLogStatus.FAILED,
@@ -219,7 +219,7 @@ class TestScheduleRecheck:
             second = await run_scheduled_tick(session, enforce_schedule=True)
         assert second is TickOutcome.SKIPPED_NOT_DUE
 
-        assert (await _clock(pg_db)).current_turn == 1
+        assert (await _clock(pg_db)).current_turn == 2
         logs = await _tick_logs(pg_db)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
@@ -234,12 +234,12 @@ class TestScheduleRecheck:
             outcome = await run_scheduled_tick(session, enforce_schedule=True)
         assert outcome is TickOutcome.SKIPPED_NOT_DUE
         assert await _tick_logs(pg_db) == []
-        assert (await _clock(pg_db)).current_turn == 0
+        assert (await _clock(pg_db)).current_turn == 1
 
         async with pg_db() as session:
             manual = await run_scheduled_tick(session, enforce_schedule=False)
         assert manual is TickOutcome.EXECUTED
-        assert (await _clock(pg_db)).current_turn == 1
+        assert (await _clock(pg_db)).current_turn == 2
         logs = await _tick_logs(pg_db)
         assert len(logs) == 1
         assert logs[0].status == TickLogStatus.COMPLETED
@@ -351,5 +351,5 @@ class TestAdminTickRunConflict:
         assert tick.status_code == 200
         body = tick.json()
         assert body["ok"] is True
-        assert body["current_turn"] == 1
+        assert body["current_turn"] == 2
         assert body["tick_log"]["status"] == TickLogStatus.COMPLETED.value

@@ -209,7 +209,7 @@ class TestNationCellsAcrossTables:
             owner_modern,
             "Северная Конфедерация Вольных Городов",
             "#AA2201",
-            created_turn=0,
+            created_turn=1,
             short_name="СКВГ",
         )
         flagless = await seed_nation(

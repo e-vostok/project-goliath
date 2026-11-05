@@ -158,7 +158,7 @@ async def seed_nation(
     name: str,
     color_hex: str,
     *,
-    created_turn: int = 0,
+    created_turn: int = 1,
     created_at: datetime | None = None,
     short_name: str | None = None,
 ) -> Nation:

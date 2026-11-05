@@ -98,7 +98,7 @@ class TestOwnershipRegistry:
             new_name="N",
             new_short_name="SN",
             new_color="#FFFFFF",
-            turn=0,
+            turn=1,
         )
         await notify_ownership_changed(test_db_session, [change])
 
@@ -127,7 +127,7 @@ class TestOwnershipRegistry:
                     new_name="N",
                     new_short_name="SN",
                     new_color="#FFFFFF",
-                    turn=0,
+                    turn=1,
                 )
             ],
         )
@@ -152,7 +152,7 @@ class TestOwnershipRegistry:
                         new_name=None,
                         new_short_name=None,
                         new_color=None,
-                        turn=0,
+                        turn=1,
                     )
                 ],
             )

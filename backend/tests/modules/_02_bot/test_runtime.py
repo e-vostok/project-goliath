@@ -171,7 +171,7 @@ class TestEndToEnd:
             session.add(
                 GameClock(
                     id=1,
-                    current_turn=0,
+                    current_turn=1,
                     last_tick_at=None,
                     next_tick_at=now - timedelta(minutes=1),
                 )
@@ -194,7 +194,7 @@ class TestEndToEnd:
                 turn = (
                     await session.execute(select(GameClock.current_turn))
                 ).scalar_one()
-            assert turn == 1
+            assert turn == 2
 
             # The watcher (its own task) sees turn 1 and enqueues the
             # digest; the sender keeps retrying it against dead VK.

@@ -38,7 +38,7 @@ class TestPlayerRoute:
             owner,
             "Северная Конфедерация Вольных Городов",
             "#AA2201",
-            created_turn=0,
+            created_turn=1,
             short_name="СКВГ",
         )
         await make_vk_profile(

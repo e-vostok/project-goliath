@@ -125,7 +125,7 @@ async def seed_nation(
             else {k: v for k, v in VALID_PROFILE.items() if k != "short_name"}
         ),
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
     )
     session.add(nation)
     await session.flush()
@@ -999,17 +999,17 @@ class TestGameClockEndpoint:
     """Tests for GET /api/v1/game-clock."""
 
     async def test_game_clock_returns_derived_date(self, client, test_db_session):
-        """game_date at turn 0 is the calendar epoch — January 2040."""
+        """game_date at turn 1 is the calendar epoch — January 2040."""
         player = await seed_player(test_db_session)
         next_tick = datetime.now(UTC) + timedelta(hours=24)
-        test_db_session.add(GameClock(id=1, current_turn=0, next_tick_at=next_tick))
+        test_db_session.add(GameClock(id=1, current_turn=1, next_tick_at=next_tick))
         await test_db_session.flush()
 
         resp = await client.get("/api/v1/game-clock", headers=bearer_headers(player.id))
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["current_turn"] == 0
+        assert body["current_turn"] == 1
         assert body["game_date"] == "2040-01-01"
         assert body["game_date_text"] == "Январь 2040"
 

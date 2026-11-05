@@ -689,7 +689,7 @@ def test_migration_0011_up_down_up(tmp_path, monkeypatch):
             # the full name by 0012, the rest stays NULL.
             assert row["name"] == "Old Realm"
             assert row["color_hex"] == "#0C7CF4"
-            assert row["created_turn"] == 3
+            assert row["created_turn"] == 4
             assert row["short_name"] == "Old Realm"
             assert row["capital_province_id"] is None
     finally:

@@ -1,7 +1,7 @@
 """
 Tests for the month-based game calendar (Spec 00_core Part 3, CAL-1).
 
-Turn 0 — including right after a world reset — is always January 2040;
+Turn 1 — including right after a world reset — is always January 2040;
 one turn advances the game date by ``calendar.months_per_turn`` months.
 """
 
@@ -18,37 +18,37 @@ CORE_CONFIG = CoreConfig.from_yaml(CoreConfig.get_default_config_path())
 
 
 def test_first_turn_is_january_2040():
-    """current_turn = 0 (also right after a world reset) -> 2040-01-01."""
-    assert compute_game_date(0, CORE_CONFIG) == date(2040, 1, 1)
+    """current_turn = 1 (also right after a world reset) -> 2040-01-01."""
+    assert compute_game_date(1, CORE_CONFIG) == date(2040, 1, 1)
 
 
 def test_turn_advances_by_months_per_turn():
     """One turn = one game month; the sequence crosses the year."""
-    assert compute_game_date(1, CORE_CONFIG) == date(2040, 2, 1)
-    assert compute_game_date(11, CORE_CONFIG) == date(2040, 12, 1)
-    assert compute_game_date(12, CORE_CONFIG) == date(2041, 1, 1)
+    assert compute_game_date(2, CORE_CONFIG) == date(2040, 2, 1)
+    assert compute_game_date(12, CORE_CONFIG) == date(2040, 12, 1)
+    assert compute_game_date(13, CORE_CONFIG) == date(2041, 1, 1)
 
 
 def test_format_game_date_renders_month_year():
-    """«Месяц Год» for the shipped calendar: turns 0, 1 and 12."""
+    """«Месяц Год» for the shipped calendar: turns 1, 2 and 13."""
     assert (
-        format_game_date(compute_game_date(0, CORE_CONFIG), CORE_CONFIG)
+        format_game_date(compute_game_date(1, CORE_CONFIG), CORE_CONFIG)
         == "Январь 2040"
     )
     assert (
-        format_game_date(compute_game_date(1, CORE_CONFIG), CORE_CONFIG)
+        format_game_date(compute_game_date(2, CORE_CONFIG), CORE_CONFIG)
         == "Февраль 2040"
     )
     assert (
-        format_game_date(compute_game_date(12, CORE_CONFIG), CORE_CONFIG)
+        format_game_date(compute_game_date(13, CORE_CONFIG), CORE_CONFIG)
         == "Январь 2041"
     )
 
 
 def test_format_game_date_renders_october():
-    """Turn 9 lands on October — «Октябрь 2040»."""
+    """Turn 10 lands on October — «Октябрь 2040»."""
     assert (
-        format_game_date(compute_game_date(9, CORE_CONFIG), CORE_CONFIG)
+        format_game_date(compute_game_date(10, CORE_CONFIG), CORE_CONFIG)
         == "Октябрь 2040"
     )
 
@@ -63,6 +63,8 @@ def test_far_future_turn_clamps_to_date_max():
     assert compute_game_date(10**9, CORE_CONFIG) == date(9999, 12, 1)
 
 
-def test_negative_turn_rejected():
-    with pytest.raises(ValueError):
-        compute_game_date(-1, CORE_CONFIG)
+def test_zero_and_negative_turns_rejected():
+    """Turns count from 1: 0 and negatives raise."""
+    for bad_turn in (0, -1):
+        with pytest.raises(ValueError):
+            compute_game_date(bad_turn, CORE_CONFIG)

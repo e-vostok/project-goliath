@@ -178,7 +178,7 @@ class TestStop:
                     name="Retired Owner",
                     color_hex="#102030",
                     created_at=datetime.now(UTC),
-                    created_turn=0,
+                    created_turn=1,
                     **VALID_PROFILE,
                 )
             )
@@ -277,7 +277,7 @@ class TestReadOnly:
                     name="Read Only",
                     color_hex="#203040",
                     created_at=datetime.now(UTC),
-                    created_turn=0,
+                    created_turn=1,
                     **VALID_PROFILE,
                 )
             )

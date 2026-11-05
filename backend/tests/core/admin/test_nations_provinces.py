@@ -308,7 +308,7 @@ class TestAdminNationsList:
                     succession_type=VALID_PROFILE["succession_type"],
                     capital_name=VALID_PROFILE["capital_name"],
                     created_at=datetime.now(UTC),
-                    created_turn=0,
+                    created_turn=1,
                 )
             )
             await session.commit()
@@ -600,7 +600,7 @@ async def _seed_nation(vk_user_id: int, **overrides) -> str:
             succession_type=VALID_PROFILE["succession_type"],
             capital_name=VALID_PROFILE["capital_name"],
             created_at=datetime.now(UTC),
-            created_turn=0,
+            created_turn=1,
         )
         for key, value in overrides.items():
             setattr(nation, key, value)

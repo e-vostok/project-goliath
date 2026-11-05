@@ -61,7 +61,7 @@ async def _make_owned_province(
         name=nation_name,
         color_hex="#101010",
         created_at=datetime.now(UTC),
-        created_turn=0,
+        created_turn=1,
         **VALID_PROFILE,
     )
     session.add_all([player, nation])
@@ -212,7 +212,7 @@ class TestEnsureNodesValidation:
             name="Owning Nation",
             color_hex="#101010",
             created_at=datetime.now(UTC),
-            created_turn=0,
+            created_turn=1,
             **VALID_PROFILE,
         )
         test_db_session.add_all([player, nation])

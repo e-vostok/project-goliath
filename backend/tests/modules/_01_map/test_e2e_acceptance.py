@@ -259,7 +259,7 @@ async def _full_scenario(client: AsyncClient) -> None:
     state = await client.get(STATE_URL, headers=player)
     assert state.status_code == 200
     state_body = state.json()
-    assert state_body["turn"] == 0
+    assert state_body["turn"] == 1
     assert sorted(pid for pid, _ in state_body["owners"]) == sorted(CONNECTED_FIVE)
     owner_entry = state_body["nations"][0]
     assert owner_entry["id"] == nation_id
@@ -271,25 +271,25 @@ async def _full_scenario(client: AsyncClient) -> None:
         for pid in CONNECTED_FIVE:
             rows = await records_for_province(session, pid)
             assert len(rows) == 1
-            assert rows[0].turn_number == 0
+            assert rows[0].turn_number == 1
             assert rows[0].prev_nation_id is None
             assert rows[0].new_nation_id == nation_id
             assert rows[0].new_nation_name == "Alpine League"
             assert rows[0].new_nation_short_name == "Testland"
-        owners0 = await owners_at_turn(session, 0)
+        owners0 = await owners_at_turn(session, 1)
     assert sorted(owners0) == sorted(CONNECTED_FIVE)
 
     # -- advance the turn through the admin path ------------------------
     tick = await client.post("/api/v1/admin/tick/run", headers=admin)
     assert tick.status_code == 200
     assert tick.json()["ok"] is True
-    assert tick.json()["current_turn"] == 1
+    assert tick.json()["current_turn"] == 2
 
-    # Turn 0 keeps the owner as at turn 0; a future turn is out of range.
-    past = await client.get(STATE_URL, params={"turn": 0}, headers=player)
+    # Turn 1 keeps the owner as at turn 1; a future turn is out of range.
+    past = await client.get(STATE_URL, params={"turn": 1}, headers=player)
     assert past.status_code == 200
     assert sorted(p for p, _ in past.json()["owners"]) == sorted(CONNECTED_FIVE)
-    out_of_range = await client.get(STATE_URL, params={"turn": 2}, headers=player)
+    out_of_range = await client.get(STATE_URL, params={"turn": 3}, headers=player)
     assert out_of_range.status_code == 422
     assert out_of_range.json()["code"] == "TURN_OUT_OF_RANGE"
 
@@ -305,7 +305,7 @@ async def _full_scenario(client: AsyncClient) -> None:
             rows = await records_for_province(session, pid)
             assert len(rows) == 2
             release = rows[1]
-            assert release.turn_number == 1
+            assert release.turn_number == 2
             assert release.new_nation_id is None
             assert release.prev_nation_id == nation_id
 
@@ -316,7 +316,7 @@ async def _full_scenario(client: AsyncClient) -> None:
 
     # The past-turn view still shows the owner — with id = null now
     # that the nation is gone (name/colour survive on the journal).
-    past_after_delete = await client.get(STATE_URL, params={"turn": 0}, headers=player)
+    past_after_delete = await client.get(STATE_URL, params={"turn": 1}, headers=player)
     assert past_after_delete.status_code == 200
     past_body = past_after_delete.json()
     assert sorted(p for p, _ in past_body["owners"]) == sorted(CONNECTED_FIVE)

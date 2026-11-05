@@ -73,7 +73,7 @@ class TestReset:
         state = (
             await test_db_session.execute(select(BotState).where(BotState.id == 1))
         ).scalar_one()
-        assert state.last_digest_turn == 0
+        assert state.last_digest_turn == 1
         # Consents survive a world reset.
         assert (
             await test_db_session.execute(select(func.count()).select_from(BotConsent))

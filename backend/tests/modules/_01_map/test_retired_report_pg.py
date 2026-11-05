@@ -111,7 +111,7 @@ class TestRetiredReportPg:
                     name="Pg Owner",
                     color_hex="#334455",
                     created_at=datetime.now(UTC),
-                    created_turn=0,
+                    created_turn=1,
                     **VALID_PROFILE,
                 )
             )
