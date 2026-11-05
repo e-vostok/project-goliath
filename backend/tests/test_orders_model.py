@@ -119,8 +119,9 @@ def test_migration_0010_up_down_up(tmp_path, monkeypatch):
     assert ORDERS_INDEXES <= indexes
 
     command.downgrade(cfg, "0009")
-    # The 0018 images table, 0019's application tables and 0015's
-    # admin tables ride the same downgrade path.
+    # The 0023 rating journal, the 0018 images table, 0019's
+    # application tables and 0015's admin tables ride the same
+    # downgrade path.
     assert _tables(url) == before - {
         "orders",
         "nation_images",
@@ -130,6 +131,7 @@ def test_migration_0010_up_down_up(tmp_path, monkeypatch):
         "admin_audit_log",
         "registry_player_numbers",
         "registry_number_counter",
+        "judge_rating_log",
     }
 
     command.upgrade(cfg, "head")
