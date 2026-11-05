@@ -113,6 +113,18 @@ class Order(Base):
     verdict_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Player ids of the judges who refused this order (0.14.0 unit 7a)
+    # — a plain JSON list of id strings, no FK: the automatic selector
+    # only filters them out, and a deleted player stays listed.
+    refused_judge_ids: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    # The 1-based number of the current judge assignment: refusal bumps
+    # it and the judge-facing bot event keys carry it from 2 on, so the
+    # outbox dedupe never swallows the next judge's rows.
+    assignment_no: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
 
     __table_args__ = (
         UniqueConstraint("number", name="uq_orders_number"),
@@ -156,6 +168,9 @@ class Order(Base):
         CheckConstraint(
             "reminder_sent_at IS NULL OR judge_player_id IS NOT NULL",
             name="ck_orders_reminder_needs_judge",
+        ),
+        CheckConstraint(
+            "assignment_no >= 1", name="ck_orders_assignment_no_positive"
         ),
         # Judge's pending workload (INV-O4).
         Index(

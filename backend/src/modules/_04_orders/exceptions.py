@@ -125,6 +125,25 @@ class OrderVerdictExistsError(OrderDomainError):
         )
 
 
+class OrderDeadlinePassedError(OrderDomainError):
+    """
+    The verdict deadline already passed — HTTP 409 (0.14.0 unit 7a).
+
+    Refusal is only possible inside the term; an overdue order leaves
+    the judge's hands through the background task, not through a
+    refusal (unit 7b).
+    """
+
+    code = "ORDER_DEADLINE_PASSED"
+
+    def __init__(self, number: int):
+        super().__init__(
+            f"Срок вердикта по приказу №{number} уже истёк",
+            self.code,
+            details={"number": number},
+        )
+
+
 class OrderAlreadyDecidedError(OrderDomainError):
     """
     A verdict is already written, so the judge can no longer change —
