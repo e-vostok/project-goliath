@@ -180,7 +180,7 @@ describe('PanelNationHome — the card', () => {
     );
     expect(onOpenRegistry).toHaveBeenLastCalledWith({
       tab: 'orders',
-      preset: { nation: 'Тестия' },
+      preset: { myOrders: true },
     });
     await userEvent.click(
       screen.getByRole('button', { name: 'Приказы других игроков' }),

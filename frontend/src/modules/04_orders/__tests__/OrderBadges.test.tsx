@@ -6,7 +6,7 @@
  * Covers: both badges with their counts (unresolved_orders from
  * GET /orders/rules, the GET /orders/assigned list length), a zero
  * count gets no circle, 100+ collapses to «99+», each click hands the
- * host the right 7a entry request (nation preset / «Назначены мне»),
+ * host the right entry request («Мои приказы» / «Назначены мне» preset),
  * a failed count fetch leaves the badge numberless with no error,
  * and a submitted order plus a written verdict both bump the shared
  * refresh key so the counts refetch.
@@ -40,7 +40,7 @@ const JUDGE_ORDER: OrderDetailDTO = {
 function renderBlock() {
   const onOpenRegistry = vi.fn();
   renderWithOrders(
-    <OrdersBlock nationShortName="Тест" onOpenRegistry={onOpenRegistry} />,
+    <OrdersBlock onOpenRegistry={onOpenRegistry} />,
   );
   return { onOpenRegistry };
 }
@@ -133,7 +133,7 @@ describe('OrdersBlock — the two badges', () => {
     ).toHaveTextContent('99+');
   });
 
-  it('«Мои приказы» hands the host the 7a nation preset for the orders tab', async () => {
+  it('«Мои приказы» hands the host the my_orders preset for the orders tab', async () => {
     const { onOpenRegistry } = renderBlock();
     await userEvent.click(
       await screen.findByRole('button', { name: 'Мои приказы' }),
@@ -141,7 +141,7 @@ describe('OrdersBlock — the two badges', () => {
 
     expect(onOpenRegistry).toHaveBeenCalledWith({
       tab: 'orders',
-      preset: { nation: 'Тест' },
+      preset: { myOrders: true },
     });
   });
 

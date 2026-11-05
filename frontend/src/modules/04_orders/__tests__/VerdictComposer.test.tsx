@@ -199,7 +199,7 @@ describe('ConfirmVerdictModal — verdict already exists', () => {
     const user = userEvent.setup();
     // OrdersBlock is mounted — the assigned badge's refetch is what
     // `assignedGets` counts.
-    renderWithOrders(<OrdersBlock nationShortName="Тест" onOpenRegistry={() => {}} />);
+    renderWithOrders(<OrdersBlock onOpenRegistry={() => {}} />);
     await waitFor(() => expect(assignedGets).toBe(1));
     await openDetail();
     await user.click(

@@ -7,6 +7,7 @@
 import { apiFetch } from '../../shared/api-client';
 import type {
   AssignedOrdersDTO,
+  MyOrdersDTO,
   OrderCreateRequest,
   OrderDetailDTO,
   OrderRulesDTO,
@@ -39,6 +40,11 @@ export const ordersApi = {
       token,
       signal,
     });
+  },
+
+  /** GET /orders/mine — the caller's nation's order numbers. */
+  getMine(token: string, signal?: AbortSignal) {
+    return apiFetch<MyOrdersDTO>('/orders/mine', { token, signal });
   },
 
   /** GET /orders/{number} — the public detail; 404 ORDER_NOT_FOUND. */

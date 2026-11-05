@@ -25,6 +25,10 @@ export interface RegistryEntryPreset {
   /** Switch the registered `assigned_to_me` table filter extension
    * (lib/tableFilterExtensions.ts) to «Да». */
   assignedToMe?: true;
+  /** Switch the registered `my_orders` table filter extension
+   * (lib/tableFilterExtensions.ts) to «Да» — the caller's nation's
+   * orders by `nation_id`, stable across renames (0.14.0 unit 5). */
+  myOrders?: true;
 }
 
 export interface RegistryEntryRequest {

@@ -64,6 +64,7 @@ export const ORDERS_TEXTS = {
   overdueMark: 'Срок вердикта вышел',
   writeVerdict: 'Написать вердикт',
 
-  /* Registry table filter extension (Spec 5.6) */
+  /* Registry table filter extensions (Spec 5.6) */
   assignedToMeFilter: 'Назначены мне',
+  myOrdersFilter: 'Мои приказы',
 } as const;

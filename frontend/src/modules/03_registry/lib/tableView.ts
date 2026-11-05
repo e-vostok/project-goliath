@@ -407,11 +407,11 @@ export function hasActiveFilters(view: TableView): boolean {
  * Applies an entry-request preset to a tab's view (Spec 5.5): the
  * `nation` name lands in the `selected` half of the first nation
  * `select_or_contains` column — the same dropdown value the player
- * could pick by hand — and `assignedToMe` switches the registered
- * `assigned_to_me` extension to «Да». Nothing the player already
- * changed in this visit is overridden: a column whose dropdown value
- * is already picked and an extension already touched (either
- * position) keep the player's choice.
+ * could pick by hand — and `assignedToMe`/`myOrders` switch the
+ * registered `assigned_to_me`/`my_orders` extensions to «Да». Nothing
+ * the player already changed in this visit is overridden: a column
+ * whose dropdown value is already picked and an extension already
+ * touched (either position) keep the player's choice.
  */
 export function applyEntryPreset(
   view: TableView,
@@ -448,9 +448,12 @@ export function applyEntryPreset(
       }
     }
   }
-  if (preset.assignedToMe === true) {
-    const extId = 'assigned_to_me';
+  for (const [flag, extId] of [
+    [preset.assignedToMe, 'assigned_to_me'],
+    [preset.myOrders, 'my_orders'],
+  ] as const) {
     if (
+      flag === true &&
       tableExtensions.some((e) => e.id === extId) &&
       next.extensions[extId] === undefined
     ) {
