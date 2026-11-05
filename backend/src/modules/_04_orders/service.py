@@ -24,6 +24,14 @@ judge_player_id = :caller AND verdict_at IS NULL`` that touches the
 four verdict columns and nothing else (INV-O1), and the author's
 announcement under its own SAVEPOINT (INV-O8).
 
+``refuse`` lets the assigned judge give the order back before its
+deadline (0.14.0 unit 7a): the same lock and the same refusal order,
+the rating penalty through ``00_core``'s ``change_judge_rating``, one
+conditional ``UPDATE`` that releases the assignment columns, appends
+the judge to ``refused_judge_ids`` and bumps ``assignment_no``, the
+judge's unsent rows recalled, the author's ``ORDER_JUDGE_REFUSED``
+notice and a fresh ``distribute`` — each under its own SAVEPOINT.
+
 ``run_retry_pass`` is the worker's step (Spec 2.3): it owns its own
 sessions — one to pick the candidates, then one transaction per order
 — and returns :class:`RetryPassStats`.
@@ -54,6 +62,7 @@ from modules._04_orders.distribution import JudgeCandidate
 from modules._04_orders.exceptions import (
     OrderAlreadyDecidedError,
     OrderAuthorLimitReachedError,
+    OrderDeadlinePassedError,
     OrderDomainError,
     OrderJudgeAlreadyAssignedError,
     OrderJudgeIsAuthorError,
@@ -67,7 +76,9 @@ from modules._04_orders.models import Order, is_overdue
 from modules._04_orders.notifications import (
     ORDER_JUDGE_ASSIGNED,
     ORDER_JUDGE_REMINDER,
+    assignment_event_key,
     notify_assignment,
+    notify_judge_refused,
     notify_reminder,
     notify_verdict,
 )
@@ -110,6 +121,22 @@ class OrderDetailView:
     verdict_url: str | None
     overdue: bool
     can_write_verdict: bool
+    # The rating penalty a refusal would cost the viewer right now —
+    # set only for the assigned judge while refusal is possible,
+    # ``None`` for everyone else and after the deadline (0.14.0 7a).
+    refuse_penalty: int | None
+
+
+@dataclass(frozen=True)
+class RefuseOutcome:
+    """
+    ``refuse`` result (0.14.0 unit 7a): the rating penalty actually
+    applied — a positive number, possibly clamped by the rating scale
+    — and the judge's rating after it.
+    """
+
+    penalty: int
+    rating_after: int
 
 
 @dataclass(frozen=True)
@@ -219,6 +246,34 @@ def _aware(moment: datetime) -> datetime:
     return moment
 
 
+def _refuse_penalty(
+    order: Order, *, now: datetime, viewer_player_id: str
+) -> int | None:
+    """
+    The penalty a refusal would cost the viewer right now (0.14.0 7a).
+
+    Refusal is possible only for the assigned judge while no verdict
+    exists and the deadline has not passed — every other viewer gets
+    ``None``, so the field leaks nothing about the assignment (INV-O5).
+    The judge's row carries ``deadline_at`` by the all-or-none CHECK.
+    """
+    if (
+        order.judge_player_id is None
+        or order.judge_player_id != viewer_player_id
+        or order.verdict_at is not None
+    ):
+        return None
+    deadline = _aware(order.deadline_at)
+    if now > deadline:
+        return None
+    from modules._04_orders.startup import get_orders_config
+
+    refusal = get_orders_config().refusal
+    if deadline - now <= timedelta(hours=refusal.late_window_hours):
+        return refusal.penalty_late
+    return refusal.penalty
+
+
 def _detail_view(
     order: Order,
     *,
@@ -247,6 +302,9 @@ def _detail_view(
             order.judge_player_id is not None
             and order.judge_player_id == viewer_player_id
             and order.verdict_at is None
+        ),
+        refuse_penalty=_refuse_penalty(
+            order, now=now, viewer_player_id=viewer_player_id
         ),
     )
 
@@ -573,17 +631,20 @@ class OrderService:
             last_by[judge_id] = last_at
 
         # 6. Build candidates and let the selector pick (the module-
-        # level reference is the injection point for tests).
+        # level reference is the injection point for tests). A judge
+        # who already refused this order is never offered it again
+        # (0.14.0 unit 7a).
+        refused_ids = set(order.refused_judge_ids or [])
         candidates = [
             JudgeCandidate(
                 player_id=row.player_id,
-                rating=row.judge_rating,
                 has_nation=row.nation_id is not None,
                 consented=row.player_id in consented,
                 pending=pending_by.get(row.player_id, 0),
                 last_assigned_at=last_by.get(row.player_id),
             )
             for row in players
+            if row.player_id not in refused_ids
         ]
         judge_player_id = distribution.judge_selector(
             order.author_player_id, candidates, judge
@@ -977,6 +1038,159 @@ class OrderService:
         )
 
     @staticmethod
+    async def refuse(
+        session: AsyncSession,
+        *,
+        player_id: str,
+        number: int,
+        now: datetime | None = None,
+    ) -> RefuseOutcome:
+        """
+        The assigned judge refuses the order before its deadline
+        (0.14.0 unit 7a).
+
+        The module advisory lock serializes the refusal with
+        submissions, distributions and verdicts. Refusals, in order:
+        unknown number (``ORDER_NOT_FOUND``), the caller is not the
+        assigned judge — one and the same ``ORDER_VERDICT_FORBIDDEN``
+        as the verdict path, whatever the true cause (INV-O5) — a
+        verdict already written (``ORDER_ALREADY_DECIDED``) and a
+        deadline already passed (``ORDER_DEADLINE_PASSED``: an overdue
+        order is the worker's business, unit 7b, never a refusal).
+
+        The penalty is ``refusal.penalty_late`` in the last
+        ``refusal.late_window_hours`` of the term, ``refusal.penalty``
+        otherwise — applied only through ``00_core``'s
+        ``change_judge_rating`` with a negative delta, idempotent by
+        ``order_refused:<order id>:<assignment_no>`` so a repeated
+        refusal can never move the rating twice.
+
+        The release is one conditional UPDATE (INV-O1): the five
+        assignment columns go NULL, the refusing judge is appended to
+        ``refused_judge_ids`` and ``assignment_no`` grows — the
+        selector never offers this judge the order again and the next
+        judge's bot rows survive the dedupe key. The old judge's
+        unsent bot rows are recalled exactly like
+        ``admin_assign_judge`` does, the author's
+        ``ORDER_JUDGE_REFUSED`` notice and a fresh ``distribute`` each
+        run under their own SAVEPOINT (INV-O8) — without a candidate
+        the order simply waits for the worker. Never commits.
+        """
+        from modules._00_core.rating_service import change_judge_rating
+        from modules._04_orders.startup import get_orders_config
+
+        refusal = get_orders_config().refusal
+        moment = now if now is not None else datetime.now(UTC)
+
+        # 1. Module lock — same key as submit/distribute/write_verdict.
+        if session.bind.dialect.name == "postgresql":
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"),
+                {"key": ORDERS_ADVISORY_LOCK_KEY},
+            )
+
+        # 2. The order exists.
+        order = (
+            await session.execute(select(Order).where(Order.number == number))
+        ).scalar_one_or_none()
+        if order is None:
+            raise OrderNotFoundError(number)
+
+        # 3. The caller is the assigned judge — one and the same
+        # refusal as the verdict path for every other cause (INV-O5).
+        if order.judge_player_id != player_id:
+            raise OrderVerdictForbiddenError()
+
+        # 4. A verdict already decided the order.
+        if order.verdict_at is not None:
+            raise OrderAlreadyDecidedError(number)
+
+        # 5. Still inside the term — overdue orders are 7b's business.
+        deadline = _aware(order.deadline_at)
+        if moment > deadline:
+            raise OrderDeadlinePassedError(number)
+
+        # 6. The rating penalty, only through 00_core: negative delta,
+        # idempotent per (order, assignment).
+        late = deadline - moment <= timedelta(hours=refusal.late_window_hours)
+        change = await change_judge_rating(
+            session,
+            player_id,
+            -(refusal.penalty_late if late else refusal.penalty),
+            "ORDER_REFUSED_LATE" if late else "ORDER_REFUSED",
+            f"order_refused:{order.id}:{order.assignment_no}",
+        )
+
+        # 7. Release the order with one conditional UPDATE (INV-O1).
+        refused_no = order.assignment_no
+        result = await session.execute(
+            update(Order)
+            .where(
+                Order.id == order.id,
+                Order.judge_player_id == player_id,
+                Order.verdict_at.is_(None),
+            )
+            .values(
+                judge_player_id=None,
+                distributed_at=None,
+                deadline_at=None,
+                reminder_at=None,
+                reminder_sent_at=None,
+                refused_judge_ids=[*(order.refused_judge_ids or []), player_id],
+                assignment_no=refused_no + 1,
+            )
+        )
+        if result.rowcount == 0:
+            # The row changed between the read and the update — re-read
+            # and answer for the state that actually won.
+            fresh = (
+                await session.execute(select(Order).where(Order.id == order.id))
+            ).scalar_one()
+            if fresh.verdict_at is not None:
+                raise OrderAlreadyDecidedError(number)
+            raise OrderVerdictForbiddenError()
+
+        # 8. The refusing judge's still-unsent assignment/reminder rows
+        # are meaningless now — recalled like admin_assign_judge does,
+        # keyed by the assignment just released.
+        for type_key, prefix in (
+            (ORDER_JUDGE_ASSIGNED, "order_assigned"),
+            (ORDER_JUDGE_REMINDER, "order_reminder"),
+        ):
+            await BotService.cancel_pending(
+                session,
+                player_id=player_id,
+                type_key=type_key,
+                event_key=assignment_event_key(prefix, order.id, refused_no),
+                now=moment,
+            )
+
+        # 9. The author's announcement under its own SAVEPOINT (INV-O8):
+        # «the judge refused, the order was passed on» — no name.
+        try:
+            async with session.begin_nested():
+                await notify_judge_refused(
+                    session, order=order, assignment_no=refused_no, now=moment
+                )
+        except Exception:
+            logger.exception("refusal notification failed for order %s", order.id)
+
+        # 10. Seat the next judge at once under its own SAVEPOINT — a
+        # failure or an empty candidate set leaves the order waiting
+        # for the worker (INV-O8).
+        try:
+            async with session.begin_nested():
+                await OrderService.distribute(session, order.id, now=moment)
+        except Exception:
+            logger.exception(
+                "redistribution after refusal failed for order %s", order.id
+            )
+
+        return RefuseOutcome(
+            penalty=-change.applied_delta, rating_after=change.rating_after
+        )
+
+    @staticmethod
     async def admin_assign_judge(
         session: AsyncSession,
         number: int,
@@ -1110,7 +1324,9 @@ class OrderService:
                     session,
                     player_id=previous_judge_id,
                     type_key=type_key,
-                    event_key=f"{prefix}:{order.id}",
+                    event_key=assignment_event_key(
+                        prefix, order.id, order.assignment_no
+                    ),
                     now=moment,
                 )
 

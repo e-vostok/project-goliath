@@ -292,8 +292,8 @@ async def make_player(
 ) -> Player:
     """Insert a ``players`` row and flush it.
 
-    ``judge_rating`` overrides the registry rating default (the judge
-    threshold tests need values both sides of ``judge.min_rating``);
+    ``judge_rating`` overrides the registry rating default (needed by
+    the refusal-penalty and rating-journal tests);
     ``consent_state`` seeds the ``bot_consents`` row that decides the
     reachability of a nationless player (Spec 04_orders 3.2).
     """

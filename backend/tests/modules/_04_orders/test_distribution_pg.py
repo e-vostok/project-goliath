@@ -38,26 +38,25 @@ from tests.modules._04_orders.test_submission_pg import (
 pytestmark = pytest.mark.postgres
 
 
-async def _seed_player(session, vk_user_id: int, *, judge_rating: int) -> Player:
-    """A nation owner with a chosen judge rating (below 0 keeps them
-    out of the candidate set under the real config's min_rating = 0)."""
-    player = PlayerFactory.build(
-        vk_user_id=vk_user_id,
-        judge_rating=judge_rating,
-        nations=[],
-    )
+async def _seed_player(
+    session, vk_user_id: int, *, nation: bool = True
+) -> Player:
+    """A player; ``nation=False`` makes them unreachable for the
+    candidate set (no nation, no consent)."""
+    player = PlayerFactory.build(vk_user_id=vk_user_id, nations=[])
     session.add(player)
     await session.flush()
-    session.add(
-        NationFactory.build(
-            owner=player,
-            name=f"Государство {vk_user_id}",
-            color_hex=f"#{vk_user_id % 0xFFFFFF:06X}",
-            provinces=[],
-            scheduled_actions=[],
+    if nation:
+        session.add(
+            NationFactory.build(
+                owner=player,
+                name=f"Государство {vk_user_id}",
+                color_hex=f"#{vk_user_id % 0xFFFFFF:06X}",
+                provinces=[],
+                scheduled_actions=[],
+            )
         )
-    )
-    await session.flush()
+        await session.flush()
     return player
 
 
@@ -68,10 +67,17 @@ class TestConcurrentDistribute:
         the row — exactly one order claims the last slot."""
         max_pending = orders_started.judge.max_pending_verdicts
         async with pg_db() as session:
-            judge = await _seed_player(session, 772001, judge_rating=0)
-            filler = await _seed_player(session, 772002, judge_rating=-1)
-            author_a = await _seed_player(session, 772003, judge_rating=-1)
-            author_b = await _seed_player(session, 772004, judge_rating=-1)
+            judge = await _seed_player(session, 772001)
+            filler = await _seed_player(session, 772002, nation=False)
+            author_a = await _seed_player(session, 772003)
+            author_b = await _seed_player(session, 772004)
+            # The only eligible candidate is the judge: both authors
+            # need nations to submit (they are reachable, so they must
+            # sit AT the pending limit to stay out of the candidate
+            # set) and the filler has neither a nation nor consent.
+            for _ in range(max_pending):
+                await make_order(session, filler, judge=author_a)
+                await make_order(session, filler, judge=author_b)
             # One free slot: the only eligible judge is one pending
             # verdict below the limit.
             for _ in range(max_pending - 1):
@@ -84,7 +90,7 @@ class TestConcurrentDistribute:
             _submit_and_commit(pg_db, author_ids[0]),
             _submit_and_commit(pg_db, author_ids[1]),
         )
-        assert sorted(numbers) == [1 + max_pending - 1, 2 + max_pending - 1]
+        assert sorted(numbers) == [3 * max_pending, 3 * max_pending + 1]
 
         async with pg_db() as session:
             new_orders = (

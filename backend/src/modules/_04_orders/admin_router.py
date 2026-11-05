@@ -14,9 +14,8 @@ Three endpoints under ``/api/v1/admin/orders``, every one gated by
   picked one, the one ``blocker`` that would refuse the assignment
   (``ORDER_ALREADY_DECIDED`` / ``JUDGE_IS_AUTHOR`` / ``ALREADY_JUDGE``)
   and the ready Russian ``warnings`` — an unreachable judge (no nation
-  and no bot consent), a rating below the threshold, a full pending
-  queue; every threshold is read from the module config, never
-  hard-coded.
+  and no bot consent) and a full pending queue; every threshold is
+  read from the module config, never hard-coded.
 - ``POST /{number}/judge`` — the assignment itself through
   ``OrderService.admin_assign_judge``, then one ``order.assign_judge``
   audit row in the same transaction before the commit; a refusal
@@ -243,9 +242,9 @@ async def judge_preview(
     Read-only preview of ``POST /{number}/judge``: the current judge,
     the picked player, the one ``blocker`` the service would refuse
     with (the same order of checks) and the warnings the panel shows —
-    an unreachable judge, a rating below ``judge.min_rating``, a
-    pending queue at ``judge.max_pending_verdicts``. None of the
-    warnings blocks the admin path — they only inform.
+    an unreachable judge and a pending queue at
+    ``judge.max_pending_verdicts``. None of the warnings blocks the
+    admin path — they only inform.
     """
     from modules._04_orders.startup import get_orders_config
 
@@ -280,17 +279,6 @@ async def judge_preview(
                 "text": (
                     f"Игрок «{subject}» без государства и без согласия "
                     "на сообщения не узнает об этом приказе."
-                ),
-            }
-        )
-    if new_row.judge_rating < judge_cfg.min_rating:
-        warnings.append(
-            {
-                "code": "JUDGE_RATING_BELOW",
-                "text": (
-                    f"Судейский рейтинг игрока «{subject}» — "
-                    f"{new_row.judge_rating}, ниже порога "
-                    f"{judge_cfg.min_rating}."
                 ),
             }
         )

@@ -311,31 +311,26 @@ class TestAdminAssignJudge:
         with pytest.raises(OrderNotFoundError):
             await OrderService.admin_assign_judge(test_db_session, 999, judge.id)
 
-    async def test_threshold_limit_and_reachability_do_not_apply(
+    async def test_limit_and_reachability_do_not_apply(
         self, test_db_session, orders_started
     ):
-        """The admin path skips every gate: a judge below
-        ``judge.min_rating``, one already at ``max_pending_verdicts``
-        and an unreachable one (no nation, no consent — this is also
-        how an administrator could name themselves) are all accepted."""
+        """The admin path skips every gate: a judge already at
+        ``max_pending_verdicts`` and an unreachable one (no nation, no
+        consent — this is also how an administrator could name
+        themselves) are both accepted."""
         config = orders_started
         author, nation = await seed_author(test_db_session, 910071)
-        weak = await seed_judge(
-            test_db_session, 910072, rating=config.judge.min_rating - 10
-        )
         busy = await seed_judge(test_db_session, 910073, nation=True)
         ghost = await seed_judge(test_db_session, 910074)
         for _ in range(config.judge.max_pending_verdicts):
             await make_order(test_db_session, author, nation=nation, judge=busy)
-        one = await make_order(test_db_session, author, nation=nation)
         two = await make_order(test_db_session, author, nation=nation)
         three = await make_order(test_db_session, author, nation=nation)
 
-        await OrderService.admin_assign_judge(test_db_session, one.number, weak.id)
         await OrderService.admin_assign_judge(test_db_session, two.number, busy.id)
         await OrderService.admin_assign_judge(test_db_session, three.number, ghost.id)
 
-        for order, judge in ((one, weak), (two, busy), (three, ghost)):
+        for order, judge in ((two, busy), (three, ghost)):
             await test_db_session.refresh(order)
             assert order.judge_player_id == judge.id
         assert (
@@ -509,11 +504,10 @@ class TestAdminOrdersApi:
         author, nation = await seed_author(test_db_session, 910111)
         clean = await seed_judge(test_db_session, 910112, nation=True)
         ghost = await seed_judge(test_db_session, 910113)
+        # A negative rating raises no warning at all since 0.14.0 —
+        # judging requires no minimum rating.
         weak = await seed_judge(
-            test_db_session,
-            910114,
-            rating=config.judge.min_rating - 5,
-            nation=True,
+            test_db_session, 910114, rating=-50, nation=True
         )
         busy = await seed_judge(test_db_session, 910115, nation=True)
         for _ in range(config.judge.max_pending_verdicts):
@@ -541,8 +535,7 @@ class TestAdminOrdersApi:
         assert unreachable and "не узнает об этом приказе" in unreachable[0]["text"]
 
         warnings = (await preview(order.number, weak.vk_user_id))["warnings"]
-        rating = [w for w in warnings if w["code"] == "JUDGE_RATING_BELOW"]
-        assert rating and str(config.judge.min_rating) in rating[0]["text"]
+        assert warnings == []
 
         warnings = (await preview(order.number, busy.vk_user_id))["warnings"]
         limit = [w for w in warnings if w["code"] == "JUDGE_AT_PENDING_LIMIT"]

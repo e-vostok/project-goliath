@@ -21,7 +21,6 @@ class JudgeCandidate:
     """One player's eligibility snapshot for judge selection (Spec 2.5)."""
 
     player_id: str
-    rating: int
     has_nation: bool
     consented: bool
     pending: int
@@ -38,17 +37,17 @@ def select_judge_v1(
 ) -> str | None:
     """
     Pick the judge (Spec 2.5, 3.3): the author is never eligible; the
-    rating threshold is inclusive; the load limit is strict; with
-    ``require_reachable`` a candidate needs a nation or bot consent.
-    The winner minimises ``(pending, last_assigned_at, player_id)`` —
-    a judge who has never been assigned counts as the oldest
-    (τ = −∞). Returns ``None`` when the eligible set is empty.
+    load limit is strict; with ``require_reachable`` a candidate needs
+    a nation or bot consent. There is no rating threshold — judging
+    requires no minimum rating (0.14.0). The winner minimises
+    ``(pending, last_assigned_at, player_id)`` — a judge who has never
+    been assigned counts as the oldest (τ = −∞). Returns ``None`` when
+    the eligible set is empty.
     """
     eligible = [
         c
         for c in candidates
         if c.player_id != author_player_id
-        and c.rating >= settings.min_rating
         and c.pending < settings.max_pending_verdicts
         and (not settings.require_reachable or c.has_nation or c.consented)
     ]

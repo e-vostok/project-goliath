@@ -85,6 +85,17 @@ class OrderDetailDTO(_Strict):
     verdict: VerdictDTO | None
     overdue: bool
     can_write_verdict: bool
+    # The penalty a refusal would cost the viewer right now — only the
+    # assigned judge ever sees a number; null for everyone else and
+    # once refusal is impossible (0.14.0 unit 7a).
+    refuse_penalty: int | None
+
+
+class RefuseResultDTO(_Strict):
+    """``POST /orders/{number}/refuse`` answer (0.14.0 unit 7a)."""
+
+    penalty: int
+    rating_after: int
 
 
 class AssignedOrderDTO(_Strict):

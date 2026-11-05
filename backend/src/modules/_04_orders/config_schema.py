@@ -22,13 +22,6 @@ from typing import Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
-# Границы шкалы судейского рейтинга. Это свойство модели данных 00_core
-# (backend/src/modules/_00_core/player_stats.py, проверки CHECK в БД);
-# здесь числа повторены как диапазон допустимого порога, а совпадение с
-# константами 00_core проверяет тест test_configs_validity.py.
-JUDGE_RATING_MIN = -100
-JUDGE_RATING_MAX = 100
-
 # Длины колонок таблицы orders (Spec 04_orders, Часть 1). Верхние границы
 # текстовых лимитов не могут быть больше: любое валидное значение конфига
 # обязано помещаться в колонку без новой миграции. Совпадение с моделью
@@ -45,15 +38,8 @@ class _Strict(BaseModel):
 
 
 class JudgeSettings(_Strict):
-    """Судья: порог, нагрузка, достижимость, срок (Bible, 2.2, 2.5, 2.7)."""
+    """Судья: нагрузка, достижимость, срок (Bible, 2.2, 2.5, 2.7)."""
 
-    min_rating: int = Field(
-        ge=JUDGE_RATING_MIN,
-        le=JUDGE_RATING_MAX,
-        description=(
-            "Порог судейского рейтинга: судья имеет рейтинг не ниже этого числа."
-        ),
-    )
     max_pending_verdicts: int = Field(
         ge=1,
         le=50,
@@ -92,6 +78,42 @@ class JudgeSettings(_Strict):
         результат точный и воспроизводимый.
         """
         return self.deadline_seconds * self.reminder_percent // 100
+
+
+class RefusalSettings(_Strict):
+    """
+    Отказ судьи от назначенного приказа: штрафы рейтинга и окно
+    повышенного штрафа (0.14.0, единица 7a).
+    """
+
+    penalty: int = Field(
+        ge=1,
+        le=50,
+        description="Штраф рейтинга за отказ от назначенного приказа.",
+    )
+    penalty_late: int = Field(
+        ge=1,
+        le=50,
+        description=(
+            "Штраф рейтинга за отказ в последние late_window_hours срока."
+        ),
+    )
+    late_window_hours: int = Field(
+        ge=1,
+        description=(
+            "Последние столько часов срока отказ стоит дороже; не может "
+            "превышать judge.verdict_deadline_hours (проверяется на корне)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_late_not_below(self) -> Self:
+        if self.penalty_late < self.penalty:
+            raise ValueError(
+                "refusal.penalty_late не может быть меньше refusal.penalty: "
+                "отказ в последние часы срока штрафуется не мягче обычного"
+            )
+        return self
 
 
 class AuthorSettings(_Strict):
@@ -164,6 +186,7 @@ class OrdersConfig(_Strict):
     """Корневая модель конфигурации модуля 04_orders."""
 
     judge: JudgeSettings
+    refusal: RefusalSettings
     author: AuthorSettings
     distribution: DistributionSettings
     limits: LimitsSettings
@@ -185,6 +208,12 @@ class OrdersConfig(_Strict):
                 "может превышать промежуток между напоминанием и концом срока "
                 f"({gap} с): уменьшите период задачи, увеличьте срок "
                 "или уменьшите reminder_percent"
+            )
+        if self.refusal.late_window_hours > self.judge.verdict_deadline_hours:
+            raise ValueError(
+                "refusal.late_window_hours не может превышать "
+                "judge.verdict_deadline_hours: окно повышенного штрафа "
+                "шире самого срока"
             )
         return self
 

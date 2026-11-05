@@ -1,12 +1,13 @@
 """
 Bot notifications of module 04_orders (Spec D9, Appendix C).
 
-The four ORDER_* types are registered with the bot module by
+The five ORDER_* types are registered with the bot module by
 ``register_orders_extensions()``. Issue 6 produces the assignment
 pair — ``ORDER_JUDGE_ASSIGNED`` to the judge and ``ORDER_DISTRIBUTED``
 to the author; Issue 7 adds ``ORDER_VERDICT_READY`` to the author;
 Issue 9 adds the ``ORDER_JUDGE_REMINDER`` producer in the worker's
-retry pass.
+retry pass; 0.14.0 unit 7a adds ``ORDER_JUDGE_REFUSED`` to the author
+when the assigned judge refuses.
 
 Player privacy (Spec 0, D9): the texts carry the order number, the
 author-nation name and the order link — never the player-written title
@@ -30,6 +31,7 @@ ORDER_JUDGE_ASSIGNED = "ORDER_JUDGE_ASSIGNED"
 ORDER_JUDGE_REMINDER = "ORDER_JUDGE_REMINDER"
 ORDER_DISTRIBUTED = "ORDER_DISTRIBUTED"
 ORDER_VERDICT_READY = "ORDER_VERDICT_READY"
+ORDER_JUDGE_REFUSED = "ORDER_JUDGE_REFUSED"
 
 # The exact variable set each type promises to provide (Appendix C).
 NOTIFICATION_VARIABLES: dict[str, frozenset[str]] = {
@@ -37,7 +39,23 @@ NOTIFICATION_VARIABLES: dict[str, frozenset[str]] = {
     ORDER_JUDGE_REMINDER: frozenset({"order_number", "hours_left", "order_link"}),
     ORDER_DISTRIBUTED: frozenset({"order_number", "order_link"}),
     ORDER_VERDICT_READY: frozenset({"order_number", "order_link"}),
+    ORDER_JUDGE_REFUSED: frozenset({"order_number", "order_link"}),
 }
+
+
+def assignment_event_key(prefix: str, order_id: str, assignment_no: int) -> str:
+    """
+    The dedupe event key of the judge-facing order rows.
+
+    The first assignment keeps the Spec keys ``<prefix>:<order id>``;
+    every assignment after a refusal carries its number
+    ``<prefix>:<order id>:<n>`` — otherwise the outbox dedupe key would
+    swallow the next judge's ``order_assigned``/``order_reminder``
+    rows (0.14.0 unit 7a).
+    """
+    if assignment_no <= 1:
+        return f"{prefix}:{order_id}"
+    return f"{prefix}:{order_id}:{assignment_no}"
 
 
 def order_app_link(order_number: int) -> str | None:
@@ -74,7 +92,9 @@ async def notify_assignment(
         session,
         type_key=ORDER_JUDGE_ASSIGNED,
         player_id=judge_player_id,
-        event_key=f"order_assigned:{order.id}",
+        event_key=assignment_event_key(
+            "order_assigned", order.id, order.assignment_no
+        ),
         variables={
             "order_number": order.number,
             "nation_name": order.nation_name,
@@ -82,6 +102,11 @@ async def notify_assignment(
         },
         event_at=distributed_at,
     )
+    if order.assignment_no > 1:
+        # A reassignment after a refusal: the author already knows the
+        # order was passed on — ORDER_JUDGE_REFUSED told them; a second
+        # ORDER_DISTRIBUTED would only repeat it.
+        return
     await BotService.enqueue(
         session,
         type_key=ORDER_DISTRIBUTED,
@@ -133,6 +158,47 @@ async def notify_verdict(
     )
 
 
+async def notify_judge_refused(
+    session: AsyncSession,
+    *,
+    order: Order,
+    assignment_no: int,
+    now: datetime,
+) -> EnqueueResult | None:
+    """
+    Enqueue the ORDER_JUDGE_REFUSED announcement to the author (0.14.0
+    unit 7a): «the judge refused, the order was passed on» — never a
+    name, never the penalty (Spec 0, D9). The event key carries the
+    refused assignment's number so every refusal notifies exactly once
+    and the dedupe guard stays honest.
+
+    Without VK_APP_ID there is no link to send: enqueue nothing and
+    log one warning — the same rule as the assignment pair. Returns
+    the enqueue result; ``None`` on the missing-app-id skip.
+    """
+    link = order_app_link(order.number)
+    if link is None:
+        logger.warning(
+            "order_notification_skipped_no_app_id: the judge refused "
+            "order %s — VK_APP_ID is not set, notification not enqueued",
+            order.id,
+        )
+        return None
+    return await BotService.enqueue(
+        session,
+        type_key=ORDER_JUDGE_REFUSED,
+        player_id=order.author_player_id,
+        event_key=assignment_event_key(
+            "order_judge_refused", order.id, assignment_no
+        ),
+        variables={
+            "order_number": order.number,
+            "order_link": link,
+        },
+        event_at=now,
+    )
+
+
 async def notify_reminder(
     session: AsyncSession,
     *,
@@ -169,7 +235,9 @@ async def notify_reminder(
         session,
         type_key=ORDER_JUDGE_REMINDER,
         player_id=judge_player_id,
-        event_key=f"order_reminder:{order.id}",
+        event_key=assignment_event_key(
+            "order_reminder", order.id, order.assignment_no
+        ),
         variables={
             "order_number": order.number,
             "hours_left": hours_left,
