@@ -4,7 +4,7 @@
 # Multi-stage: node builds the Vite bundle, caddy serves it and proxies
 # /api/* to the backend container (see deploy/Caddyfile).
 
-FROM node:24.22.2-alpine AS build
+FROM node:26.13.0-alpine AS build
 WORKDIR /app/frontend
 
 # Dev dependencies are installed on purpose: `npm run build` runs
