@@ -359,8 +359,9 @@ async def test_legacy_nation_null_profile_on_postgres(pg_live_client, pg_db):
             text(
                 "INSERT INTO nations "
                 "(id, owner_player_id, name, short_name, color_hex, "
-                " created_at, created_turn) "
-                "VALUES (:id, :owner, :name, 'OR', :color, :created_at, 0)"
+                " name_key, short_name_key, created_at, created_turn) "
+                "VALUES (:id, :owner, :name, 'OR', :color, "
+                " 'old realm', 'or', :created_at, 0)"
             ),
             {
                 "id": nation_id,
@@ -594,8 +595,9 @@ async def test_pg_foreign_keys_and_orphaned_actions(pg_live_client, pg_db):
                 text(
                     "INSERT INTO nations "
                     "(id, owner_player_id, name, short_name, color_hex, "
-                    " created_at, created_turn) "
-                    "VALUES (:id, :owner, :name, 'GN', :color, now(), 0)"
+                    " name_key, short_name_key, created_at, created_turn) "
+                    "VALUES (:id, :owner, :name, 'GN', :color, "
+                    " 'ghost nation', 'gn', now(), 0)"
                 ),
                 {
                     "id": str(uuid.uuid4()),

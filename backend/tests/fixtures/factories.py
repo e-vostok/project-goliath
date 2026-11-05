@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from polyfactory.factories.sqlalchemy_factory import SQLAlchemyFactory
+from polyfactory.fields import Ignore
 from sqlalchemy import func as sa_func
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,6 +78,10 @@ class NationFactory(SQLAlchemyFactory[Nation]):
     history_url = VALID_PROFILE["history_url"]
     # UNIQUE (INV-11): each built nation gets a fresh short name.
     short_name = _new_short_name
+    # The @validates hooks on Nation compute the keys from the built
+    # name/short_name — a generated value would detach the pair.
+    name_key = Ignore()
+    short_name_key = Ignore()
     gender = VALID_PROFILE["gender"]
     succession_type = VALID_PROFILE["succession_type"]
     capital_name = VALID_PROFILE["capital_name"]
