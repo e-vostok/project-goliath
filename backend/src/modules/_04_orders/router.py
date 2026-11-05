@@ -25,9 +25,12 @@ from core.security.dependencies import get_current_player
 from modules._00_core import images
 from modules._00_core.config_schema import CoreConfig
 from modules._00_core.models import Player
+from modules._00_core.service import NationService
 from modules._04_orders.dto import (
     AssignedOrderDTO,
     AssignedOrdersDTO,
+    MyOrderDTO,
+    MyOrdersDTO,
     NationMarkDTO,
     OrderCreateRequest,
     OrderDetailDTO,
@@ -169,6 +172,30 @@ async def list_assigned_orders(
     response.headers["Cache-Control"] = "no-store"
     views = await OrderService.list_assigned(session, player_id=player.id)
     return AssignedOrdersDTO(items=[_assigned_dto(view) for view in views])
+
+
+@router.get("/mine", response_model=MyOrdersDTO)
+async def list_my_orders(
+    response: Response,
+    player: Player = Depends(get_current_player),
+    session: AsyncSession = Depends(get_session),
+) -> MyOrdersDTO:
+    """
+    0.14.0 unit 5 — the numbers of the orders of the caller's CURRENT
+    nation, matched on ``nation_id`` so a rename keeps them (the order
+    row itself keeps the submission-time name snapshot, INV-O6). The
+    nation id comes through ``NationService`` only (INV-O7); a caller
+    without a nation gets an empty list. Registered before ``/{number}``
+    so the literal wins.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    nation = await NationService.player_nation_summary(session, player.id)
+    if nation is None:
+        return MyOrdersDTO(items=[])
+    numbers = await OrderService.list_numbers_for_nation(
+        session, nation.nation_id
+    )
+    return MyOrdersDTO(items=[MyOrderDTO(number=n) for n in numbers])
 
 
 @router.post("/{number}/verdict", response_model=OrderDetailDTO, status_code=201)

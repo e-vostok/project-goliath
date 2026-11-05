@@ -855,6 +855,26 @@ class OrderService:
         ]
 
     @staticmethod
+    async def list_numbers_for_nation(
+        session: AsyncSession, nation_id: str
+    ) -> list[int]:
+        """
+        The public numbers of every order whose ``nation_id`` equals
+        the given one, ascending (0.14.0 unit 5 — ``GET /orders/mine``).
+
+        The match is on the snapshot id, never on ``nation_short_name``:
+        the name is frozen at submission (INV-O6) and a rename must not
+        drop the player's own orders. One read on ``orders.nation_id``;
+        read-only, never commits.
+        """
+        result = await session.execute(
+            select(Order.number)
+            .where(Order.nation_id == nation_id)
+            .order_by(Order.number)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
     async def write_verdict(
         session: AsyncSession,
         *,

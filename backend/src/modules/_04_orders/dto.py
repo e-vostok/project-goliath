@@ -108,3 +108,19 @@ class AssignedOrdersDTO(_Strict):
     """
 
     items: list[AssignedOrderDTO]
+
+
+class MyOrderDTO(_Strict):
+    """One item of ``GET /orders/mine`` — just the public number."""
+
+    number: int
+
+
+class MyOrdersDTO(_Strict):
+    """
+    ``GET /orders/mine`` payload (0.14.0 unit 5): the numbers of every
+    order whose ``nation_id`` is the caller's CURRENT nation — matched
+    on the id, never on the submission-time name snapshot (INV-O6).
+    """
+
+    items: list[MyOrderDTO]
